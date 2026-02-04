@@ -1,6 +1,6 @@
-import { Bookmark } from '@/src/core/domain/entities';
-import { BookmarkPosition } from '@/src/core/domain/value-objects/BookmarkPosition';
-import { StoredBookmark } from '@/src/core/domain/value-objects/StoredBookmark';
+import { Bookmark } from '@/src/domain/entities';
+import { BookmarkPosition } from '@/src/domain/value-objects/BookmarkPosition';
+import { StoredBookmark } from '@/src/domain/value-objects/StoredBookmark';
 
 export interface IBookmarkRepository {
   // Basic CRUD operations

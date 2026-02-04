@@ -1,7 +1,7 @@
 import {
   BookmarkPosition,
   BookmarkPositionPlainObject,
-} from '@/src/core/domain/value-objects/BookmarkPosition';
+} from '@/src/domain/value-objects/BookmarkPosition';
 
 /**
  * Bookmark domain entity representing a bookmarked verse

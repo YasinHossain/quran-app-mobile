@@ -1,7 +1,11 @@
-import { FlatList, Text, View } from 'react-native';
 import React from 'react';
+import { Text, View } from 'react-native';
 
 import { RevelationType, Surah } from '@/src/core/domain/entities/Surah';
+import { HomeTabToggle, type HomeTab } from '@/components/home/HomeTabToggle';
+import { JuzGrid } from '@/components/home/JuzGrid';
+import { SurahGrid } from '@/components/home/SurahGrid';
+import juzData from '../../src/data/juz.json';
 
 type ApiChaptersResponse = {
   chapters: Array<{
@@ -29,6 +33,7 @@ const mapChapterToSurah = (chapter: ApiChaptersResponse['chapters'][number]): Su
   });
 
 export default function ReadScreen(): React.JSX.Element {
+  const [activeTab, setActiveTab] = React.useState<HomeTab>('surah');
   const [surahs, setSurahs] = React.useState<Surah[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
@@ -61,32 +66,29 @@ export default function ReadScreen(): React.JSX.Element {
   }, []);
 
   return (
-    <View className="flex-1">
+    <View className="flex-1 bg-background dark:bg-background-dark">
       <View className="px-4 pb-3 pt-6">
-        <Text className="text-2xl font-bold">Quran App</Text>
-        <Text className="mt-1 text-sm text-gray-600">
-          {isLoading
-            ? 'Loading Surahs…'
-            : errorMessage
-              ? `Error: ${errorMessage}`
-              : `${surahs.length} Surahs`}
-        </Text>
+        <View className="flex-row items-center justify-between gap-3">
+          <Text className="flex-1 text-2xl font-bold text-content-primary dark:text-content-primary-dark">
+            {activeTab === 'surah' ? 'All Surahs' : 'All Juz'}
+          </Text>
+          <HomeTabToggle activeTab={activeTab} onTabChange={setActiveTab} />
+        </View>
       </View>
 
-      <FlatList
-        data={surahs}
-        keyExtractor={(item) => String(item.id)}
-        contentContainerStyle={{ paddingBottom: 24 }}
-        renderItem={({ item }) => (
-          <View className="flex-row items-center justify-between border-b border-gray-200 px-4 py-3">
-            <View className="flex-1 pr-4">
-              <Text className="text-base font-semibold">{`${item.id}. ${item.englishName}`}</Text>
-              <Text className="mt-0.5 text-xs text-gray-600">{item.englishTranslation}</Text>
-            </View>
-            <Text className="text-lg font-semibold">{item.arabicName}</Text>
-          </View>
+      <View className="flex-1 px-4">
+        {activeTab === 'surah' ? (
+          errorMessage ? (
+            <Text className="mt-4 text-sm text-error dark:text-error-dark">{errorMessage}</Text>
+          ) : isLoading ? (
+            <Text className="mt-4 text-sm text-muted dark:text-muted-dark">Loading…</Text>
+          ) : (
+            <SurahGrid surahs={surahs} />
+          )
+        ) : (
+          <JuzGrid juzs={juzData} />
         )}
-      />
+      </View>
     </View>
   );
 }

@@ -1,6 +1,6 @@
-import { Bookmark, withNotes, withTags, withAddedTag, withRemovedTag } from '@/src/core/domain/entities';
-import { BookmarkNotFoundError, UnauthorizedBookmarkError } from '@/src/core/domain/errors/DomainErrors';
-import { IBookmarkRepository } from '@/src/core/domain/repositories/IBookmarkRepository';
+import { Bookmark, withNotes, withTags, withAddedTag, withRemovedTag } from '@/src/domain/entities';
+import { BookmarkNotFoundError, UnauthorizedBookmarkError } from '@/src/domain/errors/DomainErrors';
+import { IBookmarkRepository } from '@/src/domain/repositories/IBookmarkRepository';
 
 /**
  * Domain service for bookmark tag and note mutations

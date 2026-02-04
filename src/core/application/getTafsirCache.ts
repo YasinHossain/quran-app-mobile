@@ -1,6 +1,6 @@
-import { Tafsir } from '@/src/core/domain/entities/Tafsir';
-import { ILogger } from '@/src/core/domain/interfaces/ILogger';
-import { ITafsirRepository } from '@/src/core/domain/repositories/ITafsirRepository';
+import { Tafsir } from '@/src/domain/entities/Tafsir';
+import { ILogger } from '@/src/domain/interfaces/ILogger';
+import { ITafsirRepository } from '@/src/domain/repositories/ITafsirRepository';
 
 export async function getCachedResourcesWithFallback(repository: ITafsirRepository): Promise<{
   tafsirs: Tafsir[];

@@ -2,12 +2,13 @@ import { Text, View } from 'react-native';
 
 export default function BookmarksScreen(): React.JSX.Element {
   return (
-    <View className="flex-1 items-center justify-center px-6">
-      <Text className="text-xl font-semibold">Bookmarks</Text>
-      <Text className="mt-2 text-center text-sm text-gray-600">
+    <View className="flex-1 items-center justify-center bg-background dark:bg-background-dark px-6">
+      <Text className="text-xl font-semibold text-foreground dark:text-foreground-dark">
+        Bookmarks
+      </Text>
+      <Text className="mt-2 text-center text-sm text-muted dark:text-muted-dark">
         Coming soon: pinned bookmarks, folders, and last-read sync.
       </Text>
     </View>
   );
 }
-

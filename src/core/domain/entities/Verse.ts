@@ -1,4 +1,4 @@
-import { Translation, TranslationPlainObject } from '@/src/core/domain/value-objects/Translation';
+import { Translation, TranslationPlainObject } from '@/src/domain/value-objects/Translation';
 
 import { getEstimatedReadingTime, getWordCount, isSajdahVerse } from './verseUtils';
 
