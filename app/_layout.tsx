@@ -8,8 +8,9 @@ import { useEffect } from 'react';
 import 'react-native-reanimated';
 import { View } from 'react-native';
 
-import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
+import { SettingsProvider } from '@/providers/SettingsContext';
+import { AppThemeProvider, useAppTheme } from '@/providers/ThemeContext';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -27,6 +28,8 @@ SplashScreen.preventAutoHideAsync();
 export default function RootLayout() {
   const [loaded, error] = useFonts({
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
+    UthmanicHafs1Ver18: require('../assets/fonts/UthmanicHafs1Ver18.ttf'),
+    'Scheherazade New': require('../assets/fonts/Scheherazade-New.ttf'),
   });
 
   // Expo Router uses Error Boundaries to catch errors in the navigation tree.
@@ -44,12 +47,18 @@ export default function RootLayout() {
     return null;
   }
 
-  return <RootLayoutNav />;
+  return (
+    <AppThemeProvider>
+      <SettingsProvider>
+        <RootLayoutNav />
+      </SettingsProvider>
+    </AppThemeProvider>
+  );
 }
 
 function RootLayoutNav() {
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
+  const { resolvedTheme } = useAppTheme();
+  const isDark = resolvedTheme === 'dark';
   const palette = Colors[isDark ? 'dark' : 'light'];
   const baseTheme = isDark ? DarkTheme : DefaultTheme;
   const theme = {

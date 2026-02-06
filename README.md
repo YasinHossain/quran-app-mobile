@@ -15,10 +15,30 @@ npm install
 npm run android
 ```
 
+## Verify (recommended)
+
+```bash
+npm run verify
+```
+
 ## Type-check
 
 ```bash
 npm run type-check
+```
+
+## Sync shared core from the web app
+
+This repo expects the web app to be cloned next to it at `../quran-app` (default used by `npm run sync:web-core`).
+
+```bash
+npm run sync:web-core
+```
+
+To sync from a different path, pass it as an argument:
+
+```bash
+npm run sync:web-core -- ..\\somewhere\\quran-app
 ```
 
 ## EAS (builds)
@@ -53,3 +73,10 @@ Reusable business logic copied from the web app lives in:
 
 This repo uses NativeWind (Tailwind-style `className` on React Native components).
 
+## AI docs
+
+Start here:
+
+- `docs/ai-workflow.md`
+- `docs/ui-parity.md`
+- `docs/ui-mapping.md`

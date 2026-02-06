@@ -4,8 +4,8 @@ import { Link, Tabs } from 'expo-router';
 import { Pressable } from 'react-native';
 
 import Colors from '@/constants/Colors';
-import { useColorScheme } from '@/components/useColorScheme';
 import { useClientOnlyValue } from '@/components/useClientOnlyValue';
+import { useAppTheme } from '@/providers/ThemeContext';
 
 function TabBarIcon({
   Icon,
@@ -18,8 +18,8 @@ function TabBarIcon({
 }
 
 export default function TabLayout() {
-  const colorScheme = useColorScheme();
-  const palette = Colors[colorScheme ?? 'light'];
+  const { resolvedTheme } = useAppTheme();
+  const palette = Colors[resolvedTheme];
 
   return (
     <Tabs

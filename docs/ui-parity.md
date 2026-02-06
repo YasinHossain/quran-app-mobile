@@ -2,16 +2,18 @@
 
 This document is the single source of truth for aligning mobile UI with the web experience. It defines what must match, what can diverge, and target parity levels per screen.
 
+Assumes the web repo is available at `../quran-app` (used by `npm run sync:web-core`).
+
 ## Parity Table
 
 | Web Feature | Web Path | Mobile Screen | Parity Target | Notes |
 | --- | --- | --- | --- | --- |
-| Surah page | /src/pages/Surah | app/surah | 90% | Allow native audio controls. |
-| Juz page | /src/pages/Juz | app/juz | 85% | Keep typography scale consistent; layout may be native-scrolled. |
-| Ayah detail modal | /src/components/AyahDetailModal | app/ayah-detail | 95% | Match content order; native sheet presentation is OK. |
-| Search | /src/pages/Search | app/search | 90% | Match search filters and result cards; platform-specific input UX allowed. |
-| Bookmarks | /src/pages/Bookmarks | app/bookmarks | 90% | Match list grouping and empty states; swipe actions allowed. |
-| Settings | /src/pages/Settings | app/settings | 80% | Core toggles must match; platform-specific system settings entry allowed. |
+| Surah page | `../quran-app/app/(features)/surah` | `app/surah/[surahId].tsx` | 90% | Allow native audio controls. |
+| Juz page | `../quran-app/app/(features)/juz` | `app/juz/[juzNumber].tsx` | 85% | Keep typography scale consistent; layout may be native-scrolled. |
+| Tafsir (ayah detail) | `../quran-app/app/(features)/tafsir` | `app/modal.tsx` (target: dedicated route) | 90% | Match content order; native sheet/modal presentation is OK. |
+| Search | `../quran-app/app/(features)/search` | `app/(tabs)/search.tsx` | 90% | Match search filters and result cards; platform-specific input UX allowed. |
+| Bookmarks | `../quran-app/app/(features)/bookmarks` | `app/(tabs)/bookmarks.tsx` | 90% | Match list grouping and empty states; swipe actions allowed. |
+| Settings | `../quran-app/app/shared/reader/settings` + `../quran-app/app/providers/SettingsContext.tsx` | `app/(tabs)/settings.tsx` | 80% | Core toggles must match; platform-specific system settings entry allowed. |
 
 ## Parity Targets
 

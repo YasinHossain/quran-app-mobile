@@ -1,11 +1,11 @@
 import { Text, TextInput, View } from 'react-native';
 
 import Colors from '@/constants/Colors';
-import { useColorScheme } from '@/components/useColorScheme';
+import { useAppTheme } from '@/providers/ThemeContext';
 
 export default function SearchScreen(): React.JSX.Element {
-  const colorScheme = useColorScheme();
-  const palette = Colors[colorScheme ?? 'light'];
+  const { resolvedTheme } = useAppTheme();
+  const palette = Colors[resolvedTheme];
 
   return (
     <View className="flex-1 bg-background dark:bg-background-dark px-4 py-6">
