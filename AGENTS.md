@@ -43,6 +43,27 @@ Prefer `@/src/core/...` for new mobile-only code. Synced code from the web repo 
 4. Update `docs/ui-parity.md` when adding screens or changing parity targets.
 5. Run `npm run verify` before handing off.
 
+## AI parity contract (required)
+
+When a task says “match the web app” / “same as web”:
+
+- Start by listing the **exact web source-of-truth files** you’re mirroring (paths in `../quran-app/...`).
+- Reuse first: search for existing **mobile** components/providers/hooks and extend them before creating new patterns.
+- Keep UI copy + menu item order **identical to web**. Do not rename labels (ex: “Pin / bookmark”, “Add to plan”) unless the web changed.
+- If an action/feature isn’t implemented yet, keep the UI and make it a **stub** (disabled row or “coming soon”). Do **not** remove web actions for convenience.
+- Keep changes scoped to the feature: avoid “cleanup” refactors across unrelated screens.
+- Avoid introducing new libraries unless the web app uses the same capability and it’s required for parity (justify in the PR notes/doc).
+- Update docs as part of the change:
+  - `docs/ui-parity.md` (parity target + notes)
+  - `docs/components.md` (if you add reusable components)
+- Always finish with `npm run verify`.
+
+## Reusable UI patterns (reuse these, don’t reinvent)
+
+- Right-side settings drawer: `components/reader/settings/SettingsSidebar.tsx`
+- Verse actions bottom sheet: `components/surah/VerseActionsSheet.tsx`
+- Separated verse layout: `components/surah/VerseCard.tsx`
+
 ---
 
 # Skills
@@ -74,4 +95,3 @@ A skill is a set of local instructions to follow that is stored in a `SKILL.md` 
   - Avoid deep reference-chasing: prefer opening only files directly linked from `SKILL.md` unless you're blocked.
   - When variants exist (frameworks, providers, domains), pick only the relevant reference file(s) and note that choice.
 - Safety and fallback: If a skill can't be applied cleanly (missing files, unclear instructions), state the issue, pick the next-best approach, and continue.
-

@@ -36,6 +36,14 @@ This guide maps common web UI patterns to React Native equivalents for this repo
 - **Clickable areas**: Prefer `Pressable` and add `hitSlop` for small targets.
 - **Text styling**: Use `Text` with className (NativeWind) or `style` (RN), not nested DOM tags.
 
+## Reusable patterns in this repo (reuse, don’t reinvent)
+
+These are parity-critical UI patterns already implemented. Prefer reusing/extending them instead of starting from scratch.
+
+- **Right-side drawer (settings sidebar)**: `components/reader/settings/SettingsSidebar.tsx` (RN `Modal` + `Animated` slide-in)
+- **Bottom sheet (verse actions)**: `components/surah/VerseActionsSheet.tsx` (RN `Modal` + sheet container)
+- **Separated list item style (verses)**: `components/surah/VerseCard.tsx` (border-bottom + padding, web-like “separated” variant)
+
 ## Examples
 
 **Web**

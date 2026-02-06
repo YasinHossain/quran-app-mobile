@@ -11,13 +11,51 @@ export type SurahVerse = {
   verse_number: number;
   verse_key: string;
   text_uthmani?: string;
-  translations?: Array<{ id: number; text: string }>;
+  translations?: Array<{ resource_id: number; text: string }>;
+  translationTexts: string[];
 };
 
 type ApiVersesResponse = {
-  verses: SurahVerse[];
+  verses: Array<{
+    id: number;
+    verse_number: number;
+    verse_key: string;
+    text_uthmani?: string;
+    translations?: Array<{ resource_id: number; text: string }>;
+  }>;
   pagination: { current_page: number; total_pages: number; per_page: number };
 };
+
+function stripHtml(input: string): string {
+  return input
+    .replace(/<[^>]*>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, '&')
+    .trim();
+}
+
+function buildTranslationTexts(
+  translations: Array<{ resource_id: number; text: string }> | undefined,
+  translationIds: number[]
+): string[] {
+  const incoming = translations ?? [];
+  if (incoming.length === 0) return [];
+
+  const byResourceId = new Map(incoming.map((t) => [t.resource_id, t.text]));
+  const ordered = translationIds
+    .map((id) => byResourceId.get(id))
+    .filter((t): t is string => typeof t === 'string' && t.trim().length > 0)
+    .map(stripHtml)
+    .filter(Boolean);
+
+  if (ordered.length) return ordered;
+
+  return incoming
+    .map((t) => stripHtml(t.text ?? ''))
+    .filter((text) => text.length > 0);
+}
 
 export function useSurahVerses({
   chapterNumber,
@@ -50,9 +88,12 @@ export function useSurahVerses({
   const isLoadingMoreRef = React.useRef(false);
   const requestTokenRef = React.useRef(0);
 
-  const translationsKey = translationIds
-    .filter((id) => Number.isFinite(id) && id > 0)
-    .join(',');
+  const resolvedTranslationIds = React.useMemo(
+    () => translationIds.filter((id) => Number.isFinite(id) && id > 0),
+    [translationIds]
+  );
+
+  const translationsKey = resolvedTranslationIds.join(',');
   const translationsQuery = translationsKey ? `&translations=${encodeURIComponent(translationsKey)}` : '';
 
   const loadFirstPage = React.useCallback(
@@ -90,7 +131,12 @@ export function useSurahVerses({
         if (requestTokenRef.current !== token) return;
 
         setChapter(chapterJson.chapter);
-        setVerses(versesJson.verses ?? []);
+        setVerses(
+          (versesJson.verses ?? []).map((verse) => ({
+            ...verse,
+            translationTexts: buildTranslationTexts(verse.translations, resolvedTranslationIds),
+          }))
+        );
         pageRef.current = versesJson.pagination?.current_page ?? 1;
         totalPagesRef.current = versesJson.pagination?.total_pages ?? 1;
       } catch (error) {
@@ -102,7 +148,7 @@ export function useSurahVerses({
         if (mode === 'refresh') setIsRefreshing(false);
       }
     },
-    [chapterNumber, perPage, translationsQuery]
+    [chapterNumber, perPage, resolvedTranslationIds, translationsQuery]
   );
 
   React.useEffect(() => {
@@ -155,11 +201,15 @@ export function useSurahVerses({
         const json = (await response.json()) as ApiVersesResponse;
         if (requestTokenRef.current !== token) return;
 
+        const preparedIncoming = (json.verses ?? []).map((verse) => ({
+          ...verse,
+          translationTexts: buildTranslationTexts(verse.translations, resolvedTranslationIds),
+        }));
+
         setVerses((prev) => {
-          const incoming = json.verses ?? [];
-          if (incoming.length === 0) return prev;
+          if (preparedIncoming.length === 0) return prev;
           const existingKeys = new Set(prev.map((v) => v.verse_key));
-          const deduped = incoming.filter((v) => !existingKeys.has(v.verse_key));
+          const deduped = preparedIncoming.filter((v) => !existingKeys.has(v.verse_key));
           return deduped.length ? [...prev, ...deduped] : prev;
         });
 
@@ -176,7 +226,7 @@ export function useSurahVerses({
     }
 
     void run();
-  }, [chapterNumber, isLoading, perPage, translationsQuery]);
+  }, [chapterNumber, isLoading, perPage, resolvedTranslationIds, translationsQuery]);
 
   return {
     chapter,

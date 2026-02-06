@@ -9,9 +9,13 @@ import { SettingsSidebarContent } from './SettingsSidebarContent';
 export function SettingsSidebar({
   isOpen,
   onClose,
+  showTafsirSetting = false,
+  pageType,
 }: {
   isOpen: boolean;
   onClose: () => void;
+  showTafsirSetting?: boolean;
+  pageType?: 'verse' | 'tafsir' | 'bookmarks';
 }): React.JSX.Element {
   const { width } = useWindowDimensions();
   const { isDark } = useAppTheme();
@@ -74,7 +78,11 @@ export function SettingsSidebar({
         >
           <SafeAreaView edges={['top', 'bottom']} className="flex-1">
             <View className={isDark ? 'flex-1 dark' : 'flex-1'}>
-              <SettingsSidebarContent onClose={onClose} />
+              <SettingsSidebarContent
+                onClose={onClose}
+                showTafsirSetting={showTafsirSetting}
+                pageType={pageType}
+              />
             </View>
           </SafeAreaView>
         </Animated.View>

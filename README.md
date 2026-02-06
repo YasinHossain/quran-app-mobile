@@ -77,6 +77,7 @@ This repo uses NativeWind (Tailwind-style `className` on React Native components
 
 Start here:
 
+- `docs/ai-prompt-template.md`
 - `docs/ai-workflow.md`
 - `docs/ui-parity.md`
 - `docs/ui-mapping.md`

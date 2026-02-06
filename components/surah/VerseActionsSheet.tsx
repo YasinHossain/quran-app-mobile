@@ -137,8 +137,8 @@ export function VerseActionsSheet({
           style={[styles.sheet, { transform: [{ translateY }] }]}
           className="bg-surface dark:bg-surface-dark rounded-t-3xl border-t border-border/30 dark:border-border-dark/20"
         >
-          <SafeAreaView edges={['bottom']} className="flex-1">
-            <View className={isDark ? 'flex-1 dark' : 'flex-1'}>
+          <SafeAreaView edges={['bottom']}>
+            <View className={isDark ? 'dark' : ''}>
               <View className="flex-row items-center justify-between border-b border-border/30 px-6 py-4 dark:border-border-dark/20">
                 <Text
                   numberOfLines={1}
@@ -157,7 +157,7 @@ export function VerseActionsSheet({
                 </Pressable>
               </View>
 
-              <View className="flex-1 px-4 pt-4 pb-2">
+              <View className="px-4 pt-4 pb-2">
                 <View className="gap-2">
                   <ActionRow
                     icon={<PlayPauseIcon color={palette.muted} size={20} strokeWidth={2.25} />}
@@ -243,5 +243,6 @@ const styles = StyleSheet.create({
   },
   sheet: {
     maxHeight: '90%',
+    width: '100%',
   },
 });

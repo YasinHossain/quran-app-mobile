@@ -23,6 +23,7 @@ function VerseCardComponent({
   arabicFontFace,
   translationFontSize,
   showByWords,
+  renderSignal: _renderSignal,
   onOpenActions,
 }: {
   verseKey: string;
@@ -32,6 +33,7 @@ function VerseCardComponent({
   arabicFontFace?: string;
   translationFontSize: number;
   showByWords?: boolean;
+  renderSignal?: number;
   onOpenActions?: () => void;
 }): React.JSX.Element {
   const { resolvedTheme } = useAppTheme();
@@ -55,32 +57,36 @@ function VerseCardComponent({
   );
 
   const cleanedTranslations = (translationTexts ?? []).map((t) => t.trim()).filter(Boolean);
+  const renderSignal = typeof _renderSignal === 'number' ? _renderSignal : 0;
 
   return (
     <View className="border-b border-border/40 py-4 dark:border-border-dark/30">
       <View className="flex-1 gap-4">
-        <View className="flex-row items-center justify-between">
+        <View
+          className={[
+            'flex-row items-center',
+            onOpenActions ? 'justify-between' : 'justify-start',
+          ].join(' ')}
+        >
           <Text className="text-sm font-semibold text-accent dark:text-accent-dark">
             {verseKey}
           </Text>
-          <Pressable
-            onPress={onOpenActions}
-            disabled={!onOpenActions}
-            hitSlop={10}
-            accessibilityRole="button"
-            accessibilityLabel="Open verse actions"
-            className="h-8 w-8 items-center justify-center rounded-full"
-            style={({ pressed }) => ({ opacity: pressed ? 0.65 : 1 })}
-          >
-            <MoreHorizontal
-              color={palette.muted}
-              size={18}
-              strokeWidth={2.25}
-            />
-          </Pressable>
+          {onOpenActions ? (
+            <Pressable
+              onPress={onOpenActions}
+              hitSlop={10}
+              accessibilityRole="button"
+              accessibilityLabel="Open verse actions"
+              className="h-8 w-8 items-center justify-center rounded-full"
+              style={({ pressed }) => ({ opacity: pressed ? 0.65 : 1 })}
+            >
+              <MoreHorizontal color={palette.muted} size={18} strokeWidth={2.25} />
+            </Pressable>
+          ) : null}
         </View>
 
         <Text
+          key={`${verseKey}-arabic-${renderSignal}`}
           className="text-right text-foreground dark:text-foreground-dark"
           style={{
             fontSize: arabicFontSize,
@@ -103,7 +109,7 @@ function VerseCardComponent({
           <View className="gap-6">
             {cleanedTranslations.map((text, idx) => (
               <Text
-                key={`${idx}-${text.slice(0, 24)}`}
+                key={`${renderSignal}-${idx}-${text.slice(0, 24)}`}
                 className="text-content-secondary dark:text-content-secondary-dark"
                 style={{
                   fontSize: translationFontSize,

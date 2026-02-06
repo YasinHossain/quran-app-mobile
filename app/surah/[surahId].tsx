@@ -1,6 +1,7 @@
-import { Stack, useLocalSearchParams } from 'expo-router';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import React from 'react';
 import { Settings } from 'lucide-react-native';
+import { FlashList } from '@shopify/flash-list';
 import {
   Alert,
   ActivityIndicator,
@@ -21,18 +22,9 @@ import { useSurahVerses, type SurahVerse } from '@/hooks/useSurahVerses';
 import { useSettings } from '@/providers/SettingsContext';
 import { useAppTheme } from '@/providers/ThemeContext';
 
-function stripHtml(input: string): string {
-  return input
-    .replace(/<[^>]*>/g, '')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&amp;/g, '&')
-    .trim();
-}
-
 export default function SurahScreen(): React.JSX.Element {
   const params = useLocalSearchParams<{ surahId?: string | string[] }>();
+  const router = useRouter();
   const surahId = Array.isArray(params.surahId) ? params.surahId[0] : params.surahId;
   const [isSettingsOpen, setIsSettingsOpen] = React.useState(false);
   const [isVerseActionsOpen, setIsVerseActionsOpen] = React.useState(false);
@@ -52,7 +44,6 @@ export default function SurahScreen(): React.JSX.Element {
       settings.translationIds?.length ? settings.translationIds : [settings.translationId ?? 20];
     return ids.filter((id) => Number.isFinite(id) && id > 0);
   }, [settings.translationId, settings.translationIds]);
-  const translationIdsKey = translationIds.join(',');
 
   const {
     chapter,
@@ -80,7 +71,6 @@ export default function SurahScreen(): React.JSX.Element {
 
   const listExtraData = React.useMemo(
     () => ({
-      translationIdsKey,
       arabicFontSize: settings.arabicFontSize,
       translationFontSize: settings.translationFontSize,
       arabicFontFace: settings.arabicFontFace,
@@ -91,7 +81,6 @@ export default function SurahScreen(): React.JSX.Element {
       settings.arabicFontSize,
       settings.showByWords,
       settings.translationFontSize,
-      translationIdsKey,
     ]
   );
 
@@ -104,8 +93,12 @@ export default function SurahScreen(): React.JSX.Element {
   }, []);
 
   const handleOpenTafsir = React.useCallback(() => {
-    Alert.alert('Tafsir coming soon', 'Tafsir viewer will be added next.');
-  }, []);
+    const verseKey = activeVerse?.verseKey;
+    if (!verseKey) return;
+    const [surah, ayah] = verseKey.split(':');
+    if (!surah || !ayah) return;
+    router.push({ pathname: '/tafsir/[surahId]/[ayahId]', params: { surahId: surah, ayahId: ayah } });
+  }, [activeVerse?.verseKey, router]);
 
   const handleAddToPlan = React.useCallback(() => {
     Alert.alert('Planner coming soon', 'Add-to-plan will be added next.');
@@ -129,16 +122,7 @@ export default function SurahScreen(): React.JSX.Element {
 
   const renderVerseItem = React.useCallback(
     ({ item }: { item: SurahVerse }) => {
-      const incomingTranslations = item.translations ?? [];
-      const byId = new Map(incomingTranslations.map((t) => [t.id, t.text]));
-      const ordered = translationIds
-        .map((id) => byId.get(id))
-        .filter((t): t is string => typeof t === 'string' && t.trim().length > 0)
-        .map(stripHtml);
-      const translationTexts =
-        ordered.length > 0
-          ? ordered
-          : incomingTranslations.map((t) => stripHtml(t.text ?? '')).filter(Boolean);
+      const translationTexts = item.translationTexts ?? [];
 
       return (
         <VerseCard
@@ -165,7 +149,6 @@ export default function SurahScreen(): React.JSX.Element {
       settings.arabicFontSize,
       settings.showByWords,
       settings.translationFontSize,
-      translationIds,
     ]
   );
 
@@ -194,76 +177,134 @@ export default function SurahScreen(): React.JSX.Element {
         }}
       />
 
-      <FlatList
-        data={verses}
-        keyExtractor={(item) => item.verse_key}
-        extraData={listExtraData}
-        renderItem={renderVerseItem}
-        removeClippedSubviews={Platform.OS === 'android' ? false : undefined}
-        initialNumToRender={14}
-        maxToRenderPerBatch={10}
-        windowSize={7}
-        contentContainerStyle={{ padding: 16, paddingBottom: 24 }}
-        refreshing={isRefreshing}
-        onRefresh={refresh}
-        onEndReachedThreshold={0.5}
-        onEndReached={loadMore}
-        ListHeaderComponent={
-          chapter ? (
-            <SurahHeaderCard chapter={chapter} />
-          ) : null
-        }
-        ListEmptyComponent={
-          errorMessage ? (
-            <View className="mt-2 gap-3">
-              <Text className="text-sm text-error dark:text-error-dark">{errorMessage}</Text>
-              <Pressable
-                onPress={retry}
-                accessibilityRole="button"
-                accessibilityLabel="Retry loading verses"
-                className="self-start rounded-lg bg-number-badge px-4 py-2 dark:bg-number-badge-dark"
-                style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}
-              >
-                <Text className="text-sm font-semibold text-accent dark:text-accent-dark">
-                  Retry
-                </Text>
-              </Pressable>
-            </View>
-          ) : isLoading ? (
-            <View className="mt-3 flex-row items-center gap-3">
-              <ActivityIndicator color={palette.text} />
-              <Text className="text-sm text-muted dark:text-muted-dark">Loading…</Text>
-            </View>
-          ) : (
-            <Text className="mt-2 text-sm text-muted dark:text-muted-dark">
-              No verses found for this surah.
-            </Text>
-          )
-        }
-        ListFooterComponent={
-          isLoadingMore ? (
-            <View className="mt-2 flex-row items-center gap-3">
-              <ActivityIndicator color={palette.text} />
-              <Text className="text-sm text-muted dark:text-muted-dark">Loading more…</Text>
-            </View>
-          ) : errorMessage && verses.length ? (
-            <View className="mt-2 gap-3">
-              <Text className="text-sm text-error dark:text-error-dark">{errorMessage}</Text>
-              <Pressable
-                onPress={loadMore}
-                accessibilityRole="button"
-                accessibilityLabel="Retry loading more verses"
-                className="self-start rounded-lg bg-number-badge px-4 py-2 dark:bg-number-badge-dark"
-                style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}
-              >
-                <Text className="text-sm font-semibold text-accent dark:text-accent-dark">
-                  Retry
-                </Text>
-              </Pressable>
-            </View>
-          ) : null
-        }
-      />
+      {Platform.OS === 'web' ? (
+        <FlatList
+          data={verses}
+          keyExtractor={(item) => item.verse_key}
+          extraData={listExtraData}
+          renderItem={renderVerseItem}
+          contentContainerStyle={{ padding: 16, paddingBottom: 24 }}
+          refreshing={isRefreshing}
+          onRefresh={refresh}
+          onEndReachedThreshold={0.5}
+          onEndReached={loadMore}
+          ListHeaderComponent={chapter ? <SurahHeaderCard chapter={chapter} /> : null}
+          ListEmptyComponent={
+            errorMessage ? (
+              <View className="mt-2 gap-3">
+                <Text className="text-sm text-error dark:text-error-dark">{errorMessage}</Text>
+                <Pressable
+                  onPress={retry}
+                  accessibilityRole="button"
+                  accessibilityLabel="Retry loading verses"
+                  className="self-start rounded-lg bg-number-badge px-4 py-2 dark:bg-number-badge-dark"
+                  style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}
+                >
+                  <Text className="text-sm font-semibold text-accent dark:text-accent-dark">
+                    Retry
+                  </Text>
+                </Pressable>
+              </View>
+            ) : isLoading ? (
+              <View className="mt-3 flex-row items-center gap-3">
+                <ActivityIndicator color={palette.text} />
+                <Text className="text-sm text-muted dark:text-muted-dark">Loading…</Text>
+              </View>
+            ) : (
+              <Text className="mt-2 text-sm text-muted dark:text-muted-dark">
+                No verses found for this surah.
+              </Text>
+            )
+          }
+          ListFooterComponent={
+            isLoadingMore ? (
+              <View className="mt-2 flex-row items-center gap-3">
+                <ActivityIndicator color={palette.text} />
+                <Text className="text-sm text-muted dark:text-muted-dark">Loading more…</Text>
+              </View>
+            ) : errorMessage && verses.length ? (
+              <View className="mt-2 gap-3">
+                <Text className="text-sm text-error dark:text-error-dark">{errorMessage}</Text>
+                <Pressable
+                  onPress={loadMore}
+                  accessibilityRole="button"
+                  accessibilityLabel="Retry loading more verses"
+                  className="self-start rounded-lg bg-number-badge px-4 py-2 dark:bg-number-badge-dark"
+                  style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}
+                >
+                  <Text className="text-sm font-semibold text-accent dark:text-accent-dark">
+                    Retry
+                  </Text>
+                </Pressable>
+              </View>
+            ) : null
+          }
+        />
+      ) : (
+        <FlashList
+          data={verses}
+          keyExtractor={(item) => item.verse_key}
+          extraData={listExtraData}
+          renderItem={renderVerseItem}
+          drawDistance={Platform.OS === 'android' ? 1200 : 800}
+          contentContainerStyle={{ padding: 16, paddingBottom: 24 }}
+          refreshing={isRefreshing}
+          onRefresh={refresh}
+          onEndReachedThreshold={0.5}
+          onEndReached={loadMore}
+          ListHeaderComponent={chapter ? <SurahHeaderCard chapter={chapter} /> : null}
+          ListEmptyComponent={
+            errorMessage ? (
+              <View className="mt-2 gap-3">
+                <Text className="text-sm text-error dark:text-error-dark">{errorMessage}</Text>
+                <Pressable
+                  onPress={retry}
+                  accessibilityRole="button"
+                  accessibilityLabel="Retry loading verses"
+                  className="self-start rounded-lg bg-number-badge px-4 py-2 dark:bg-number-badge-dark"
+                  style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}
+                >
+                  <Text className="text-sm font-semibold text-accent dark:text-accent-dark">
+                    Retry
+                  </Text>
+                </Pressable>
+              </View>
+            ) : isLoading ? (
+              <View className="mt-3 flex-row items-center gap-3">
+                <ActivityIndicator color={palette.text} />
+                <Text className="text-sm text-muted dark:text-muted-dark">Loading…</Text>
+              </View>
+            ) : (
+              <Text className="mt-2 text-sm text-muted dark:text-muted-dark">
+                No verses found for this surah.
+              </Text>
+            )
+          }
+          ListFooterComponent={
+            isLoadingMore ? (
+              <View className="mt-2 flex-row items-center gap-3">
+                <ActivityIndicator color={palette.text} />
+                <Text className="text-sm text-muted dark:text-muted-dark">Loading more…</Text>
+              </View>
+            ) : errorMessage && verses.length ? (
+              <View className="mt-2 gap-3">
+                <Text className="text-sm text-error dark:text-error-dark">{errorMessage}</Text>
+                <Pressable
+                  onPress={loadMore}
+                  accessibilityRole="button"
+                  accessibilityLabel="Retry loading more verses"
+                  className="self-start rounded-lg bg-number-badge px-4 py-2 dark:bg-number-badge-dark"
+                  style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}
+                >
+                  <Text className="text-sm font-semibold text-accent dark:text-accent-dark">
+                    Retry
+                  </Text>
+                </Pressable>
+              </View>
+            ) : null
+          }
+        />
+      )}
 
       <VerseActionsSheet
         isOpen={isVerseActionsOpen}
