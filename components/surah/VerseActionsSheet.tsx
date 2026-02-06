@@ -167,20 +167,20 @@ export function VerseActionsSheet({
                   />
                   <ActionRow
                     icon={<BookOpenText color={palette.muted} size={20} strokeWidth={2.25} />}
-                    label="Tafsir"
+                    label="View Tafsir"
                     onPress={() => runAndClose(onOpenTafsir)}
                     disabled={!onOpenTafsir}
                   />
                   <ActionRow
                     icon={<Bookmark color={palette.muted} size={20} strokeWidth={2.25} />}
-                    label={showRemove ? 'Remove bookmark' : 'Pin / bookmark'}
+                    label={showRemove ? 'Remove Bookmark' : 'Pin or Bookmark'}
                     onPress={() => runAndClose(onBookmark)}
-                    active={isBookmarked}
+                    active={isBookmarked || showRemove}
                     disabled={!onBookmark}
                   />
                   <ActionRow
                     icon={<Calendar color={palette.muted} size={20} strokeWidth={2.25} />}
-                    label="Add to plan"
+                    label="Add to Plan"
                     onPress={() => runAndClose(onAddToPlan)}
                     disabled={!onAddToPlan}
                   />

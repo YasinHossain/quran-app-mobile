@@ -9,6 +9,7 @@ import 'react-native-reanimated';
 import { View } from 'react-native';
 
 import Colors from '@/constants/Colors';
+import { BookmarkProvider } from '@/providers/BookmarkContext';
 import { SettingsProvider } from '@/providers/SettingsContext';
 import { AppThemeProvider, useAppTheme } from '@/providers/ThemeContext';
 
@@ -50,7 +51,9 @@ export default function RootLayout() {
   return (
     <AppThemeProvider>
       <SettingsProvider>
-        <RootLayoutNav />
+        <BookmarkProvider>
+          <RootLayoutNav />
+        </BookmarkProvider>
       </SettingsProvider>
     </AppThemeProvider>
   );

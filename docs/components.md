@@ -48,3 +48,11 @@ This document lists reusable UI components currently available in the codebase s
 | `AyahNavigationBar` | Top navigation pill for tafsir (back + previous/next). | `components/tafsir/AyahNavigationBar.tsx` |
 | `TafsirTabs` | Multi-tafsir tab selector + content renderer. | `components/tafsir/TafsirTabs.tsx` |
 | `TafsirHtml` | HTML renderer for tafsir content (headings/paragraphs). | `components/tafsir/TafsirHtml.tsx` |
+
+## Bookmarks Components
+
+| Component | Description | File Path |
+| --- | --- | --- |
+| `BookmarkModal` | Modal with “Pin Verse” + “Add to Folder” tabs (offline-first, persisted). | `components/bookmarks/BookmarkModal.tsx` |
+| `FolderSettingsModal` | Create/edit folder modal (name + color) for bookmarks (offline-first, persisted). | `components/bookmarks/FolderSettingsModal.tsx` |
+| `DeleteFolderModal` | Delete folder confirmation modal (warns when the folder contains verses). | `components/bookmarks/DeleteFolderModal.tsx` |

@@ -25,6 +25,7 @@ function VerseCardComponent({
   showByWords,
   renderSignal: _renderSignal,
   onOpenActions,
+  onPress,
 }: {
   verseKey: string;
   arabicText: string;
@@ -35,6 +36,7 @@ function VerseCardComponent({
   showByWords?: boolean;
   renderSignal?: number;
   onOpenActions?: () => void;
+  onPress?: () => void;
 }): React.JSX.Element {
   const { resolvedTheme } = useAppTheme();
   const palette = Colors[resolvedTheme];
@@ -59,9 +61,8 @@ function VerseCardComponent({
   const cleanedTranslations = (translationTexts ?? []).map((t) => t.trim()).filter(Boolean);
   const renderSignal = typeof _renderSignal === 'number' ? _renderSignal : 0;
 
-  return (
-    <View className="border-b border-border/40 py-4 dark:border-border-dark/30">
-      <View className="flex-1 gap-4">
+  const content = (
+    <View className="flex-1 gap-4">
         <View
           className={[
             'flex-row items-center',
@@ -122,9 +123,23 @@ function VerseCardComponent({
             ))}
           </View>
         ) : null}
-      </View>
     </View>
   );
+
+  if (onPress) {
+    return (
+      <Pressable
+        onPress={onPress}
+        accessibilityRole="button"
+        className="border-b border-border/40 py-4 dark:border-border-dark/30"
+        style={({ pressed }) => ({ opacity: pressed ? 0.95 : 1 })}
+      >
+        {content}
+      </Pressable>
+    );
+  }
+
+  return <View className="border-b border-border/40 py-4 dark:border-border-dark/30">{content}</View>;
 }
 
 export const VerseCard = React.memo(VerseCardComponent);
