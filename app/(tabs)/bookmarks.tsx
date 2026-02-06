@@ -22,9 +22,11 @@ import {
 
 import { DeleteFolderModal } from '@/components/bookmarks/DeleteFolderModal';
 import { FolderSettingsModal } from '@/components/bookmarks/FolderSettingsModal';
+import { CreatePlannerModal, PlannerSection } from '@/components/bookmarks/planner';
 import { SettingsSidebar } from '@/components/reader/settings/SettingsSidebar';
 import { VerseActionsSheet } from '@/components/surah/VerseActionsSheet';
 import { VerseCard } from '@/components/surah/VerseCard';
+import { AddToPlannerModal, type VerseSummaryDetails } from '@/components/verse-planner-modal';
 import Colors from '@/constants/Colors';
 import { useBookmarks } from '@/providers/BookmarkContext';
 import { useSettings } from '@/providers/SettingsContext';
@@ -62,11 +64,13 @@ export default function BookmarksScreen(): React.JSX.Element {
   const {
     folders,
     pinnedVerses,
+    planner,
     isHydrated,
     deleteFolder,
     removeBookmark,
     togglePinned,
     isPinned,
+    removeFromPlanner,
   } = useBookmarks();
 
   const [activeSection, setActiveSection] = React.useState<SectionId>('bookmarks');
@@ -90,6 +94,12 @@ export default function BookmarksScreen(): React.JSX.Element {
 
   const [isDeleteFolderOpen, setIsDeleteFolderOpen] = React.useState(false);
   const [folderForDelete, setFolderForDelete] = React.useState<Folder | null>(null);
+
+  const [isCreatePlannerOpen, setIsCreatePlannerOpen] = React.useState(false);
+  const [isAddToPlannerOpen, setIsAddToPlannerOpen] = React.useState(false);
+  const [plannerVerseSummary, setPlannerVerseSummary] = React.useState<VerseSummaryDetails | null>(
+    null
+  );
 
   const sortedFolders = React.useMemo(() => {
     const items = [...folders];
@@ -154,8 +164,20 @@ export default function BookmarksScreen(): React.JSX.Element {
   }, []);
 
   const handleAddToPlan = React.useCallback(() => {
-    Alert.alert('Planner coming soon', 'Add-to-plan will be added next.');
-  }, []);
+    const verseKey = activeVerse?.verseKey;
+    if (!verseKey) return;
+    const parsed = parseVerseKey(verseKey);
+    if (!parsed) return;
+    const surahNumber = Number(parsed.surahId);
+
+    setPlannerVerseSummary({
+      verseKey,
+      ...(Number.isFinite(surahNumber) && surahNumber > 0 ? { surahId: surahNumber } : {}),
+      arabicText: activeVerse?.verseText,
+      translationText: activeVerse?.translationText,
+    });
+    setIsAddToPlannerOpen(true);
+  }, [activeVerse?.translationText, activeVerse?.verseKey, activeVerse?.verseText]);
 
   const handleShare = React.useCallback(async () => {
     if (!activeVerse) return;
@@ -206,6 +228,32 @@ export default function BookmarksScreen(): React.JSX.Element {
       setFolderForDelete(null);
     },
     [deleteFolder]
+  );
+
+  const handleCreatePlannerPlan = React.useCallback(() => {
+    setIsCreatePlannerOpen(true);
+  }, []);
+
+  const handleDeletePlannerPlan = React.useCallback(
+    (planIds: string[]) => {
+      const uniqueIds = Array.from(new Set(planIds)).filter((id) => id.trim().length > 0);
+      if (uniqueIds.length === 0) return;
+      Alert.alert(
+        'Delete Planner',
+        'This action cannot be undone.\n\nAre you sure you want to permanently delete this planner?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Delete',
+            style: 'destructive',
+            onPress: () => {
+              uniqueIds.forEach((id) => removeFromPlanner(id));
+            },
+          },
+        ]
+      );
+    },
+    [removeFromPlanner]
   );
 
   const showFolderList = activeSection === 'bookmarks' && !selectedFolderId;
@@ -530,6 +578,12 @@ export default function BookmarksScreen(): React.JSX.Element {
             );
           }}
         />
+      ) : activeSection === 'planner' ? (
+        <PlannerSection
+          planner={planner}
+          onCreatePlan={handleCreatePlannerPlan}
+          onDeletePlan={handleDeletePlannerPlan}
+        />
       ) : (
         <View className="flex-1 items-center justify-center px-6">
           <Text className="text-lg font-semibold text-foreground dark:text-foreground-dark">
@@ -574,6 +628,16 @@ export default function BookmarksScreen(): React.JSX.Element {
         folder={folderForDelete}
         onConfirmDelete={handleConfirmDeleteFolder}
       />
+
+      <CreatePlannerModal isOpen={isCreatePlannerOpen} onClose={() => setIsCreatePlannerOpen(false)} />
+
+      {plannerVerseSummary ? (
+        <AddToPlannerModal
+          isOpen={isAddToPlannerOpen}
+          onClose={() => setIsAddToPlannerOpen(false)}
+          verseSummary={plannerVerseSummary}
+        />
+      ) : null}
     </View>
   );
 }

@@ -1,10 +1,13 @@
-import type { Bookmark, Folder } from '@/types';
+import type { Bookmark, Folder, PlannerPlan } from '@/types';
+
+import type { PlannerPlanRangeConfig } from './bookmark-utils';
 
 export type SectionId = 'bookmarks' | 'pinned' | 'last-read' | 'planner';
 
 export interface BookmarkContextType {
   folders: Folder[];
   pinnedVerses: Bookmark[];
+  planner: Record<string, PlannerPlan>;
   isHydrated: boolean;
 
   createFolder: (name: string, color?: string) => void;
@@ -22,5 +25,15 @@ export interface BookmarkContextType {
 
   togglePinned: (verseId: string, metadata?: Partial<Bookmark>) => void;
   isPinned: (verseId: string) => boolean;
-}
 
+  addToPlanner: (surahId: number, targetVerses?: number, estimatedDays?: number) => void;
+  createPlannerPlan: (
+    surahId: number,
+    targetVerses: number,
+    planName?: string,
+    estimatedDays?: number,
+    range?: PlannerPlanRangeConfig
+  ) => void;
+  updatePlannerProgress: (planId: string, completedVerses: number) => void;
+  removeFromPlanner: (planId: string) => void;
+}

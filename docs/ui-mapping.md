@@ -6,7 +6,7 @@ This guide maps common web UI patterns to React Native equivalents for this repo
 
 | Web (HTML/React) | React Native | Notes |
 | --- | --- | --- |
-| `div`, `section`, `main`, `header`, `footer`, `nav` | `View` | Use `View` for layout containers. Use `SafeAreaView` when screen edges matter. |
+| `div`, `section`, `main`, `header`, `footer`, `nav` | `View` | Use `View` for layout containers. Use `SafeAreaView` from `react-native-safe-area-context` when screen edges matter. |
 | `span`, `p`, `h1`-`h6`, `label`, `strong`, `em` | `Text` | Prefer `Text` for all inline or block text. |
 | `button` | `Pressable` | Use `Pressable` with `onPress` and optional `android_ripple`. |
 | `a` | `Pressable` + `Linking` | If navigation is in-app, use the router; otherwise use `Linking.openURL`. |

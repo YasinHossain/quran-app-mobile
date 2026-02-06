@@ -64,6 +64,13 @@ When a task says “match the web app” / “same as web”:
 - Verse actions bottom sheet: `components/surah/VerseActionsSheet.tsx`
 - Separated verse layout: `components/surah/VerseCard.tsx`
 
+## Modal layout gotcha (important)
+
+Some RN modals can appear as “black overlay + thin grey line” when the modal sheet collapses to ~0 height.
+
+- If the modal content uses `flex: 1` (e.g. `SafeAreaView`/inner wrappers), ensure the sheet has explicit numeric height constraints (`maxHeight`/`minHeight`) derived from `useWindowDimensions()` (see `components/bookmarks/planner/CreatePlannerModal.tsx`).
+- Avoid relying on percentage strings for `maxHeight`/`minHeight` in these sheets.
+
 ---
 
 # Skills

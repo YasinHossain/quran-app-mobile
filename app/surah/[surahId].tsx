@@ -18,6 +18,7 @@ import { BookmarkModal } from '@/components/bookmarks/BookmarkModal';
 import { SurahHeaderCard } from '@/components/surah/SurahHeaderCard';
 import { VerseActionsSheet } from '@/components/surah/VerseActionsSheet';
 import { VerseCard } from '@/components/surah/VerseCard';
+import { AddToPlannerModal, type VerseSummaryDetails } from '@/components/verse-planner-modal';
 import Colors from '@/constants/Colors';
 import { useSurahVerses, type SurahVerse } from '@/hooks/useSurahVerses';
 import { useBookmarks } from '@/providers/BookmarkContext';
@@ -35,6 +36,10 @@ export default function SurahScreen(): React.JSX.Element {
   const [isSettingsOpen, setIsSettingsOpen] = React.useState(false);
   const [isVerseActionsOpen, setIsVerseActionsOpen] = React.useState(false);
   const [isBookmarkModalOpen, setIsBookmarkModalOpen] = React.useState(false);
+  const [isAddToPlannerOpen, setIsAddToPlannerOpen] = React.useState(false);
+  const [plannerVerseSummary, setPlannerVerseSummary] = React.useState<VerseSummaryDetails | null>(
+    null
+  );
   const [activeVerse, setActiveVerse] = React.useState<{
     verseKey: string;
     verseApiId?: number;
@@ -116,8 +121,16 @@ export default function SurahScreen(): React.JSX.Element {
   }, [activeVerse?.verseKey, router]);
 
   const handleAddToPlan = React.useCallback(() => {
-    Alert.alert('Planner coming soon', 'Add-to-plan will be added next.');
-  }, []);
+    const verseKey = activeVerse?.verseKey;
+    if (!verseKey) return;
+    setPlannerVerseSummary({
+      verseKey,
+      ...(Number.isFinite(chapterNumber) ? { surahId: chapterNumber } : {}),
+      arabicText: activeVerse?.arabicText,
+      translationText: activeVerse?.translationTexts?.[0],
+    });
+    setIsAddToPlannerOpen(true);
+  }, [activeVerse?.arabicText, activeVerse?.translationTexts, activeVerse?.verseKey, chapterNumber]);
 
   const handleShare = React.useCallback(async () => {
     if (!activeVerse) return;
@@ -425,6 +438,14 @@ export default function SurahScreen(): React.JSX.Element {
         verseKey={activeVerse?.verseKey ?? ''}
         metadata={activeVerseBookmarkMetadata}
       />
+
+      {plannerVerseSummary ? (
+        <AddToPlannerModal
+          isOpen={isAddToPlannerOpen}
+          onClose={() => setIsAddToPlannerOpen(false)}
+          verseSummary={plannerVerseSummary}
+        />
+      ) : null}
 
       <SettingsSidebar isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
     </View>

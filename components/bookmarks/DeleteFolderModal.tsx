@@ -93,7 +93,10 @@ export function DeleteFolderModal({
   }, [folder, isDeleting, onConfirmDelete]);
 
   const maxDialogHeight = Math.max(0, Math.round(windowHeight * 0.92));
-  const minDialogHeight = Math.min(maxDialogHeight, Math.max(360, Math.round(windowHeight * 0.6)));
+  const minDialogHeight = Math.min(
+    maxDialogHeight,
+    Math.max(320, Math.min(520, Math.round(windowHeight * 0.46)))
+  );
 
   return (
     <Modal

@@ -3,22 +3,27 @@ import React, { useCallback, useEffect, useMemo, useReducer, useRef, useState } 
 import {
   addBookmarkToFolder,
   createNewFolder,
+  createPlannerPlan as createPlannerPlanUtil,
   findBookmarkInFolders,
   getAllBookmarkedVerses,
   isVerseBookmarked,
   removeBookmarkFromFolder,
+  type PlannerPlanRangeConfig,
   updateBookmarkInFolders,
+  updatePlannerProgress as updatePlannerProgressUtil,
 } from '@/providers/bookmarks/bookmark-utils';
 import { BookmarkContext } from '@/providers/bookmarks/BookmarkContext';
 import {
   loadBookmarksFromStorage,
+  loadPlannerFromStorage,
   loadPinnedFromStorage,
   saveBookmarksToStorage,
+  savePlannerToStorage,
   savePinnedToStorage,
 } from '@/providers/bookmarks/storage-utils';
 
 import type { BookmarkContextType } from '@/providers/bookmarks/types';
-import type { Bookmark, Folder } from '@/types';
+import type { Bookmark, Folder, PlannerPlan } from '@/types';
 
 const PERSIST_DEBOUNCE_MS = 250;
 
@@ -66,12 +71,18 @@ export const BookmarkProvider = ({
 function useBookmarkProviderValue(): BookmarkContextType {
   const [folders, setFolders] = useState<Folder[]>([]);
   const [pinnedVerses, setPinnedVerses] = useState<Bookmark[]>([]);
+  const [planner, setPlanner] = useState<Record<string, PlannerPlan>>({});
 
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasLoadedFromStorage = useRef(false);
-  const latestStateRef = useRef<{ folders: Folder[]; pinnedVerses: Bookmark[] }>({
+  const latestStateRef = useRef<{
+    folders: Folder[];
+    pinnedVerses: Bookmark[];
+    planner: Record<string, PlannerPlan>;
+  }>({
     folders,
     pinnedVerses,
+    planner,
   });
   const [isHydrated, setIsHydrated] = useReducer(() => true, false);
 
@@ -79,16 +90,22 @@ function useBookmarkProviderValue(): BookmarkContextType {
     let cancelled = false;
 
     async function load(): Promise<void> {
-      const [loadedFolders, loadedPinned] = await Promise.all([
+      const [loadedFolders, loadedPinned, loadedPlanner] = await Promise.all([
         loadBookmarksFromStorage(),
         loadPinnedFromStorage(),
+        loadPlannerFromStorage(),
       ]);
 
       if (cancelled) return;
       hasLoadedFromStorage.current = true;
       setFolders(loadedFolders);
       setPinnedVerses(loadedPinned);
-      latestStateRef.current = { folders: loadedFolders, pinnedVerses: loadedPinned };
+      setPlanner(loadedPlanner);
+      latestStateRef.current = {
+        folders: loadedFolders,
+        pinnedVerses: loadedPinned,
+        planner: loadedPlanner,
+      };
       setIsHydrated();
     }
 
@@ -100,11 +117,15 @@ function useBookmarkProviderValue(): BookmarkContextType {
 
   const persistLatest = useCallback(async () => {
     const latest = latestStateRef.current;
-    await Promise.all([saveBookmarksToStorage(latest.folders), savePinnedToStorage(latest.pinnedVerses)]);
+    await Promise.all([
+      saveBookmarksToStorage(latest.folders),
+      savePinnedToStorage(latest.pinnedVerses),
+      savePlannerToStorage(latest.planner),
+    ]);
   }, []);
 
   useEffect(() => {
-    latestStateRef.current = { folders, pinnedVerses };
+    latestStateRef.current = { folders, pinnedVerses, planner };
     if (!hasLoadedFromStorage.current) return;
 
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
@@ -116,7 +137,7 @@ function useBookmarkProviderValue(): BookmarkContextType {
     return () => {
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
     };
-  }, [folders, pinnedVerses, persistLatest]);
+  }, [folders, pinnedVerses, planner, persistLatest]);
 
   useEffect(() => {
     return () => {
@@ -233,10 +254,52 @@ function useBookmarkProviderValue(): BookmarkContextType {
     [pinnedVerses]
   );
 
+  const addToPlanner = useCallback(
+    (surahId: number, targetVerses = 10, estimatedDays?: number) => {
+      const plan = createPlannerPlanUtil(surahId, targetVerses, undefined, estimatedDays);
+      setPlanner((prev) => ({ ...prev, [plan.id]: plan }));
+    },
+    [setPlanner]
+  );
+
+  const createPlannerPlan = useCallback(
+    (
+      surahId: number,
+      targetVerses: number,
+      planName?: string,
+      estimatedDays?: number,
+      range?: PlannerPlanRangeConfig
+    ) => {
+      const plan = createPlannerPlanUtil(surahId, targetVerses, planName, estimatedDays, range);
+      setPlanner((prev) => ({ ...prev, [plan.id]: plan }));
+    },
+    [setPlanner]
+  );
+
+  const updatePlannerProgress = useCallback(
+    (planId: string, completedVerses: number) => {
+      setPlanner((prev) => updatePlannerProgressUtil(prev, planId, completedVerses));
+    },
+    [setPlanner]
+  );
+
+  const removeFromPlanner = useCallback(
+    (planId: string) => {
+      setPlanner((prev) => {
+        if (!prev[planId]) return prev;
+        const next = { ...prev };
+        delete next[planId];
+        return next;
+      });
+    },
+    [setPlanner]
+  );
+
   return useMemo(
     () => ({
       folders,
       pinnedVerses,
+      planner,
       isHydrated,
       createFolder,
       deleteFolder,
@@ -250,10 +313,15 @@ function useBookmarkProviderValue(): BookmarkContextType {
       bookmarkedVerses,
       togglePinned,
       isPinned,
+      addToPlanner,
+      createPlannerPlan,
+      updatePlannerProgress,
+      removeFromPlanner,
     }),
     [
       folders,
       pinnedVerses,
+      planner,
       isHydrated,
       createFolder,
       deleteFolder,
@@ -267,7 +335,10 @@ function useBookmarkProviderValue(): BookmarkContextType {
       bookmarkedVerses,
       togglePinned,
       isPinned,
+      addToPlanner,
+      createPlannerPlan,
+      updatePlannerProgress,
+      removeFromPlanner,
     ]
   );
 }
-

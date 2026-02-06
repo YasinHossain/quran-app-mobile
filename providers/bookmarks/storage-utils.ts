@@ -1,10 +1,16 @@
-import { v4 as uuidv4 } from 'uuid';
+import { generateId } from '@/lib/id';
 
 import { getItem, parseJson, removeItem, setItem } from '@/lib/storage/appStorage';
 
-import { BOOKMARKS_STORAGE_KEY, OLD_BOOKMARKS_STORAGE_KEY, PINNED_STORAGE_KEY } from './constants';
+import {
+  BOOKMARKS_STORAGE_KEY,
+  OLD_BOOKMARKS_STORAGE_KEY,
+  PINNED_STORAGE_KEY,
+  PLANNER_STORAGE_KEY,
+  LEGACY_MEMORIZATION_STORAGE_KEY,
+} from './constants';
 
-import type { Bookmark, Folder } from '@/types';
+import type { Bookmark, Folder, PlannerPlan } from '@/types';
 
 const normalizeBookmark = (bookmark: Bookmark): Bookmark => ({
   ...bookmark,
@@ -26,7 +32,7 @@ export async function loadBookmarksFromStorage(): Promise<Folder[]> {
   const oldBookmarks = parseJson<unknown>(await getItem(OLD_BOOKMARKS_STORAGE_KEY));
   if (Array.isArray(oldBookmarks) && oldBookmarks.every((id) => typeof id === 'string')) {
     const migratedFolder: Folder = {
-      id: uuidv4(),
+      id: generateId(),
       name: 'Uncategorized',
       createdAt: Date.now(),
       bookmarks: oldBookmarks.map((verseId) => ({
@@ -60,3 +66,43 @@ export async function savePinnedToStorage(pinnedVerses: Bookmark[]): Promise<voi
   await setItem(PINNED_STORAGE_KEY, JSON.stringify(pinnedVerses));
 }
 
+const normalizePlannerRecord = (input: unknown): Record<string, PlannerPlan> => {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    return {};
+  }
+
+  const entries = Object.entries(input as Record<string, PlannerPlan>);
+  if (entries.length === 0) {
+    return {};
+  }
+
+  return entries.reduce<Record<string, PlannerPlan>>((acc, [, value]) => {
+    if (value && typeof value === 'object' && 'id' in value) {
+      const plan = value as PlannerPlan;
+      acc[plan.id] = plan;
+    }
+    return acc;
+  }, {});
+};
+
+export async function loadPlannerFromStorage(): Promise<Record<string, PlannerPlan>> {
+  const savedPlanner = parseJson<unknown>(await getItem(PLANNER_STORAGE_KEY));
+  if (savedPlanner) {
+    return normalizePlannerRecord(savedPlanner);
+  }
+
+  const legacy = parseJson<unknown>(await getItem(LEGACY_MEMORIZATION_STORAGE_KEY));
+  if (legacy) {
+    const parsed = normalizePlannerRecord(legacy);
+    await removeItem(LEGACY_MEMORIZATION_STORAGE_KEY);
+    await setItem(PLANNER_STORAGE_KEY, JSON.stringify(parsed));
+    return parsed;
+  }
+
+  return {};
+}
+
+export async function savePlannerToStorage(planner: Record<string, PlannerPlan>): Promise<void> {
+  await setItem(PLANNER_STORAGE_KEY, JSON.stringify(planner));
+  await removeItem(LEGACY_MEMORIZATION_STORAGE_KEY);
+}

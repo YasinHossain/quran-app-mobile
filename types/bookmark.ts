@@ -37,3 +37,39 @@ export interface Folder {
   color?: string;
 }
 
+/**
+ * A planner entry for tracking progress on memorizing specific surahs or verse ranges.
+ *
+ * Mirrored from the web app's `types/bookmark.ts` for UI/UX parity.
+ */
+export interface PlannerPlan {
+  /** Unique identifier for this planner entry. */
+  id: string;
+
+  /** Surah ID this planner entry is for. */
+  surahId: number;
+
+  /** First verse included in this plan (1-indexed, clamped to surah range). */
+  startVerse?: number;
+
+  /** Last verse included in this plan (1-indexed, clamped to surah range). */
+  endVerse?: number;
+
+  /** Total number of verses targeted for memorization in this surah. */
+  targetVerses: number;
+
+  /** Number of verses already memorized and confirmed. */
+  completedVerses: number;
+
+  /** Timestamp when the planner entry was created (ms since epoch). */
+  createdAt: number;
+
+  /** Timestamp of last progress update (ms since epoch). */
+  lastUpdated: number;
+
+  /** Optional notes about the planner entry. */
+  notes?: string;
+
+  /** Estimated number of days to complete the plan. */
+  estimatedDays?: number;
+}

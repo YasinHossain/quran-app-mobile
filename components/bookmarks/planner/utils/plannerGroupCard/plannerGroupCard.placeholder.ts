@@ -1,0 +1,71 @@
+import { NO_DAILY_GOAL_MESSAGE } from '@/components/bookmarks/planner/utils/plannerCard/constants';
+import { buildAggregatedChapter } from '@/components/bookmarks/planner/utils/plannerGroupCard/plannerGroupCard.helpers';
+
+import type { PlannerGroupCardData } from '@/components/bookmarks/planner/utils/plannerGroupCard/plannerGroupCard.types';
+import type { PlannerPlanGroup } from '@/components/bookmarks/planner/utils/planGrouping';
+import type { PlannerCardViewModel } from '@/components/bookmarks/planner/utils/plannerCard';
+import type { Chapter, PlannerPlan } from '@/types';
+
+const buildPlaceholderViewModel = (
+  planName: string,
+  planDetailsText: string | null,
+  surahLabel: string
+): PlannerCardViewModel => ({
+  planInfo: {
+    displayPlanName: planName,
+    planDetailsText,
+    surahLabel,
+  },
+  focus: {
+    hasDailyGoal: false,
+    dayLabel: 'Getting started',
+    goalVerseLabel: 'All daily goals completed',
+    dailyHighlights: [],
+    remainingSummary: null,
+    endsAtSummary: null,
+    isComplete: true,
+    noGoalMessage: NO_DAILY_GOAL_MESSAGE,
+  },
+  stats: {
+    completed: { verses: 0, pages: null, juz: null },
+    remaining: { verses: 0, pages: null, juz: null },
+    goal: { verses: 0, pages: null, juz: null },
+  },
+  progress: {
+    percent: 0,
+    currentVerse: 1,
+    currentSecondaryText: '',
+  },
+});
+
+export const buildPlaceholderCardData = (
+  group: PlannerPlanGroup,
+  chapterLookup: Map<number, Chapter>
+): PlannerGroupCardData => {
+  const fallbackSurahId = group.surahIds[0] ?? 1;
+  const placeholderPlan: PlannerPlan = {
+    id: group.planIds[0] ?? `${group.key}-placeholder`,
+    surahId: fallbackSurahId,
+    targetVerses: 0,
+    completedVerses: 0,
+    createdAt: Date.now(),
+    lastUpdated: Date.now(),
+    notes: group.planName,
+    estimatedDays: 0,
+  };
+  const placeholderChapter = buildAggregatedChapter(group.surahIds, chapterLookup);
+  const fallbackSurahLabel = placeholderChapter?.name_simple ?? `Surah ${placeholderPlan.surahId}`;
+  const viewModel = buildPlaceholderViewModel(group.planName, null, fallbackSurahLabel);
+
+  return {
+    key: group.key,
+    surahId: String(fallbackSurahId),
+    plan: placeholderPlan,
+    ...(placeholderChapter ? { chapter: placeholderChapter } : {}),
+    viewModel,
+    progressLabel: 'No progress tracked',
+    planIds: group.planIds,
+    planName: group.planName,
+  };
+};
+

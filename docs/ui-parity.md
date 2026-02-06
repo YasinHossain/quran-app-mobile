@@ -12,7 +12,7 @@ Assumes the web repo is available at `../quran-app` (used by `npm run sync:web-c
 | Juz page | `../quran-app/app/(features)/juz` | `app/juz/[juzNumber].tsx` | 85% | Keep typography scale consistent; layout may be native-scrolled. |
 | Tafsir (ayah detail) | `../quran-app/app/(features)/tafsir` | `app/tafsir/[surahId]/[ayahId].tsx` | 90% | Match content order; native sheet/modal presentation is OK. |
 | Search | `../quran-app/app/(features)/search` | `app/(tabs)/search.tsx` | 90% | Match search filters and result cards; platform-specific input UX allowed. |
-| Bookmarks | `../quran-app/app/(features)/bookmarks` | `app/(tabs)/bookmarks.tsx` | 90% | Offline-first folders + pinned; folder create/edit/delete modals added; Recent/Planner remain stubbed. |
+| Bookmarks | `../quran-app/app/(features)/bookmarks` | `app/(tabs)/bookmarks.tsx` | 90% | Offline-first folders + pinned; Planner cards are grouped like web (multi-surah ranges show one card); Add-to-plan modal implemented; Recent still stubbed. |
 | Settings | `../quran-app/app/shared/reader/settings` + `../quran-app/app/providers/SettingsContext.tsx` | `app/(tabs)/settings.tsx` | 80% | Core toggles must match; platform-specific system settings entry allowed. |
 | Reader settings sidebar | `../quran-app/app/shared/reader/settings` + `../quran-app/app/providers/SettingsContext.tsx` | `app/surah/[surahId].tsx` | 90% | Must match labels/order; OK to stub unimplemented options. |
 | Verse actions (ellipsis menu) | `../quran-app/app/shared/verse-actions` | `app/surah/[surahId].tsx` | 90% | Keep action list + labels aligned with `actionCreators.ts`; stub behavior OK initially. |

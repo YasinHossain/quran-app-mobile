@@ -151,7 +151,10 @@ export function BookmarkModal({
   );
 
   const maxDialogHeight = Math.max(0, Math.round(windowHeight * 0.92));
-  const pinMinDialogHeight = Math.min(maxDialogHeight, Math.max(360, Math.round(windowHeight * 0.62)));
+  const pinMinDialogHeight = Math.min(
+    maxDialogHeight,
+    Math.max(340, Math.min(520, Math.round(windowHeight * 0.52)))
+  );
   const bookmarkMinDialogHeight = Math.min(
     maxDialogHeight,
     Math.max(420, Math.round(windowHeight * 0.72))

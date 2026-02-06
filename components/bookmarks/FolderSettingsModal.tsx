@@ -132,7 +132,10 @@ export function FolderSettingsModal({
   }, [createFolder, folder, mode, name, onClose, renameFolder, selectedColor]);
 
   const maxDialogHeight = Math.max(0, Math.round(windowHeight * 0.92));
-  const minDialogHeight = Math.min(maxDialogHeight, Math.max(380, Math.round(windowHeight * 0.64)));
+  const minDialogHeight = Math.min(
+    maxDialogHeight,
+    Math.max(360, Math.min(520, Math.round(windowHeight * 0.5)))
+  );
 
   return (
     <Modal

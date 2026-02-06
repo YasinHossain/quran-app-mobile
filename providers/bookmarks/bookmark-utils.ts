@@ -1,8 +1,6 @@
-import { v4 as uuidv4 } from 'uuid';
+import { generateId } from '@/lib/id';
 
-import type { Bookmark, Folder } from '@/types';
-
-const generateId = (): string => uuidv4();
+import type { Bookmark, Folder, PlannerPlan } from '@/types';
 
 const normalizeVerseId = (id: string | number): string => String(id);
 
@@ -114,3 +112,63 @@ export const updateBookmarkInFolders = (
   }));
 };
 
+export const DEFAULT_PLANNER_ESTIMATED_DAYS = 5;
+
+export interface PlannerPlanRangeConfig {
+  startVerse?: number;
+  endVerse?: number;
+}
+
+const normalizeVerseNumber = (value: number | undefined): number | undefined => {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return undefined;
+  const rounded = Math.max(1, Math.floor(value));
+  return rounded;
+};
+
+export const createPlannerPlan = (
+  surahId: number,
+  targetVerses: number,
+  planName?: string,
+  estimatedDays?: number,
+  range?: PlannerPlanRangeConfig
+): PlannerPlan => {
+  const normalizedEstimatedDays =
+    typeof estimatedDays === 'number' && estimatedDays > 0 ? Math.round(estimatedDays) : undefined;
+  const normalizedStartVerse = normalizeVerseNumber(range?.startVerse) ?? 1;
+  const explicitEnd = normalizeVerseNumber(range?.endVerse);
+  const normalizedEndVerse =
+    typeof explicitEnd === 'number' && explicitEnd >= normalizedStartVerse
+      ? explicitEnd
+      : normalizedStartVerse + Math.max(0, targetVerses - 1);
+
+  return {
+    id: generateId(),
+    surahId,
+    startVerse: normalizedStartVerse,
+    endVerse: normalizedEndVerse,
+    targetVerses,
+    completedVerses: 0,
+    createdAt: Date.now(),
+    lastUpdated: Date.now(),
+    notes: planName || `Surah ${surahId} Plan`,
+    estimatedDays: normalizedEstimatedDays ?? DEFAULT_PLANNER_ESTIMATED_DAYS,
+  };
+};
+
+export const updatePlannerProgress = (
+  planner: Record<string, PlannerPlan>,
+  planId: string,
+  completedVerses: number
+): Record<string, PlannerPlan> => {
+  const existing = planner[planId];
+  if (!existing) return planner;
+
+  return {
+    ...planner,
+    [planId]: {
+      ...existing,
+      completedVerses,
+      lastUpdated: Date.now(),
+    },
+  };
+};

@@ -7,6 +7,7 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
+    "postinstall": "node scripts/postinstall.js",
     "sync:web-core": "node scripts/sync-web-core.js",
     "type-check": "tsc --noEmit",
     "check:core": "node scripts/check-core-purity.js",
