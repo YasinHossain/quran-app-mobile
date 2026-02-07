@@ -1,18 +1,17 @@
 import { BookOpen, Hash } from 'lucide-react-native';
 import React from 'react';
 import {
-  Keyboard,
-  Platform,
   Pressable,
-  ScrollView,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 
 import Colors from '@/constants/Colors';
 import { useChapters } from '@/hooks/useChapters';
 import { useAppTheme } from '@/providers/ThemeContext';
+
+import { SurahSelector } from './SurahSelector';
+import { VerseSelector } from './VerseSelector';
 
 type SearchSuggestion =
   | { icon: 'juz'; query: string; number: number }
@@ -51,20 +50,11 @@ export function GoToSurahVerseCard({
   onNavigate: (surahId: number, verse?: number) => void;
   onSearchSuggestion?: (query: string) => void;
 }): React.JSX.Element {
-  const { resolvedTheme, isDark } = useAppTheme();
-  const palette = Colors[resolvedTheme];
+  const { isDark } = useAppTheme();
   const { chapters, isLoading, errorMessage, refresh } = useChapters();
+
   const [selectedSurah, setSelectedSurah] = React.useState<number | undefined>(undefined);
   const [selectedVerse, setSelectedVerse] = React.useState<number | undefined>(undefined);
-  const [surahInputValue, setSurahInputValue] = React.useState('');
-  const [verseInputValue, setVerseInputValue] = React.useState('');
-  const [isSurahFocused, setIsSurahFocused] = React.useState(false);
-  const [isVerseFocused, setIsVerseFocused] = React.useState(false);
-  const [isSurahDropdownOpen, setIsSurahDropdownOpen] = React.useState(false);
-  const [isVerseDropdownOpen, setIsVerseDropdownOpen] = React.useState(false);
-  const isInteractingWithSurahDropdownRef = React.useRef(false);
-  const isInteractingWithVerseDropdownRef = React.useRef(false);
-  const verseInputRef = React.useRef<TextInput | null>(null);
 
   const activeChapter = React.useMemo(
     () => (selectedSurah ? chapters.find((chapter) => chapter.id === selectedSurah) : undefined),
@@ -87,192 +77,29 @@ export function GoToSurahVerseCard({
     }));
   }, [activeChapter?.verses_count]);
 
-  const selectedSurahLabel = React.useMemo(() => {
-    if (!selectedSurah) return 'Select Surah';
-    const chapter = activeChapter;
-    if (!chapter) return `Surah ${selectedSurah}`;
-    return `${chapter.id} • ${chapter.name_simple}`;
-  }, [activeChapter, selectedSurah]);
-
-  const filteredSurahOptions = React.useMemo(() => {
-    const query = surahInputValue.trim().toLowerCase();
-    if (!query) return surahOptions;
-    return surahOptions.filter((option) => {
-      const idMatch = String(option.value).startsWith(query);
-      const labelMatch = option.searchLabel.includes(query);
-      return idMatch || labelMatch;
-    });
-  }, [surahInputValue, surahOptions]);
-
-  const filteredVerseOptions = React.useMemo(() => {
-    if (!selectedSurah || verseOptions.length === 0) return [];
-    const query = verseInputValue.trim();
-    if (!query) return verseOptions;
-    return verseOptions.filter((option) => option.label.startsWith(query));
-  }, [selectedSurah, verseInputValue, verseOptions]);
-
-  const selectSurah = React.useCallback(
+  const handleSelectSurah = React.useCallback(
     (surahId: number) => {
       const chapter = chapters.find((item) => item.id === surahId);
       const maxVerse = chapter?.verses_count ?? 0;
       setSelectedSurah(surahId);
-      setSurahInputValue(chapter ? `${chapter.id} • ${chapter.name_simple}` : `Surah ${surahId}`);
-      setIsSurahFocused(false);
-      setIsSurahDropdownOpen(false);
+      // Reset verse if it exceeds max for new surah
       setSelectedVerse((prev) => {
-        if (typeof prev !== 'number' || !Number.isFinite(prev) || prev <= 0) return undefined;
+        if (typeof prev !== 'number' || prev <= 0) return undefined;
         if (!maxVerse) return undefined;
-        return prev > maxVerse ? maxVerse : prev;
+        return prev > maxVerse ? undefined : prev;
       });
-      setVerseInputValue((prev) => {
-        const parsed = Number.parseInt(prev.trim(), 10);
-        if (!Number.isFinite(parsed) || parsed <= 0 || (maxVerse && parsed > maxVerse)) return '';
-        return String(parsed);
-      });
-      setTimeout(() => {
-        verseInputRef.current?.focus();
-      }, 40);
     },
     [chapters]
   );
 
-  const selectVerse = React.useCallback(
-    (verse: number) => {
-      setSelectedVerse(verse);
-      setVerseInputValue(String(verse));
-      setIsVerseFocused(false);
-      setIsVerseDropdownOpen(false);
-      if (selectedSurah) {
-        onNavigate(selectedSurah, verse);
-      }
-    },
-    [onNavigate, selectedSurah]
-  );
+  const handleSelectVerse = React.useCallback((verse: number) => {
+    setSelectedVerse(verse);
+  }, []);
 
   const submit = React.useCallback(() => {
     if (!selectedSurah) return;
-    Keyboard.dismiss();
-    setIsSurahDropdownOpen(false);
-    setIsVerseDropdownOpen(false);
     onNavigate(selectedSurah, selectedVerse);
   }, [onNavigate, selectedSurah, selectedVerse]);
-
-  const handleSurahInputChange = React.useCallback(
-    (value: string) => {
-      setSurahInputValue(value);
-      const trimmed = value.trim();
-      if (!trimmed) {
-        setSelectedSurah(undefined);
-        setSelectedVerse(undefined);
-        setVerseInputValue('');
-        return;
-      }
-      const query = trimmed.toLowerCase();
-      const match = surahOptions.find((option) => {
-        const idMatch = String(option.value).startsWith(query);
-        const labelMatch = option.searchLabel.includes(query);
-        return idMatch || labelMatch;
-      });
-      if (match) {
-        setSelectedSurah(match.value);
-        setSelectedVerse((prev) => {
-          const chapter = chapters.find((item) => item.id === match.value);
-          const maxVerse = chapter?.verses_count ?? 0;
-          if (typeof prev !== 'number' || !Number.isFinite(prev) || prev <= 0) return undefined;
-          return maxVerse && prev > maxVerse ? maxVerse : prev;
-        });
-        return;
-      }
-
-      const numeric = Number.parseInt(trimmed.replace(/[^\d]/g, ''), 10);
-      if (Number.isFinite(numeric) && numeric > 0) {
-        setSelectedSurah(numeric);
-      }
-      setSelectedVerse((prev) => {
-        if (typeof prev !== 'number' || !Number.isFinite(prev) || prev <= 0) return undefined;
-        return prev;
-      });
-    },
-    [chapters, surahOptions]
-  );
-
-  const handleVerseInputChange = React.useCallback(
-    (value: string) => {
-      const sanitized = value.replace(/[^\d]/g, '').slice(0, 4);
-      setVerseInputValue(sanitized);
-      const parsed = Number.parseInt(sanitized, 10);
-      if (!Number.isFinite(parsed)) {
-        setSelectedVerse(undefined);
-        return;
-      }
-      const maxVerse = activeChapter?.verses_count ?? 0;
-      const clamped = maxVerse > 0 ? Math.min(Math.max(parsed, 1), maxVerse) : Math.max(parsed, 1);
-      setSelectedVerse(clamped);
-    },
-    [activeChapter?.verses_count]
-  );
-
-  const handleSurahBlur = React.useCallback(() => {
-    setTimeout(() => {
-      if (isInteractingWithSurahDropdownRef.current) return;
-      setIsSurahFocused(false);
-      if (!selectedSurah) {
-        setSurahInputValue('');
-        return;
-      }
-      setSurahInputValue(selectedSurahLabel);
-    }, 140);
-  }, [selectedSurah, selectedSurahLabel]);
-
-  const handleVerseBlur = React.useCallback(() => {
-    setTimeout(() => {
-      if (isInteractingWithVerseDropdownRef.current) return;
-      setIsVerseFocused(false);
-      if (typeof selectedVerse === 'number' && Number.isFinite(selectedVerse) && selectedVerse > 0) {
-        setVerseInputValue(String(selectedVerse));
-      } else {
-        setVerseInputValue('');
-      }
-    }, 140);
-  }, [selectedVerse]);
-
-  const handleSurahFocus = React.useCallback(() => {
-    setIsSurahFocused(true);
-    setIsSurahDropdownOpen(true);
-    setIsVerseDropdownOpen(false);
-  }, []);
-
-  const handleVerseFocus = React.useCallback(() => {
-    if (!selectedSurah) return;
-    setIsVerseFocused(true);
-    setIsVerseDropdownOpen(true);
-    setIsSurahDropdownOpen(false);
-  }, [selectedSurah]);
-
-  const handleSurahSubmit = React.useCallback(() => {
-    const firstMatch = filteredSurahOptions[0];
-    if (firstMatch) {
-      selectSurah(firstMatch.value);
-      return;
-    }
-    if (selectedSurah) {
-      setSurahInputValue(selectedSurahLabel);
-      verseInputRef.current?.focus();
-    }
-  }, [filteredSurahOptions, selectSurah, selectedSurah, selectedSurahLabel]);
-
-  const handleVerseSubmit = React.useCallback(() => {
-    if (!selectedSurah) return;
-    setIsVerseDropdownOpen(false);
-    if (typeof selectedVerse === 'number' && Number.isFinite(selectedVerse) && selectedVerse > 0) {
-      onNavigate(selectedSurah, selectedVerse);
-      return;
-    }
-    onNavigate(selectedSurah);
-  }, [onNavigate, selectedSurah, selectedVerse]);
-
-  const showSurahDropdown = isSurahDropdownOpen && filteredSurahOptions.length > 0;
-  const showVerseDropdown = isVerseDropdownOpen && filteredVerseOptions.length > 0 && Boolean(selectedSurah);
 
   const subtitleText =
     subtitle ??
@@ -290,6 +117,7 @@ export function GoToSurahVerseCard({
         }
       >
         <View className={formPaddingClass}>
+          {/* Header */}
           <View className="flex-row items-center justify-between gap-3">
             <View className="min-w-0 flex-1">
               <Text className="text-lg font-semibold text-foreground dark:text-foreground-dark">
@@ -314,179 +142,35 @@ export function GoToSurahVerseCard({
             </Pressable>
           </View>
 
+          {/* Surah & Verse Selectors - Side by Side */}
           <View className="mt-4 flex-row gap-3">
-            <View style={{ flex: 3 }} className="min-w-0">
+            {/* Surah Selector */}
+            <View style={{ flex: 3 }}>
               <Text className="mb-2 text-sm font-semibold text-foreground dark:text-foreground-dark">
                 Surah
               </Text>
-              <View
-                className="min-w-0"
-                style={showSurahDropdown ? { position: 'relative', zIndex: 30 } : undefined}
-              >
-                <View
-                  className="rounded-lg border border-border dark:border-border-dark bg-interactive/60 dark:bg-interactive-dark"
-                  style={isSurahFocused ? focusedInputStyle(palette.tint) : undefined}
-                >
-                  <TextInput
-                    value={surahInputValue}
-                    onChangeText={handleSurahInputChange}
-                    onFocus={handleSurahFocus}
-                    onBlur={handleSurahBlur}
-                    placeholder="Select Surah"
-                    placeholderTextColor={palette.muted}
-                    editable
-                    autoCorrect={false}
-                    autoCapitalize="none"
-                    returnKeyType="next"
-                    onSubmitEditing={handleSurahSubmit}
-                    className="px-3 py-2.5 text-sm text-foreground dark:text-foreground-dark"
-                  />
-                </View>
-
-                {showSurahDropdown ? (
-                  <View
-                    className="rounded-lg border border-border/40 dark:border-border-dark/40 bg-surface-navigation dark:bg-surface-navigation-dark"
-                    style={{
-                      position: 'absolute',
-                      top: '100%',
-                      left: 0,
-                      right: 0,
-                      marginTop: 4,
-                      zIndex: 50,
-                      elevation: 8,
-                    }}
-                    onTouchStart={() => {
-                      isInteractingWithSurahDropdownRef.current = true;
-                    }}
-                    onTouchEnd={() => {
-                      isInteractingWithSurahDropdownRef.current = false;
-                    }}
-                    onTouchCancel={() => {
-                      isInteractingWithSurahDropdownRef.current = false;
-                    }}
-                  >
-                    <ScrollView
-                      style={{ maxHeight: 320 }}
-                      keyboardShouldPersistTaps="handled"
-                      nestedScrollEnabled
-                    >
-                      {filteredSurahOptions.map((option) => {
-                        const isSelected = option.value === selectedSurah;
-                        return (
-                          <Pressable
-                            key={`surah-${option.value}`}
-                            onPressIn={() => {
-                              isInteractingWithSurahDropdownRef.current = true;
-                            }}
-                            onPressOut={() => {
-                              isInteractingWithSurahDropdownRef.current = false;
-                            }}
-                            onPress={() => selectSurah(option.value)}
-                            className="px-3 py-2.5"
-                            style={({ pressed }) => ({
-                              backgroundColor: pressed || isSelected ? `${palette.tint}18` : 'transparent',
-                            })}
-                          >
-                            <Text numberOfLines={1} className="text-sm text-foreground dark:text-foreground-dark">
-                              {option.label}
-                            </Text>
-                          </Pressable>
-                        );
-                      })}
-                    </ScrollView>
-                  </View>
-                ) : null}
-              </View>
+              <SurahSelector
+                options={surahOptions}
+                selectedValue={selectedSurah}
+                onSelect={handleSelectSurah}
+              />
             </View>
 
-            <View style={{ flex: 2 }} className="min-w-0">
+            {/* Verse Selector */}
+            <View style={{ flex: 2 }}>
               <Text className="mb-2 text-sm font-semibold text-foreground dark:text-foreground-dark">
                 Verse
               </Text>
-              <View
-                className="min-w-0"
-                style={showVerseDropdown ? { position: 'relative', zIndex: 20 } : undefined}
-              >
-                <View
-                  className="rounded-lg border border-border dark:border-border-dark bg-interactive/60 dark:bg-interactive-dark"
-                  style={isVerseFocused ? focusedInputStyle(palette.tint) : undefined}
-                >
-                  <TextInput
-                    ref={(node) => {
-                      verseInputRef.current = node;
-                    }}
-                    value={verseInputValue}
-                    onChangeText={handleVerseInputChange}
-                    onFocus={handleVerseFocus}
-                    onBlur={handleVerseBlur}
-                    placeholder={selectedSurah ? 'Select Verse' : 'Select Surah first'}
-                    placeholderTextColor={palette.muted}
-                    editable={Boolean(selectedSurah)}
-                    keyboardType="number-pad"
-                    returnKeyType="go"
-                    onSubmitEditing={handleVerseSubmit}
-                    className="px-3 py-2.5 text-sm text-foreground dark:text-foreground-dark"
-                  />
-                </View>
-
-                {showVerseDropdown ? (
-                  <View
-                    className="rounded-lg border border-border/40 dark:border-border-dark/40 bg-surface-navigation dark:bg-surface-navigation-dark"
-                    style={{
-                      position: 'absolute',
-                      top: '100%',
-                      left: 0,
-                      right: 0,
-                      marginTop: 4,
-                      zIndex: 50,
-                      elevation: 8,
-                    }}
-                    onTouchStart={() => {
-                      isInteractingWithVerseDropdownRef.current = true;
-                    }}
-                    onTouchEnd={() => {
-                      isInteractingWithVerseDropdownRef.current = false;
-                    }}
-                    onTouchCancel={() => {
-                      isInteractingWithVerseDropdownRef.current = false;
-                    }}
-                  >
-                    <ScrollView
-                      style={{ maxHeight: 320 }}
-                      keyboardShouldPersistTaps="handled"
-                      nestedScrollEnabled
-                    >
-                      {filteredVerseOptions.map((option) => {
-                        const value = option.value;
-                        const isSelected = value === selectedVerse;
-                        return (
-                          <Pressable
-                            key={`verse-${value}`}
-                            onPressIn={() => {
-                              isInteractingWithVerseDropdownRef.current = true;
-                            }}
-                            onPressOut={() => {
-                              isInteractingWithVerseDropdownRef.current = false;
-                            }}
-                            onPress={() => selectVerse(value)}
-                            className="px-3 py-2.5"
-                            style={({ pressed }) => ({
-                              backgroundColor: pressed || isSelected ? `${palette.tint}18` : 'transparent',
-                            })}
-                          >
-                            <Text className="text-sm text-foreground dark:text-foreground-dark">
-                              {option.label}
-                            </Text>
-                          </Pressable>
-                        );
-                      })}
-                    </ScrollView>
-                  </View>
-                ) : null}
-              </View>
+              <VerseSelector
+                options={verseOptions}
+                selectedValue={selectedVerse}
+                onSelect={handleSelectVerse}
+                disabled={!selectedSurah}
+              />
             </View>
           </View>
 
+          {/* Error & Retry */}
           {errorMessage && chapters.length === 0 ? (
             <View className="mt-3 gap-2">
               <Text className="text-xs text-error dark:text-error-dark">{errorMessage}</Text>
@@ -504,6 +188,7 @@ export function GoToSurahVerseCard({
             </View>
           ) : null}
 
+          {/* Search Suggestions */}
           {onSearchSuggestion ? (
             <View className="mt-4 border-t border-border/50 dark:border-border-dark/40 pt-3">
               <Text className="mb-2 text-xs font-medium text-muted dark:text-muted-dark">
@@ -518,9 +203,9 @@ export function GoToSurahVerseCard({
                         ? `Page ${suggestion.number}`
                         : suggestion.icon === 'surah'
                           ? (() => {
-                              const chapter = chapters.find((item) => item.id === suggestion.surahId);
-                              return chapter ? `Surah ${chapter.name_simple}` : suggestion.query;
-                            })()
+                            const chapter = chapters.find((item) => item.id === suggestion.surahId);
+                            return chapter ? `Surah ${chapter.name_simple}` : suggestion.query;
+                          })()
                           : suggestion.verseKey;
 
                   return (
@@ -551,22 +236,4 @@ export function GoToSurahVerseCard({
       </View>
     </View>
   );
-}
-
-function focusedInputStyle(accentColor: string): {
-  borderColor: string;
-  shadowColor: string;
-  shadowOpacity: number;
-  shadowRadius: number;
-  shadowOffset: { width: number; height: number };
-  elevation: number;
-} {
-  return {
-    borderColor: accentColor,
-    shadowColor: accentColor,
-    shadowOpacity: Platform.OS === 'ios' ? 0.32 : 0.22,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 0 },
-    elevation: 2,
-  };
 }

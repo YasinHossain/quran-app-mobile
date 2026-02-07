@@ -252,6 +252,8 @@ export default function SearchScreen(): React.JSX.Element {
       <FlashList
         data={verses}
         keyExtractor={(item) => item.verseKey}
+        keyboardShouldPersistTaps="handled"
+        removeClippedSubviews={false}
         renderItem={({ item }) => (
           <SearchVerseResultCard
             verse={item}

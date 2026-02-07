@@ -13,7 +13,7 @@ export function AnchoredDropdownModal({
 }: {
   isOpen: boolean;
   onClose: () => void;
-  anchorRef: React.RefObject<View>;
+  anchorRef: React.RefObject<View | null>;
   maxHeight?: number;
   horizontalInset?: number;
   children: React.ReactNode;
@@ -100,4 +100,3 @@ const styles = StyleSheet.create({
     elevation: 16,
   },
 });
-
