@@ -19,20 +19,9 @@ import Colors from '@/constants/Colors';
 import { useBookmarks } from '@/providers/BookmarkContext';
 import { useAppTheme } from '@/providers/ThemeContext';
 
+import { DEFAULT_FOLDER_COLOR, FOLDER_COLORS } from '@/components/bookmarks/folderColor';
+
 import type { Folder } from '@/types';
-
-const DEFAULT_COLOR = 'text-accent';
-
-const FOLDER_COLORS = [
-  { name: 'Teal', value: 'text-accent', swatch: '#0D9488' },
-  { name: 'Brand', value: 'text-primary', swatch: '#4F46E5' },
-  { name: 'Slate', value: 'text-content-secondary', swatch: '#64748B' },
-  { name: 'Green', value: 'text-status-success', swatch: '#16A34A' },
-  { name: 'Amber', value: 'text-status-warning', swatch: '#D97706' },
-  { name: 'Red', value: 'text-status-error', swatch: '#DC2626' },
-  { name: 'Blue', value: 'text-status-info', swatch: '#2563EB' },
-  { name: 'Emerald', value: 'text-content-accent', swatch: '#10B981' },
-];
 
 export function FolderSettingsModal({
   isOpen,
@@ -52,7 +41,7 @@ export function FolderSettingsModal({
   const { createFolder, renameFolder } = useBookmarks();
 
   const [name, setName] = React.useState('');
-  const [selectedColor, setSelectedColor] = React.useState(DEFAULT_COLOR);
+  const [selectedColor, setSelectedColor] = React.useState<string>(DEFAULT_FOLDER_COLOR);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
 
   const dialogScale = React.useRef(new Animated.Value(0.96)).current;
@@ -64,7 +53,7 @@ export function FolderSettingsModal({
   React.useEffect(() => {
     if (!shouldRender) return;
     setName(mode === 'edit' ? folder?.name ?? '' : '');
-    setSelectedColor((mode === 'edit' ? folder?.color : undefined) ?? DEFAULT_COLOR);
+    setSelectedColor((mode === 'edit' ? folder?.color : undefined) ?? DEFAULT_FOLDER_COLOR);
     setIsSubmitting(false);
   }, [folder?.color, folder?.name, mode, shouldRender]);
 

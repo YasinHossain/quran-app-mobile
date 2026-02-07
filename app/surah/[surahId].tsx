@@ -1,18 +1,23 @@
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import React from 'react';
-import { Settings } from 'lucide-react-native';
+import { ArrowLeft, Settings } from 'lucide-react-native';
 import { FlashList, type FlashListRef } from '@shopify/flash-list';
 import {
   Alert,
   ActivityIndicator,
   FlatList,
+  Keyboard,
   Platform,
   Pressable,
   Share,
   Text,
+  TextInput,
   View,
+  type ViewToken,
 } from 'react-native';
 
+import { ComprehensiveSearchDropdown } from '@/components/search/ComprehensiveSearchDropdown';
+import { HeaderSearchInput } from '@/components/search/HeaderSearchInput';
 import { SettingsSidebar } from '@/components/reader/settings/SettingsSidebar';
 import { BookmarkModal } from '@/components/bookmarks/BookmarkModal';
 import { SurahHeaderCard } from '@/components/surah/SurahHeaderCard';
@@ -34,6 +39,9 @@ export default function SurahScreen(): React.JSX.Element {
   const startVerseParam = Array.isArray(params.startVerse) ? params.startVerse[0] : params.startVerse;
   const startVerse = startVerseParam ? Number(startVerseParam) : NaN;
   const [isSettingsOpen, setIsSettingsOpen] = React.useState(false);
+  const [isHeaderSearchOpen, setIsHeaderSearchOpen] = React.useState(false);
+  const [headerSearchQuery, setHeaderSearchQuery] = React.useState('');
+  const headerSearchInputRef = React.useRef<TextInput | null>(null);
   const [isVerseActionsOpen, setIsVerseActionsOpen] = React.useState(false);
   const [isBookmarkModalOpen, setIsBookmarkModalOpen] = React.useState(false);
   const [isAddToPlannerOpen, setIsAddToPlannerOpen] = React.useState(false);
@@ -51,7 +59,7 @@ export default function SurahScreen(): React.JSX.Element {
   const palette = Colors[resolvedTheme];
 
   const { settings } = useSettings();
-  const { isPinned } = useBookmarks();
+  const { isPinned, setLastRead } = useBookmarks();
   const chapterNumber = surahId ? Number(surahId) : NaN;
   const translationIds = React.useMemo(() => {
     const ids =
@@ -87,6 +95,58 @@ export default function SurahScreen(): React.JSX.Element {
   const closeVerseActions = React.useCallback(() => {
     setIsVerseActionsOpen(false);
   }, []);
+
+  const closeHeaderSearch = React.useCallback(
+    ({ clearQuery }: { clearQuery: boolean }) => {
+      setIsHeaderSearchOpen(false);
+      if (clearQuery) setHeaderSearchQuery('');
+      headerSearchInputRef.current?.blur();
+      Keyboard.dismiss();
+    },
+    []
+  );
+
+  const updateHeaderSearchQuery = React.useCallback((value: string) => {
+    setHeaderSearchQuery(value);
+    setIsHeaderSearchOpen(true);
+  }, []);
+
+  const navigateToSearchPage = React.useCallback(() => {
+    const trimmed = headerSearchQuery.trim();
+    if (!trimmed) return;
+    closeHeaderSearch({ clearQuery: true });
+    router.push({ pathname: '/search', params: { query: trimmed } });
+  }, [closeHeaderSearch, headerSearchQuery, router]);
+
+  const navigateToSurahVerse = React.useCallback(
+    (targetSurahId: number, verse?: number) => {
+      closeHeaderSearch({ clearQuery: true });
+      router.push({
+        pathname: '/surah/[surahId]',
+        params: {
+          surahId: String(targetSurahId),
+          ...(typeof verse === 'number' ? { startVerse: String(verse) } : {}),
+        },
+      });
+    },
+    [closeHeaderSearch, router]
+  );
+
+  const navigateToJuz = React.useCallback(
+    (juzNumber: number) => {
+      closeHeaderSearch({ clearQuery: true });
+      router.push({ pathname: '/juz/[juzNumber]', params: { juzNumber: String(juzNumber) } });
+    },
+    [closeHeaderSearch, router]
+  );
+
+  const navigateToPage = React.useCallback(
+    (pageNumber: number) => {
+      closeHeaderSearch({ clearQuery: true });
+      router.push({ pathname: '/page/[pageNumber]', params: { pageNumber: String(pageNumber) } });
+    },
+    [closeHeaderSearch, router]
+  );
 
   const listExtraData = React.useMemo(
     () => ({
@@ -188,6 +248,57 @@ export default function SurahScreen(): React.JSX.Element {
   const scrollRetryCountRef = React.useRef(0);
   const scrollRetryTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const chapterNumberRef = React.useRef(chapterNumber);
+  React.useEffect(() => {
+    chapterNumberRef.current = chapterNumber;
+  }, [chapterNumber]);
+
+  const setLastReadRef = React.useRef(setLastRead);
+  React.useEffect(() => {
+    setLastReadRef.current = setLastRead;
+  }, [setLastRead]);
+
+  const lastReadReportedRef = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    lastReadReportedRef.current = null;
+  }, [surahId]);
+
+  const viewabilityConfig = React.useRef({ itemVisiblePercentThreshold: 60 }).current;
+
+  const onViewableItemsChanged = React.useRef(
+    ({ viewableItems }: { viewableItems: Array<ViewToken> }) => {
+      const currentSurahId = chapterNumberRef.current;
+      if (!Number.isFinite(currentSurahId) || currentSurahId <= 0) return;
+
+      let bestIndex = Number.POSITIVE_INFINITY;
+      let bestItem: SurahVerse | null = null;
+
+      for (const token of viewableItems) {
+        if (!token.isViewable) continue;
+        const index = typeof token.index === 'number' ? token.index : Number.POSITIVE_INFINITY;
+        if (index >= bestIndex) continue;
+        bestIndex = index;
+        bestItem = token.item as SurahVerse;
+      }
+
+      if (!bestItem) return;
+
+      const verseNumber = bestItem.verse_number;
+      if (!Number.isFinite(verseNumber) || verseNumber <= 0) return;
+
+      const key = `${currentSurahId}:${verseNumber}`;
+      if (lastReadReportedRef.current === key) return;
+      lastReadReportedRef.current = key;
+
+      setLastReadRef.current(
+        String(currentSurahId),
+        verseNumber,
+        bestItem.verse_key,
+        bestItem.id
+      );
+    }
+  ).current;
+
   React.useEffect(() => {
     return () => {
       if (!scrollRetryTimeoutRef.current) return;
@@ -258,7 +369,33 @@ export default function SurahScreen(): React.JSX.Element {
     <View className="flex-1 bg-background dark:bg-background-dark">
       <Stack.Screen
         options={{
-          title: chapter?.name_simple ?? (surahId ? `Surah ${surahId}` : 'Surah'),
+          title: '',
+          headerTitleAlign: 'center',
+          headerLeft: () => (
+            <Pressable
+              onPress={() => router.back()}
+              hitSlop={10}
+              accessibilityRole="button"
+              accessibilityLabel="Go back"
+              style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1, marginLeft: 12 })}
+            >
+              <ArrowLeft color={palette.text} size={22} strokeWidth={2.25} />
+            </Pressable>
+          ),
+          headerTitle: () => (
+            <View style={{ width: '100%', paddingHorizontal: 8 }}>
+              <HeaderSearchInput
+                ref={(node) => {
+                  headerSearchInputRef.current = node;
+                }}
+                value={headerSearchQuery}
+                onChangeText={updateHeaderSearchQuery}
+                placeholder="Search…"
+                onFocus={() => setIsHeaderSearchOpen(true)}
+                onSubmitEditing={navigateToSearchPage}
+              />
+            </View>
+          ),
           headerRight: () => (
             <Pressable
               onPress={() => setIsSettingsOpen(true)}
@@ -291,6 +428,8 @@ export default function SurahScreen(): React.JSX.Element {
           contentContainerStyle={{ padding: 16, paddingBottom: 24 }}
           refreshing={isRefreshing}
           onRefresh={refresh}
+          viewabilityConfig={viewabilityConfig}
+          onViewableItemsChanged={onViewableItemsChanged}
           onEndReachedThreshold={0.5}
           onEndReached={loadMore}
           ListHeaderComponent={chapter ? <SurahHeaderCard chapter={chapter} /> : null}
@@ -358,6 +497,8 @@ export default function SurahScreen(): React.JSX.Element {
           contentContainerStyle={{ padding: 16, paddingBottom: 24 }}
           refreshing={isRefreshing}
           onRefresh={refresh}
+          viewabilityConfig={viewabilityConfig}
+          onViewableItemsChanged={onViewableItemsChanged}
           onEndReachedThreshold={0.5}
           onEndReached={loadMore}
           ListHeaderComponent={chapter ? <SurahHeaderCard chapter={chapter} /> : null}
@@ -447,6 +588,21 @@ export default function SurahScreen(): React.JSX.Element {
         />
       ) : null}
 
+      <ComprehensiveSearchDropdown
+        isOpen={isHeaderSearchOpen}
+        query={headerSearchQuery}
+        onQueryChange={updateHeaderSearchQuery}
+        onClose={() => closeHeaderSearch({ clearQuery: false })}
+        onNavigateToSurahVerse={navigateToSurahVerse}
+        onNavigateToJuz={navigateToJuz}
+        onNavigateToPage={navigateToPage}
+        onNavigateToSearch={(query) => {
+          const trimmed = query.trim();
+          if (!trimmed) return;
+          closeHeaderSearch({ clearQuery: true });
+          router.push({ pathname: '/search', params: { query: trimmed } });
+        }}
+      />
       <SettingsSidebar isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
     </View>
   );

@@ -6,11 +6,12 @@ import {
   BOOKMARKS_STORAGE_KEY,
   OLD_BOOKMARKS_STORAGE_KEY,
   PINNED_STORAGE_KEY,
+  LAST_READ_STORAGE_KEY,
   PLANNER_STORAGE_KEY,
   LEGACY_MEMORIZATION_STORAGE_KEY,
 } from './constants';
 
-import type { Bookmark, Folder, PlannerPlan } from '@/types';
+import type { Bookmark, Folder, LastReadEntry, LastReadMap, PlannerPlan } from '@/types';
 
 const normalizeBookmark = (bookmark: Bookmark): Bookmark => ({
   ...bookmark,
@@ -64,6 +65,77 @@ export async function loadPinnedFromStorage(): Promise<Bookmark[]> {
 
 export async function savePinnedToStorage(pinnedVerses: Bookmark[]): Promise<void> {
   await setItem(PINNED_STORAGE_KEY, JSON.stringify(pinnedVerses));
+}
+
+const normalizeLastReadEntry = (value: unknown, fallbackUpdatedAt: number): LastReadEntry | null => {
+  if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+    return {
+      verseNumber: value,
+      verseId: value,
+      updatedAt: fallbackUpdatedAt,
+    };
+  }
+
+  if (value && typeof value === 'object') {
+    const maybeEntry = value as Partial<LastReadEntry> & { verseId?: unknown };
+
+    const verseNumber =
+      typeof maybeEntry.verseNumber === 'number' && Number.isFinite(maybeEntry.verseNumber)
+        ? maybeEntry.verseNumber
+        : typeof maybeEntry.verseId === 'number' && Number.isFinite(maybeEntry.verseId)
+          ? maybeEntry.verseId
+          : typeof maybeEntry.verseKey === 'string'
+            ? Number(maybeEntry.verseKey.split(':')[1])
+            : undefined;
+
+    if (!verseNumber || Number.isNaN(verseNumber) || verseNumber <= 0) {
+      return null;
+    }
+
+    const updatedAt =
+      typeof maybeEntry.updatedAt === 'number' && Number.isFinite(maybeEntry.updatedAt)
+        ? maybeEntry.updatedAt
+        : fallbackUpdatedAt;
+
+    const entry: LastReadEntry = {
+      verseNumber,
+      updatedAt,
+      ...(typeof maybeEntry.verseKey === 'string' && maybeEntry.verseKey.length > 0
+        ? { verseKey: maybeEntry.verseKey }
+        : {}),
+      ...(typeof maybeEntry.globalVerseId === 'number' && Number.isFinite(maybeEntry.globalVerseId)
+        ? { globalVerseId: maybeEntry.globalVerseId }
+        : {}),
+      verseId: verseNumber,
+    };
+
+    return entry;
+  }
+
+  return null;
+};
+
+export async function loadLastReadFromStorage(): Promise<LastReadMap> {
+  const raw = parseJson<Record<string, unknown>>(await getItem(LAST_READ_STORAGE_KEY));
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return {};
+  }
+
+  const entries = Object.entries(raw);
+  if (entries.length === 0) return {};
+
+  const now = Date.now();
+  return entries.reduce<LastReadMap>((acc, [surahId, value], index) => {
+    const entry = normalizeLastReadEntry(value, now - index);
+    if (entry) {
+      acc[surahId] = entry;
+    }
+    return acc;
+  }, {});
+}
+
+export async function saveLastReadToStorage(lastRead: LastReadMap): Promise<void> {
+  await setItem(LAST_READ_STORAGE_KEY, JSON.stringify(lastRead));
 }
 
 const normalizePlannerRecord = (input: unknown): Record<string, PlannerPlan> => {

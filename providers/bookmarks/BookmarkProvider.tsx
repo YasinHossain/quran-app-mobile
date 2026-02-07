@@ -15,15 +15,17 @@ import {
 import { BookmarkContext } from '@/providers/bookmarks/BookmarkContext';
 import {
   loadBookmarksFromStorage,
+  loadLastReadFromStorage,
   loadPlannerFromStorage,
   loadPinnedFromStorage,
   saveBookmarksToStorage,
+  saveLastReadToStorage,
   savePlannerToStorage,
   savePinnedToStorage,
 } from '@/providers/bookmarks/storage-utils';
 
 import type { BookmarkContextType } from '@/providers/bookmarks/types';
-import type { Bookmark, Folder, PlannerPlan } from '@/types';
+import type { Bookmark, Folder, LastReadMap, PlannerPlan } from '@/types';
 
 const PERSIST_DEBOUNCE_MS = 250;
 
@@ -71,9 +73,11 @@ export const BookmarkProvider = ({
 function useBookmarkProviderValue(): BookmarkContextType {
   const [folders, setFolders] = useState<Folder[]>([]);
   const [pinnedVerses, setPinnedVerses] = useState<Bookmark[]>([]);
+  const [lastRead, setLastReadState] = useState<LastReadMap>({});
   const [planner, setPlanner] = useState<Record<string, PlannerPlan>>({});
 
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastReadPersistTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasLoadedFromStorage = useRef(false);
   const latestStateRef = useRef<{
     folders: Folder[];
@@ -90,9 +94,10 @@ function useBookmarkProviderValue(): BookmarkContextType {
     let cancelled = false;
 
     async function load(): Promise<void> {
-      const [loadedFolders, loadedPinned, loadedPlanner] = await Promise.all([
+      const [loadedFolders, loadedPinned, loadedLastRead, loadedPlanner] = await Promise.all([
         loadBookmarksFromStorage(),
         loadPinnedFromStorage(),
+        loadLastReadFromStorage(),
         loadPlannerFromStorage(),
       ]);
 
@@ -100,6 +105,7 @@ function useBookmarkProviderValue(): BookmarkContextType {
       hasLoadedFromStorage.current = true;
       setFolders(loadedFolders);
       setPinnedVerses(loadedPinned);
+      setLastReadState(loadedLastRead);
       setPlanner(loadedPlanner);
       latestStateRef.current = {
         folders: loadedFolders,
@@ -147,6 +153,29 @@ function useBookmarkProviderValue(): BookmarkContextType {
       void persistLatest();
     };
   }, [persistLatest]);
+
+  useEffect(() => {
+    if (!hasLoadedFromStorage.current) return;
+
+    if (lastReadPersistTimeoutRef.current) clearTimeout(lastReadPersistTimeoutRef.current);
+    lastReadPersistTimeoutRef.current = setTimeout(() => {
+      lastReadPersistTimeoutRef.current = null;
+      void saveLastReadToStorage(lastRead);
+    }, PERSIST_DEBOUNCE_MS);
+
+    return () => {
+      if (lastReadPersistTimeoutRef.current) clearTimeout(lastReadPersistTimeoutRef.current);
+    };
+  }, [lastRead]);
+
+  useEffect(() => {
+    return () => {
+      if (!lastReadPersistTimeoutRef.current) return;
+      clearTimeout(lastReadPersistTimeoutRef.current);
+      lastReadPersistTimeoutRef.current = null;
+      void saveLastReadToStorage(lastRead);
+    };
+  }, [lastRead]);
 
   const createFolder = useCallback(
     (name: string, color?: string) => {
@@ -254,6 +283,100 @@ function useBookmarkProviderValue(): BookmarkContextType {
     [pinnedVerses]
   );
 
+  const lastReadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingLastReadRef = useRef<{
+    surahId: string;
+    verseNumber: number;
+    verseKey?: string;
+    globalVerseId?: number;
+  } | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (lastReadTimeoutRef.current) {
+        clearTimeout(lastReadTimeoutRef.current);
+        lastReadTimeoutRef.current = null;
+      }
+      pendingLastReadRef.current = null;
+    };
+  }, []);
+
+  const flushLastRead = useCallback(() => {
+    const pending = pendingLastReadRef.current;
+    if (!pending) return;
+    pendingLastReadRef.current = null;
+
+    setLastReadState((prev) => {
+      const current = prev[pending.surahId];
+      if (
+        current &&
+        current.verseNumber === pending.verseNumber &&
+        current.verseKey === pending.verseKey &&
+        current.globalVerseId === pending.globalVerseId
+      ) {
+        return prev;
+      }
+
+      const updated: LastReadMap = {
+        ...prev,
+        [pending.surahId]: {
+          verseNumber: pending.verseNumber,
+          verseId: pending.verseNumber,
+          ...(typeof pending.verseKey === 'string' ? { verseKey: pending.verseKey } : {}),
+          ...(typeof pending.globalVerseId === 'number'
+            ? { globalVerseId: pending.globalVerseId }
+            : {}),
+          updatedAt: Date.now(),
+        },
+      };
+
+      const entries = Object.entries(updated);
+      if (entries.length <= 5) {
+        return updated;
+      }
+
+      const sorted = entries.sort(([, a], [, b]) => b.updatedAt - a.updatedAt);
+      const limited = sorted.slice(0, 5);
+      return Object.fromEntries(limited);
+    });
+  }, []);
+
+  const setLastRead = useCallback(
+    (surahId: string, verseNumber: number, verseKey?: string, globalVerseId?: number) => {
+      const normalizedSurahId = String(surahId).trim();
+      if (!normalizedSurahId) return;
+      if (!Number.isFinite(verseNumber) || verseNumber <= 0) return;
+
+      pendingLastReadRef.current = {
+        surahId: normalizedSurahId,
+        verseNumber,
+        ...(typeof verseKey === 'string' ? { verseKey } : {}),
+        ...(typeof globalVerseId === 'number' ? { globalVerseId } : {}),
+      };
+
+      if (lastReadTimeoutRef.current) {
+        return;
+      }
+
+      lastReadTimeoutRef.current = setTimeout(() => {
+        lastReadTimeoutRef.current = null;
+        flushLastRead();
+      }, 200);
+    },
+    [flushLastRead]
+  );
+
+  const removeLastRead = useCallback((surahId: string) => {
+    const id = String(surahId).trim();
+    if (!id) return;
+    setLastReadState((prev) => {
+      if (!prev[id]) return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+  }, []);
+
   const addToPlanner = useCallback(
     (surahId: number, targetVerses = 10, estimatedDays?: number) => {
       const plan = createPlannerPlanUtil(surahId, targetVerses, undefined, estimatedDays);
@@ -299,6 +422,7 @@ function useBookmarkProviderValue(): BookmarkContextType {
     () => ({
       folders,
       pinnedVerses,
+      lastRead,
       planner,
       isHydrated,
       createFolder,
@@ -313,6 +437,8 @@ function useBookmarkProviderValue(): BookmarkContextType {
       bookmarkedVerses,
       togglePinned,
       isPinned,
+      setLastRead,
+      removeLastRead,
       addToPlanner,
       createPlannerPlan,
       updatePlannerProgress,
@@ -321,6 +447,7 @@ function useBookmarkProviderValue(): BookmarkContextType {
     [
       folders,
       pinnedVerses,
+      lastRead,
       planner,
       isHydrated,
       createFolder,
@@ -335,6 +462,8 @@ function useBookmarkProviderValue(): BookmarkContextType {
       bookmarkedVerses,
       togglePinned,
       isPinned,
+      setLastRead,
+      removeLastRead,
       addToPlanner,
       createPlannerPlan,
       updatePlannerProgress,

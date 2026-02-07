@@ -21,6 +21,19 @@ This document lists reusable UI components currently available in the codebase s
 | `SurahCard` | Pressable card that links to a Surah detail screen with metadata. | `components/home/SurahCard.tsx` |
 | `SurahGrid` | Responsive grid list layout for rendering multiple Surah cards. | `components/home/SurahGrid.tsx` |
 
+## Search Components
+
+| Component | Description | File Path |
+| --- | --- | --- |
+| `HeaderSearchButton` | Header-sized search input button (opens comprehensive search overlay). | `components/search/HeaderSearchButton.tsx` |
+| `ComprehensiveSearchModal` | Web-parity search overlay/dropdown shell (input, Go To form state, navigation/verse preview, CTA to full results). | `components/search/ComprehensiveSearchModal.tsx` |
+| `HeaderSearchInput` | Header search text input (web-style) used on the Surah reader header. | `components/search/HeaderSearchInput.tsx` |
+| `ComprehensiveSearchDropdown` | Under-header dropdown card for the Surah header search (Go To when empty; quick results when typing). | `components/search/ComprehensiveSearchDropdown.tsx` |
+| `GoToSurahVerseCard` | Web-parity “Go To” form (Surah + Verse selectors, Go action, and suggestion actions); supports card and embedded modes. | `components/search/GoToSurahVerseCard.tsx` |
+| `AnchoredDropdownModal` | Transparent modal that anchors dropdown content to a measured view (useful for web-like select overlays). | `components/search/AnchoredDropdownModal.tsx` |
+| `HighlightedText` | Lightweight `<em>` tag highlighter renderer for search result snippets. | `components/search/HighlightedText.tsx` |
+| `SearchVerseResultCard` | Search results list item (Arabic + highlighted match snippet). | `components/search/SearchVerseResultCard.tsx` |
+
 ## Reader Settings Components
 
 | Component | Description | File Path |
@@ -55,10 +68,15 @@ This document lists reusable UI components currently available in the codebase s
 | Component | Description | File Path |
 | --- | --- | --- |
 | `BookmarkModal` | Modal with “Pin Verse” + “Add to Folder” tabs (offline-first, persisted). | `components/bookmarks/BookmarkModal.tsx` |
+| `BookmarkFolderCard` | Folder card UI used in the Bookmarks folder list (glyph, verse preview chips, updated date, options). | `components/bookmarks/BookmarkFolderCard.tsx` |
+| `FolderActionsSheet` | Bottom sheet for folder options (Edit Folder, Delete Folder). | `components/bookmarks/FolderActionsSheet.tsx` |
 | `FolderSettingsModal` | Create/edit folder modal (name + color) for bookmarks (offline-first, persisted). | `components/bookmarks/FolderSettingsModal.tsx` |
 | `DeleteFolderModal` | Delete folder confirmation modal (warns when the folder contains verses). | `components/bookmarks/DeleteFolderModal.tsx` |
+| `folderColor` | Shared folder color tokens + resolver used across folder UI (settings + cards). | `components/bookmarks/folderColor.ts` |
 | `PlannerSection` | Planner section list UI (header + empty + cards) used in Bookmarks → Planner. | `components/bookmarks/planner/PlannerSection.tsx` |
 | `PlannerCard` | Planner card (daily focus + stats + progress + continue/delete). | `components/bookmarks/planner/PlannerCard.tsx` |
 | `PlannerHeader` | Planner section header with “Create Plan” action. | `components/bookmarks/planner/PlannerHeader.tsx` |
 | `PlannerEmptyState` | Empty-state UI shown when no plans exist. | `components/bookmarks/planner/PlannerEmptyState.tsx` |
 | `CreatePlannerModal` | Modal + form for creating planner plans (start/end surah + verse + estimated days). | `components/bookmarks/planner/CreatePlannerModal.tsx` |
+| `LastReadSection` | “Recent / Last visited” section (header + grid + empty state) used in Bookmarks → Recent. | `components/bookmarks/last-read/LastReadSection.tsx` |
+| `LastReadCard` | Recent card showing a surah progress ring + verse position + remove action. | `components/bookmarks/last-read/LastReadCard.tsx` |

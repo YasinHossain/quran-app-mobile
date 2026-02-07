@@ -1,29 +1,32 @@
+import { FlashList, type FlashListRef } from '@shopify/flash-list';
+import { Stack, useRouter } from 'expo-router';
 import {
   Bookmark as BookmarkIcon,
   Calendar,
+  ChevronUp,
   Clock,
   Pin,
   Plus,
-  Settings,
   SlidersHorizontal,
   Trash2,
 } from 'lucide-react-native';
-import { FlashList } from '@shopify/flash-list';
-import { useRouter } from 'expo-router';
 import React from 'react';
 import {
-  Alert,
   ActivityIndicator,
+  Alert,
   Pressable,
   Share,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
 
+import { BookmarkFolderCard } from '@/components/bookmarks/BookmarkFolderCard';
 import { DeleteFolderModal } from '@/components/bookmarks/DeleteFolderModal';
+import { FolderActionsSheet } from '@/components/bookmarks/FolderActionsSheet';
 import { FolderSettingsModal } from '@/components/bookmarks/FolderSettingsModal';
+import { LastReadSection } from '@/components/bookmarks/last-read';
 import { CreatePlannerModal, PlannerSection } from '@/components/bookmarks/planner';
-import { SettingsSidebar } from '@/components/reader/settings/SettingsSidebar';
 import { VerseActionsSheet } from '@/components/surah/VerseActionsSheet';
 import { VerseCard } from '@/components/surah/VerseCard';
 import { AddToPlannerModal, type VerseSummaryDetails } from '@/components/verse-planner-modal';
@@ -35,6 +38,13 @@ import { useAppTheme } from '@/providers/ThemeContext';
 import type { Bookmark, Folder } from '@/types';
 
 type SectionId = 'bookmarks' | 'pinned' | 'last-read' | 'planner';
+
+function getFolderGridColumns(width: number): number {
+  if (width >= 1280) return 4;
+  if (width >= 1024) return 3;
+  if (width >= 640) return 2;
+  return 1;
+}
 
 function parseVerseKey(verseKey: string): { surahId: string; ayahId: string } | null {
   const normalized = verseKey.trim();
@@ -59,23 +69,30 @@ export default function BookmarksScreen(): React.JSX.Element {
   const router = useRouter();
   const { resolvedTheme, isDark } = useAppTheme();
   const palette = Colors[resolvedTheme];
+  const { width } = useWindowDimensions();
 
   const { settings } = useSettings();
   const {
     folders,
     pinnedVerses,
+    lastRead,
     planner,
     isHydrated,
     deleteFolder,
     removeBookmark,
     togglePinned,
     isPinned,
+    removeLastRead,
     removeFromPlanner,
   } = useBookmarks();
 
   const [activeSection, setActiveSection] = React.useState<SectionId>('bookmarks');
   const [selectedFolderId, setSelectedFolderId] = React.useState<string | null>(null);
-  const [isSettingsOpen, setIsSettingsOpen] = React.useState(false);
+  const folderListRef = React.useRef<FlashListRef<Folder> | null>(null);
+  const folderDetailListRef = React.useRef<FlashListRef<Bookmark> | null>(null);
+  const pinnedListRef = React.useRef<FlashListRef<Bookmark> | null>(null);
+  const lastReadScrollToTopRef = React.useRef<(() => void) | null>(null);
+  const plannerScrollToTopRef = React.useRef<(() => void) | null>(null);
 
   const [isVerseActionsOpen, setIsVerseActionsOpen] = React.useState(false);
   const [activeVerse, setActiveVerse] = React.useState<{
@@ -95,11 +112,16 @@ export default function BookmarksScreen(): React.JSX.Element {
   const [isDeleteFolderOpen, setIsDeleteFolderOpen] = React.useState(false);
   const [folderForDelete, setFolderForDelete] = React.useState<Folder | null>(null);
 
+  const [isFolderActionsOpen, setIsFolderActionsOpen] = React.useState(false);
+  const [folderForActions, setFolderForActions] = React.useState<Folder | null>(null);
+
   const [isCreatePlannerOpen, setIsCreatePlannerOpen] = React.useState(false);
   const [isAddToPlannerOpen, setIsAddToPlannerOpen] = React.useState(false);
   const [plannerVerseSummary, setPlannerVerseSummary] = React.useState<VerseSummaryDetails | null>(
     null
   );
+
+  const folderGridColumns = React.useMemo(() => getFolderGridColumns(width), [width]);
 
   const sortedFolders = React.useMemo(() => {
     const items = [...folders];
@@ -216,6 +238,16 @@ export default function BookmarksScreen(): React.JSX.Element {
     setIsDeleteFolderOpen(true);
   }, []);
 
+  const closeFolderActionsSheet = React.useCallback(() => {
+    setIsFolderActionsOpen(false);
+    setFolderForActions(null);
+  }, []);
+
+  const openFolderActionsSheet = React.useCallback((folder: Folder) => {
+    setFolderForActions(folder);
+    setIsFolderActionsOpen(true);
+  }, []);
+
   const closeDeleteFolderModal = React.useCallback(() => {
     setIsDeleteFolderOpen(false);
   }, []);
@@ -256,6 +288,36 @@ export default function BookmarksScreen(): React.JSX.Element {
     [removeFromPlanner]
   );
 
+  const registerLastReadScrollToTop = React.useCallback((handler: (() => void) | null) => {
+    lastReadScrollToTopRef.current = handler;
+  }, []);
+
+  const registerPlannerScrollToTop = React.useCallback((handler: (() => void) | null) => {
+    plannerScrollToTopRef.current = handler;
+  }, []);
+
+  const handleScrollToTop = React.useCallback(() => {
+    if (activeSection === 'bookmarks' && !selectedFolderId) {
+      folderListRef.current?.scrollToOffset({ offset: 0, animated: true });
+      return;
+    }
+    if (activeSection === 'bookmarks' && selectedFolderId) {
+      folderDetailListRef.current?.scrollToOffset({ offset: 0, animated: true });
+      return;
+    }
+    if (activeSection === 'pinned') {
+      pinnedListRef.current?.scrollToOffset({ offset: 0, animated: true });
+      return;
+    }
+    if (activeSection === 'last-read') {
+      lastReadScrollToTopRef.current?.();
+      return;
+    }
+    if (activeSection === 'planner') {
+      plannerScrollToTopRef.current?.();
+    }
+  }, [activeSection, selectedFolderId]);
+
   const showFolderList = activeSection === 'bookmarks' && !selectedFolderId;
   const showFolderDetail = activeSection === 'bookmarks' && Boolean(selectedFolderId);
 
@@ -285,25 +347,10 @@ export default function BookmarksScreen(): React.JSX.Element {
     []
   );
 
-  return (
-    <View className="flex-1 bg-background dark:bg-background-dark">
-      <View className="px-4 pt-4 pb-3">
-        <View className="flex-row items-center justify-between">
-          <Text className="text-xl font-semibold text-foreground dark:text-foreground-dark">
-            Bookmarks
-          </Text>
-          <Pressable
-            onPress={() => setIsSettingsOpen(true)}
-            hitSlop={10}
-            accessibilityRole="button"
-            accessibilityLabel="Open settings"
-            style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
-          >
-            <Settings color={palette.text} size={22} strokeWidth={2.25} />
-          </Pressable>
-        </View>
-
-        <View className="mt-3 gap-2">
+  const renderSectionNavigation = React.useCallback(
+    (): React.JSX.Element => (
+      <View className="pt-3 pb-3">
+        <View className="gap-2">
           {navigationSections.map((section) => {
             const isActive = activeSection === section.id;
             const Icon = section.icon;
@@ -330,11 +377,7 @@ export default function BookmarksScreen(): React.JSX.Element {
                     isActive ? 'bg-on-accent/20' : 'bg-interactive dark:bg-interactive-dark',
                   ].join(' ')}
                 >
-                  <Icon
-                    size={16}
-                    strokeWidth={2.25}
-                    color={isActive ? '#FFFFFF' : palette.muted}
-                  />
+                  <Icon size={16} strokeWidth={2.25} color={isActive ? '#FFFFFF' : palette.muted} />
                 </View>
                 <View className="flex-1 min-w-0">
                   <Text
@@ -361,6 +404,36 @@ export default function BookmarksScreen(): React.JSX.Element {
           })}
         </View>
       </View>
+    ),
+    [activeSection, navigationSections, palette.muted]
+  );
+
+  return (
+    <View className="flex-1 bg-background dark:bg-background-dark">
+      <Stack.Screen
+        options={{
+          headerRight: () => (
+            <Pressable
+              onPress={handleScrollToTop}
+              hitSlop={10}
+              accessibilityRole="button"
+              accessibilityLabel="Scroll to section cards"
+            >
+              {({ pressed }) => (
+                <ChevronUp
+                  color={palette.text}
+                  size={22}
+                  strokeWidth={2.25}
+                  style={{
+                    marginRight: 12,
+                    opacity: pressed ? 0.5 : 1,
+                  }}
+                />
+              )}
+            </Pressable>
+          ),
+        }}
+      />
 
       {!isHydrated ? (
         <View className="flex-1 items-center justify-center">
@@ -369,34 +442,39 @@ export default function BookmarksScreen(): React.JSX.Element {
         </View>
       ) : showFolderList ? (
         <FlashList
+          key={folderGridColumns}
+          ref={folderListRef}
           data={sortedFolders}
           keyExtractor={(item) => item.id}
           contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}
-          ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
+          numColumns={folderGridColumns}
           ListHeaderComponent={
-            <View className="pt-2 pb-3">
-              <View className="mb-3 flex-row items-center justify-between">
-                <View className="flex-row items-center gap-3">
-                  <View className="h-9 w-9 rounded-xl bg-accent items-center justify-center">
-                    <BookmarkIcon size={20} strokeWidth={2.25} color="#FFFFFF" />
+            <View>
+              {renderSectionNavigation()}
+              <View className="pt-2 pb-3">
+                <View className="mb-3 flex-row items-center justify-between">
+                  <View className="flex-row items-center gap-3">
+                    <View className="h-9 w-9 rounded-xl bg-accent items-center justify-center">
+                      <BookmarkIcon size={20} strokeWidth={2.25} color="#FFFFFF" />
+                    </View>
+                    <View>
+                      <Text className="text-lg font-bold text-foreground dark:text-foreground-dark">
+                        All Bookmarks
+                      </Text>
+                      <Text className="text-xs text-muted dark:text-muted-dark">Manage folders</Text>
+                    </View>
                   </View>
-                  <View>
-                    <Text className="text-lg font-bold text-foreground dark:text-foreground-dark">
-                      All Bookmarks
-                    </Text>
-                    <Text className="text-xs text-muted dark:text-muted-dark">Manage folders</Text>
-                  </View>
-                </View>
 
-                <Pressable
-                  onPress={openCreateFolderModal}
-                  accessibilityRole="button"
-                  accessibilityLabel="Create Folder"
-                  className="h-10 w-10 items-center justify-center rounded-xl bg-accent"
-                  style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
-                >
-                  <Plus size={20} strokeWidth={2.25} color="#FFFFFF" />
-                </Pressable>
+                  <Pressable
+                    onPress={openCreateFolderModal}
+                    accessibilityRole="button"
+                    accessibilityLabel="Create Folder"
+                    className="h-10 w-10 items-center justify-center rounded-xl bg-accent"
+                    style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
+                  >
+                    <Plus size={20} strokeWidth={2.25} color="#FFFFFF" />
+                  </Pressable>
+                </View>
               </View>
             </View>
           }
@@ -414,75 +492,86 @@ export default function BookmarksScreen(): React.JSX.Element {
               </Text>
             </View>
           }
-          renderItem={({ item: folder }) => (
-            <Pressable
-              onPress={() => {
-                setSelectedFolderId(folder.id);
-              }}
-              accessibilityRole="button"
-              accessibilityLabel={folder.name}
-              className="rounded-xl border border-border dark:border-border-dark bg-surface dark:bg-surface-dark px-4 py-4"
-              style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
-            >
-              <Text className="text-base font-semibold text-foreground dark:text-foreground-dark">
-                {folder.name}
-              </Text>
-              <Text className="mt-1 text-sm text-muted dark:text-muted-dark">
-                {folder.bookmarks.length} {folder.bookmarks.length === 1 ? 'Verse' : 'Verses'}
-              </Text>
-            </Pressable>
-          )}
+          renderItem={({ item: folder, index }) => {
+            const gap = 4;
+            const isLastInRow =
+              folderGridColumns === 1 ? true : (index + 1) % folderGridColumns === 0;
+            const lastRowSize = sortedFolders.length % folderGridColumns || folderGridColumns;
+            const lastRowStartIndex = Math.max(0, sortedFolders.length - lastRowSize);
+            const isInLastRow = index >= lastRowStartIndex;
+
+            return (
+              <View
+                style={{
+                  flex: 1,
+                  minHeight: 152,
+                  marginBottom: isInLastRow ? 0 : gap,
+                  marginRight: isLastInRow ? 0 : gap,
+                }}
+              >
+                <BookmarkFolderCard
+                  folder={folder}
+                  onPress={() => setSelectedFolderId(folder.id)}
+                  onOpenOptions={() => openFolderActionsSheet(folder)}
+                />
+              </View>
+            );
+          }}
         />
       ) : showFolderDetail && selectedFolder ? (
         <FlashList
+          ref={folderDetailListRef}
           data={selectedFolder.bookmarks}
           keyExtractor={(item) => `${item.verseId}-${item.createdAt}`}
           contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}
           ListHeaderComponent={
-            <View className="pt-2 pb-3">
-              <Pressable
-                onPress={() => setSelectedFolderId(null)}
-                accessibilityRole="button"
-                accessibilityLabel="Back"
-                className="self-start rounded-lg bg-interactive dark:bg-interactive-dark px-3 py-2"
-                style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
-              >
-                <Text className="text-sm font-semibold text-foreground dark:text-foreground-dark">
-                  Back
-                </Text>
-              </Pressable>
-
-              <View className="mt-3 flex-row items-center justify-between gap-3">
-                <Text
-                  numberOfLines={2}
-                  className="flex-1 text-lg font-bold text-foreground dark:text-foreground-dark"
+            <View>
+              {renderSectionNavigation()}
+              <View className="pt-2 pb-3">
+                <Pressable
+                  onPress={() => setSelectedFolderId(null)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Back"
+                  className="self-start rounded-lg bg-interactive dark:bg-interactive-dark px-3 py-2"
+                  style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
                 >
-                  {selectedFolder.name}
-                </Text>
+                  <Text className="text-sm font-semibold text-foreground dark:text-foreground-dark">
+                    Back
+                  </Text>
+                </Pressable>
 
-                <View className="flex-row items-center gap-2">
-                  <Pressable
-                    onPress={() => openEditFolderModal(selectedFolder)}
-                    accessibilityRole="button"
-                    accessibilityLabel="Edit Folder"
-                    className="h-10 w-10 items-center justify-center rounded-xl bg-interactive dark:bg-interactive-dark"
-                    style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
+                <View className="mt-3 flex-row items-center justify-between gap-3">
+                  <Text
+                    numberOfLines={2}
+                    className="flex-1 text-lg font-bold text-foreground dark:text-foreground-dark"
                   >
-                    <SlidersHorizontal size={18} strokeWidth={2.25} color={palette.muted} />
-                  </Pressable>
-                  <Pressable
-                    onPress={() => openDeleteFolderModal(selectedFolder)}
-                    accessibilityRole="button"
-                    accessibilityLabel="Delete Folder"
-                    className="h-10 w-10 items-center justify-center rounded-xl bg-error/10 border border-error/20"
-                    style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
-                  >
-                    <Trash2
-                      size={18}
-                      strokeWidth={2.25}
-                      color={isDark ? '#F87171' : '#DC2626'}
-                    />
-                  </Pressable>
+                    {selectedFolder.name}
+                  </Text>
+
+                  <View className="flex-row items-center gap-2">
+                    <Pressable
+                      onPress={() => openEditFolderModal(selectedFolder)}
+                      accessibilityRole="button"
+                      accessibilityLabel="Edit Folder"
+                      className="h-10 w-10 items-center justify-center rounded-xl bg-interactive dark:bg-interactive-dark"
+                      style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
+                    >
+                      <SlidersHorizontal size={18} strokeWidth={2.25} color={palette.muted} />
+                    </Pressable>
+                    <Pressable
+                      onPress={() => openDeleteFolderModal(selectedFolder)}
+                      accessibilityRole="button"
+                      accessibilityLabel="Delete Folder"
+                      className="h-10 w-10 items-center justify-center rounded-xl bg-error/10 border border-error/20"
+                      style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
+                    >
+                      <Trash2
+                        size={18}
+                        strokeWidth={2.25}
+                        color={isDark ? '#F87171' : '#DC2626'}
+                      />
+                    </Pressable>
+                  </View>
                 </View>
               </View>
             </View>
@@ -518,22 +607,33 @@ export default function BookmarksScreen(): React.JSX.Element {
             );
           }}
         />
+      ) : activeSection === 'last-read' ? (
+        <LastReadSection
+          lastRead={lastRead}
+          onRemove={removeLastRead}
+          topContent={renderSectionNavigation()}
+          registerScrollToTop={registerLastReadScrollToTop}
+        />
       ) : activeSection === 'pinned' ? (
         <FlashList
+          ref={pinnedListRef}
           data={pinnedVerses}
           keyExtractor={(item) => `pinned-${item.verseId}-${item.createdAt}`}
           contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}
           ListHeaderComponent={
-            <View className="pt-2 pb-3">
-              <View className="mb-3 flex-row items-center gap-3">
-                <View className="h-9 w-9 rounded-xl bg-accent items-center justify-center">
-                  <Pin size={20} strokeWidth={2.25} color="#FFFFFF" />
-                </View>
-                <View>
-                  <Text className="text-lg font-bold text-foreground dark:text-foreground-dark">
-                    Pinned Verses
-                  </Text>
-                  <Text className="text-xs text-muted dark:text-muted-dark">Quick access</Text>
+            <View>
+              {renderSectionNavigation()}
+              <View className="pt-2 pb-3">
+                <View className="mb-3 flex-row items-center gap-3">
+                  <View className="h-9 w-9 rounded-xl bg-accent items-center justify-center">
+                    <Pin size={20} strokeWidth={2.25} color="#FFFFFF" />
+                  </View>
+                  <View>
+                    <Text className="text-lg font-bold text-foreground dark:text-foreground-dark">
+                      Pinned Verses
+                    </Text>
+                    <Text className="text-xs text-muted dark:text-muted-dark">Quick access</Text>
+                  </View>
                 </View>
               </View>
             </View>
@@ -583,15 +683,20 @@ export default function BookmarksScreen(): React.JSX.Element {
           planner={planner}
           onCreatePlan={handleCreatePlannerPlan}
           onDeletePlan={handleDeletePlannerPlan}
+          topContent={renderSectionNavigation()}
+          registerScrollToTop={registerPlannerScrollToTop}
         />
       ) : (
-        <View className="flex-1 items-center justify-center px-6">
-          <Text className="text-lg font-semibold text-foreground dark:text-foreground-dark">
-            Coming soon
-          </Text>
-          <Text className="mt-2 text-center text-sm text-muted dark:text-muted-dark">
-            This section will be added next.
-          </Text>
+        <View className="flex-1 px-4">
+          {renderSectionNavigation()}
+          <View className="flex-1 items-center justify-center px-6">
+            <Text className="text-lg font-semibold text-foreground dark:text-foreground-dark">
+              Coming soon
+            </Text>
+            <Text className="mt-2 text-center text-sm text-muted dark:text-muted-dark">
+              This section will be added next.
+            </Text>
+          </View>
         </View>
       )}
 
@@ -609,12 +714,6 @@ export default function BookmarksScreen(): React.JSX.Element {
         onShare={activeVerse ? handleShare : undefined}
       />
 
-      <SettingsSidebar
-        isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
-        pageType="bookmarks"
-      />
-
       <FolderSettingsModal
         isOpen={isFolderSettingsOpen}
         onClose={closeFolderSettingsModal}
@@ -628,6 +727,24 @@ export default function BookmarksScreen(): React.JSX.Element {
         folder={folderForDelete}
         onConfirmDelete={handleConfirmDeleteFolder}
       />
+
+      {folderForActions ? (
+        <FolderActionsSheet
+          isOpen={isFolderActionsOpen}
+          onClose={closeFolderActionsSheet}
+          folderName={folderForActions.name}
+          onEdit={() => {
+            const folder = folderForActions;
+            closeFolderActionsSheet();
+            setTimeout(() => openEditFolderModal(folder), 0);
+          }}
+          onDelete={() => {
+            const folder = folderForActions;
+            closeFolderActionsSheet();
+            setTimeout(() => openDeleteFolderModal(folder), 0);
+          }}
+        />
+      ) : null}
 
       <CreatePlannerModal isOpen={isCreatePlannerOpen} onClose={() => setIsCreatePlannerOpen(false)} />
 

@@ -22,6 +22,35 @@ export interface Bookmark {
 }
 
 /**
+ * Metadata describing the most recent verse interaction within a surah.
+ * Stored by surah id in storage to power the "Recent" experience.
+ *
+ * Mirrored from the web app's `types/bookmark.ts` for UI/UX parity.
+ */
+export interface LastReadEntry {
+  /** Last visited ayah number within the surah (1-indexed). */
+  verseNumber: number;
+  /** Timestamp (ms since epoch) of when the visit occurred. */
+  updatedAt: number;
+  /** Verse key in `{surah}:{ayah}` format for precise lookups. */
+  verseKey?: string;
+  /** Global verse id from the API for legacy compatibility. */
+  globalVerseId?: number;
+  /**
+   * Legacy storage field (previously stored as per-surah verse number or global verse id).
+   * Retained for migration purposes.
+   */
+  verseId?: number;
+}
+
+/**
+ * Map of surah id -> last read metadata.
+ *
+ * Mirrored from the web app's `types/bookmark.ts` for UI/UX parity.
+ */
+export type LastReadMap = Record<string, LastReadEntry>;
+
+/**
  * A collection of bookmarks grouped under a user-defined folder.
  */
 export interface Folder {
