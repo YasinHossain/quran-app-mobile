@@ -51,7 +51,7 @@ export function BookmarkFolderCard({
     <View
       style={{
         width: '100%',
-        height: 140,
+        height: 110,
       }}
     >
       <Pressable
@@ -71,7 +71,7 @@ export function BookmarkFolderCard({
             justifyContent: 'space-between',
             paddingHorizontal: 16,
             paddingTop: 12,
-            paddingBottom: 16,
+            paddingBottom: 10,
           }}
         >
           <View
