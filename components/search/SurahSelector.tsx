@@ -202,16 +202,17 @@ export function SurahSelector({
                                     shadowOpacity: 0.12,
                                     shadowRadius: 20,
                                     elevation: 24,
-                                    maxHeight: 280,
+                                    maxHeight: 380,
                                     overflow: 'hidden',
                                 }}
                             >
-                                <Pressable onPress={(e) => e.stopPropagation()}>
+                                <View onStartShouldSetResponder={() => true}>
                                     <ScrollView
                                         keyboardShouldPersistTaps="always"
                                         nestedScrollEnabled
-                                        onScrollBeginDrag={() => Keyboard.dismiss()}
+                                        onTouchStart={() => Keyboard.dismiss()}
                                         showsVerticalScrollIndicator
+                                        contentContainerStyle={{ paddingVertical: 8 }}
                                     >
                                         {filteredOptions.length === 0 ? (
                                             <View style={{ paddingHorizontal: 16, paddingVertical: 24 }}>
@@ -224,52 +225,37 @@ export function SurahSelector({
                                                 const isSelected = option.value === selectedValue;
                                                 const isLast = index === filteredOptions.length - 1;
                                                 return (
-                                                    <Pressable
+                                                    <View
                                                         key={option.value}
-                                                        onPress={() => handleSelect(option.value)}
-                                                        style={({ pressed }) => ({
+                                                        style={{
                                                             paddingHorizontal: 16,
-                                                            paddingVertical: 14,
-                                                            flexDirection: 'row',
-                                                            alignItems: 'center',
-                                                            gap: 10,
-                                                            backgroundColor: pressed
-                                                                ? (isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)')
-                                                                : isSelected
-                                                                    ? (isDark ? 'rgba(79, 156, 141, 0.1)' : 'rgba(79, 156, 141, 0.06)')
-                                                                    : 'transparent',
-                                                            borderBottomWidth: isLast ? 0 : 0.5,
-                                                            borderBottomColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.04)',
-                                                        })}
+                                                            paddingVertical: 12,
+                                                            backgroundColor: isSelected
+                                                                ? (isDark ? 'rgba(79, 156, 141, 0.15)' : 'rgba(79, 156, 141, 0.08)')
+                                                                : 'transparent',
+                                                        }}
                                                     >
-                                                        {isSelected && (
-                                                            <View
-                                                                style={{
-                                                                    width: 6,
-                                                                    height: 6,
-                                                                    borderRadius: 3,
-                                                                    backgroundColor: palette.tint,
-                                                                }}
-                                                            />
-                                                        )}
-                                                        <Text
-                                                            numberOfLines={1}
-                                                            style={{
-                                                                flex: 1,
-                                                                fontSize: 15,
-                                                                color: isSelected ? palette.tint : (isDark ? '#e8e8e8' : '#2a2a3e'),
-                                                                fontWeight: isSelected ? '600' : '400',
-                                                                marginLeft: isSelected ? 0 : 16,
-                                                            }}
+                                                        <Pressable
+                                                            onPress={() => handleSelect(option.value)}
                                                         >
-                                                            {option.label}
-                                                        </Text>
-                                                    </Pressable>
+                                                            <Text
+                                                                numberOfLines={1}
+                                                                style={{
+                                                                    fontSize: 15,
+                                                                    lineHeight: 22,
+                                                                    color: isSelected ? palette.tint : (isDark ? '#ffffff' : '#1a1a2e'),
+                                                                    fontWeight: isSelected ? '600' : '400',
+                                                                }}
+                                                            >
+                                                                {option.label}
+                                                            </Text>
+                                                        </Pressable>
+                                                    </View>
                                                 );
                                             })
                                         )}
                                     </ScrollView>
-                                </Pressable>
+                                </View>
                             </View>
                         </>
                     )}

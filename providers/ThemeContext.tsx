@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { useColorScheme as useSystemColorScheme } from 'react-native';
+import { colorScheme } from 'nativewind';
 
 import { getItem, setItem } from '@/lib/storage/appStorage';
 
@@ -21,6 +22,10 @@ const THEME_STORAGE_KEY = 'quranAppThemePreference';
 export function AppThemeProvider({ children }: { children: React.ReactNode }): React.JSX.Element {
   const systemScheme = (useSystemColorScheme() ?? 'light') as ResolvedTheme;
   const [preference, setPreferenceState] = useState<ThemePreference>('system');
+
+  useEffect(() => {
+    colorScheme.set(preference);
+  }, [preference]);
 
   useEffect(() => {
     let cancelled = false;
@@ -71,4 +76,3 @@ export function useAppTheme(): ThemeContextType {
   if (!ctx) throw new Error('useAppTheme must be used within AppThemeProvider');
   return ctx;
 }
-
