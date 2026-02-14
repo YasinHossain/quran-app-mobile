@@ -1,13 +1,15 @@
 import React from 'react';
 
 import type { SurahHeaderChapter } from '@/components/surah/SurahHeaderCard';
+import { loadChaptersFromStorage } from '@/lib/storage/chaptersStorage';
+import { container } from '@/src/core/infrastructure/di/container';
 
 type ApiChapterResponse = {
   chapter: SurahHeaderChapter;
 };
 
 export type SurahVerse = {
-  id: number;
+  id?: number;
   verse_number: number;
   verse_key: string;
   text_uthmani?: string;
@@ -57,6 +59,43 @@ function buildTranslationTexts(
     .filter((text) => text.length > 0);
 }
 
+function isNetworkError(error: unknown): boolean {
+  if (!error) return false;
+  const message = error instanceof Error ? error.message : String(error);
+  const normalized = message.trim().toLowerCase();
+  if (!normalized) return false;
+
+  return (
+    normalized.includes('network request failed') ||
+    normalized.includes('failed to fetch') ||
+    normalized.includes('the internet connection appears to be offline') ||
+    normalized.includes('networkerror')
+  );
+}
+
+async function areTranslationsInstalled(translationIds: number[]): Promise<boolean> {
+  const normalized = Array.from(
+    new Set(
+      (translationIds ?? [])
+        .map((id) => (Number.isFinite(id) ? Math.trunc(id) : 0))
+        .filter((id) => id > 0)
+    )
+  );
+
+  if (normalized.length === 0) return false;
+
+  const items = await container.getDownloadIndexRepository().list();
+  const installed = new Set<number>();
+
+  for (const item of items) {
+    if (item.content.kind !== 'translation') continue;
+    if (item.status !== 'installed') continue;
+    installed.add(item.content.translationId);
+  }
+
+  return normalized.every((id) => installed.has(id));
+}
+
 export function useSurahVerses({
   chapterNumber,
   translationIds,
@@ -72,6 +111,7 @@ export function useSurahVerses({
   isRefreshing: boolean;
   isLoadingMore: boolean;
   errorMessage: string | null;
+  offlineNotInstalled: boolean;
   refresh: () => void;
   retry: () => void;
   loadMore: () => void;
@@ -82,14 +122,30 @@ export function useSurahVerses({
   const [isRefreshing, setIsRefreshing] = React.useState(false);
   const [isLoadingMore, setIsLoadingMore] = React.useState(false);
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
+  const [offlineNotInstalled, setOfflineNotInstalled] = React.useState(false);
 
   const pageRef = React.useRef(1);
   const totalPagesRef = React.useRef(1);
   const isLoadingMoreRef = React.useRef(false);
   const requestTokenRef = React.useRef(0);
+  const dataSourceRef = React.useRef<'network' | 'offline'>('network');
 
   const resolvedTranslationIds = React.useMemo(
-    () => translationIds.filter((id) => Number.isFinite(id) && id > 0),
+    () => {
+      const ordered: number[] = [];
+      const seen = new Set<number>();
+
+      for (const id of translationIds ?? []) {
+        if (!Number.isFinite(id)) continue;
+        const normalized = Math.trunc(id);
+        if (normalized <= 0) continue;
+        if (seen.has(normalized)) continue;
+        seen.add(normalized);
+        ordered.push(normalized);
+      }
+
+      return ordered;
+    },
     [translationIds]
   );
 
@@ -102,15 +158,68 @@ export function useSurahVerses({
 
       const token = ++requestTokenRef.current;
       setErrorMessage(null);
+      setOfflineNotInstalled(false);
       isLoadingMoreRef.current = false;
       setIsLoadingMore(false);
       pageRef.current = 1;
       totalPagesRef.current = 1;
+      dataSourceRef.current = 'network';
 
       if (mode === 'initial') setIsLoading(true);
       if (mode === 'refresh') setIsRefreshing(true);
 
       try {
+        if (mode === 'initial') {
+          setVerses([]);
+        }
+
+        const [cachedChapter, translationsInstalled] = await Promise.all([
+          loadChaptersFromStorage()
+            .then((chapters) => chapters.find((c) => c.id === chapterNumber) ?? null)
+            .catch(() => null),
+          areTranslationsInstalled(resolvedTranslationIds).catch(() => false),
+        ]);
+
+        if (requestTokenRef.current !== token) return;
+
+        if (cachedChapter) {
+          setChapter(cachedChapter);
+        }
+
+        if (translationsInstalled) {
+          dataSourceRef.current = 'offline';
+          const offlineStore = container.getTranslationOfflineStore();
+          const offlineVerses = await offlineStore.getSurahVersesWithTranslations(
+            chapterNumber,
+            resolvedTranslationIds
+          );
+
+          if (requestTokenRef.current !== token) return;
+
+          setVerses(
+            offlineVerses.map((verse) => {
+              const translations = verse.translations.map((t) => ({
+                resource_id: t.translationId,
+                text: t.text,
+              }));
+
+              return {
+                verse_number: verse.ayahNumber,
+                verse_key: verse.verseKey,
+                text_uthmani: verse.arabicUthmani,
+                translations,
+                translationTexts: buildTranslationTexts(translations, resolvedTranslationIds),
+              };
+            })
+          );
+
+          pageRef.current = 1;
+          totalPagesRef.current = 1;
+          return;
+        }
+
+        dataSourceRef.current = 'network';
+
         const [chapterResponse, versesResponse] = await Promise.all([
           fetch(`https://api.quran.com/api/v4/chapters/${chapterNumber}?language=en`),
           fetch(
@@ -141,6 +250,12 @@ export function useSurahVerses({
         totalPagesRef.current = versesJson.pagination?.total_pages ?? 1;
       } catch (error) {
         if (requestTokenRef.current !== token) return;
+        if (dataSourceRef.current === 'network' && isNetworkError(error)) {
+          setOfflineNotInstalled(true);
+          setErrorMessage(null);
+          return;
+        }
+
         setErrorMessage((error as Error).message);
       } finally {
         if (requestTokenRef.current !== token) return;
@@ -178,6 +293,7 @@ export function useSurahVerses({
 
   const loadMore = React.useCallback(() => {
     if (!Number.isFinite(chapterNumber)) return;
+    if (dataSourceRef.current !== 'network') return;
     if (isLoadingMoreRef.current) return;
     if (isLoading) return;
     if (pageRef.current >= totalPagesRef.current) return;
@@ -235,6 +351,7 @@ export function useSurahVerses({
     isRefreshing,
     isLoadingMore,
     errorMessage,
+    offlineNotInstalled,
     refresh,
     retry,
     loadMore,

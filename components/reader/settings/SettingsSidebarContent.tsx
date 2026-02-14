@@ -1,18 +1,21 @@
-import { ArrowLeft, BookOpenText, Check, Globe, Type, Wand2 } from 'lucide-react-native';
+import { ArrowLeft, BookOpenText, Globe, Type, Wand2 } from 'lucide-react-native';
 import React from 'react';
 import { FlatList, Pressable, Text, View } from 'react-native';
 
 import { TAJWEED_MUSHAF_ID, findMushafOption } from '@/data/mushaf/options';
 import Colors from '@/constants/Colors';
 import { useTafsirResources } from '@/hooks/useTafsirResources';
+import { useTranslationResources } from '@/hooks/useTranslationResources';
 import { useSettings } from '@/providers/SettingsContext';
 import { useAppTheme } from '@/providers/ThemeContext';
 import { MUSHAF_OPTIONS } from '@/data/mushaf/options';
-import type { Tafsir } from '@/src/core/domain/entities/Tafsir';
 
 import { CollapsibleSection } from './CollapsibleSection';
 import { FontSizeSlider } from './FontSizeSlider';
+import { ManageTafsirsPanel } from './ManageTafsirsPanel';
+import { ManageTranslationsPanel } from './ManageTranslationsPanel';
 import { SelectionBox } from './SelectionBox';
+import { capitalizeLanguageName, type ResourceRecord } from './resource-panel/resourcePanel.utils';
 import { SettingsTabToggle, type SettingsTab } from './SettingsTabToggle';
 import { ToggleRow } from './ToggleRow';
 
@@ -25,8 +28,6 @@ type Panel =
   | { type: 'ui-language' }
   | { type: 'mushaf' };
 
-const TRANSLATIONS = [{ id: 20, name: 'Saheeh International' }] as const;
-
 const WORD_LANGUAGES = [
   { code: 'en', name: 'English' },
   { code: 'bn', name: 'Bengali' },
@@ -36,11 +37,6 @@ const WORD_LANGUAGES = [
 ] as const;
 
 const UI_LANGUAGES = WORD_LANGUAGES;
-
-function getTranslationName(id: number | undefined): string {
-  if (!id) return '';
-  return TRANSLATIONS.find((t) => t.id === id)?.name ?? `Translation ${id}`;
-}
 
 function getLanguageName(code: string | undefined): string {
   if (!code) return '';
@@ -86,17 +82,77 @@ export function SettingsSidebarContent({
 
   const previousMushafIdRef = React.useRef<string | undefined>(settings.mushafId);
 
-  const selectedTranslationName = getTranslationName(settings.translationIds?.[0] ?? settings.translationId);
+  const {
+    translations: translationResources,
+    translationsById,
+    isLoading: isTranslationResourcesLoading,
+    errorMessage: translationResourcesError,
+    refresh: refreshTranslationResources,
+  } = useTranslationResources({
+    enabled: activeTab === 'translations' || panel.type === 'translations',
+    language: settings.contentLanguage,
+  });
+
+  const translationRecords = React.useMemo<ResourceRecord[]>(() => {
+    return (translationResources ?? []).map((t) => ({
+      id: t.id,
+      name: t.name,
+      lang: capitalizeLanguageName(t.languageName).trim() || 'Other',
+    }));
+  }, [translationResources]);
+
+  const selectedTranslationName = React.useMemo(() => {
+    const ids = settings.translationIds ?? [];
+    if (ids.length === 0) return '';
+
+    const primaryId = ids[0] ?? settings.translationId;
+    const primaryName = translationsById.get(primaryId)?.name ?? `Translation ${primaryId}`;
+
+    const extraCount = ids.length - 1;
+    if (extraCount > 0) {
+      return `${primaryName}, +${extraCount}`;
+    }
+
+    return primaryName;
+  }, [settings.translationId, settings.translationIds, translationsById]);
   const selectedWordLanguageName = getLanguageName(settings.wordLang);
   const selectedArabicFontName =
     arabicFonts.find((f) => f.value === settings.arabicFontFace)?.name ?? 'KFGQ';
   const selectedUiLanguageName = getUiLanguageName(settings.contentLanguage);
   const selectedMushafName = findMushafOption(settings.mushafId)?.name ?? 'King Fahad Complex V1';
 
-  const { tafsirs, tafsirById, isLoading: isTafsirResourcesLoading, errorMessage: tafsirResourcesError } =
-    useTafsirResources({
-      enabled: showTafsirSetting || panel.type === 'tafsir',
-    });
+  const {
+    tafsirs,
+    tafsirById,
+    isLoading: isTafsirResourcesLoading,
+    errorMessage: tafsirResourcesError,
+    refresh: refreshTafsirResources,
+  } = useTafsirResources({
+    enabled: showTafsirSetting || panel.type === 'tafsir',
+  });
+
+  const tafsirRecords = React.useMemo<ResourceRecord[]>(() => {
+    return (tafsirs ?? []).map((t) => ({ id: t.id, name: t.displayName, lang: t.formattedLanguage }));
+  }, [tafsirs]);
+
+  const tafsirLanguageSort = React.useMemo(() => {
+    const priorityByLang = new Map<string, number>();
+
+    for (const tafsir of tafsirs ?? []) {
+      const lang = tafsir.formattedLanguage;
+      const priority = tafsir.getLanguagePriority();
+      const existing = priorityByLang.get(lang);
+      if (existing === undefined || priority < existing) {
+        priorityByLang.set(lang, priority);
+      }
+    }
+
+    return (a: string, b: string): number => {
+      const priorityA = priorityByLang.get(a) ?? Number.POSITIVE_INFINITY;
+      const priorityB = priorityByLang.get(b) ?? Number.POSITIVE_INFINITY;
+      return priorityA !== priorityB ? priorityA - priorityB : a.localeCompare(b);
+    };
+  }, [tafsirs]);
 
   const selectedTafsirName = React.useMemo(() => {
     const ids = settings.tafsirIds ?? [];
@@ -129,9 +185,9 @@ export function SettingsSidebarContent({
   if (panel.type !== 'root') {
     const title =
       panel.type === 'translations'
-        ? 'Translations'
+        ? 'Manage Translations'
         : panel.type === 'tafsir'
-          ? 'Tafsir'
+          ? 'Manage Tafsirs'
         : panel.type === 'word-language'
           ? 'Word-by-word Language'
           : panel.type === 'arabic-font'
@@ -158,46 +214,25 @@ export function SettingsSidebarContent({
         </View>
 
         {panel.type === 'translations' ? (
-          <FlatList
-            data={TRANSLATIONS}
-            keyExtractor={(item) => String(item.id)}
-            contentContainerStyle={{ padding: 12, gap: 10 }}
-            renderItem={({ item }) => (
-              <Pressable
-                onPress={() => {
-                  setTranslationIds([item.id]);
-                  setPanel({ type: 'root' });
-                }}
-                className={[
-                  'rounded-xl border px-4 py-3',
-                  'border-border/30 dark:border-border-dark/20',
-                  'bg-interactive dark:bg-interactive-dark',
-                ].join(' ')}
-              >
-                <Text className="text-sm font-semibold text-foreground dark:text-foreground-dark">
-                  {item.name}
-                </Text>
-              </Pressable>
-            )}
+          <ManageTranslationsPanel
+            translations={translationRecords}
+            orderedSelection={settings.translationIds ?? []}
+            onChangeSelection={setTranslationIds}
+            isLoading={isTranslationResourcesLoading}
+            errorMessage={translationResourcesError}
+            onRefresh={refreshTranslationResources}
           />
         ) : null}
 
         {panel.type === 'tafsir' ? (
-          <TafsirPickerPanel
-            tafsirs={tafsirs}
-            tafsirIds={settings.tafsirIds ?? []}
+          <ManageTafsirsPanel
+            tafsirs={tafsirRecords}
+            orderedSelection={settings.tafsirIds ?? []}
+            onChangeSelection={setTafsirIds}
             isLoading={isTafsirResourcesLoading}
             errorMessage={tafsirResourcesError}
-            onToggle={(id) => {
-              const current = settings.tafsirIds ?? [];
-              const isSelected = current.includes(id);
-              if (isSelected) {
-                setTafsirIds(current.filter((x) => x !== id));
-                return;
-              }
-              if (current.length >= 3) return;
-              setTafsirIds([...current, id]);
-            }}
+            onRefresh={refreshTafsirResources}
+            languageSort={tafsirLanguageSort}
           />
         ) : null}
 
@@ -359,7 +394,7 @@ export function SettingsSidebarContent({
                         <ToggleRow label="Night Mode" value={isDark} onChange={setDarkModeEnabled} />
                         <SelectionBox
                           label="Translations"
-                          value={selectedTranslationName || 'Select'}
+                          value={selectedTranslationName || 'No translation'}
                           onPress={() => setPanel({ type: 'translations' })}
                         />
                         <ToggleRow
@@ -440,103 +475,6 @@ export function SettingsSidebarContent({
           </View>
         )}
       </View>
-    </View>
-  );
-}
-
-function TafsirPickerPanel({
-  tafsirs,
-  tafsirIds,
-  isLoading,
-  errorMessage,
-  onToggle,
-}: {
-  tafsirs: Tafsir[];
-  tafsirIds: number[];
-  isLoading: boolean;
-  errorMessage: string | null;
-  onToggle: (id: number) => void;
-}): React.JSX.Element {
-  const { resolvedTheme } = useAppTheme();
-  const palette = Colors[resolvedTheme];
-
-  const sorted = React.useMemo(() => {
-    return [...tafsirs].sort((a, b) => {
-      const aPriority = a.getLanguagePriority();
-      const bPriority = b.getLanguagePriority();
-      if (aPriority !== bPriority) return aPriority - bPriority;
-      return a.displayName.localeCompare(b.displayName);
-    });
-  }, [tafsirs]);
-
-  const limitReached = tafsirIds.length >= 3;
-
-  if (errorMessage) {
-    return (
-      <View className="p-4">
-        <Text className="text-sm text-error dark:text-error-dark">{errorMessage}</Text>
-      </View>
-    );
-  }
-
-  if (isLoading && sorted.length === 0) {
-    return (
-      <View className="p-4">
-        <Text className="text-sm text-muted dark:text-muted-dark">Loading tafsir…</Text>
-      </View>
-    );
-  }
-
-  return (
-    <View className="flex-1">
-      <View className="px-4 pt-3 pb-2">
-        <Text className="text-xs text-muted dark:text-muted-dark">
-          Selected {tafsirIds.length}/3
-        </Text>
-        {limitReached ? (
-          <Text className="mt-1 text-xs text-muted dark:text-muted-dark">
-            You can select up to 3 tafsirs.
-          </Text>
-        ) : null}
-      </View>
-
-      <FlatList
-        data={sorted}
-        keyExtractor={(item) => String(item.id)}
-        contentContainerStyle={{ padding: 12, gap: 10 }}
-        renderItem={({ item }) => {
-          const isSelected = tafsirIds.includes(item.id);
-          const disabled = !isSelected && limitReached;
-
-          return (
-            <Pressable
-              onPress={() => onToggle(item.id)}
-              disabled={disabled}
-              className={[
-                'rounded-xl border px-4 py-3',
-                'border-border/30 dark:border-border-dark/20',
-                isSelected ? 'bg-accent/10' : 'bg-interactive dark:bg-interactive-dark',
-                disabled ? 'opacity-50' : '',
-              ].join(' ')}
-              style={({ pressed }) => ({ opacity: disabled ? 0.5 : pressed ? 0.9 : 1 })}
-            >
-              <View className="flex-row items-start justify-between gap-3">
-                <View className="flex-1">
-                  <Text className="text-sm font-semibold text-foreground dark:text-foreground-dark">
-                    {item.displayName}
-                  </Text>
-                  <Text className="mt-1 text-xs text-muted dark:text-muted-dark">
-                    {item.formattedLanguage}
-                  </Text>
-                </View>
-                {isSelected ? (
-                  <Check color={palette.tint} size={18} strokeWidth={2.75} />
-                ) : null}
-              </View>
-            </Pressable>
-          );
-        }}
-      />
     </View>
   );
 }

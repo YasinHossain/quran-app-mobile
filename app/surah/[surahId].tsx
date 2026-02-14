@@ -62,8 +62,10 @@ export default function SurahScreen(): React.JSX.Element {
   const { isPinned, setLastRead } = useBookmarks();
   const chapterNumber = surahId ? Number(surahId) : NaN;
   const translationIds = React.useMemo(() => {
-    const ids =
-      settings.translationIds?.length ? settings.translationIds : [settings.translationId ?? 20];
+    // An explicit empty array means "no translations selected" (Arabic-only mode).
+    const ids = Array.isArray(settings.translationIds)
+      ? settings.translationIds
+      : [settings.translationId ?? 20];
     return ids.filter((id) => Number.isFinite(id) && id > 0);
   }, [settings.translationId, settings.translationIds]);
 
@@ -74,6 +76,7 @@ export default function SurahScreen(): React.JSX.Element {
     isRefreshing,
     isLoadingMore,
     errorMessage,
+    offlineNotInstalled,
     refresh,
     retry,
     loadMore,
@@ -148,6 +151,10 @@ export default function SurahScreen(): React.JSX.Element {
     [closeHeaderSearch, router]
   );
 
+  const navigateToDownloads = React.useCallback(() => {
+    router.push('/downloads');
+  }, [router]);
+
   const listExtraData = React.useMemo(
     () => ({
       arabicFontSize: settings.arabicFontSize,
@@ -211,6 +218,8 @@ export default function SurahScreen(): React.JSX.Element {
   const renderVerseItem = React.useCallback(
     ({ item }: { item: SurahVerse }) => {
       const translationTexts = item.translationTexts ?? [];
+      const verseApiId =
+        typeof item.id === 'number' && Number.isFinite(item.id) && item.id > 0 ? item.id : undefined;
 
       return (
         <VerseCard
@@ -224,7 +233,7 @@ export default function SurahScreen(): React.JSX.Element {
           onOpenActions={() =>
             openVerseActions({
               verseKey: item.verse_key,
-              verseApiId: item.id,
+              verseApiId,
               arabicText: item.text_uthmani ?? '',
               translationTexts,
             })
@@ -286,6 +295,11 @@ export default function SurahScreen(): React.JSX.Element {
       const verseNumber = bestItem.verse_number;
       if (!Number.isFinite(verseNumber) || verseNumber <= 0) return;
 
+      const globalVerseId =
+        typeof bestItem.id === 'number' && Number.isFinite(bestItem.id) && bestItem.id > 0
+          ? bestItem.id
+          : undefined;
+
       const key = `${currentSurahId}:${verseNumber}`;
       if (lastReadReportedRef.current === key) return;
       lastReadReportedRef.current = key;
@@ -294,7 +308,7 @@ export default function SurahScreen(): React.JSX.Element {
         String(currentSurahId),
         verseNumber,
         bestItem.verse_key,
-        bestItem.id
+        globalVerseId
       );
     }
   ).current;
@@ -355,9 +369,15 @@ export default function SurahScreen(): React.JSX.Element {
 
   const activeVerseBookmarkMetadata = React.useMemo(() => {
     if (!activeVerse) return undefined;
+    const verseApiId =
+      typeof activeVerse.verseApiId === 'number' &&
+      Number.isFinite(activeVerse.verseApiId) &&
+      activeVerse.verseApiId > 0
+        ? activeVerse.verseApiId
+        : undefined;
     const metadata: Partial<Bookmark> = {
       verseKey: activeVerse.verseKey,
-      ...(typeof activeVerse.verseApiId === 'number' ? { verseApiId: activeVerse.verseApiId } : {}),
+      ...(typeof verseApiId === 'number' ? { verseApiId } : {}),
       ...(activeVerse.arabicText ? { verseText: activeVerse.arabicText } : {}),
       ...(chapter?.name_simple ? { surahName: chapter.name_simple } : {}),
       ...(activeVerse.translationTexts?.[0] ? { translation: activeVerse.translationTexts[0] } : {}),
@@ -434,7 +454,24 @@ export default function SurahScreen(): React.JSX.Element {
           onEndReached={loadMore}
           ListHeaderComponent={chapter ? <SurahHeaderCard chapter={chapter} /> : null}
           ListEmptyComponent={
-            errorMessage ? (
+            offlineNotInstalled ? (
+              <View className="mt-2 gap-3">
+                <Text className="text-sm text-muted dark:text-muted-dark">
+                  You’re offline and this translation isn’t downloaded yet.
+                </Text>
+                <Pressable
+                  onPress={navigateToDownloads}
+                  accessibilityRole="button"
+                  accessibilityLabel="Download translations for offline use"
+                  className="self-start rounded-lg bg-accent px-4 py-2"
+                  style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
+                >
+                  <Text className="text-sm font-semibold text-on-accent">
+                    Download translations for offline use
+                  </Text>
+                </Pressable>
+              </View>
+            ) : errorMessage ? (
               <View className="mt-2 gap-3">
                 <Text className="text-sm text-error dark:text-error-dark">{errorMessage}</Text>
                 <Pressable
@@ -503,7 +540,24 @@ export default function SurahScreen(): React.JSX.Element {
           onEndReached={loadMore}
           ListHeaderComponent={chapter ? <SurahHeaderCard chapter={chapter} /> : null}
           ListEmptyComponent={
-            errorMessage ? (
+            offlineNotInstalled ? (
+              <View className="mt-2 gap-3">
+                <Text className="text-sm text-muted dark:text-muted-dark">
+                  You’re offline and this translation isn’t downloaded yet.
+                </Text>
+                <Pressable
+                  onPress={navigateToDownloads}
+                  accessibilityRole="button"
+                  accessibilityLabel="Download translations for offline use"
+                  className="self-start rounded-lg bg-accent px-4 py-2"
+                  style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
+                >
+                  <Text className="text-sm font-semibold text-on-accent">
+                    Download translations for offline use
+                  </Text>
+                </Pressable>
+              </View>
+            ) : errorMessage ? (
               <View className="mt-2 gap-3">
                 <Text className="text-sm text-error dark:text-error-dark">{errorMessage}</Text>
                 <Pressable
@@ -572,7 +626,9 @@ export default function SurahScreen(): React.JSX.Element {
         isOpen={isBookmarkModalOpen}
         onClose={() => setIsBookmarkModalOpen(false)}
         verseId={
-          typeof activeVerse?.verseApiId === 'number'
+          typeof activeVerse?.verseApiId === 'number' &&
+          Number.isFinite(activeVerse.verseApiId) &&
+          activeVerse.verseApiId > 0
             ? String(activeVerse.verseApiId)
             : (activeVerse?.verseKey ?? '')
         }

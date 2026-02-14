@@ -45,6 +45,11 @@ This document lists reusable UI components currently available in the codebase s
 | `ToggleRow` | Label + switch row for boolean settings. | `components/reader/settings/ToggleRow.tsx` |
 | `FontSizeSlider` | Slider row used for font size controls. | `components/reader/settings/FontSizeSlider.tsx` |
 | `SelectionBox` | Pressable selection row used for “pick one” settings. | `components/reader/settings/SelectionBox.tsx` |
+| `ManageTranslationsPanel` | Web-parity “Manage Translations” panel (search + language tabs + My Selections). | `components/reader/settings/ManageTranslationsPanel.tsx` |
+| `ManageTafsirsPanel` | Web-parity “Manage Tafsirs” panel (search + language tabs + My Selections + limit warning). | `components/reader/settings/ManageTafsirsPanel.tsx` |
+| `ResourceTabs` | Horizontal language tabs with scroll buttons (used by translation/tafsir panels). | `components/reader/settings/resource-panel/ResourceTabs.tsx` |
+| `ResourceItem` | Selectable resource row (used by translation/tafsir panels). | `components/reader/settings/resource-panel/ResourceItem.tsx` |
+| `ReorderableSelectionList` | “My Selections” list (remove + reorder + reset). | `components/reader/settings/resource-panel/ReorderableSelectionList.tsx` |
 
 ## Surah Reader Components
 

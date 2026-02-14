@@ -15,6 +15,7 @@ Assumes the web repo is available at `../quran-app` (used by `npm run sync:web-c
 | Bookmarks | `../quran-app/app/(features)/bookmarks` | `app/(tabs)/bookmarks.tsx` | 90% | Offline-first folders + pinned; folder cards mirror web (glyph + verse preview chips + updated-at + options); Planner cards are grouped like web (multi-surah ranges show one card); Add-to-plan modal implemented; Recent (Last visited) implemented with persisted last-read cards. |
 | Settings | `../quran-app/app/shared/reader/settings` + `../quran-app/app/providers/SettingsContext.tsx` | `app/(tabs)/settings.tsx` | 80% | Core toggles must match; platform-specific system settings entry allowed. |
 | Reader settings sidebar | `../quran-app/app/shared/reader/settings` + `../quran-app/app/providers/SettingsContext.tsx` | `app/surah/[surahId].tsx` | 90% | Must match labels/order; OK to stub unimplemented options. |
+| Translation + tafsir selection panels | `../quran-app/app/(features)/surah/components/panels/translation-panel` + `../quran-app/app/(features)/surah/components/panels/tafsir-panel` | `components/reader/settings/SettingsSidebarContent.tsx` | 90% | Translation and tafsir selection UIs mirror web (search, language tabs, My Selections box with reorder/remove, selection limits). |
 | Verse actions (ellipsis menu) | `../quran-app/app/shared/verse-actions` | `app/surah/[surahId].tsx` | 90% | Keep action list + labels aligned with `actionCreators.ts`; stub behavior OK initially. |
 
 ## Parity Targets

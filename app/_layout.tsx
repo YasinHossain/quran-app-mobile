@@ -12,6 +12,7 @@ import Colors from '@/constants/Colors';
 import { BookmarkProvider } from '@/providers/BookmarkContext';
 import { SettingsProvider } from '@/providers/SettingsContext';
 import { AppThemeProvider, useAppTheme } from '@/providers/ThemeContext';
+import { initializeAppDbAsync } from '@/src/core/infrastructure/db';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -32,6 +33,10 @@ export default function RootLayout() {
     UthmanicHafs1Ver18: require('../assets/fonts/UthmanicHafs1Ver18.ttf'),
     'Scheherazade New': require('../assets/fonts/Scheherazade-New.ttf'),
   });
+
+  useEffect(() => {
+    void initializeAppDbAsync();
+  }, []);
 
   // Expo Router uses Error Boundaries to catch errors in the navigation tree.
   useEffect(() => {

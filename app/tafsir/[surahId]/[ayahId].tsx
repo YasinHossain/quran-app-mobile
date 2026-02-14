@@ -53,8 +53,10 @@ export default function TafsirScreen(): React.JSX.Element {
   const { settings } = useSettings();
   const scrollRef = React.useRef<ScrollView>(null);
   const translationIds = React.useMemo(() => {
-    const ids =
-      settings.translationIds?.length ? settings.translationIds : [settings.translationId ?? 20];
+    // An explicit empty array means "no translations selected" (Arabic-only mode).
+    const ids = Array.isArray(settings.translationIds)
+      ? settings.translationIds
+      : [settings.translationId ?? 20];
     return ids.filter((id) => Number.isFinite(id) && id > 0);
   }, [settings.translationId, settings.translationIds]);
   const translationIdsKey = translationIds.join(',');

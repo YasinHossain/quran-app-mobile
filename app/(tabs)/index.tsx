@@ -5,21 +5,12 @@ import { RevelationType, Surah } from '@/src/core/domain/entities/Surah';
 import { HomeTabToggle, type HomeTab } from '@/components/home/HomeTabToggle';
 import { JuzGrid } from '@/components/home/JuzGrid';
 import { SurahGrid } from '@/components/home/SurahGrid';
+import { useChapters } from '@/hooks/useChapters';
 import juzData from '../../src/data/juz.json';
 
-type ApiChaptersResponse = {
-  chapters: Array<{
-    id: number;
-    name_simple: string;
-    name_arabic: string;
-    translated_name?: { name: string };
-    verses_count: number;
-    revelation_place: 'makkah' | 'madinah';
-    revelation_order?: number;
-  }>;
-};
+import type { Chapter } from '@/types';
 
-const mapChapterToSurah = (chapter: ApiChaptersResponse['chapters'][number]): Surah =>
+const mapChapterToSurah = (chapter: Chapter): Surah =>
   new Surah({
     id: chapter.id,
     name: chapter.name_simple,
@@ -29,41 +20,12 @@ const mapChapterToSurah = (chapter: ApiChaptersResponse['chapters'][number]): Su
     numberOfAyahs: chapter.verses_count,
     revelationType:
       chapter.revelation_place === 'makkah' ? RevelationType.MAKKI : RevelationType.MADANI,
-    revelationOrder: chapter.revelation_order,
   });
 
 export default function ReadScreen(): React.JSX.Element {
   const [activeTab, setActiveTab] = React.useState<HomeTab>('surah');
-  const [surahs, setSurahs] = React.useState<Surah[]>([]);
-  const [isLoading, setIsLoading] = React.useState(true);
-  const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
-
-  React.useEffect(() => {
-    let isMounted = true;
-
-    async function load(): Promise<void> {
-      try {
-        setIsLoading(true);
-        setErrorMessage(null);
-        const response = await fetch('https://api.quran.com/api/v4/chapters?language=en');
-        if (!response.ok) {
-          throw new Error(`Failed to load chapters (${response.status})`);
-        }
-        const json = (await response.json()) as ApiChaptersResponse;
-        const mapped = (json.chapters ?? []).map(mapChapterToSurah);
-        if (isMounted) setSurahs(mapped);
-      } catch (error) {
-        if (isMounted) setErrorMessage((error as Error).message);
-      } finally {
-        if (isMounted) setIsLoading(false);
-      }
-    }
-
-    void load();
-    return () => {
-      isMounted = false;
-    };
-  }, []);
+  const { chapters, isLoading, errorMessage } = useChapters();
+  const surahs = React.useMemo(() => chapters.map(mapChapterToSurah), [chapters]);
 
   return (
     <View className="flex-1 bg-background dark:bg-background-dark">
@@ -78,9 +40,9 @@ export default function ReadScreen(): React.JSX.Element {
 
       <View className="flex-1 px-4">
         {activeTab === 'surah' ? (
-          errorMessage ? (
+          surahs.length === 0 && errorMessage ? (
             <Text className="mt-4 text-sm text-error dark:text-error-dark">{errorMessage}</Text>
-          ) : isLoading ? (
+          ) : surahs.length === 0 && isLoading ? (
             <Text className="mt-4 text-sm text-muted dark:text-muted-dark">Loading…</Text>
           ) : (
             <SurahGrid surahs={surahs} />
