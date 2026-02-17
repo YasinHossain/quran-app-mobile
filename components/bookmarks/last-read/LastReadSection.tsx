@@ -12,6 +12,7 @@ import {
 
 import Colors from '@/constants/Colors';
 import { useChapters } from '@/hooks/useChapters';
+import { useLayoutMetrics } from '@/providers/LayoutMetricsContext';
 import { useAppTheme } from '@/providers/ThemeContext';
 
 import { LastReadCard } from './LastReadCard';
@@ -54,8 +55,13 @@ export function LastReadSection({
   const { resolvedTheme } = useAppTheme();
   const palette = Colors[resolvedTheme];
   const { width } = useWindowDimensions();
+  const { audioPlayerBarHeight } = useLayoutMetrics();
   const numColumns = React.useMemo(() => getNumColumns(width), [width]);
   const listRef = React.useRef<FlatList<NormalizedLastReadEntry> | null>(null);
+  const contentContainerStyle = React.useMemo(
+    () => ({ paddingHorizontal: 16, paddingBottom: 24 + audioPlayerBarHeight }),
+    [audioPlayerBarHeight]
+  );
 
   const { chapters, isLoading: isChaptersLoading, errorMessage: chaptersError } = useChapters();
 
@@ -87,7 +93,7 @@ export function LastReadSection({
       onScrollEndDrag={onScrollEndDrag}
       onMomentumScrollEnd={onMomentumScrollEnd}
       scrollEventThrottle={scrollEventThrottle}
-      contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}
+      contentContainerStyle={contentContainerStyle}
       ListHeaderComponent={
         <View>
           {topContent}

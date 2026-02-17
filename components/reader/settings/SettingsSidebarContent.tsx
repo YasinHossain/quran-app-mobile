@@ -197,7 +197,7 @@ export function SettingsSidebarContent({
               : 'Mushaf';
 
     return (
-      <View className="flex-1">
+      <View className="flex-1 bg-background dark:bg-background-dark">
         <View className="flex-row items-center gap-3 border-b border-border/30 dark:border-border-dark/20 px-4 py-3">
           <Pressable onPress={goBack} style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}>
             <ArrowLeft color={palette.text} size={20} strokeWidth={2.25} />

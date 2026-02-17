@@ -52,8 +52,25 @@ function normalizeSettings(raw: RawSettings, defaults: Settings): Settings {
     delete mutable.tafsirId;
   }
 
+  const normalizeIdList = (value: unknown): number[] => {
+    const input = Array.isArray(value) ? value : [];
+    const seen = new Set<number>();
+    const normalized: number[] = [];
+
+    for (const rawId of input) {
+      if (typeof rawId !== 'number' || !Number.isFinite(rawId)) continue;
+      const id = Math.trunc(rawId);
+      if (id <= 0) continue;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      normalized.push(id);
+    }
+
+    return normalized;
+  };
+
   const translationIds = Array.isArray(mutable.translationIds)
-    ? mutable.translationIds.filter((id): id is number => typeof id === 'number')
+    ? normalizeIdList(mutable.translationIds)
     : [mutable.translationId ?? defaults.translationId].filter(
         (id): id is number => typeof id === 'number'
       );
@@ -63,7 +80,7 @@ function normalizeSettings(raw: RawSettings, defaults: Settings): Settings {
     : translationIds[0] ?? defaults.translationId;
 
   const tafsirIds = Array.isArray(mutable.tafsirIds) && mutable.tafsirIds.length > 0
-    ? mutable.tafsirIds.filter((id): id is number => typeof id === 'number')
+    ? normalizeIdList(mutable.tafsirIds)
     : defaults.tafsirIds;
 
   const merged = { ...defaults, ...mutable } as Settings;
@@ -85,4 +102,3 @@ export async function loadSettings(defaults: Settings = defaultSettings): Promis
 export async function saveSettings(settings: Settings): Promise<void> {
   await setItem(SETTINGS_KEY, JSON.stringify(settings));
 }
-

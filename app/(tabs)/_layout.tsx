@@ -1,10 +1,12 @@
 import React from 'react';
 import { Bookmark, BookOpen, Info, Search, Settings } from 'lucide-react-native';
 import { Link, Tabs } from 'expo-router';
-import { Pressable } from 'react-native';
+import { Pressable, View, type LayoutChangeEvent } from 'react-native';
+import { BottomTabBar, type BottomTabBarProps } from '@react-navigation/bottom-tabs';
 
 import Colors from '@/constants/Colors';
 import { useClientOnlyValue } from '@/components/useClientOnlyValue';
+import { useLayoutMetrics } from '@/providers/LayoutMetricsContext';
 import { useAppTheme } from '@/providers/ThemeContext';
 
 function TabBarIcon({
@@ -17,12 +19,30 @@ function TabBarIcon({
   return <Icon color={color} size={24} strokeWidth={2.25} />;
 }
 
+function ReportingTabBar(props: BottomTabBarProps): React.JSX.Element {
+  const { setBottomTabBarHeight } = useLayoutMetrics();
+
+  const handleLayout = React.useCallback(
+    (event: LayoutChangeEvent) => {
+      setBottomTabBarHeight(event.nativeEvent.layout.height);
+    },
+    [setBottomTabBarHeight]
+  );
+
+  return (
+    <View onLayout={handleLayout}>
+      <BottomTabBar {...props} />
+    </View>
+  );
+}
+
 export default function TabLayout() {
   const { resolvedTheme } = useAppTheme();
   const palette = Colors[resolvedTheme];
 
   return (
     <Tabs
+      tabBar={(props) => <ReportingTabBar {...props} />}
       screenOptions={{
         tabBarActiveTintColor: palette.tint,
         tabBarInactiveTintColor: palette.tabIconDefault,

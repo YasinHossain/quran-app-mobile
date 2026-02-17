@@ -1,6 +1,6 @@
 import { GripVertical, RotateCcw, X } from 'lucide-react-native';
 import React from 'react';
-import { Animated, PanResponder, Pressable, Text, View } from 'react-native';
+import { Animated, LayoutAnimation, Platform, Pressable, Text, UIManager, View } from 'react-native';
 
 import Colors from '@/constants/Colors';
 import { useAppTheme } from '@/providers/ThemeContext';
@@ -25,24 +25,50 @@ const VARIANT_STYLES: Record<SelectionListVariant, VariantStyles> = {
     containerClassName: 'rounded-lg p-3 bg-surface dark:bg-surface-dark border border-border dark:border-border-dark',
     emptyTextClassName: 'text-center text-sm py-4 text-muted dark:text-muted-dark font-medium',
     itemRowClassName:
-      'flex-row items-center justify-between p-3 rounded-lg bg-background dark:bg-background-dark border border-border dark:border-border-dark',
+      'h-[54px] flex-row items-center justify-between p-3 rounded-lg bg-background dark:bg-background-dark border border-border/30 dark:border-border-dark/20',
     removeButtonClassName:
-      'p-1.5 rounded-full flex-shrink-0 ml-2',
+      'p-1.5 rounded-full flex-shrink-0 ml-1',
   },
   tafsir: {
     headerClassName: 'flex-row items-center justify-between px-1 mb-2',
     maxBadgeClassName: 'text-xs px-2 py-1 rounded-full bg-accent/10 text-accent dark:text-accent-dark',
-    containerClassName: 'rounded-lg p-2 bg-background dark:bg-background-dark border border-border dark:border-border-dark',
+    containerClassName: 'rounded-lg p-2 bg-surface dark:bg-surface-dark border border-border dark:border-border-dark',
     emptyTextClassName: 'text-center text-sm py-2 text-muted dark:text-muted-dark',
     itemRowClassName:
-      'flex-row items-center justify-between p-2 rounded-lg bg-background dark:bg-background-dark border border-border dark:border-border-dark',
+      'h-[46px] flex-row items-center justify-between p-2 rounded-lg bg-background dark:bg-background-dark border border-border/30 dark:border-border-dark/20',
     removeButtonClassName:
-      'p-1 rounded-full flex-shrink-0 ml-2',
+      'p-1 rounded-full flex-shrink-0 ml-1',
   },
 };
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
+}
+
+let layoutAnimationEnabled = false;
+
+function ensureLayoutAnimationEnabled(): void {
+  if (layoutAnimationEnabled) return;
+  layoutAnimationEnabled = true;
+  if (Platform.OS !== 'android') return;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (UIManager as any).setLayoutAnimationEnabledExperimental?.(true);
+}
+
+function normalizeOrderedSelection(ids: number[]): number[] {
+  const normalized: number[] = [];
+  const seen = new Set<number>();
+
+  for (const raw of ids ?? []) {
+    if (!Number.isFinite(raw)) continue;
+    const id = Math.trunc(raw);
+    if (id <= 0) continue;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    normalized.push(id);
+  }
+
+  return normalized;
 }
 
 export function ReorderableSelectionList({
@@ -55,6 +81,7 @@ export function ReorderableSelectionList({
   emptyText,
   variant,
   removeAccessibilityLabel,
+  onDragStateChange,
 }: {
   orderedSelection: number[];
   resources: BasicResource[];
@@ -65,12 +92,17 @@ export function ReorderableSelectionList({
   emptyText: string;
   variant: SelectionListVariant;
   removeAccessibilityLabel?: string;
+  onDragStateChange?: (dragging: boolean) => void;
 }): React.JSX.Element {
   const { resolvedTheme } = useAppTheme();
   const palette = Colors[resolvedTheme];
 
+  React.useEffect(() => {
+    ensureLayoutAnimationEnabled();
+  }, []);
+
   const styles = VARIANT_STYLES[variant];
-  const [localOrder, setLocalOrder] = React.useState(orderedSelection);
+  const [localOrder, setLocalOrder] = React.useState(() => normalizeOrderedSelection(orderedSelection));
   const localOrderRef = React.useRef(localOrder);
   const draggingIdRef = React.useRef<number | null>(null);
   const dragIndexRef = React.useRef(-1);
@@ -81,7 +113,7 @@ export function ReorderableSelectionList({
   const itemHeight = variant === 'translation' ? 54 : 46;
 
   React.useEffect(() => {
-    setLocalOrder(orderedSelection);
+    setLocalOrder(normalizeOrderedSelection(orderedSelection));
   }, [orderedSelection]);
 
   React.useEffect(() => {
@@ -101,6 +133,8 @@ export function ReorderableSelectionList({
   const beginDrag = React.useCallback(
     (id: number): void => {
       if (!canReorder) return;
+      if (draggingIdRef.current === id) return;
+      if (draggingIdRef.current !== null) return;
       const current = localOrderRef.current;
       const idx = current.indexOf(id);
       if (idx === -1) return;
@@ -110,8 +144,9 @@ export function ReorderableSelectionList({
       reorderOffsetRef.current = 0;
       dragTranslateY.setValue(0);
       setDraggingId(id);
+      onDragStateChange?.(true);
     },
-    [canReorder, dragTranslateY]
+    [canReorder, dragTranslateY, onDragStateChange]
   );
 
   const updateDrag = React.useCallback(
@@ -126,7 +161,9 @@ export function ReorderableSelectionList({
       const effectiveDy = dy - reorderOffsetRef.current;
       dragTranslateY.setValue(effectiveDy);
 
-      const delta = Math.round(effectiveDy / itemHeight);
+      // Reorder should kick in quickly without needing a "long" drag.
+      const threshold = itemHeight * 0.25;
+      const delta = Math.trunc((effectiveDy + Math.sign(effectiveDy) * threshold) / itemHeight);
       if (delta === 0) return;
 
       const nextIndex = clamp(currentIndex + delta, 0, current.length - 1);
@@ -138,17 +175,26 @@ export function ReorderableSelectionList({
 
       reorderOffsetRef.current += delta * itemHeight;
       dragIndexRef.current = nextIndex;
+
+      LayoutAnimation.configureNext({
+        duration: 120,
+        update: {
+          type: LayoutAnimation.Types.easeInEaseOut,
+        },
+      });
       setLocalOrder(next);
     },
     [dragTranslateY, itemHeight]
   );
 
   const endDrag = React.useCallback((): void => {
+    if (draggingIdRef.current === null) return;
     const finalIds = [...localOrderRef.current];
     draggingIdRef.current = null;
     dragIndexRef.current = -1;
     reorderOffsetRef.current = 0;
     setDraggingId(null);
+    onDragStateChange?.(false);
 
     Animated.spring(dragTranslateY, {
       toValue: 0,
@@ -158,7 +204,7 @@ export function ReorderableSelectionList({
     }).start();
 
     onReorder?.(finalIds);
-  }, [dragTranslateY, onReorder]);
+  }, [dragTranslateY, onDragStateChange, onReorder]);
 
   const selectionCount = localOrder.length;
 
@@ -193,73 +239,135 @@ export function ReorderableSelectionList({
           <Text className={styles.emptyTextClassName}>{emptyText}</Text>
         ) : (
           <View className="gap-2">
-            {localOrder.map((id, index) => {
+            {localOrder.map((id) => {
               const item = resourceById.get(id);
               const name = item?.name ?? `${id}`;
-              const isDragging = draggingId === id;
-
-              const handlePanResponder = React.useMemo(() => {
-                if (!canReorder) return null;
-                return PanResponder.create({
-                  onStartShouldSetPanResponder: () => false,
-                  onMoveShouldSetPanResponder: (_evt, gesture) => Math.abs(gesture.dy) > 4,
-                  onPanResponderGrant: () => beginDrag(id),
-                  onPanResponderMove: (_evt, gesture) => updateDrag(gesture.dy),
-                  onPanResponderRelease: endDrag,
-                  onPanResponderTerminate: endDrag,
-                });
-              }, [beginDrag, canReorder, endDrag, id, updateDrag]);
 
               return (
-                <Animated.View
+                <SelectionListRow
                   key={id}
-                  className={styles.itemRowClassName}
-                  style={[
-                    isDragging
-                      ? {
-                          transform: [{ translateY: dragTranslateY }],
-                          zIndex: 20,
-                          elevation: 6,
-                        }
-                      : undefined,
-                  ]}
-                >
-                  <View className="flex-row items-center flex-1 min-w-0">
-                    <View
-                      className={['p-1 mr-2', canReorder ? '' : 'opacity-40'].join(' ')}
-                      {...(handlePanResponder ? handlePanResponder.panHandlers : {})}
-                      accessibilityRole="button"
-                      accessibilityLabel="Reorder"
-                    >
-                      <GripVertical size={18} color={palette.muted} strokeWidth={2.5} />
-                    </View>
-                    <Text
-                      numberOfLines={1}
-                      className="font-medium text-sm truncate text-foreground dark:text-foreground-dark"
-                    >
-                      {name}
-                    </Text>
-                  </View>
-
-                  <View className="flex-row items-center gap-1 flex-shrink-0">
-                    <Pressable
-                      onPress={() => onRemove(id)}
-                      disabled={isDragging}
-                      hitSlop={10}
-                      accessibilityRole="button"
-                      {...(removeAccessibilityLabel ? { accessibilityLabel: removeAccessibilityLabel } : {})}
-                      className={styles.removeButtonClassName}
-                      style={({ pressed }) => ({ opacity: isDragging ? 0.4 : pressed ? 0.7 : 1 })}
-                    >
-                      <X size={variant === 'tafsir' ? 16 : 14} color={palette.muted} strokeWidth={2.5} />
-                    </Pressable>
-                  </View>
-                </Animated.View>
+                  id={id}
+                  name={name}
+                  isDragging={draggingId === id}
+                  canReorder={canReorder}
+                  beginDrag={beginDrag}
+                  updateDrag={updateDrag}
+                  endDrag={endDrag}
+                  dragTranslateY={dragTranslateY}
+                  itemRowClassName={styles.itemRowClassName}
+                  removeButtonClassName={styles.removeButtonClassName}
+                  removeAccessibilityLabel={removeAccessibilityLabel}
+                  onRemove={onRemove}
+                  variant={variant}
+                  mutedColor={palette.muted}
+                />
               );
             })}
           </View>
         )}
       </View>
     </View>
+  );
+}
+
+function SelectionListRow({
+  id,
+  name,
+  isDragging,
+  canReorder,
+  beginDrag,
+  updateDrag,
+  endDrag,
+  dragTranslateY,
+  itemRowClassName,
+  removeButtonClassName,
+  removeAccessibilityLabel,
+  onRemove,
+  variant,
+  mutedColor,
+}: {
+  id: number;
+  name: string;
+  isDragging: boolean;
+  canReorder: boolean;
+  beginDrag: (id: number) => void;
+  updateDrag: (dy: number) => void;
+  endDrag: () => void;
+  dragTranslateY: Animated.Value;
+  itemRowClassName: string;
+  removeButtonClassName: string;
+  removeAccessibilityLabel?: string;
+  onRemove: (id: number) => void;
+  variant: SelectionListVariant;
+  mutedColor: string;
+}): React.JSX.Element {
+  const panResponder = React.useMemo(() => {
+    if (!canReorder) return null;
+    // Lazy import avoids paying the cost when reorder isn't needed.
+    const { PanResponder } = require('react-native') as typeof import('react-native');
+    return PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onStartShouldSetPanResponderCapture: () => true,
+      onMoveShouldSetPanResponderCapture: () => true,
+      onPanResponderTerminationRequest: () => false,
+      onShouldBlockNativeResponder: () => true,
+      onPanResponderGrant: () => beginDrag(id),
+      onPanResponderMove: (_evt, gesture) => updateDrag(gesture.dy),
+      onPanResponderRelease: endDrag,
+      onPanResponderTerminate: endDrag,
+    });
+  }, [beginDrag, canReorder, endDrag, id, updateDrag]);
+
+  return (
+    <Animated.View
+      className={itemRowClassName}
+      style={[
+        isDragging
+          ? {
+              transform: [{ translateY: dragTranslateY }],
+              zIndex: 20,
+              elevation: 6,
+            }
+          : undefined,
+      ]}
+    >
+      <View className="flex-row items-center flex-1 min-w-0 pr-1">
+        <Pressable
+          onPressIn={() => beginDrag(id)}
+          hitSlop={12}
+          className={['p-2 mr-2', canReorder ? '' : 'opacity-40'].join(' ')}
+          {...(panResponder ? panResponder.panHandlers : {})}
+          accessibilityRole="button"
+          accessibilityLabel="Reorder"
+          style={({ pressed }) => ({ opacity: canReorder ? (pressed ? 0.75 : 1) : 0.4 })}
+        >
+          <GripVertical size={18} color={mutedColor} strokeWidth={2.5} />
+        </Pressable>
+        <View className="flex-1 min-w-0">
+          <Text
+            numberOfLines={1}
+            ellipsizeMode="tail"
+            className="font-medium text-sm text-foreground dark:text-foreground-dark"
+          >
+            {name}
+          </Text>
+        </View>
+      </View>
+
+      <View className="flex-row items-center gap-1 flex-shrink-0">
+        <Pressable
+          onPress={() => onRemove(id)}
+          disabled={isDragging}
+          hitSlop={10}
+          accessibilityRole="button"
+          {...(removeAccessibilityLabel ? { accessibilityLabel: removeAccessibilityLabel } : {})}
+          className={[removeButtonClassName, 'h-7 w-7 items-center justify-center'].join(' ')}
+          style={({ pressed }) => ({ opacity: isDragging ? 0.4 : pressed ? 0.7 : 1 })}
+        >
+          <X size={variant === 'tafsir' ? 16 : 14} color={mutedColor} strokeWidth={2.5} />
+        </Pressable>
+      </View>
+    </Animated.View>
   );
 }

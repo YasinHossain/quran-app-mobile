@@ -9,6 +9,7 @@ export function AnchoredDropdownModal({
   anchorRef,
   maxHeight = 360,
   horizontalInset = 16,
+  minWidth = 0,
   children,
 }: {
   isOpen: boolean;
@@ -16,6 +17,7 @@ export function AnchoredDropdownModal({
   anchorRef: React.RefObject<View | null>;
   maxHeight?: number;
   horizontalInset?: number;
+  minWidth?: number;
   children: React.ReactNode;
 }): React.JSX.Element | null {
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
@@ -48,9 +50,16 @@ export function AnchoredDropdownModal({
 
   const margin = 6;
   const availableWidth = Math.max(0, windowWidth - horizontalInset * 2);
-  const width = anchorLayout ? Math.min(anchorLayout.width, availableWidth) : availableWidth;
+  const width = anchorLayout
+    ? Math.min(Math.max(minWidth, anchorLayout.width), availableWidth)
+    : availableWidth;
   const left = anchorLayout
-    ? Math.min(Math.max(horizontalInset, anchorLayout.x), Math.max(horizontalInset, windowWidth - horizontalInset - width))
+    ? (() => {
+        const centerX = anchorLayout.x + anchorLayout.width / 2;
+        const idealLeft = centerX - width / 2;
+        const maxLeft = Math.max(horizontalInset, windowWidth - horizontalInset - width);
+        return Math.min(Math.max(horizontalInset, idealLeft), maxLeft);
+      })()
     : horizontalInset;
 
   const spaceBelow = anchorLayout

@@ -15,6 +15,22 @@ export type SettingsAction =
   | { type: 'SET_MUSHAF_ID'; value: string }
   | { type: 'SET_CONTENT_LANGUAGE'; value: string };
 
+function normalizeIdList(value: number[]): number[] {
+  const seen = new Set<number>();
+  const normalized: number[] = [];
+
+  for (const raw of value ?? []) {
+    if (typeof raw !== 'number' || !Number.isFinite(raw)) continue;
+    const id = Math.trunc(raw);
+    if (id <= 0) continue;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    normalized.push(id);
+  }
+
+  return normalized;
+}
+
 type ActionHandlerMap = {
   [Type in SettingsAction['type']]: (
     state: Settings,
@@ -28,13 +44,14 @@ const actionHandlers = {
   SET_TAJWEED: (state, action) => ({ ...state, tajweed: action.value }),
   SET_WORD_LANG: (state, action) => ({ ...state, wordLang: action.value }),
   SET_WORD_TRANSLATION_ID: (state, action) => ({ ...state, wordTranslationId: action.value }),
-  SET_TAFSIR_IDS: (state, action) => ({ ...state, tafsirIds: action.value }),
+  SET_TAFSIR_IDS: (state, action) => ({ ...state, tafsirIds: normalizeIdList(action.value) }),
   SET_TRANSLATION_IDS: (state, action) => {
-    const [primaryTranslationId] = action.value;
+    const normalized = normalizeIdList(action.value);
+    const [primaryTranslationId] = normalized;
 
     return {
       ...state,
-      translationIds: action.value,
+      translationIds: normalized,
       translationId: primaryTranslationId ?? state.translationId,
     };
   },
@@ -49,4 +66,3 @@ const actionHandlers = {
 export function settingsReducer(state: Settings, action: SettingsAction): Settings {
   return actionHandlers[action.type](state, action as never);
 }
-

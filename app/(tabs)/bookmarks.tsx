@@ -32,6 +32,8 @@ import { VerseCard } from '@/components/surah/VerseCard';
 import { AddToPlannerModal, type VerseSummaryDetails } from '@/components/verse-planner-modal';
 import Colors from '@/constants/Colors';
 import { useBookmarks } from '@/providers/BookmarkContext';
+import { useAudioPlayer } from '@/providers/AudioPlayerContext';
+import { useLayoutMetrics } from '@/providers/LayoutMetricsContext';
 import { useSettings } from '@/providers/SettingsContext';
 import { useAppTheme } from '@/providers/ThemeContext';
 
@@ -69,7 +71,13 @@ export default function BookmarksScreen(): React.JSX.Element {
   const router = useRouter();
   const { resolvedTheme, isDark } = useAppTheme();
   const palette = Colors[resolvedTheme];
+  const audio = useAudioPlayer();
   const { width } = useWindowDimensions();
+  const { audioPlayerBarHeight } = useLayoutMetrics();
+  const listContentContainerStyle = React.useMemo(
+    () => ({ paddingHorizontal: 16, paddingBottom: 24 + audioPlayerBarHeight }),
+    [audioPlayerBarHeight]
+  );
 
   const { settings } = useSettings();
   const {
@@ -182,8 +190,16 @@ export default function BookmarksScreen(): React.JSX.Element {
   );
 
   const handlePlayPause = React.useCallback(() => {
-    Alert.alert('Audio coming soon', 'Audio playback will be added next.');
-  }, []);
+    const verseKey = activeVerse?.verseKey;
+    if (!verseKey) return;
+
+    if (audio.activeVerseKey === verseKey) {
+      audio.togglePlay();
+      return;
+    }
+
+    audio.playVerse(verseKey);
+  }, [activeVerse?.verseKey, audio.activeVerseKey, audio.playVerse, audio.togglePlay]);
 
   const handleAddToPlan = React.useCallback(() => {
     const verseKey = activeVerse?.verseKey;
@@ -446,7 +462,7 @@ export default function BookmarksScreen(): React.JSX.Element {
           ref={folderListRef}
           data={sortedFolders}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}
+          contentContainerStyle={listContentContainerStyle}
           numColumns={folderGridColumns}
           ListHeaderComponent={
             <View>
@@ -523,7 +539,7 @@ export default function BookmarksScreen(): React.JSX.Element {
           ref={folderDetailListRef}
           data={selectedFolder.bookmarks}
           keyExtractor={(item) => `${item.verseId}-${item.createdAt}`}
-          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}
+          contentContainerStyle={listContentContainerStyle}
           ListHeaderComponent={
             <View>
               {renderSectionNavigation()}
@@ -619,7 +635,7 @@ export default function BookmarksScreen(): React.JSX.Element {
           ref={pinnedListRef}
           data={pinnedVerses}
           keyExtractor={(item) => `pinned-${item.verseId}-${item.createdAt}`}
-          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}
+          contentContainerStyle={listContentContainerStyle}
           ListHeaderComponent={
             <View>
               {renderSectionNavigation()}
@@ -705,6 +721,7 @@ export default function BookmarksScreen(): React.JSX.Element {
         onClose={closeVerseActions}
         title={activeVerse?.title ?? 'Surah'}
         verseKey={activeVerse?.verseKey ?? ''}
+        isPlaying={Boolean(audio.isPlaying && audio.activeVerseKey === activeVerse?.verseKey)}
         isBookmarked={activeVerse?.isPinned ?? false}
         showRemove={activeVerse?.showRemove ?? false}
         onPlayPause={activeVerse ? handlePlayPause : undefined}

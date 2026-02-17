@@ -37,6 +37,7 @@ export function ManageTafsirsPanel({
   onRefresh?: () => void;
   languageSort?: (a: string, b: string) => number;
 }): React.JSX.Element {
+  const [isReordering, setIsReordering] = React.useState(false);
   const [searchTerm, setSearchTerm] = React.useState('');
   const [activeFilter, setActiveFilter] = React.useState('All');
   const [showLimitWarning, setShowLimitWarning] = React.useState(false);
@@ -139,6 +140,7 @@ export function ManageTafsirsPanel({
           onReset={handleReset}
           maxSelections={MAX_TAFSIR_SELECTIONS}
           emptyText="No tafsirs selected"
+          onDragStateChange={setIsReordering}
         />
       </View>
     );
@@ -230,9 +232,10 @@ export function ManageTafsirsPanel({
         ListHeaderComponent={renderHeader}
         stickyHeaderIndices={[1]}
         keyboardShouldPersistTaps="handled"
+        removeClippedSubviews={false}
+        scrollEnabled={!isReordering}
         contentContainerStyle={{ paddingBottom: 20 }}
       />
     </View>
   );
 }
-

@@ -10,8 +10,7 @@ import Colors from '@/constants/Colors';
 import { useChapters } from '@/hooks/useChapters';
 import { useAppTheme } from '@/providers/ThemeContext';
 
-import { SurahSelector } from './SurahSelector';
-import { VerseSelector } from './VerseSelector';
+import { SurahVerseSelectorRow } from './SurahVerseSelectorRow';
 
 type SearchSuggestion =
   | { icon: 'juz'; query: string; number: number }
@@ -55,27 +54,6 @@ export function GoToSurahVerseCard({
 
   const [selectedSurah, setSelectedSurah] = React.useState<number | undefined>(undefined);
   const [selectedVerse, setSelectedVerse] = React.useState<number | undefined>(undefined);
-
-  const activeChapter = React.useMemo(
-    () => (selectedSurah ? chapters.find((chapter) => chapter.id === selectedSurah) : undefined),
-    [chapters, selectedSurah]
-  );
-
-  const surahOptions = React.useMemo(() => {
-    return chapters.map((chapter) => ({
-      value: chapter.id,
-      label: `${chapter.id} • ${chapter.name_simple}`,
-      searchLabel: `${chapter.id} ${chapter.name_simple}`.toLowerCase(),
-    }));
-  }, [chapters]);
-
-  const verseOptions = React.useMemo(() => {
-    if (!activeChapter?.verses_count) return [];
-    return Array.from({ length: activeChapter.verses_count }, (_, index) => ({
-      value: index + 1,
-      label: String(index + 1),
-    }));
-  }, [activeChapter?.verses_count]);
 
   const handleSelectSurah = React.useCallback(
     (surahId: number) => {
@@ -143,31 +121,15 @@ export function GoToSurahVerseCard({
           </View>
 
           {/* Surah & Verse Selectors - Side by Side */}
-          <View className="mt-4 flex-row gap-3">
-            {/* Surah Selector */}
-            <View style={{ flex: 3 }}>
-              <Text className="mb-2 text-sm font-semibold text-foreground dark:text-foreground-dark">
-                Surah
-              </Text>
-              <SurahSelector
-                options={surahOptions}
-                selectedValue={selectedSurah}
-                onSelect={handleSelectSurah}
-              />
-            </View>
-
-            {/* Verse Selector */}
-            <View style={{ flex: 2 }}>
-              <Text className="mb-2 text-sm font-semibold text-foreground dark:text-foreground-dark">
-                Verse
-              </Text>
-              <VerseSelector
-                options={verseOptions}
-                selectedValue={selectedVerse}
-                onSelect={handleSelectVerse}
-                disabled={!selectedSurah}
-              />
-            </View>
+          <View className="mt-4">
+            <SurahVerseSelectorRow
+              chapters={chapters}
+              isLoading={isLoading}
+              selectedSurah={selectedSurah}
+              selectedVerse={selectedVerse}
+              onSelectSurah={handleSelectSurah}
+              onSelectVerse={handleSelectVerse}
+            />
           </View>
 
           {/* Error & Retry */}

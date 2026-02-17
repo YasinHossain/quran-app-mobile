@@ -17,6 +17,7 @@ Assumes the web repo is available at `../quran-app` (used by `npm run sync:web-c
 | Reader settings sidebar | `../quran-app/app/shared/reader/settings` + `../quran-app/app/providers/SettingsContext.tsx` | `app/surah/[surahId].tsx` | 90% | Must match labels/order; OK to stub unimplemented options. |
 | Translation + tafsir selection panels | `../quran-app/app/(features)/surah/components/panels/translation-panel` + `../quran-app/app/(features)/surah/components/panels/tafsir-panel` | `components/reader/settings/SettingsSidebarContent.tsx` | 90% | Translation and tafsir selection UIs mirror web (search, language tabs, My Selections box with reorder/remove, selection limits). |
 | Verse actions (ellipsis menu) | `../quran-app/app/shared/verse-actions` | `app/surah/[surahId].tsx` | 90% | Keep action list + labels aligned with `actionCreators.ts`; stub behavior OK initially. |
+| Audio player (bottom bar) | `../quran-app/app/shared/player` | `components/audio/AudioPlayerBar.tsx` + `providers/AudioPlayerContext.tsx` | 90% | Playback options modal mirrors web patterns: reciters render as a 1-column list (phone view), repeat mode uses a segmented toggle (single/range/full surah), and Surah/Verse pickers reuse the Go To selector layout. Offline surah download UI is available under Reciter. |
 
 ## Parity Targets
 

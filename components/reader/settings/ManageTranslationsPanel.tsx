@@ -50,6 +50,7 @@ export function ManageTranslationsPanel({
   errorMessage: string | null;
   onRefresh?: () => void;
 }): React.JSX.Element {
+  const [isReordering, setIsReordering] = React.useState(false);
   const [searchTerm, setSearchTerm] = React.useState('');
   const [activeFilter, setActiveFilter] = React.useState('All');
 
@@ -144,6 +145,7 @@ export function ManageTranslationsPanel({
           maxSelections={MAX_TRANSLATION_SELECTIONS}
           emptyText="No translations selected"
           removeAccessibilityLabel="Remove translation"
+          onDragStateChange={setIsReordering}
         />
       </View>
     );
@@ -234,8 +236,9 @@ export function ManageTranslationsPanel({
       ListHeaderComponent={renderHeader}
       stickyHeaderIndices={[1]}
       keyboardShouldPersistTaps="handled"
+      removeClippedSubviews={false}
+      scrollEnabled={!isReordering}
       contentContainerStyle={{ paddingBottom: 20 }}
     />
   );
 }
-

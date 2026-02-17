@@ -10,6 +10,7 @@ import {
 
 import Colors from '@/constants/Colors';
 import { useChapters } from '@/hooks/useChapters';
+import { useLayoutMetrics } from '@/providers/LayoutMetricsContext';
 import { useAppTheme } from '@/providers/ThemeContext';
 import type { PlannerPlan } from '@/types';
 
@@ -45,6 +46,11 @@ export function PlannerSection({
 }): React.JSX.Element {
   const { resolvedTheme } = useAppTheme();
   const palette = Colors[resolvedTheme];
+  const { audioPlayerBarHeight } = useLayoutMetrics();
+  const contentContainerStyle = React.useMemo(
+    () => ({ paddingHorizontal: 16, paddingBottom: 24 + audioPlayerBarHeight }),
+    [audioPlayerBarHeight]
+  );
   const listRef = React.useRef<FlashListRef<PlannerGroupCardData> | null>(null);
 
   const { chapters, isLoading: isChaptersLoading, errorMessage: chaptersError } = useChapters();
@@ -77,7 +83,7 @@ export function PlannerSection({
       ref={listRef}
       data={groupedCards}
       keyExtractor={(item) => item.key}
-      contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}
+      contentContainerStyle={contentContainerStyle}
       ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
       onScroll={onScroll}
       onScrollBeginDrag={onScrollBeginDrag}

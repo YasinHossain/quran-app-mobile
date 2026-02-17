@@ -45,6 +45,12 @@ export function VerseSelector({
     const searchInputRef = React.useRef<TextInput>(null);
     const containerRef = React.useRef<View>(null);
 
+    const measureNow = React.useCallback(() => {
+        containerRef.current?.measureInWindow((x, y, width, height) => {
+            setInputLayout({ x, y, width, height });
+        });
+    }, []);
+
     // Get selected label
     const selectedLabel = React.useMemo(() => {
         if (!selectedValue) return '';
@@ -60,20 +66,27 @@ export function VerseSelector({
 
     // Measure on layout
     const handleLayout = React.useCallback(() => {
-        containerRef.current?.measureInWindow((x, y, width, height) => {
-            setInputLayout({ x, y, width, height });
-        });
-    }, []);
+        measureNow();
+    }, [measureNow]);
 
     // Open dropdown
     const openDropdown = React.useCallback(() => {
         if (disabled) return;
-        containerRef.current?.measureInWindow((x, y, width, height) => {
-            setInputLayout({ x, y, width, height });
-        });
+        measureNow();
         setIsOpen(true);
         setSearchText('');
-    }, [disabled]);
+    }, [disabled, measureNow]);
+
+    React.useEffect(() => {
+        if (!isOpen || disabled) return;
+        measureNow();
+        const showSub = Keyboard.addListener('keyboardDidShow', measureNow);
+        const hideSub = Keyboard.addListener('keyboardDidHide', measureNow);
+        return () => {
+            showSub.remove();
+            hideSub.remove();
+        };
+    }, [disabled, isOpen, measureNow]);
 
     // Focus input when modal opens
     React.useEffect(() => {
@@ -114,6 +127,7 @@ export function VerseSelector({
                         borderColor: isOpen ? palette.tint : (isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.1)'),
                         borderRadius: 8,
                         opacity: disabled ? 0.5 : 1,
+                        ...(isOpen && inputLayout !== null && !disabled ? { opacity: 0 } : {}),
                         ...(isOpen ? {
                             shadowColor: palette.tint,
                             shadowOpacity: 0.2,
@@ -143,23 +157,26 @@ export function VerseSelector({
                 transparent
                 animationType="none"
                 onRequestClose={closeDropdown}
+                statusBarTranslucent
+                hardwareAccelerated
+                {...(Platform.OS === 'ios' ? { presentationStyle: 'overFullScreen' as const } : {})}
             >
                 <Pressable style={{ flex: 1 }} onPress={closeDropdown}>
                     {inputLayout && (
                         <>
                             {/* Editable Input */}
-                            <View
-                                style={{
-                                    position: 'absolute',
-                                    top: inputLayout.y,
-                                    left: inputLayout.x,
-                                    width: inputLayout.width,
-                                    height: inputLayout.height,
-                                    backgroundColor: isDark ? 'rgba(42, 42, 62, 0.95)' : 'rgba(255,255,255,0.98)',
-                                    borderWidth: 1,
-                                    borderColor: palette.tint,
-                                    borderRadius: 8,
-                                    justifyContent: 'center',
+                             <View
+                                 style={{
+                                     position: 'absolute',
+                                     top: inputLayout.y,
+                                     left: inputLayout.x,
+                                     width: inputLayout.width,
+                                     height: inputLayout.height,
+                                     backgroundColor: isDark ? '#1a1a2e' : '#ffffff',
+                                     borderWidth: 1,
+                                     borderColor: palette.tint,
+                                     borderRadius: 8,
+                                     justifyContent: 'center',
                                     shadowColor: palette.tint,
                                     shadowOpacity: 0.25,
                                     shadowRadius: 6,

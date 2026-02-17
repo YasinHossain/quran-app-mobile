@@ -3,12 +3,14 @@ import { TranslationOfflineStore } from '@/src/core/infrastructure/offline/Trans
 import { QuranComTranslationDownloadRepository } from '@/src/core/infrastructure/repositories/QuranComTranslationDownloadRepository';
 import { TafsirRepository } from '@/src/core/infrastructure/repositories/TafsirRepository';
 import { QuranComChapterVerseKeysRepository } from '@/src/core/infrastructure/repositories/QuranComChapterVerseKeysRepository';
+import { AudioDownloadManager } from '@/src/core/infrastructure/audio/AudioDownloadManager';
 
 const downloadIndexRepository = new DownloadIndexRepository();
 const tafsirRepository = new TafsirRepository();
 const translationOfflineStore = new TranslationOfflineStore();
 const translationDownloadRepository = new QuranComTranslationDownloadRepository();
 const chapterVerseKeysRepository = new QuranComChapterVerseKeysRepository();
+const audioDownloadManager = new AudioDownloadManager(downloadIndexRepository);
 
 export const container = {
   getDownloadIndexRepository: (): DownloadIndexRepository => downloadIndexRepository,
@@ -17,4 +19,5 @@ export const container = {
   getTranslationDownloadRepository: (): QuranComTranslationDownloadRepository =>
     translationDownloadRepository,
   getChapterVerseKeysRepository: (): QuranComChapterVerseKeysRepository => chapterVerseKeysRepository,
+  getAudioDownloadManager: (): AudioDownloadManager => audioDownloadManager,
 };

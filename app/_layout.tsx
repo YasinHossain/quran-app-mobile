@@ -8,10 +8,14 @@ import { useEffect } from 'react';
 import 'react-native-reanimated';
 import { View } from 'react-native';
 
+import { AudioPlayerBar } from '@/components/audio/AudioPlayerBar';
 import Colors from '@/constants/Colors';
 import { BookmarkProvider } from '@/providers/BookmarkContext';
+import { AudioPlayerProvider } from '@/providers/AudioPlayerContext';
+import { LayoutMetricsProvider } from '@/providers/LayoutMetricsContext';
 import { SettingsProvider } from '@/providers/SettingsContext';
 import { AppThemeProvider, useAppTheme } from '@/providers/ThemeContext';
+import { initializeAudioModeAsync } from '@/src/core/infrastructure/audio/audioMode';
 import { initializeAppDbAsync } from '@/src/core/infrastructure/db';
 
 export {
@@ -38,6 +42,10 @@ export default function RootLayout() {
     void initializeAppDbAsync();
   }, []);
 
+  useEffect(() => {
+    void initializeAudioModeAsync();
+  }, []);
+
   // Expo Router uses Error Boundaries to catch errors in the navigation tree.
   useEffect(() => {
     if (error) throw error;
@@ -57,7 +65,11 @@ export default function RootLayout() {
     <AppThemeProvider>
       <SettingsProvider>
         <BookmarkProvider>
-          <RootLayoutNav />
+          <AudioPlayerProvider>
+            <LayoutMetricsProvider>
+              <RootLayoutNav />
+            </LayoutMetricsProvider>
+          </AudioPlayerProvider>
         </BookmarkProvider>
       </SettingsProvider>
     </AppThemeProvider>
@@ -89,6 +101,7 @@ function RootLayoutNav() {
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
         </Stack>
+        <AudioPlayerBar />
       </View>
     </ThemeProvider>
   );

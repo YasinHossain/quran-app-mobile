@@ -30,6 +30,7 @@ This document lists reusable UI components currently available in the codebase s
 | `HeaderSearchInput` | Header search text input (web-style) used on the Surah reader header. | `components/search/HeaderSearchInput.tsx` |
 | `ComprehensiveSearchDropdown` | Under-header dropdown card for the Surah header search (Go To when empty; quick results when typing). | `components/search/ComprehensiveSearchDropdown.tsx` |
 | `GoToSurahVerseCard` | Web-parity “Go To” form (Surah + Verse selectors, Go action, and suggestion actions); supports card and embedded modes. | `components/search/GoToSurahVerseCard.tsx` |
+| `SurahVerseSelectorRow` | Shared Surah + Verse selector row (uses the same dropdown selectors as the Go To card). | `components/search/SurahVerseSelectorRow.tsx` |
 | `AnchoredDropdownModal` | Transparent modal that anchors dropdown content to a measured view (useful for web-like select overlays). | `components/search/AnchoredDropdownModal.tsx` |
 | `HighlightedText` | Lightweight `<em>` tag highlighter renderer for search result snippets. | `components/search/HighlightedText.tsx` |
 | `SearchVerseResultCard` | Search results list item (Arabic + highlighted match snippet). | `components/search/SearchVerseResultCard.tsx` |
@@ -59,6 +60,13 @@ This document lists reusable UI components currently available in the codebase s
 | `VerseCard` | Separated verse row (verse key + Arabic + translations + ellipsis trigger). | `components/surah/VerseCard.tsx` |
 | `VerseActionsSheet` | Bottom sheet for per-verse actions (play, tafsir, pin/bookmark, add to plan, share). | `components/surah/VerseActionsSheet.tsx` |
 | `AddToPlannerModal` | Modal for selecting an existing planner to track progress from a verse (web-style Add-to-plan flow). | `components/verse-planner-modal/AddToPlannerModal.tsx` |
+
+## Audio Components
+
+| Component | Description | File Path |
+| --- | --- | --- |
+| `AudioPlayerBar` | Global bottom overlay player UI (verse transport + timeline). | `components/audio/AudioPlayerBar.tsx` |
+| `PlaybackOptionsModal` | Centered playback options dialog (Reciter + Verse Repeat) including offline surah audio download/delete actions. | `components/audio/PlaybackOptionsModal.tsx` |
 
 ## Tafsir Components
 

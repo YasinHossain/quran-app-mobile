@@ -16,10 +16,10 @@ export function ResourceItem({
     <Pressable
       onPress={() => onToggle(item.id)}
       className={[
-        'flex-row items-center justify-between px-4 py-3 rounded-2xl border',
+        'flex-row items-center justify-between px-4 py-2.5 h-[50px] rounded-lg border',
         isSelected
           ? 'bg-accent border-accent dark:bg-accent-dark dark:border-accent-dark'
-          : 'bg-surface dark:bg-surface-navigation-dark border-border/30 dark:border-border-dark/20',
+          : 'bg-surface dark:bg-surface-dark border-border/30 dark:border-border-dark/20',
       ].join(' ')}
       style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
     >

@@ -3,7 +3,6 @@ import React from 'react';
 import { ArrowLeft, Settings } from 'lucide-react-native';
 import { FlashList, type FlashListRef } from '@shopify/flash-list';
 import {
-  Alert,
   ActivityIndicator,
   FlatList,
   Keyboard,
@@ -27,6 +26,8 @@ import { AddToPlannerModal, type VerseSummaryDetails } from '@/components/verse-
 import Colors from '@/constants/Colors';
 import { useSurahVerses, type SurahVerse } from '@/hooks/useSurahVerses';
 import { useBookmarks } from '@/providers/BookmarkContext';
+import { useAudioPlayer } from '@/providers/AudioPlayerContext';
+import { useLayoutMetrics } from '@/providers/LayoutMetricsContext';
 import { useSettings } from '@/providers/SettingsContext';
 import { useAppTheme } from '@/providers/ThemeContext';
 
@@ -57,6 +58,12 @@ export default function SurahScreen(): React.JSX.Element {
 
   const { resolvedTheme } = useAppTheme();
   const palette = Colors[resolvedTheme];
+  const audio = useAudioPlayer();
+  const { audioPlayerBarHeight } = useLayoutMetrics();
+  const listContentContainerStyle = React.useMemo(
+    () => ({ padding: 16, paddingBottom: 24 + audioPlayerBarHeight }),
+    [audioPlayerBarHeight]
+  );
 
   const { settings } = useSettings();
   const { isPinned, setLastRead } = useBookmarks();
@@ -171,8 +178,16 @@ export default function SurahScreen(): React.JSX.Element {
   );
 
   const handlePlayPause = React.useCallback(() => {
-    Alert.alert('Audio coming soon', 'Audio playback will be added next.');
-  }, []);
+    const verseKey = activeVerse?.verseKey;
+    if (!verseKey) return;
+
+    if (audio.activeVerseKey === verseKey) {
+      audio.togglePlay();
+      return;
+    }
+
+    audio.playVerse(verseKey);
+  }, [activeVerse?.verseKey, audio.activeVerseKey, audio.playVerse, audio.togglePlay]);
 
   const handleBookmark = React.useCallback(() => {
     if (!activeVerse) return;
@@ -445,7 +460,7 @@ export default function SurahScreen(): React.JSX.Element {
           keyExtractor={(item) => item.verse_key}
           extraData={listExtraData}
           renderItem={renderVerseItem}
-          contentContainerStyle={{ padding: 16, paddingBottom: 24 }}
+          contentContainerStyle={listContentContainerStyle}
           refreshing={isRefreshing}
           onRefresh={refresh}
           viewabilityConfig={viewabilityConfig}
@@ -531,7 +546,7 @@ export default function SurahScreen(): React.JSX.Element {
           extraData={listExtraData}
           renderItem={renderVerseItem}
           drawDistance={Platform.OS === 'android' ? 1200 : 800}
-          contentContainerStyle={{ padding: 16, paddingBottom: 24 }}
+          contentContainerStyle={listContentContainerStyle}
           refreshing={isRefreshing}
           onRefresh={refresh}
           viewabilityConfig={viewabilityConfig}
@@ -614,6 +629,7 @@ export default function SurahScreen(): React.JSX.Element {
         onClose={closeVerseActions}
         title={chapter?.name_simple ?? 'Surah'}
         verseKey={activeVerse?.verseKey ?? ''}
+        isPlaying={Boolean(audio.isPlaying && audio.activeVerseKey === activeVerse?.verseKey)}
         isBookmarked={activeVersePinned}
         onPlayPause={handlePlayPause}
         onOpenTafsir={handleOpenTafsir}
