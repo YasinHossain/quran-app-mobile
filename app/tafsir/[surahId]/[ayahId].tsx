@@ -10,15 +10,12 @@ import { SettingsSidebar } from '@/components/reader/settings/SettingsSidebar';
 import { VerseCard } from '@/components/surah/VerseCard';
 import Colors from '@/constants/Colors';
 import { useTafsirResources } from '@/hooks/useTafsirResources';
+import { useChapters } from '@/hooks/useChapters';
 import { getTafsirCached } from '@/lib/tafsir/tafsirCache';
 import { useSettings } from '@/providers/SettingsContext';
 import { useAppTheme } from '@/providers/ThemeContext';
 
 import type { SurahHeaderChapter } from '@/components/surah/SurahHeaderCard';
-
-type ApiChapterResponse = {
-  chapter: SurahHeaderChapter;
-};
 
 type ApiVerseResponse = {
   verse: {
@@ -51,6 +48,7 @@ export default function TafsirScreen(): React.JSX.Element {
   const palette = Colors[resolvedTheme];
 
   const { settings } = useSettings();
+  const { chapters } = useChapters();
   const scrollRef = React.useRef<ScrollView>(null);
   const translationIds = React.useMemo(() => {
     // An explicit empty array means "no translations selected" (Arabic-only mode).
@@ -83,6 +81,11 @@ export default function TafsirScreen(): React.JSX.Element {
 
   const [isSettingsOpen, setIsSettingsOpen] = React.useState(false);
 
+  const localChapter = React.useMemo(
+    () => (Number.isFinite(surahNumber) ? chapters.find((c) => c.id === surahNumber) ?? null : null),
+    [chapters, surahNumber]
+  );
+
   React.useEffect(() => {
     if (!Number.isFinite(surahNumber) || !Number.isFinite(ayahNumber)) {
       setChapter(null);
@@ -94,33 +97,27 @@ export default function TafsirScreen(): React.JSX.Element {
     }
 
     let canceled = false;
+    setChapter(localChapter);
     setIsLoading(true);
     setErrorMessage(null);
     setTafsirError(null);
 
     async function run(): Promise<void> {
       try {
-        const chapterUrl = `https://api.quran.com/api/v4/chapters/${surahNumber}?language=en`;
         const verseUrl = `https://api.quran.com/api/v4/verses/by_key/${encodeURIComponent(
           verseKey
         )}?language=en&words=false&translations=${encodeURIComponent(
           translationIdsKey
         )}&fields=text_uthmani`;
 
-        const [chapterRes, verseRes] = await Promise.all([fetch(chapterUrl), fetch(verseUrl)]);
-
-        if (!chapterRes.ok) {
-          throw new Error(`Failed to load surah (${chapterRes.status})`);
-        }
+        const verseRes = await fetch(verseUrl);
         if (!verseRes.ok) {
           throw new Error(`Failed to load verse (${verseRes.status})`);
         }
 
-        const chapterJson = (await chapterRes.json()) as ApiChapterResponse;
         const verseJson = (await verseRes.json()) as ApiVerseResponse;
 
         if (canceled) return;
-        setChapter(chapterJson.chapter);
         setVerse(verseJson.verse);
       } catch (error) {
         if (canceled) return;
@@ -135,7 +132,7 @@ export default function TafsirScreen(): React.JSX.Element {
     return () => {
       canceled = true;
     };
-  }, [ayahNumber, surahNumber, translationIdsKey, verseKey]);
+  }, [ayahNumber, localChapter, surahNumber, translationIdsKey, verseKey]);
 
   React.useEffect(() => {
     if (!Number.isFinite(surahNumber) || !Number.isFinite(ayahNumber)) return;
@@ -148,25 +145,9 @@ export default function TafsirScreen(): React.JSX.Element {
       return;
     }
 
-    let canceled = false;
-    async function run(): Promise<void> {
-      try {
-        const res = await fetch(`https://api.quran.com/api/v4/chapters/${surahNumber - 1}?language=en`);
-        if (!res.ok) throw new Error('Failed to load previous surah');
-        const json = (await res.json()) as ApiChapterResponse;
-        if (canceled) return;
-        setPrevSurahVerseCount(json.chapter.verses_count);
-      } catch {
-        if (canceled) return;
-        setPrevSurahVerseCount(null);
-      }
-    }
-
-    void run();
-    return () => {
-      canceled = true;
-    };
-  }, [ayahNumber, surahNumber]);
+    const prev = chapters.find((c) => c.id === surahNumber - 1);
+    setPrevSurahVerseCount(typeof prev?.verses_count === 'number' ? prev.verses_count : null);
+  }, [ayahNumber, chapters, surahNumber]);
 
   React.useEffect(() => {
     if (!verseKey || typeof activeTafsirId !== 'number') {

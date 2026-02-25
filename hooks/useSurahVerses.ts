@@ -1,12 +1,8 @@
 import React from 'react';
 
 import type { SurahHeaderChapter } from '@/components/surah/SurahHeaderCard';
-import { loadChaptersFromStorage } from '@/lib/storage/chaptersStorage';
+import { useChapters } from '@/hooks/useChapters';
 import { container } from '@/src/core/infrastructure/di/container';
-
-type ApiChapterResponse = {
-  chapter: SurahHeaderChapter;
-};
 
 export type SurahVerse = {
   id?: number;
@@ -116,6 +112,7 @@ export function useSurahVerses({
   retry: () => void;
   loadMore: () => void;
 } {
+  const { chapters } = useChapters();
   const [chapter, setChapter] = React.useState<SurahHeaderChapter | null>(null);
   const [verses, setVerses] = React.useState<SurahVerse[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
@@ -173,18 +170,14 @@ export function useSurahVerses({
           setVerses([]);
         }
 
-        const [cachedChapter, translationsInstalled] = await Promise.all([
-          loadChaptersFromStorage()
-            .then((chapters) => chapters.find((c) => c.id === chapterNumber) ?? null)
-            .catch(() => null),
-          areTranslationsInstalled(resolvedTranslationIds).catch(() => false),
-        ]);
+        const localChapter = chapters.find((c) => c.id === chapterNumber) ?? null;
+        if (localChapter) {
+          setChapter(localChapter);
+        }
+
+        const translationsInstalled = await areTranslationsInstalled(resolvedTranslationIds).catch(() => false);
 
         if (requestTokenRef.current !== token) return;
-
-        if (cachedChapter) {
-          setChapter(cachedChapter);
-        }
 
         if (translationsInstalled) {
           dataSourceRef.current = 'offline';
@@ -220,26 +213,18 @@ export function useSurahVerses({
 
         dataSourceRef.current = 'network';
 
-        const [chapterResponse, versesResponse] = await Promise.all([
-          fetch(`https://api.quran.com/api/v4/chapters/${chapterNumber}?language=en`),
-          fetch(
-            `https://api.quran.com/api/v4/verses/by_chapter/${chapterNumber}?language=en&words=false${translationsQuery}&fields=text_uthmani&per_page=${perPage}&page=1`
-          ),
-        ]);
+        const versesResponse = await fetch(
+          `https://api.quran.com/api/v4/verses/by_chapter/${chapterNumber}?language=en&words=false${translationsQuery}&fields=text_uthmani&per_page=${perPage}&page=1`
+        );
 
-        if (!chapterResponse.ok) {
-          throw new Error(`Failed to load chapter (${chapterResponse.status})`);
-        }
         if (!versesResponse.ok) {
           throw new Error(`Failed to load verses (${versesResponse.status})`);
         }
 
-        const chapterJson = (await chapterResponse.json()) as ApiChapterResponse;
         const versesJson = (await versesResponse.json()) as ApiVersesResponse;
 
         if (requestTokenRef.current !== token) return;
 
-        setChapter(chapterJson.chapter);
         setVerses(
           (versesJson.verses ?? []).map((verse) => ({
             ...verse,
@@ -263,7 +248,7 @@ export function useSurahVerses({
         if (mode === 'refresh') setIsRefreshing(false);
       }
     },
-    [chapterNumber, perPage, resolvedTranslationIds, translationsQuery]
+    [chapterNumber, chapters, perPage, resolvedTranslationIds, translationsQuery]
   );
 
   React.useEffect(() => {

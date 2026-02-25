@@ -11,6 +11,7 @@ import { View } from 'react-native';
 import { AudioPlayerBar } from '@/components/audio/AudioPlayerBar';
 import Colors from '@/constants/Colors';
 import { BookmarkProvider } from '@/providers/BookmarkContext';
+import { ChaptersProvider } from '@/providers/ChaptersContext';
 import { AudioPlayerProvider } from '@/providers/AudioPlayerContext';
 import { LayoutMetricsProvider } from '@/providers/LayoutMetricsContext';
 import { SettingsProvider } from '@/providers/SettingsContext';
@@ -64,13 +65,15 @@ export default function RootLayout() {
   return (
     <AppThemeProvider>
       <SettingsProvider>
-        <BookmarkProvider>
-          <AudioPlayerProvider>
-            <LayoutMetricsProvider>
-              <RootLayoutNav />
-            </LayoutMetricsProvider>
-          </AudioPlayerProvider>
-        </BookmarkProvider>
+        <ChaptersProvider>
+          <BookmarkProvider>
+            <AudioPlayerProvider>
+              <LayoutMetricsProvider>
+                <RootLayoutNav />
+              </LayoutMetricsProvider>
+            </AudioPlayerProvider>
+          </BookmarkProvider>
+        </ChaptersProvider>
       </SettingsProvider>
     </AppThemeProvider>
   );
@@ -96,8 +99,8 @@ function RootLayoutNav() {
 
   return (
     <ThemeProvider value={theme}>
-      <View className={isDark ? 'flex-1 dark' : 'flex-1'}>
-        <Stack>
+      <View className={isDark ? 'flex-1 dark' : 'flex-1'} style={{ backgroundColor: palette.background }}>
+        <Stack screenOptions={{ contentStyle: { backgroundColor: palette.background } }}>
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
         </Stack>
