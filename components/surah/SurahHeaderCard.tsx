@@ -48,17 +48,6 @@ export function SurahHeaderCard({ chapter }: { chapter: SurahHeaderChapter }): R
           </Text>
         </View>
       </View>
-
-      <View className="mt-4 flex-row items-center justify-between">
-        <View className="flex-1 min-w-0">
-          <Text className="text-xs text-content-secondary dark:text-content-secondary-dark">
-            {chapter.translated_name?.name ?? ''}
-          </Text>
-        </View>
-        <Text className="text-xl font-semibold text-foreground dark:text-foreground-dark">
-          {chapter.name_arabic}
-        </Text>
-      </View>
     </View>
   );
 }

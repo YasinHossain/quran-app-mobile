@@ -18,6 +18,7 @@ import { SelectionBox } from './SelectionBox';
 import { capitalizeLanguageName, type ResourceRecord } from './resource-panel/resourcePanel.utils';
 import { SettingsTabToggle, type SettingsTab } from './SettingsTabToggle';
 import { ToggleRow } from './ToggleRow';
+import { ArabicFontFilterToggle, type ArabicFontFilter } from './ArabicFontFilterToggle';
 
 type Panel =
   | { type: 'root' }
@@ -79,6 +80,7 @@ export function SettingsSidebarContent({
   const [isReadingOpen, setIsReadingOpen] = React.useState(true);
   const [isTafsirOpen, setIsTafsirOpen] = React.useState(showTafsirSetting && pageType === 'tafsir');
   const [isFontOpen, setIsFontOpen] = React.useState(true);
+  const [arabicFontFilter, setArabicFontFilter] = React.useState<ArabicFontFilter>('Uthmani');
 
   const previousMushafIdRef = React.useRef<string | undefined>(settings.mushafId);
 
@@ -182,6 +184,13 @@ export function SettingsSidebarContent({
 
   const goBack = React.useCallback(() => setPanel({ type: 'root' }), []);
 
+  React.useEffect(() => {
+    if (panel.type !== 'arabic-font') return;
+    const selected = arabicFonts.find((font) => font.value === settings.arabicFontFace);
+    const nextFilter: ArabicFontFilter = selected?.category === 'IndoPak' ? 'IndoPak' : 'Uthmani';
+    setArabicFontFilter(nextFilter);
+  }, [arabicFonts, panel.type, settings.arabicFontFace]);
+
   if (panel.type !== 'root') {
     const title =
       panel.type === 'translations'
@@ -190,8 +199,8 @@ export function SettingsSidebarContent({
           ? 'Manage Tafsirs'
         : panel.type === 'word-language'
           ? 'Word-by-word Language'
-          : panel.type === 'arabic-font'
-            ? 'Arabic Font'
+        : panel.type === 'arabic-font'
+            ? 'Arabic Font Selection'
             : panel.type === 'ui-language'
               ? 'Language'
               : 'Mushaf';
@@ -263,9 +272,17 @@ export function SettingsSidebarContent({
 
         {panel.type === 'arabic-font' ? (
           <FlatList
-            data={arabicFonts}
+            data={arabicFonts.filter((font) => font.category === arabicFontFilter)}
             keyExtractor={(item) => item.value}
             contentContainerStyle={{ padding: 12, gap: 10 }}
+            ListHeaderComponent={
+              <View className="pb-2">
+                <ArabicFontFilterToggle
+                  activeFilter={arabicFontFilter}
+                  onChange={setArabicFontFilter}
+                />
+              </View>
+            }
             renderItem={({ item }) => (
               <Pressable
                 onPress={() => {
@@ -281,7 +298,11 @@ export function SettingsSidebarContent({
                 <Text className="text-sm font-semibold text-foreground dark:text-foreground-dark">
                   {item.name}
                 </Text>
-                <Text className="mt-1 text-xs text-muted dark:text-muted-dark">{item.category}</Text>
+                {item.value === settings.arabicFontFace ? (
+                  <Text className="mt-1 text-xs font-semibold text-muted dark:text-muted-dark">
+                    Selected
+                  </Text>
+                ) : null}
               </Pressable>
             )}
           />

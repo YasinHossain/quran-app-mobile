@@ -2,7 +2,10 @@ import React from 'react';
 
 import type { SurahHeaderChapter } from '@/components/surah/SurahHeaderCard';
 import { useChapters } from '@/hooks/useChapters';
+import { apiFetch } from '@/src/core/infrastructure/api/apiFetch';
 import { container } from '@/src/core/infrastructure/di/container';
+
+import type { VerseWord } from '@/types';
 
 export type SurahVerse = {
   id?: number;
@@ -10,6 +13,7 @@ export type SurahVerse = {
   verse_key: string;
   text_uthmani?: string;
   translations?: Array<{ resource_id: number; text: string }>;
+  words?: VerseWord[];
   translationTexts: string[];
 };
 
@@ -20,9 +24,19 @@ type ApiVersesResponse = {
     verse_key: string;
     text_uthmani?: string;
     translations?: Array<{ resource_id: number; text: string }>;
+    words?: Array<{
+      id: number;
+      position?: number;
+      char_type_name?: string;
+      text_uthmani?: string;
+      text?: string;
+      translation?: { text?: string } | null;
+    }>;
   }>;
   pagination: { current_page: number; total_pages: number; per_page: number };
 };
+
+type ApiWord = NonNullable<ApiVersesResponse['verses'][number]['words']>[number];
 
 function stripHtml(input: string): string {
   return input
@@ -53,6 +67,28 @@ function buildTranslationTexts(
   return incoming
     .map((t) => stripHtml(t.text ?? ''))
     .filter((text) => text.length > 0);
+}
+
+function buildVerseWords(words: ApiWord[] | undefined): VerseWord[] | undefined {
+  if (!Array.isArray(words) || words.length === 0) return undefined;
+
+  const normalized: VerseWord[] = [];
+  for (const word of words) {
+    if (!word || word.char_type_name === 'end') continue;
+
+    const uthmani = (word.text_uthmani ?? word.text ?? '').trim();
+    if (!uthmani) continue;
+
+    normalized.push({
+      id: word.id,
+      uthmani,
+      translationText: word.translation?.text,
+      charTypeName: word.char_type_name,
+      ...(typeof word.position === 'number' ? { position: word.position } : {}),
+    });
+  }
+
+  return normalized.length ? normalized : undefined;
 }
 
 function isNetworkError(error: unknown): boolean {
@@ -95,10 +131,12 @@ async function areTranslationsInstalled(translationIds: number[]): Promise<boole
 export function useSurahVerses({
   chapterNumber,
   translationIds,
+  wordLang = 'en',
   perPage = 30,
 }: {
   chapterNumber: number;
   translationIds: number[];
+  wordLang?: string;
   perPage?: number;
 }): {
   chapter: SurahHeaderChapter | null;
@@ -127,6 +165,11 @@ export function useSurahVerses({
   const requestTokenRef = React.useRef(0);
   const dataSourceRef = React.useRef<'network' | 'offline'>('network');
 
+  const resolvedWordLang = React.useMemo(() => {
+    const normalized = typeof wordLang === 'string' ? wordLang.trim().toLowerCase() : '';
+    return normalized || 'en';
+  }, [wordLang]);
+
   const resolvedTranslationIds = React.useMemo(
     () => {
       const ordered: number[] = [];
@@ -147,13 +190,13 @@ export function useSurahVerses({
   );
 
   const translationsKey = resolvedTranslationIds.join(',');
-  const translationsQuery = translationsKey ? `&translations=${encodeURIComponent(translationsKey)}` : '';
 
   const loadFirstPage = React.useCallback(
     async (mode: 'initial' | 'refresh'): Promise<void> => {
       if (!Number.isFinite(chapterNumber)) return;
 
       const token = ++requestTokenRef.current;
+      let translationsInstalled = false;
       setErrorMessage(null);
       setOfflineNotInstalled(false);
       isLoadingMoreRef.current = false;
@@ -175,59 +218,33 @@ export function useSurahVerses({
           setChapter(localChapter);
         }
 
-        const translationsInstalled = await areTranslationsInstalled(resolvedTranslationIds).catch(() => false);
+        translationsInstalled = await areTranslationsInstalled(resolvedTranslationIds).catch(() => false);
 
         if (requestTokenRef.current !== token) return;
 
-        if (translationsInstalled) {
-          dataSourceRef.current = 'offline';
-          const offlineStore = container.getTranslationOfflineStore();
-          const offlineVerses = await offlineStore.getSurahVersesWithTranslations(
-            chapterNumber,
-            resolvedTranslationIds
-          );
-
-          if (requestTokenRef.current !== token) return;
-
-          setVerses(
-            offlineVerses.map((verse) => {
-              const translations = verse.translations.map((t) => ({
-                resource_id: t.translationId,
-                text: t.text,
-              }));
-
-              return {
-                verse_number: verse.ayahNumber,
-                verse_key: verse.verseKey,
-                text_uthmani: verse.arabicUthmani,
-                translations,
-                translationTexts: buildTranslationTexts(translations, resolvedTranslationIds),
-              };
-            })
-          );
-
-          pageRef.current = 1;
-          totalPagesRef.current = 1;
-          return;
-        }
-
         dataSourceRef.current = 'network';
 
-        const versesResponse = await fetch(
-          `https://api.quran.com/api/v4/verses/by_chapter/${chapterNumber}?language=en&words=false${translationsQuery}&fields=text_uthmani&per_page=${perPage}&page=1`
+        const versesJson = await apiFetch<ApiVersesResponse>(
+          `/verses/by_chapter/${chapterNumber}`,
+          {
+            language: resolvedWordLang,
+            words: 'true',
+            word_translation_language: resolvedWordLang,
+            word_fields: 'text_uthmani,char_type_name,position',
+            fields: 'text_uthmani',
+            ...(translationsKey ? { translations: translationsKey } : {}),
+            per_page: perPage.toString(),
+            page: '1',
+          },
+          'Failed to load verses'
         );
-
-        if (!versesResponse.ok) {
-          throw new Error(`Failed to load verses (${versesResponse.status})`);
-        }
-
-        const versesJson = (await versesResponse.json()) as ApiVersesResponse;
 
         if (requestTokenRef.current !== token) return;
 
         setVerses(
           (versesJson.verses ?? []).map((verse) => ({
             ...verse,
+            words: buildVerseWords(verse.words),
             translationTexts: buildTranslationTexts(verse.translations, resolvedTranslationIds),
           }))
         );
@@ -235,7 +252,47 @@ export function useSurahVerses({
         totalPagesRef.current = versesJson.pagination?.total_pages ?? 1;
       } catch (error) {
         if (requestTokenRef.current !== token) return;
+
         if (dataSourceRef.current === 'network' && isNetworkError(error)) {
+          if (translationsInstalled) {
+            try {
+              dataSourceRef.current = 'offline';
+              const offlineStore = container.getTranslationOfflineStore();
+              const offlineVerses = await offlineStore.getSurahVersesWithTranslations(
+                chapterNumber,
+                resolvedTranslationIds
+              );
+
+              if (requestTokenRef.current !== token) return;
+
+              setVerses(
+                offlineVerses.map((verse) => {
+                  const translations = verse.translations.map((t) => ({
+                    resource_id: t.translationId,
+                    text: t.text,
+                  }));
+
+                  return {
+                    verse_number: verse.ayahNumber,
+                    verse_key: verse.verseKey,
+                    text_uthmani: verse.arabicUthmani,
+                    translations,
+                    translationTexts: buildTranslationTexts(translations, resolvedTranslationIds),
+                  };
+                })
+              );
+
+              pageRef.current = 1;
+              totalPagesRef.current = 1;
+              setOfflineNotInstalled(false);
+              setErrorMessage(null);
+              return;
+            } catch (offlineError) {
+              setErrorMessage((offlineError as Error).message);
+              return;
+            }
+          }
+
           setOfflineNotInstalled(true);
           setErrorMessage(null);
           return;
@@ -248,7 +305,7 @@ export function useSurahVerses({
         if (mode === 'refresh') setIsRefreshing(false);
       }
     },
-    [chapterNumber, chapters, perPage, resolvedTranslationIds, translationsQuery]
+    [chapterNumber, chapters, perPage, resolvedTranslationIds, resolvedWordLang, translationsKey]
   );
 
   React.useEffect(() => {
@@ -291,19 +348,26 @@ export function useSurahVerses({
 
     async function run(): Promise<void> {
       try {
-        const response = await fetch(
-          `https://api.quran.com/api/v4/verses/by_chapter/${chapterNumber}?language=en&words=false${translationsQuery}&fields=text_uthmani&per_page=${perPage}&page=${nextPage}`
+        const json = await apiFetch<ApiVersesResponse>(
+          `/verses/by_chapter/${chapterNumber}`,
+          {
+            language: resolvedWordLang,
+            words: 'true',
+            word_translation_language: resolvedWordLang,
+            word_fields: 'text_uthmani,char_type_name,position',
+            fields: 'text_uthmani',
+            ...(translationsKey ? { translations: translationsKey } : {}),
+            per_page: perPage.toString(),
+            page: nextPage.toString(),
+          },
+          'Failed to load verses'
         );
 
-        if (!response.ok) {
-          throw new Error(`Failed to load verses (${response.status})`);
-        }
-
-        const json = (await response.json()) as ApiVersesResponse;
         if (requestTokenRef.current !== token) return;
 
         const preparedIncoming = (json.verses ?? []).map((verse) => ({
           ...verse,
+          words: buildVerseWords(verse.words),
           translationTexts: buildTranslationTexts(verse.translations, resolvedTranslationIds),
         }));
 
@@ -327,7 +391,7 @@ export function useSurahVerses({
     }
 
     void run();
-  }, [chapterNumber, isLoading, perPage, resolvedTranslationIds, translationsQuery]);
+  }, [chapterNumber, isLoading, perPage, resolvedTranslationIds, resolvedWordLang, translationsKey]);
 
   return {
     chapter,

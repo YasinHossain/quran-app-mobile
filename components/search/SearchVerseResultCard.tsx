@@ -9,7 +9,6 @@ import { HighlightedText } from './HighlightedText';
 
 import type { SearchVerseResult } from '@/lib/api/search';
 
-const AVAILABLE_ARABIC_FONT_FAMILIES = new Set(['UthmanicHafs1Ver18', 'Scheherazade New']);
 const QURAN_ANNOTATION_MARKS_REGEX = /[\u06D6-\u06ED]/;
 
 function getFirstFontFamily(fontFace: string | undefined): string | undefined {
@@ -21,10 +20,7 @@ function getFirstFontFamily(fontFace: string | undefined): string | undefined {
 
 function resolveArabicFontFamily(fontFace: string | undefined, arabicText: string): string {
   const arabicFontFamily = getFirstFontFamily(fontFace);
-  const normalized =
-    arabicFontFamily && AVAILABLE_ARABIC_FONT_FAMILIES.has(arabicFontFamily)
-      ? arabicFontFamily
-      : 'UthmanicHafs1Ver18';
+  const normalized = arabicFontFamily ?? 'UthmanicHafs1Ver18';
 
   const sanitized = arabicText.trim();
   const shouldUseScheherazadeFallback =
@@ -127,4 +123,3 @@ export function SearchVerseResultCard({
     </Pressable>
   );
 }
-

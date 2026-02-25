@@ -1,11 +1,13 @@
 import React from 'react';
 import { MoreHorizontal } from 'lucide-react-native';
-import { Pressable, Text, View } from 'react-native';
+import { Platform, Pressable, Text, ToastAndroid, View } from 'react-native';
 
 import Colors from '@/constants/Colors';
 import { useAppTheme } from '@/providers/ThemeContext';
+import type { VerseWord } from '@/types';
 
-const AVAILABLE_ARABIC_FONT_FAMILIES = new Set(['UthmanicHafs1Ver18', 'Scheherazade New']);
+import { WordByWordVerse } from './WordByWordVerse';
+
 const QURAN_ANNOTATION_MARKS_REGEX = /[\u06D6-\u06ED]/;
 
 function getFirstFontFamily(fontFace: string | undefined): string | undefined {
@@ -18,6 +20,7 @@ function getFirstFontFamily(fontFace: string | undefined): string | undefined {
 function VerseCardComponent({
   verseKey,
   arabicText,
+  words,
   translationTexts,
   arabicFontSize,
   arabicFontFace,
@@ -29,6 +32,7 @@ function VerseCardComponent({
 }: {
   verseKey: string;
   arabicText: string;
+  words?: VerseWord[];
   translationTexts?: string[];
   arabicFontSize: number;
   arabicFontFace?: string;
@@ -40,26 +44,55 @@ function VerseCardComponent({
 }): React.JSX.Element {
   const { resolvedTheme } = useAppTheme();
   const palette = Colors[resolvedTheme];
+  const [wordTranslationTooltip, setWordTranslationTooltip] = React.useState<string | null>(null);
+  const tooltipHideTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const arabicFontFamily = getFirstFontFamily(arabicFontFace);
   const sanitizedArabicText = arabicText.trim();
-  const normalizedArabicFontFamily =
-    arabicFontFamily && AVAILABLE_ARABIC_FONT_FAMILIES.has(arabicFontFamily)
-      ? arabicFontFamily
-      : 'UthmanicHafs1Ver18';
+  // Use the selected family as-is; many options are system fonts on Android,
+  // and custom fonts are handled by Expo font loading in `app/_layout.tsx`.
+  const normalizedArabicFontFamily = arabicFontFamily ?? 'UthmanicHafs1Ver18';
   const shouldUseScheherazadeFallback =
     normalizedArabicFontFamily.includes('UthmanicHafs1Ver18') &&
     (sanitizedArabicText.includes('\u06DF') || QURAN_ANNOTATION_MARKS_REGEX.test(sanitizedArabicText));
   const effectiveArabicFontFamily = shouldUseScheherazadeFallback
     ? 'Scheherazade New'
     : normalizedArabicFontFamily;
-  const arabicLineHeight = Math.max(arabicFontSize + 6, Math.round(arabicFontSize * 1.55));
+  // Web uses a fairly loose Arabic line-height (see `../quran-app/app/shared/VerseArabic.tsx`).
+  // Keep mobile close for parity + to prevent diacritics from colliding on wrap.
+  const arabicLineHeight = Math.max(arabicFontSize + 14, Math.round(arabicFontSize * 2.2));
   const translationLineHeight = Math.max(
-    translationFontSize + 6,
-    Math.round(translationFontSize * 1.55)
+    translationFontSize + 8,
+    Math.round(translationFontSize * 1.7)
   );
 
   const cleanedTranslations = (translationTexts ?? []).map((t) => t.trim()).filter(Boolean);
   const renderSignal = typeof _renderSignal === 'number' ? _renderSignal : 0;
+
+  React.useEffect(() => {
+    return () => {
+      if (tooltipHideTimeoutRef.current) {
+        clearTimeout(tooltipHideTimeoutRef.current);
+        tooltipHideTimeoutRef.current = null;
+      }
+    };
+  }, []);
+
+  const showWordTranslation = React.useCallback((text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+
+    if (Platform.OS === 'android') {
+      ToastAndroid.showWithGravity(trimmed, ToastAndroid.SHORT, ToastAndroid.BOTTOM);
+      return;
+    }
+
+    setWordTranslationTooltip(trimmed);
+    if (tooltipHideTimeoutRef.current) clearTimeout(tooltipHideTimeoutRef.current);
+    tooltipHideTimeoutRef.current = setTimeout(() => {
+      tooltipHideTimeoutRef.current = null;
+      setWordTranslationTooltip(null);
+    }, 2500);
+  }, []);
 
   const content = (
     <View className="flex-1 gap-4">
@@ -86,24 +119,39 @@ function VerseCardComponent({
           ) : null}
         </View>
 
-        <Text
-          key={`${verseKey}-arabic-${renderSignal}`}
-          className="text-right text-foreground dark:text-foreground-dark"
-          style={{
-            fontSize: arabicFontSize,
-            lineHeight: arabicLineHeight,
-            fontFamily: effectiveArabicFontFamily,
-            writingDirection: 'rtl',
-            textAlign: 'right',
-          }}
-        >
-          {sanitizedArabicText}
-        </Text>
-
-        {showByWords ? (
-          <Text className="text-xs text-muted dark:text-muted-dark">
-            Word-by-word view is UI-ready. Data fetching is coming next.
+        {Array.isArray(words) && words.length ? (
+          <WordByWordVerse
+            words={words}
+            arabicFontSize={arabicFontSize}
+            arabicFontFamily={effectiveArabicFontFamily}
+            showTranslations={Boolean(showByWords)}
+            onWordPress={
+              showByWords
+                ? undefined
+                : (word) => {
+                    if (!word.translationText) return;
+                    showWordTranslation(word.translationText);
+                  }
+            }
+          />
+        ) : (
+          <Text
+            key={`${verseKey}-arabic-${renderSignal}`}
+            className="text-right text-foreground dark:text-foreground-dark"
+            style={{
+              fontSize: arabicFontSize,
+              lineHeight: arabicLineHeight,
+              fontFamily: effectiveArabicFontFamily,
+              writingDirection: 'rtl',
+              textAlign: 'right',
+            }}
+          >
+            {sanitizedArabicText}
           </Text>
+        )}
+
+        {!showByWords && wordTranslationTooltip ? (
+          <Text className="text-xs text-muted dark:text-muted-dark">{wordTranslationTooltip}</Text>
         ) : null}
 
         {cleanedTranslations.length ? (

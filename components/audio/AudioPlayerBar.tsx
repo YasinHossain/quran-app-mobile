@@ -1,6 +1,6 @@
 import Slider from '@react-native-community/slider';
 import { useSegments } from 'expo-router';
-import { Pause, Play, SkipBack, SkipForward, SlidersHorizontal, X } from 'lucide-react-native';
+import { Download, Pause, Play, SkipBack, SkipForward, SlidersHorizontal, X } from 'lucide-react-native';
 import React from 'react';
 import {
   ActivityIndicator,
@@ -14,6 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AnchoredDropdownModal } from '@/components/search/AnchoredDropdownModal';
 import Colors from '@/constants/Colors';
+import { AudioDownloadModal } from '@/components/audio/AudioDownloadModal';
 import { PlaybackOptionsModal } from '@/components/audio/PlaybackOptionsModal';
 import { useAudioPlayer } from '@/providers/AudioPlayerContext';
 import { useLayoutMetrics } from '@/providers/LayoutMetricsContext';
@@ -57,6 +58,7 @@ export function AudioPlayerBar(): React.JSX.Element | null {
   const [isSeeking, setIsSeeking] = React.useState(false);
   const [seekValue, setSeekValue] = React.useState(0);
   const [optionsOpen, setOptionsOpen] = React.useState(false);
+  const [downloadOpen, setDownloadOpen] = React.useState(false);
   const [speedOpen, setSpeedOpen] = React.useState(false);
   const speedAnchorRef = React.useRef<View | null>(null);
 
@@ -90,11 +92,19 @@ export function AudioPlayerBar(): React.JSX.Element | null {
   );
 
   const handleOptions = React.useCallback(() => {
+    setDownloadOpen(false);
     setSpeedOpen(false);
     setOptionsOpen(true);
   }, []);
 
+  const handleDownload = React.useCallback(() => {
+    setSpeedOpen(false);
+    setOptionsOpen(false);
+    setDownloadOpen(true);
+  }, []);
+
   const handleSpeed = React.useCallback(() => {
+    setDownloadOpen(false);
     setOptionsOpen(false);
     setSpeedOpen((prev) => !prev);
   }, []);
@@ -218,6 +228,16 @@ export function AudioPlayerBar(): React.JSX.Element | null {
                       <SlidersHorizontal color={palette.muted} size={18} strokeWidth={2.25} />
                     </Pressable>
                     <Pressable
+                      onPress={handleDownload}
+                      hitSlop={10}
+                      accessibilityRole="button"
+                      accessibilityLabel="Download audio"
+                      className="p-2 rounded-full"
+                      style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
+                    >
+                      <Download color={palette.muted} size={18} strokeWidth={2.25} />
+                    </Pressable>
+                    <Pressable
                       onPress={audio.closePlayer}
                       hitSlop={10}
                       accessibilityRole="button"
@@ -309,6 +329,7 @@ export function AudioPlayerBar(): React.JSX.Element | null {
       </AnchoredDropdownModal>
 
       <PlaybackOptionsModal isOpen={optionsOpen} onClose={() => setOptionsOpen(false)} />
+      <AudioDownloadModal isOpen={downloadOpen} onClose={() => setDownloadOpen(false)} />
     </>
   );
 }

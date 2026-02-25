@@ -1,6 +1,15 @@
 import { GripVertical, RotateCcw, X } from 'lucide-react-native';
 import React from 'react';
-import { Animated, LayoutAnimation, Platform, Pressable, Text, UIManager, View } from 'react-native';
+import {
+  Animated,
+  LayoutAnimation,
+  Platform,
+  PanResponder,
+  Pressable,
+  Text,
+  UIManager,
+  View,
+} from 'react-native';
 
 import Colors from '@/constants/Colors';
 import { useAppTheme } from '@/providers/ThemeContext';
@@ -301,23 +310,22 @@ function SelectionListRow({
   variant: SelectionListVariant;
   mutedColor: string;
 }): React.JSX.Element {
-  const panResponder = React.useMemo(() => {
-    if (!canReorder) return null;
-    // Lazy import avoids paying the cost when reorder isn't needed.
-    const { PanResponder } = require('react-native') as typeof import('react-native');
-    return PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onStartShouldSetPanResponderCapture: () => true,
-      onMoveShouldSetPanResponderCapture: () => true,
-      onPanResponderTerminationRequest: () => false,
-      onShouldBlockNativeResponder: () => true,
-      onPanResponderGrant: () => beginDrag(id),
-      onPanResponderMove: (_evt, gesture) => updateDrag(gesture.dy),
-      onPanResponderRelease: endDrag,
-      onPanResponderTerminate: endDrag,
-    });
-  }, [beginDrag, canReorder, endDrag, id, updateDrag]);
+  const panResponder = React.useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => canReorder,
+        onMoveShouldSetPanResponder: () => canReorder,
+        onStartShouldSetPanResponderCapture: () => canReorder,
+        onMoveShouldSetPanResponderCapture: () => canReorder,
+        onPanResponderTerminationRequest: () => false,
+        onShouldBlockNativeResponder: () => true,
+        onPanResponderGrant: () => beginDrag(id),
+        onPanResponderMove: (_evt, gesture) => updateDrag(gesture.dy),
+        onPanResponderRelease: endDrag,
+        onPanResponderTerminate: endDrag,
+      }),
+    [beginDrag, canReorder, endDrag, id, updateDrag]
+  );
 
   return (
     <Animated.View
@@ -333,17 +341,15 @@ function SelectionListRow({
       ]}
     >
       <View className="flex-row items-center flex-1 min-w-0 pr-1">
-        <Pressable
-          onPressIn={() => beginDrag(id)}
-          hitSlop={12}
+        <View
           className={['p-2 mr-2', canReorder ? '' : 'opacity-40'].join(' ')}
-          {...(panResponder ? panResponder.panHandlers : {})}
+          {...panResponder.panHandlers}
+          accessible
           accessibilityRole="button"
           accessibilityLabel="Reorder"
-          style={({ pressed }) => ({ opacity: canReorder ? (pressed ? 0.75 : 1) : 0.4 })}
         >
           <GripVertical size={18} color={mutedColor} strokeWidth={2.5} />
-        </Pressable>
+        </View>
         <View className="flex-1 min-w-0">
           <Text
             numberOfLines={1}

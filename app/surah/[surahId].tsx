@@ -87,7 +87,7 @@ export default function SurahScreen(): React.JSX.Element {
     refresh,
     retry,
     loadMore,
-  } = useSurahVerses({ chapterNumber, translationIds });
+  } = useSurahVerses({ chapterNumber, translationIds, wordLang: settings.wordLang });
 
   const openVerseActions = React.useCallback(
     (params: {
@@ -240,6 +240,7 @@ export default function SurahScreen(): React.JSX.Element {
         <VerseCard
           verseKey={item.verse_key}
           arabicText={item.text_uthmani ?? ''}
+          words={item.words}
           translationTexts={translationTexts}
           arabicFontSize={settings.arabicFontSize}
           arabicFontFace={settings.arabicFontFace}
