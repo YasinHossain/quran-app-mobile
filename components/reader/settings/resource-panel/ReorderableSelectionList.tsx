@@ -1,4 +1,4 @@
-import { GripVertical, RotateCcw, X } from 'lucide-react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import React from 'react';
 import {
   Animated,
@@ -121,7 +121,7 @@ export function ReorderableSelectionList({
 
   const itemHeight = variant === 'translation' ? 54 : 46;
 
-  React.useEffect(() => {
+  React.useLayoutEffect(() => {
     setLocalOrder(normalizeOrderedSelection(orderedSelection));
   }, [orderedSelection]);
 
@@ -237,7 +237,7 @@ export function ReorderableSelectionList({
               style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
               className="p-1.5 rounded-full"
             >
-              <RotateCcw size={16} color={palette.text} strokeWidth={2.5} />
+              <MaterialCommunityIcons name="rotate-left" size={16} color={palette.text} />
             </Pressable>
           ) : null}
         </View>
@@ -348,7 +348,7 @@ function SelectionListRow({
           accessibilityRole="button"
           accessibilityLabel="Reorder"
         >
-          <GripVertical size={18} color={mutedColor} strokeWidth={2.5} />
+          <MaterialCommunityIcons name="drag-vertical" size={18} color={mutedColor} />
         </View>
         <View className="flex-1 min-w-0">
           <Text
@@ -371,7 +371,7 @@ function SelectionListRow({
           className={[removeButtonClassName, 'h-7 w-7 items-center justify-center'].join(' ')}
           style={({ pressed }) => ({ opacity: isDragging ? 0.4 : pressed ? 0.7 : 1 })}
         >
-          <X size={variant === 'tafsir' ? 16 : 14} color={mutedColor} strokeWidth={2.5} />
+          <MaterialCommunityIcons name="close" size={variant === 'tafsir' ? 16 : 14} color={mutedColor} />
         </Pressable>
       </View>
     </Animated.View>

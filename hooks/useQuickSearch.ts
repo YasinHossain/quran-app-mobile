@@ -10,11 +10,13 @@ export function useQuickSearch({
   translationIds,
   perPage = 10,
   debounceMs = DEFAULT_DEBOUNCE_MS,
+  enabled = true,
 }: {
   query: string;
   translationIds: number[];
   perPage?: number;
   debounceMs?: number;
+  enabled?: boolean;
 }): {
   isLoading: boolean;
   errorMessage: string | null;
@@ -36,6 +38,14 @@ export function useQuickSearch({
   const abortRef = React.useRef<AbortController | null>(null);
 
   React.useEffect(() => {
+    if (!enabled) {
+      setIsLoading(false);
+      setErrorMessage(null);
+      setNavigationResults([]);
+      setVerseResults([]);
+      return;
+    }
+
     if (timerRef.current) {
       clearTimeout(timerRef.current);
       timerRef.current = null;
@@ -104,8 +114,7 @@ export function useQuickSearch({
       abortRef.current?.abort();
       abortRef.current = null;
     };
-  }, [debounceMs, perPage, query, translationIds, translationKey]);
+  }, [debounceMs, enabled, perPage, query, translationIds, translationKey]);
 
   return { isLoading, errorMessage, navigationResults, verseResults };
 }
-

@@ -7,10 +7,18 @@ export function ResourceItem({
   item,
   isSelected,
   onToggle,
+  trailingAction,
+  onTrailingPress,
+  trailingAccessibilityLabel,
+  trailingDisabled = false,
 }: {
   item: ResourceRecord;
   isSelected: boolean;
   onToggle: (id: number) => void;
+  trailingAction?: React.ReactNode;
+  onTrailingPress?: () => void;
+  trailingAccessibilityLabel?: string;
+  trailingDisabled?: boolean;
 }): React.JSX.Element {
   return (
     <Pressable
@@ -36,6 +44,22 @@ export function ResourceItem({
           {item.name}
         </Text>
       </View>
+
+      {trailingAction ? (
+        <Pressable
+          onPress={(event) => {
+            event.stopPropagation();
+            onTrailingPress?.();
+          }}
+          disabled={!onTrailingPress || trailingDisabled}
+          accessibilityRole="button"
+          accessibilityLabel={trailingAccessibilityLabel}
+          className={trailingDisabled ? 'opacity-40' : ''}
+          style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
+        >
+          {trailingAction}
+        </Pressable>
+      ) : null}
     </Pressable>
   );
 }

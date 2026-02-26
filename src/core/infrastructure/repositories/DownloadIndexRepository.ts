@@ -80,13 +80,45 @@ function applyPatch(
 }
 
 export class DownloadIndexRepository implements IDownloadIndexRepository {
+  private cache: StoredDownloadIndex | null = null;
+  private loadingPromise: Promise<StoredDownloadIndex> | null = null;
+  private persistQueue: Promise<void> = Promise.resolve();
+
+  private async ensureLoaded(): Promise<StoredDownloadIndex> {
+    if (this.cache) return this.cache;
+    if (this.loadingPromise) return this.loadingPromise;
+
+    this.loadingPromise = loadIndexFromStorage()
+      .then((index) => {
+        this.cache = index;
+        return index;
+      })
+      .finally(() => {
+        this.loadingPromise = null;
+      });
+
+    return this.loadingPromise;
+  }
+
+  private async persist(index: StoredDownloadIndex): Promise<void> {
+    const snapshot = { ...index };
+
+    this.persistQueue = this.persistQueue
+      .catch(() => undefined)
+      .then(async () => {
+        await saveIndexToStorage(snapshot);
+      });
+
+    await this.persistQueue;
+  }
+
   async list(): Promise<DownloadIndexItemWithKey[]> {
-    const index = await loadIndexFromStorage();
+    const index = await this.ensureLoaded();
     return Object.entries(index).map(([key, item]) => ({ key, ...item }));
   }
 
   async get(content: DownloadableContent): Promise<DownloadIndexItemWithKey | null> {
-    const index = await loadIndexFromStorage();
+    const index = await this.ensureLoaded();
     const key = getDownloadKey(content);
     const item = index[key];
     if (!item) return null;
@@ -97,28 +129,30 @@ export class DownloadIndexRepository implements IDownloadIndexRepository {
     content: DownloadableContent,
     patch: DownloadIndexItemPatch
   ): Promise<DownloadIndexItemWithKey> {
-    const index = await loadIndexFromStorage();
+    const index = { ...(await this.ensureLoaded()) };
     const key = getDownloadKey(content);
     const now = Date.now();
 
     const updated = applyPatch(index[key], content, patch, now);
     index[key] = updated;
-    await saveIndexToStorage(index);
+    this.cache = index;
+    await this.persist(index);
 
     return { key, ...updated };
   }
 
   async remove(content: DownloadableContent): Promise<void> {
-    const index = await loadIndexFromStorage();
+    const index = { ...(await this.ensureLoaded()) };
     const key = getDownloadKey(content);
     if (!(key in index)) return;
 
     delete index[key];
-    await saveIndexToStorage(index);
+    this.cache = index;
+    await this.persist(index);
   }
 
   async clearErrors(content?: DownloadableContent): Promise<void> {
-    const index = await loadIndexFromStorage();
+    const index = { ...(await this.ensureLoaded()) };
     const now = Date.now();
 
     if (content) {
@@ -130,7 +164,8 @@ export class DownloadIndexRepository implements IDownloadIndexRepository {
       delete next.error;
       next.updatedAt = now;
       index[key] = next;
-      await saveIndexToStorage(index);
+      this.cache = index;
+      await this.persist(index);
       return;
     }
 
@@ -147,8 +182,8 @@ export class DownloadIndexRepository implements IDownloadIndexRepository {
     }
 
     if (didChange) {
-      await saveIndexToStorage(index);
+      this.cache = index;
+      await this.persist(index);
     }
   }
 }
-

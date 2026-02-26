@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight } from 'lucide-react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import React from 'react';
 import type { LayoutChangeEvent, NativeScrollEvent, NativeSyntheticEvent } from 'react-native';
 import { Pressable, ScrollView, Text, View } from 'react-native';
@@ -130,7 +130,7 @@ export function ResourceTabs({
   return (
     <View className="flex-row items-center overflow-hidden" onLayout={onLayout}>
       <NavButton disabled={!canScrollLeft} onPress={() => scrollBy(-140)}>
-        <ChevronLeft size={20} color={palette.muted} strokeWidth={2.5} />
+        <MaterialCommunityIcons name="chevron-left" size={20} color={palette.muted} />
       </NavButton>
 
       <ScrollView
@@ -153,9 +153,8 @@ export function ResourceTabs({
       </ScrollView>
 
       <NavButton disabled={!canScrollRight} onPress={() => scrollBy(140)}>
-        <ChevronRight size={20} color={palette.muted} strokeWidth={2.5} />
+        <MaterialCommunityIcons name="chevron-right" size={20} color={palette.muted} />
       </NavButton>
     </View>
   );
 }
-

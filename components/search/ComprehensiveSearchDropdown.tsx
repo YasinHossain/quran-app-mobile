@@ -178,6 +178,7 @@ export function ComprehensiveSearchDropdown({
   const translationIds = React.useMemo(() => getTranslationIds(settings), [settings.translationId, settings.translationIds]);
 
   const { isLoading, errorMessage, navigationResults, verseResults } = useQuickSearch({
+    enabled: isOpen,
     query,
     translationIds,
     perPage: 10,

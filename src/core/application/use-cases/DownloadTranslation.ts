@@ -10,11 +10,27 @@ import type {
 
 const TOTAL_SURAHS = 114;
 const DEFAULT_PER_PAGE = 50;
+const CANCELED_ERROR_CODE = 'translation_download_canceled';
+const canceledTranslationIds = new Set<number>();
 
 function normalizeId(value: number): number {
   if (!Number.isFinite(value)) return 0;
   const normalized = Math.trunc(value);
   return normalized > 0 ? normalized : 0;
+}
+
+class TranslationDownloadCanceledError extends Error {
+  readonly code = CANCELED_ERROR_CODE;
+
+  constructor(readonly translationId: number) {
+    super('Translation download canceled');
+    this.name = 'TranslationDownloadCanceledError';
+  }
+}
+
+function throwIfCanceled(translationId: number): void {
+  if (!canceledTranslationIds.has(translationId)) return;
+  throw new TranslationDownloadCanceledError(translationId);
 }
 
 function stripHtml(input: string): string {
@@ -35,6 +51,18 @@ function toDownloadProgress(completedSurahs: number): DownloadProgress {
   };
 }
 
+export function requestTranslationDownloadCancel(translationId: number): void {
+  const normalizedTranslationId = normalizeId(translationId);
+  if (normalizedTranslationId <= 0) return;
+  canceledTranslationIds.add(normalizedTranslationId);
+}
+
+export function isTranslationDownloadCanceledError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  if ((error as { code?: unknown }).code === CANCELED_ERROR_CODE) return true;
+  return error.name === 'TranslationDownloadCanceledError';
+}
+
 export class DownloadTranslationUseCase {
   constructor(
     private readonly downloadIndexRepository: IDownloadIndexRepository,
@@ -48,6 +76,8 @@ export class DownloadTranslationUseCase {
     if (normalizedTranslationId <= 0) {
       throw new Error('translationId must be a positive integer');
     }
+
+    canceledTranslationIds.delete(normalizedTranslationId);
 
     const content: DownloadableContent = {
       kind: 'translation',
@@ -73,11 +103,13 @@ export class DownloadTranslationUseCase {
 
     try {
       for (let surahId = 1; surahId <= TOTAL_SURAHS; surahId += 1) {
+        throwIfCanceled(normalizedTranslationId);
         await this.downloadSurahTranslation({
           surahId,
           translationId: normalizedTranslationId,
         });
 
+        throwIfCanceled(normalizedTranslationId);
         completedSurahs = surahId;
         await this.downloadIndexRepository.upsert(content, {
           status: 'downloading',
@@ -86,12 +118,28 @@ export class DownloadTranslationUseCase {
         });
       }
 
+      throwIfCanceled(normalizedTranslationId);
       await this.downloadIndexRepository.upsert(content, {
         status: 'installed',
         progress: null,
         error: null,
       });
     } catch (error) {
+      if (isTranslationDownloadCanceledError(error)) {
+        try {
+          await this.translationOfflineStore.deleteTranslation(normalizedTranslationId);
+        } catch (cleanupError) {
+          this.logger?.warn(
+            'Failed to clean up translation after cancellation',
+            { translationId: normalizedTranslationId },
+            cleanupError as Error
+          );
+        }
+
+        await this.downloadIndexRepository.remove(content);
+        return;
+      }
+
       const errorMessage = error instanceof Error ? error.message : String(error);
 
       await this.downloadIndexRepository.upsert(content, {
@@ -111,6 +159,8 @@ export class DownloadTranslationUseCase {
       }
 
       throw error;
+    } finally {
+      canceledTranslationIds.delete(normalizedTranslationId);
     }
   }
 
@@ -127,12 +177,15 @@ export class DownloadTranslationUseCase {
     let totalPages = 1;
 
     while (page <= totalPages) {
+      throwIfCanceled(translationId);
       const response = await this.translationDownloadRepository.getChapterVersesPage({
         chapterNumber: surahId,
         translationId,
         page,
         perPage: DEFAULT_PER_PAGE,
       });
+
+      throwIfCanceled(translationId);
 
       const verseRows: OfflineVerseRowInput[] = response.verses.map((verse) => ({
         verseKey: verse.verseKey,
@@ -157,4 +210,3 @@ export class DownloadTranslationUseCase {
     }
   }
 }
-

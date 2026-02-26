@@ -1,5 +1,6 @@
 import React from 'react';
-import { FlatList, Pressable, Text, View } from 'react-native';
+import { FlashList } from '@shopify/flash-list';
+import { Platform, Pressable, Text, View } from 'react-native';
 
 import { HeaderSearchInput } from '@/components/search/HeaderSearchInput';
 
@@ -122,6 +123,29 @@ export function ManageTafsirsPanel({
     return base;
   }, [activeFilter, isLoading, resourcesToRender, sectionsToRender, tafsirs.length]);
 
+  const getRowType = React.useCallback((row: Row): string => row.type, []);
+
+  const overrideRowLayout = React.useCallback((layout: { span?: number }, row: Row): void => {
+    const sizedLayout = layout as { span?: number; size?: number };
+
+    if (row.type === 'resource') {
+      sizedLayout.size = 58;
+      return;
+    }
+
+    if (row.type === 'section') {
+      sizedLayout.size = 48;
+      return;
+    }
+
+    if (row.type === 'tabs') {
+      sizedLayout.size = 56;
+      return;
+    }
+
+    sizedLayout.size = 90;
+  }, []);
+
   const renderHeader = React.useCallback((): React.JSX.Element => {
     return (
       <View className="p-4 gap-4">
@@ -220,7 +244,7 @@ export function ManageTafsirsPanel({
         </View>
       ) : null}
 
-      <FlatList
+      <FlashList
         data={rows}
         keyExtractor={(row) => {
           if (row.type === 'tabs') return 'tabs';
@@ -232,7 +256,11 @@ export function ManageTafsirsPanel({
         ListHeaderComponent={renderHeader}
         stickyHeaderIndices={[1]}
         keyboardShouldPersistTaps="handled"
-        removeClippedSubviews={false}
+        removeClippedSubviews={Platform.OS === 'android'}
+        drawDistance={Platform.OS === 'android' ? 350 : 250}
+        getItemType={getRowType}
+        overrideItemLayout={overrideRowLayout}
+        overrideProps={{ initialDrawBatchSize: 8 }}
         scrollEnabled={!isReordering}
         contentContainerStyle={{ paddingBottom: 20 }}
       />

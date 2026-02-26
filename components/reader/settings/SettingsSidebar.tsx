@@ -60,7 +60,14 @@ export function SettingsSidebar({
   }, [isOpen, overlayOpacity, sheetWidth, translateX]);
 
   return (
-    <Modal transparent visible={visible} onRequestClose={onClose} animationType="none">
+    <Modal
+      transparent
+      visible={visible}
+      onRequestClose={onClose}
+      animationType="none"
+      hardwareAccelerated
+      statusBarTranslucent
+    >
       <View style={styles.root}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose}>
           <Animated.View style={[styles.overlay, { opacity: overlayOpacity }]} />

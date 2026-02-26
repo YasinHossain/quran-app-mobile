@@ -178,6 +178,7 @@ export function ComprehensiveSearchModal({
   const inputRef = React.useRef<TextInput | null>(null);
 
   const { isLoading, errorMessage, navigationResults, verseResults } = useQuickSearch({
+    enabled: isOpen,
     query,
     translationIds,
     perPage: 10,

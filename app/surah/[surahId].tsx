@@ -87,7 +87,12 @@ export default function SurahScreen(): React.JSX.Element {
     refresh,
     retry,
     loadMore,
-  } = useSurahVerses({ chapterNumber, translationIds, wordLang: settings.wordLang });
+  } = useSurahVerses({
+    chapterNumber,
+    translationIds,
+    wordLang: settings.wordLang,
+    enabled: !isSettingsOpen,
+  });
 
   const openVerseActions = React.useCallback(
     (params: {
@@ -158,9 +163,9 @@ export default function SurahScreen(): React.JSX.Element {
     [closeHeaderSearch, router]
   );
 
-  const navigateToDownloads = React.useCallback(() => {
-    router.push('/downloads');
-  }, [router]);
+  const openTranslationSettings = React.useCallback(() => {
+    setIsSettingsOpen(true);
+  }, []);
 
   const listExtraData = React.useMemo(
     () => ({
@@ -476,14 +481,14 @@ export default function SurahScreen(): React.JSX.Element {
                   You’re offline and this translation isn’t downloaded yet.
                 </Text>
                 <Pressable
-                  onPress={navigateToDownloads}
+                  onPress={openTranslationSettings}
                   accessibilityRole="button"
-                  accessibilityLabel="Download translations for offline use"
+                  accessibilityLabel="Open translation settings"
                   className="self-start rounded-lg bg-accent px-4 py-2"
                   style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
                 >
                   <Text className="text-sm font-semibold text-on-accent">
-                    Download translations for offline use
+                    Open translation settings
                   </Text>
                 </Pressable>
               </View>
@@ -562,14 +567,14 @@ export default function SurahScreen(): React.JSX.Element {
                   You’re offline and this translation isn’t downloaded yet.
                 </Text>
                 <Pressable
-                  onPress={navigateToDownloads}
+                  onPress={openTranslationSettings}
                   accessibilityRole="button"
-                  accessibilityLabel="Download translations for offline use"
+                  accessibilityLabel="Open translation settings"
                   className="self-start rounded-lg bg-accent px-4 py-2"
                   style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
                 >
                   <Text className="text-sm font-semibold text-on-accent">
-                    Download translations for offline use
+                    Open translation settings
                   </Text>
                 </Pressable>
               </View>

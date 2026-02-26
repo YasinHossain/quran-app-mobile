@@ -133,11 +133,13 @@ export function useSurahVerses({
   translationIds,
   wordLang = 'en',
   perPage = 30,
+  enabled = true,
 }: {
   chapterNumber: number;
   translationIds: number[];
   wordLang?: string;
   perPage?: number;
+  enabled?: boolean;
 }): {
   chapter: SurahHeaderChapter | null;
   verses: SurahVerse[];
@@ -193,10 +195,10 @@ export function useSurahVerses({
 
   const loadFirstPage = React.useCallback(
     async (mode: 'initial' | 'refresh'): Promise<void> => {
+      if (!enabled) return;
       if (!Number.isFinite(chapterNumber)) return;
 
       const token = ++requestTokenRef.current;
-      let translationsInstalled = false;
       setErrorMessage(null);
       setOfflineNotInstalled(false);
       isLoadingMoreRef.current = false;
@@ -217,10 +219,6 @@ export function useSurahVerses({
         if (localChapter) {
           setChapter(localChapter);
         }
-
-        translationsInstalled = await areTranslationsInstalled(resolvedTranslationIds).catch(() => false);
-
-        if (requestTokenRef.current !== token) return;
 
         dataSourceRef.current = 'network';
 
@@ -254,6 +252,11 @@ export function useSurahVerses({
         if (requestTokenRef.current !== token) return;
 
         if (dataSourceRef.current === 'network' && isNetworkError(error)) {
+          const translationsInstalled = await areTranslationsInstalled(resolvedTranslationIds).catch(
+            () => false
+          );
+          if (requestTokenRef.current !== token) return;
+
           if (translationsInstalled) {
             try {
               dataSourceRef.current = 'offline';
@@ -305,10 +308,11 @@ export function useSurahVerses({
         if (mode === 'refresh') setIsRefreshing(false);
       }
     },
-    [chapterNumber, chapters, perPage, resolvedTranslationIds, resolvedWordLang, translationsKey]
+    [chapterNumber, chapters, enabled, perPage, resolvedTranslationIds, resolvedWordLang, translationsKey]
   );
 
   React.useEffect(() => {
+    if (!enabled) return;
     if (!Number.isFinite(chapterNumber)) {
       setChapter(null);
       setVerses([]);
@@ -323,7 +327,7 @@ export function useSurahVerses({
     }
 
     void loadFirstPage('initial');
-  }, [chapterNumber, loadFirstPage]);
+  }, [chapterNumber, enabled, loadFirstPage]);
 
   const refresh = React.useCallback(() => {
     void loadFirstPage('refresh');
@@ -334,6 +338,7 @@ export function useSurahVerses({
   }, [loadFirstPage]);
 
   const loadMore = React.useCallback(() => {
+    if (!enabled) return;
     if (!Number.isFinite(chapterNumber)) return;
     if (dataSourceRef.current !== 'network') return;
     if (isLoadingMoreRef.current) return;
@@ -391,7 +396,7 @@ export function useSurahVerses({
     }
 
     void run();
-  }, [chapterNumber, isLoading, perPage, resolvedTranslationIds, resolvedWordLang, translationsKey]);
+  }, [chapterNumber, enabled, isLoading, perPage, resolvedTranslationIds, resolvedWordLang, translationsKey]);
 
   return {
     chapter,
