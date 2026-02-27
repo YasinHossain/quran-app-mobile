@@ -151,103 +151,99 @@ export function AudioPlayerBar(): React.JSX.Element | null {
 
                 {/* Controls Row */}
                 <View style={styles.controlsRow}>
-                  <View className="flex-row items-center gap-2">
-                    <Pressable
-                      disabled={!hasPrev || !interactable}
-                      onPress={audio.prevVerse}
-                      hitSlop={10}
-                      accessibilityRole="button"
-                      accessibilityLabel="Previous verse"
-                      className="h-9 w-9 items-center justify-center rounded-full"
-                      style={({ pressed }) => ({
-                        opacity: !hasPrev || !interactable ? 0.35 : pressed ? 0.65 : 1,
-                      })}
-                    >
-                      <SkipBack color={palette.text} size={18} strokeWidth={2.25} />
-                    </Pressable>
+                  <Pressable
+                    disabled={!hasPrev || !interactable}
+                    onPress={audio.prevVerse}
+                    hitSlop={10}
+                    accessibilityRole="button"
+                    accessibilityLabel="Previous verse"
+                    className="h-9 w-9 items-center justify-center rounded-full"
+                    style={({ pressed }) => ({
+                      opacity: !hasPrev || !interactable ? 0.35 : pressed ? 0.65 : 1,
+                    })}
+                  >
+                    <SkipBack color={palette.text} size={18} strokeWidth={2.25} />
+                  </Pressable>
 
-                    <Pressable
-                      disabled={!interactable}
-                      onPress={audio.togglePlay}
-                      hitSlop={10}
-                      accessibilityRole="button"
-                      accessibilityLabel={audio.isPlaying ? 'Pause audio' : 'Play audio'}
-                      style={({ pressed }) => ({
-                        opacity: !interactable ? 0.35 : pressed ? 0.65 : 1,
-                      })}
-                    >
-                      <View className="h-12 w-12 items-center justify-center rounded-full bg-accent">
-                        {audio.isLoading ? (
-                          <ActivityIndicator size="small" color="#FFFFFF" />
-                        ) : audio.isPlaying ? (
-                          <Pause color="#FFFFFF" size={20} strokeWidth={2.25} />
-                        ) : (
-                          <Play color="#FFFFFF" size={20} strokeWidth={2.25} />
-                        )}
-                      </View>
-                    </Pressable>
-
-                    <Pressable
-                      disabled={!hasNext || !interactable}
-                      onPress={audio.nextVerse}
-                      hitSlop={10}
-                      accessibilityRole="button"
-                      accessibilityLabel="Next verse"
-                      className="h-9 w-9 items-center justify-center rounded-full"
-                      style={({ pressed }) => ({
-                        opacity: !hasNext || !interactable ? 0.35 : pressed ? 0.65 : 1,
-                      })}
-                    >
-                      <SkipForward color={palette.text} size={18} strokeWidth={2.25} />
-                    </Pressable>
-                  </View>
-
-                  <View style={styles.actionButtons} className="flex-row items-center">
-                    <View ref={speedAnchorRef} collapsable={false}>
-                      <Pressable
-                        onPress={handleSpeed}
-                        hitSlop={8}
-                        accessibilityRole="button"
-                        accessibilityLabel="Speed"
-                        className="h-8 w-10 items-center justify-center rounded-full"
-                        style={({ pressed }) => ({ opacity: pressed ? 0.75 : 1 })}
-                      >
-                        <Text className="text-xs font-bold text-foreground dark:text-foreground-dark">
-                          {formatSpeedLabel(audio.playbackRate)}
-                        </Text>
-                      </Pressable>
+                  <Pressable
+                    disabled={!interactable}
+                    onPress={audio.togglePlay}
+                    hitSlop={10}
+                    accessibilityRole="button"
+                    accessibilityLabel={audio.isPlaying ? 'Pause audio' : 'Play audio'}
+                    style={({ pressed }) => ({
+                      opacity: !interactable ? 0.35 : pressed ? 0.65 : 1,
+                    })}
+                  >
+                    <View className="h-12 w-12 items-center justify-center rounded-full bg-accent">
+                      {audio.isLoading ? (
+                        <ActivityIndicator size="small" color="#FFFFFF" />
+                      ) : audio.isPlaying ? (
+                        <Pause color="#FFFFFF" size={20} strokeWidth={2.25} />
+                      ) : (
+                        <Play color="#FFFFFF" size={20} strokeWidth={2.25} />
+                      )}
                     </View>
+                  </Pressable>
+
+                  <Pressable
+                    disabled={!hasNext || !interactable}
+                    onPress={audio.nextVerse}
+                    hitSlop={10}
+                    accessibilityRole="button"
+                    accessibilityLabel="Next verse"
+                    className="h-9 w-9 items-center justify-center rounded-full"
+                    style={({ pressed }) => ({
+                      opacity: !hasNext || !interactable ? 0.35 : pressed ? 0.65 : 1,
+                    })}
+                  >
+                    <SkipForward color={palette.text} size={18} strokeWidth={2.25} />
+                  </Pressable>
+
+                  <View ref={speedAnchorRef} collapsable={false}>
                     <Pressable
-                      onPress={handleOptions}
-                      hitSlop={10}
+                      onPress={handleSpeed}
+                      hitSlop={8}
                       accessibilityRole="button"
-                      accessibilityLabel="Playback options"
-                      className="p-2 rounded-full"
-                      style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
+                      accessibilityLabel="Speed"
+                      className="h-8 w-10 items-center justify-center rounded-full"
+                      style={({ pressed }) => ({ opacity: pressed ? 0.75 : 1 })}
                     >
-                      <SlidersHorizontal color={palette.muted} size={18} strokeWidth={2.25} />
-                    </Pressable>
-                    <Pressable
-                      onPress={handleDownload}
-                      hitSlop={10}
-                      accessibilityRole="button"
-                      accessibilityLabel="Download audio"
-                      className="p-2 rounded-full"
-                      style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
-                    >
-                      <Download color={palette.muted} size={18} strokeWidth={2.25} />
-                    </Pressable>
-                    <Pressable
-                      onPress={audio.closePlayer}
-                      hitSlop={10}
-                      accessibilityRole="button"
-                      accessibilityLabel="Close player"
-                      className="p-2 rounded-full"
-                      style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
-                    >
-                      <X color={palette.muted} size={18} strokeWidth={2.25} />
+                      <Text className="text-xs font-bold text-foreground dark:text-foreground-dark">
+                        {formatSpeedLabel(audio.playbackRate)}
+                      </Text>
                     </Pressable>
                   </View>
+                  <Pressable
+                    onPress={handleOptions}
+                    hitSlop={10}
+                    accessibilityRole="button"
+                    accessibilityLabel="Playback options"
+                    className="p-2 rounded-full"
+                    style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
+                  >
+                    <SlidersHorizontal color={palette.muted} size={18} strokeWidth={2.25} />
+                  </Pressable>
+                  <Pressable
+                    onPress={handleDownload}
+                    hitSlop={10}
+                    accessibilityRole="button"
+                    accessibilityLabel="Download audio"
+                    className="p-2 rounded-full"
+                    style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
+                  >
+                    <Download color={palette.muted} size={18} strokeWidth={2.25} />
+                  </Pressable>
+                  <Pressable
+                    onPress={audio.closePlayer}
+                    hitSlop={10}
+                    accessibilityRole="button"
+                    accessibilityLabel="Close player"
+                    className="p-2 rounded-full"
+                    style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
+                  >
+                    <X color={palette.muted} size={18} strokeWidth={2.25} />
+                  </Pressable>
                 </View>
 
                 {/* Timeline */}
@@ -355,18 +351,11 @@ const styles = StyleSheet.create({
     elevation: 18,
   },
   controlsRow: {
-    position: 'relative',
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 48,
-  },
-  actionButtons: {
-    position: 'absolute',
-    right: 0,
-    top: 0,
-    bottom: 0,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    minHeight: 48,
+    paddingHorizontal: 2,
   },
   timeDisplay: {
     minWidth: 72,

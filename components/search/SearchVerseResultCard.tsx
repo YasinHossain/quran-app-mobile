@@ -9,7 +9,7 @@ import { HighlightedText } from './HighlightedText';
 
 import type { SearchVerseResult } from '@/lib/api/search';
 
-const QURAN_ANNOTATION_MARKS_REGEX = /[\u06D6-\u06ED]/;
+const QPC_UNSUPPORTED_GLYPH = '\u06DF';
 
 function getFirstFontFamily(fontFace: string | undefined): string | undefined {
   if (!fontFace) return undefined;
@@ -25,7 +25,7 @@ function resolveArabicFontFamily(fontFace: string | undefined, arabicText: strin
   const sanitized = arabicText.trim();
   const shouldUseScheherazadeFallback =
     normalized.includes('UthmanicHafs1Ver18') &&
-    (sanitized.includes('\u06DF') || QURAN_ANNOTATION_MARKS_REGEX.test(sanitized));
+    sanitized.includes(QPC_UNSUPPORTED_GLYPH);
 
   return shouldUseScheherazadeFallback ? 'Scheherazade New' : normalized;
 }

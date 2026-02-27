@@ -2,7 +2,6 @@ import { FlashList, type FlashListRef } from '@shopify/flash-list';
 import { Stack, useRouter } from 'expo-router';
 import {
   Bookmark as BookmarkIcon,
-  Calendar,
   ChevronUp,
   Clock,
   Pin,
@@ -13,7 +12,6 @@ import {
 import React from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Pressable,
   Share,
   Text,
@@ -26,7 +24,6 @@ import { DeleteFolderModal } from '@/components/bookmarks/DeleteFolderModal';
 import { FolderActionsSheet } from '@/components/bookmarks/FolderActionsSheet';
 import { FolderSettingsModal } from '@/components/bookmarks/FolderSettingsModal';
 import { LastReadSection } from '@/components/bookmarks/last-read';
-import { CreatePlannerModal, PlannerSection } from '@/components/bookmarks/planner';
 import { VerseActionsSheet } from '@/components/surah/VerseActionsSheet';
 import { VerseCard } from '@/components/surah/VerseCard';
 import { AddToPlannerModal, type VerseSummaryDetails } from '@/components/verse-planner-modal';
@@ -39,7 +36,7 @@ import { useAppTheme } from '@/providers/ThemeContext';
 
 import type { Bookmark, Folder } from '@/types';
 
-type SectionId = 'bookmarks' | 'pinned' | 'last-read' | 'planner';
+type SectionId = 'bookmarks' | 'pinned' | 'last-read';
 
 function getFolderGridColumns(width: number): number {
   if (width >= 1280) return 4;
@@ -84,14 +81,12 @@ export default function BookmarksScreen(): React.JSX.Element {
     folders,
     pinnedVerses,
     lastRead,
-    planner,
     isHydrated,
     deleteFolder,
     removeBookmark,
     togglePinned,
     isPinned,
     removeLastRead,
-    removeFromPlanner,
   } = useBookmarks();
 
   const [activeSection, setActiveSection] = React.useState<SectionId>('bookmarks');
@@ -100,7 +95,6 @@ export default function BookmarksScreen(): React.JSX.Element {
   const folderDetailListRef = React.useRef<FlashListRef<Bookmark> | null>(null);
   const pinnedListRef = React.useRef<FlashListRef<Bookmark> | null>(null);
   const lastReadScrollToTopRef = React.useRef<(() => void) | null>(null);
-  const plannerScrollToTopRef = React.useRef<(() => void) | null>(null);
 
   const [isVerseActionsOpen, setIsVerseActionsOpen] = React.useState(false);
   const [activeVerse, setActiveVerse] = React.useState<{
@@ -123,7 +117,6 @@ export default function BookmarksScreen(): React.JSX.Element {
   const [isFolderActionsOpen, setIsFolderActionsOpen] = React.useState(false);
   const [folderForActions, setFolderForActions] = React.useState<Folder | null>(null);
 
-  const [isCreatePlannerOpen, setIsCreatePlannerOpen] = React.useState(false);
   const [isAddToPlannerOpen, setIsAddToPlannerOpen] = React.useState(false);
   const [plannerVerseSummary, setPlannerVerseSummary] = React.useState<VerseSummaryDetails | null>(
     null
@@ -278,38 +271,8 @@ export default function BookmarksScreen(): React.JSX.Element {
     [deleteFolder]
   );
 
-  const handleCreatePlannerPlan = React.useCallback(() => {
-    setIsCreatePlannerOpen(true);
-  }, []);
-
-  const handleDeletePlannerPlan = React.useCallback(
-    (planIds: string[]) => {
-      const uniqueIds = Array.from(new Set(planIds)).filter((id) => id.trim().length > 0);
-      if (uniqueIds.length === 0) return;
-      Alert.alert(
-        'Delete Planner',
-        'This action cannot be undone.\n\nAre you sure you want to permanently delete this planner?',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Delete',
-            style: 'destructive',
-            onPress: () => {
-              uniqueIds.forEach((id) => removeFromPlanner(id));
-            },
-          },
-        ]
-      );
-    },
-    [removeFromPlanner]
-  );
-
   const registerLastReadScrollToTop = React.useCallback((handler: (() => void) | null) => {
     lastReadScrollToTopRef.current = handler;
-  }, []);
-
-  const registerPlannerScrollToTop = React.useCallback((handler: (() => void) | null) => {
-    plannerScrollToTopRef.current = handler;
   }, []);
 
   const handleScrollToTop = React.useCallback(() => {
@@ -327,10 +290,6 @@ export default function BookmarksScreen(): React.JSX.Element {
     }
     if (activeSection === 'last-read') {
       lastReadScrollToTopRef.current?.();
-      return;
-    }
-    if (activeSection === 'planner') {
-      plannerScrollToTopRef.current?.();
     }
   }, [activeSection, selectedFolderId]);
 
@@ -353,7 +312,6 @@ export default function BookmarksScreen(): React.JSX.Element {
           label: 'Pinned Verses',
           description: 'Quick access',
         },
-        { id: 'planner' as const, icon: Calendar, label: 'Planner', description: 'Track progress' },
       ] satisfies Array<{
         id: SectionId;
         icon: React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
@@ -509,7 +467,7 @@ export default function BookmarksScreen(): React.JSX.Element {
             </View>
           }
           renderItem={({ item: folder, index }) => {
-            const gap = 4;
+            const gap = 6;
             const isLastInRow =
               folderGridColumns === 1 ? true : (index + 1) % folderGridColumns === 0;
             const lastRowSize = sortedFolders.length % folderGridColumns || folderGridColumns;
@@ -520,7 +478,7 @@ export default function BookmarksScreen(): React.JSX.Element {
               <View
                 style={{
                   flex: 1,
-                  minHeight: 152,
+                  minHeight: 110,
                   marginBottom: isInLastRow ? 0 : gap,
                   marginRight: isLastInRow ? 0 : gap,
                 }}
@@ -694,14 +652,6 @@ export default function BookmarksScreen(): React.JSX.Element {
             );
           }}
         />
-      ) : activeSection === 'planner' ? (
-        <PlannerSection
-          planner={planner}
-          onCreatePlan={handleCreatePlannerPlan}
-          onDeletePlan={handleDeletePlannerPlan}
-          topContent={renderSectionNavigation()}
-          registerScrollToTop={registerPlannerScrollToTop}
-        />
       ) : (
         <View className="flex-1 px-4">
           {renderSectionNavigation()}
@@ -762,9 +712,6 @@ export default function BookmarksScreen(): React.JSX.Element {
           }}
         />
       ) : null}
-
-      <CreatePlannerModal isOpen={isCreatePlannerOpen} onClose={() => setIsCreatePlannerOpen(false)} />
-
       {plannerVerseSummary ? (
         <AddToPlannerModal
           isOpen={isAddToPlannerOpen}

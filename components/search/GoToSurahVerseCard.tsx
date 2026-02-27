@@ -28,10 +28,18 @@ const SEARCH_SUGGESTIONS: SearchSuggestion[] = [
 function SuggestionIcon({ icon }: { icon: SearchSuggestion['icon'] }): React.JSX.Element {
   const { resolvedTheme } = useAppTheme();
   const palette = Colors[resolvedTheme];
-  if (icon === 'juz') return <Text className="text-[10px] font-bold text-accent dark:text-accent-dark">J</Text>;
-  if (icon === 'page') return <Text className="text-[10px] font-bold text-accent dark:text-accent-dark">P</Text>;
-  if (icon === 'ayah') return <Hash size={14} strokeWidth={2.25} color={palette.tint} />;
-  return <BookOpen size={14} strokeWidth={2.25} color={palette.tint} />;
+  if (icon === 'juz') return <Text className="text-[12px] font-bold text-accent dark:text-accent-dark">J</Text>;
+  if (icon === 'page') return <Text className="text-[12px] font-bold text-accent dark:text-accent-dark">P</Text>;
+  if (icon === 'ayah') return <Hash size={16} strokeWidth={2.25} color={palette.tint} />;
+  return <BookOpen size={16} strokeWidth={2.25} color={palette.tint} />;
+}
+
+function toSuggestionRows(suggestions: SearchSuggestion[]): SearchSuggestion[][] {
+  const rows: SearchSuggestion[][] = [];
+  for (let index = 0; index < suggestions.length; index += 2) {
+    rows.push(suggestions.slice(index, index + 2));
+  }
+  return rows;
 }
 
 export function GoToSurahVerseCard({
@@ -49,7 +57,8 @@ export function GoToSurahVerseCard({
   onNavigate: (surahId: number, verse?: number) => void;
   onSearchSuggestion?: (query: string) => void;
 }): React.JSX.Element {
-  const { isDark } = useAppTheme();
+  const { isDark, resolvedTheme } = useAppTheme();
+  const palette = Colors[resolvedTheme];
   const { chapters, isLoading, errorMessage, refresh } = useChapters();
 
   const [selectedSurah, setSelectedSurah] = React.useState<number | undefined>(undefined);
@@ -82,8 +91,9 @@ export function GoToSurahVerseCard({
   const subtitleText =
     subtitle ??
     (isLoading && chapters.length === 0 ? 'Loading surahs…' : undefined);
+  const suggestionRows = React.useMemo(() => toSuggestionRows(SEARCH_SUGGESTIONS), []);
 
-  const formPaddingClass = variant === 'card' ? 'px-5 py-5' : 'px-6 pt-5 pb-6';
+  const formPaddingClass = variant === 'card' ? 'px-5 pt-5 pb-4' : 'px-6 pt-5 pb-4';
 
   return (
     <View className={isDark ? 'dark' : ''}>
@@ -152,45 +162,52 @@ export function GoToSurahVerseCard({
 
           {/* Search Suggestions */}
           {onSearchSuggestion ? (
-            <View className="mt-4 border-t border-border/50 dark:border-border-dark/40 pt-3">
+            <View className="mt-3 border-t border-border/50 dark:border-border-dark/40 pt-3">
               <Text className="mb-2 text-xs font-medium text-muted dark:text-muted-dark">
                 Or try searching
               </Text>
-              <View className="flex-row flex-wrap justify-between gap-y-2">
-                {SEARCH_SUGGESTIONS.map((suggestion) => {
-                  const label =
-                    suggestion.icon === 'juz'
-                      ? `Juz ${suggestion.number}`
-                      : suggestion.icon === 'page'
-                        ? `Page ${suggestion.number}`
-                        : suggestion.icon === 'surah'
-                          ? (() => {
-                            const chapter = chapters.find((item) => item.id === suggestion.surahId);
-                            return chapter ? `Surah ${chapter.name_simple}` : suggestion.query;
-                          })()
-                          : suggestion.verseKey;
+              <View className="gap-1.5">
+                {suggestionRows.map((row, rowIndex) => (
+                  <View key={`suggestion-row-${rowIndex}`} className="flex-row gap-2.5">
+                    {row.map((suggestion) => {
+                      const label =
+                        suggestion.icon === 'juz'
+                          ? `Juz ${suggestion.number}`
+                          : suggestion.icon === 'page'
+                            ? `Page ${suggestion.number}`
+                            : suggestion.icon === 'surah'
+                              ? (() => {
+                                const chapter = chapters.find((item) => item.id === suggestion.surahId);
+                                if (chapter) return chapter.name_simple;
+                                return suggestion.query.replace(/^Surah\s+/i, '');
+                              })()
+                              : suggestion.verseKey;
 
-                  return (
-                    <Pressable
-                      key={suggestion.query}
-                      onPress={() => onSearchSuggestion(suggestion.query)}
-                      accessibilityRole="button"
-                      accessibilityLabel={label}
-                      className="rounded-lg px-2.5 py-2 flex-row items-center gap-2"
-                      style={({ pressed }) => [{ width: '48%' }, { opacity: pressed ? 0.9 : 1 }]}
-                    >
-                      <View className="h-5 w-5 rounded bg-accent/10 items-center justify-center">
-                        <SuggestionIcon icon={suggestion.icon} />
-                      </View>
-                      <Text
-                        numberOfLines={1}
-                        className="flex-1 text-sm text-foreground dark:text-foreground-dark"
-                      >
-                        {label}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
+                      return (
+                        <Pressable
+                          key={suggestion.query}
+                          onPress={() => onSearchSuggestion(suggestion.query)}
+                          accessibilityRole="button"
+                          accessibilityLabel={label}
+                          className="flex-1 min-w-0 rounded-lg px-3 py-3 flex-row items-center justify-start gap-2.5"
+                          style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
+                        >
+                          <View className="h-7 w-7 rounded bg-accent/10 items-center justify-center">
+                            <SuggestionIcon icon={suggestion.icon} />
+                          </View>
+                          <Text
+                            numberOfLines={1}
+                            className="flex-1 text-[16px] text-foreground dark:text-foreground-dark"
+                            style={{ color: palette.text }}
+                          >
+                            {label}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                    {row.length < 2 ? <View className="flex-1" /> : null}
+                  </View>
+                ))}
               </View>
             </View>
           ) : null}
