@@ -84,7 +84,11 @@ function clampPercent(value: number): number {
   return Math.max(0, Math.min(100, value));
 }
 
-function normalizeOrderedSelection(ids: number[]): number[] {
+function normalizeOrderedSelection(
+  ids: number[],
+  options?: { validIds?: Set<number> }
+): number[] {
+  const validIds = options?.validIds;
   const normalized: number[] = [];
   const seen = new Set<number>();
 
@@ -92,12 +96,22 @@ function normalizeOrderedSelection(ids: number[]): number[] {
     if (!Number.isFinite(raw)) continue;
     const id = Math.trunc(raw);
     if (id <= 0) continue;
+    if (validIds && !validIds.has(id)) continue;
     if (seen.has(id)) continue;
     seen.add(id);
     normalized.push(id);
+    if (normalized.length >= MAX_TRANSLATION_SELECTIONS) break;
   }
 
   return normalized;
+}
+
+function areSelectionsEqual(a: number[], b: number[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let index = 0; index < a.length; index += 1) {
+    if (a[index] !== b[index]) return false;
+  }
+  return true;
 }
 
 function toProgressPercent(progress: DownloadProgress | undefined): number {
@@ -232,7 +246,6 @@ function CompactProgressRing({
 }
 
 type Row =
-  | { type: 'tabs' }
   | { type: 'section'; language: string }
   | { type: 'resource'; item: ResourceRecord }
   | { type: 'empty'; text: string };
@@ -358,6 +371,49 @@ const TranslationResourceRow = React.memo(function TranslationResourceRow({
   );
 });
 
+const TranslationPanelHeader = React.memo(function TranslationPanelHeader({
+  searchTerm,
+  onChangeSearchTerm,
+  orderedSelection,
+  translations,
+  onRemove,
+  onReorder,
+  onReset,
+  onDragStateChange,
+}: {
+  searchTerm: string;
+  onChangeSearchTerm: (value: string) => void;
+  orderedSelection: number[];
+  translations: ResourceRecord[];
+  onRemove: (id: number) => void;
+  onReorder: (ids: number[]) => void;
+  onReset: () => void;
+  onDragStateChange: (dragging: boolean) => void;
+}): React.JSX.Element {
+  return (
+    <View className="p-4 gap-4">
+      <HeaderSearchInput
+        value={searchTerm}
+        onChangeText={onChangeSearchTerm}
+        placeholder="Search translations or languages..."
+      />
+
+      <ReorderableSelectionList
+        variant="translation"
+        orderedSelection={orderedSelection}
+        resources={translations}
+        onRemove={onRemove}
+        onReorder={onReorder}
+        onReset={onReset}
+        maxSelections={MAX_TRANSLATION_SELECTIONS}
+        emptyText="No translations selected"
+        removeAccessibilityLabel="Remove translation"
+        onDragStateChange={onDragStateChange}
+      />
+    </View>
+  );
+});
+
 export function ManageTranslationsPanel({
   translations,
   orderedSelection,
@@ -388,6 +444,7 @@ export function ManageTranslationsPanel({
   const [localOrderedSelection, setLocalOrderedSelection] = React.useState<number[]>(() =>
     normalizeOrderedSelection(orderedSelection ?? [])
   );
+  const hasPrunedSelectionRef = React.useRef(false);
   const latestSelectionRef = React.useRef(localOrderedSelection);
   const commitTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const commitRevisionRef = React.useRef(0);
@@ -399,6 +456,10 @@ export function ManageTranslationsPanel({
   const selectedIds = React.useMemo(
     () => new Set<number>(localOrderedSelection ?? []),
     [localOrderedSelection]
+  );
+  const availableTranslationIds = React.useMemo(
+    () => new Set<number>((translations ?? []).map((translation) => translation.id)),
+    [translations]
   );
   const { itemsByKey, refresh: refreshIndex } = useDownloadIndexItems({
     enabled: true,
@@ -445,6 +506,22 @@ export function ManageTranslationsPanel({
     },
     [onChangeSelection]
   );
+
+  React.useEffect(() => {
+    if (hasPrunedSelectionRef.current) return;
+    if (translations.length === 0) return;
+    hasPrunedSelectionRef.current = true;
+
+    const normalized = normalizeOrderedSelection(latestSelectionRef.current, {
+      validIds: availableTranslationIds,
+    });
+
+    if (areSelectionsEqual(normalized, latestSelectionRef.current)) return;
+
+    setLocalOrderedSelection(normalized);
+    latestSelectionRef.current = normalized;
+    scheduleSelectionCommit(normalized);
+  }, [availableTranslationIds, scheduleSelectionCommit, translations.length]);
 
   const setBusy = React.useCallback((translationId: number, busy: boolean) => {
     setBusyTranslationIds((prev) => {
@@ -582,20 +659,28 @@ export function ManageTranslationsPanel({
     void deleteTranslation(translationId);
   }, [deleteTarget, deleteTranslation]);
 
-  const languages = React.useMemo(
+  const allLanguages = React.useMemo(
     () => buildLanguages(translations, translationLanguageSort),
     [translations]
   );
 
-  React.useEffect(() => {
-    if (languages.includes(activeFilter)) return;
-    setActiveFilter('All');
-  }, [activeFilter, languages]);
+  const normalizedSearchTerm = searchTerm.trim().toLowerCase();
 
   const filteredTranslations = React.useMemo(
     () => filterResources(translations, searchTerm),
     [translations, searchTerm]
   );
+
+  const languages = React.useMemo(() => {
+    if (!normalizedSearchTerm) return allLanguages;
+    const filteredLanguages = buildLanguages(filteredTranslations, translationLanguageSort);
+    return filteredLanguages.length > 1 ? filteredLanguages : allLanguages;
+  }, [allLanguages, filteredTranslations, normalizedSearchTerm]);
+
+  React.useEffect(() => {
+    if (languages.includes(activeFilter)) return;
+    setActiveFilter('All');
+  }, [activeFilter, languages]);
 
   const groupedTranslations = React.useMemo(
     () => groupResources(filteredTranslations),
@@ -607,9 +692,16 @@ export function ManageTranslationsPanel({
   }, [activeFilter, filteredTranslations, groupedTranslations]);
 
   const sectionsToRender = React.useMemo(() => {
-    const entries = Object.entries(groupedTranslations).sort(([a], [b]) => translationLanguageSort(a, b));
+    const languageOrder = new Map(languages.map((language, index) => [language, index]));
+    const entries = Object.entries(groupedTranslations).sort(([a], [b]) => {
+      const orderA = languageOrder.get(a) ?? Number.POSITIVE_INFINITY;
+      const orderB = languageOrder.get(b) ?? Number.POSITIVE_INFINITY;
+      if (orderA !== orderB) return orderA - orderB;
+      return translationLanguageSort(a, b);
+    });
+
     return entries.map(([language, items]) => ({ language, items }));
-  }, [groupedTranslations]);
+  }, [groupedTranslations, languages]);
 
   const handleToggle = React.useCallback(
     (id: number): boolean => {
@@ -639,7 +731,7 @@ export function ManageTranslationsPanel({
   }, [scheduleSelectionCommit, translations]);
 
   const rows = React.useMemo<Row[]>(() => {
-    const base: Row[] = [{ type: 'tabs' }];
+    const base: Row[] = [];
 
     if (resourcesToRender.length === 0) {
       base.push({ type: 'empty', text: 'No translation resources found for the selected filter.' });
@@ -673,66 +765,43 @@ export function ManageTranslationsPanel({
       return;
     }
 
-    if (row.type === 'tabs') {
-      sizedLayout.size = 56;
-      return;
-    }
-
     sizedLayout.size = 90;
   }, []);
 
-  const renderHeader = React.useCallback((): React.JSX.Element => {
-    return (
-      <View className="p-4 gap-4">
-        <HeaderSearchInput
-          value={searchTerm}
-          onChangeText={setSearchTerm}
-          placeholder="Search translations or languages..."
-        />
+  const handleReorderSelection = React.useCallback(
+    (ids: number[]) => {
+      const normalized = normalizeOrderedSelection(ids, { validIds: availableTranslationIds });
+      setLocalOrderedSelection(normalized);
+      scheduleSelectionCommit(normalized);
+    },
+    [availableTranslationIds, scheduleSelectionCommit]
+  );
 
-        <ReorderableSelectionList
-          variant="translation"
-          orderedSelection={localOrderedSelection}
-          resources={translations}
-          onRemove={(id) => handleToggle(id)}
-          onReorder={(ids) => {
-            const normalized = normalizeOrderedSelection(ids);
-            setLocalOrderedSelection(normalized);
-            scheduleSelectionCommit(normalized);
-          }}
-          onReset={handleReset}
-          maxSelections={MAX_TRANSLATION_SELECTIONS}
-          emptyText="No translations selected"
-          removeAccessibilityLabel="Remove translation"
-          onDragStateChange={setIsReordering}
-        />
-      </View>
-    );
-  }, [
-    handleReset,
-    handleToggle,
-    localOrderedSelection,
-    scheduleSelectionCommit,
-    searchTerm,
-    translations,
-  ]);
+  const headerComponent = React.useMemo(
+    () => (
+      <TranslationPanelHeader
+        searchTerm={searchTerm}
+        onChangeSearchTerm={setSearchTerm}
+        orderedSelection={localOrderedSelection}
+        translations={translations}
+        onRemove={handleToggle}
+        onReorder={handleReorderSelection}
+        onReset={handleReset}
+        onDragStateChange={setIsReordering}
+      />
+    ),
+    [
+      handleReorderSelection,
+      handleReset,
+      handleToggle,
+      localOrderedSelection,
+      searchTerm,
+      translations,
+    ]
+  );
 
   const renderItem = React.useCallback(
     ({ item }: { item: Row }): React.JSX.Element | null => {
-      if (item.type === 'tabs') {
-        return (
-          <View className="py-2 border-b bg-background dark:bg-background-dark border-border dark:border-border-dark">
-            <View className="px-4">
-              <ResourceTabs
-                languages={languages}
-                activeFilter={activeFilter}
-                onTabPress={setActiveFilter}
-              />
-            </View>
-          </View>
-        );
-      }
-
       if (item.type === 'section') {
         return (
           <View className="px-4 pt-4 pb-2">
@@ -771,7 +840,6 @@ export function ManageTranslationsPanel({
       );
     },
     [
-      activeFilter,
       busyTranslationIds,
       handleCancelDownload,
       handlePressDelete,
@@ -779,7 +847,6 @@ export function ManageTranslationsPanel({
       handleToggle,
       isDark,
       itemsByKey,
-      languages,
       palette.tint,
       selectedIds,
     ]
@@ -822,19 +889,28 @@ export function ManageTranslationsPanel({
 
   return (
     <View className="flex-1">
+      {headerComponent}
+      <View className="py-2 border-b bg-background dark:bg-background-dark border-border dark:border-border-dark">
+        <View className="px-4">
+          <ResourceTabs
+            languages={languages}
+            activeFilter={activeFilter}
+            onTabPress={setActiveFilter}
+          />
+        </View>
+      </View>
+
       <FlashList
+        style={{ flex: 1, minHeight: 0 }}
         data={rows}
         keyExtractor={(row) => {
-          if (row.type === 'tabs') return 'tabs';
           if (row.type === 'section') return `section:${row.language}`;
           if (row.type === 'empty') return 'empty';
           return `resource:${row.item.id}`;
         }}
         renderItem={renderItem}
-        ListHeaderComponent={renderHeader}
-        stickyHeaderIndices={[1]}
-        keyboardShouldPersistTaps="handled"
-        removeClippedSubviews={Platform.OS === 'android'}
+        keyboardShouldPersistTaps="always"
+        removeClippedSubviews={false}
         drawDistance={Platform.OS === 'android' ? 350 : 250}
         getItemType={getRowType}
         overrideItemLayout={overrideRowLayout}

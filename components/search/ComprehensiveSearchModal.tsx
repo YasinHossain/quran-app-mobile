@@ -28,6 +28,23 @@ import { HighlightedText } from './HighlightedText';
 
 import type { SearchNavigationResult, SearchVerseResult } from '@/lib/api/search';
 
+const QPC_UNSUPPORTED_GLYPH = '\u06DF';
+
+function getFirstFontFamily(fontFace: string | undefined): string | undefined {
+  if (!fontFace) return undefined;
+  const first = fontFace.split(',')[0]?.trim();
+  if (!first) return undefined;
+  return first.replace(/^['"]|['"]$/g, '').trim() || undefined;
+}
+
+function resolveArabicFontFamily(fontFace: string | undefined, arabicText: string): string {
+  const normalized = getFirstFontFamily(fontFace) ?? 'UthmanicHafs1Ver18';
+  const sanitized = arabicText.trim();
+  const shouldUseScheherazadeFallback =
+    normalized.includes('UthmanicHafs1Ver18') && sanitized.includes(QPC_UNSUPPORTED_GLYPH);
+  return shouldUseScheherazadeFallback ? 'Scheherazade New' : normalized;
+}
+
 function getTranslationIds(settings: ReturnType<typeof useSettings>['settings']): number[] {
   const ids = settings.translationIds?.length
     ? settings.translationIds
@@ -96,6 +113,7 @@ function VersePreviewRow({
   showDivider,
   arabicFontSize,
   translationFontSize,
+  arabicFontFace,
 }: {
   verse: SearchVerseResult;
   query: string;
@@ -103,6 +121,7 @@ function VersePreviewRow({
   showDivider: boolean;
   arabicFontSize: number;
   translationFontSize: number;
+  arabicFontFace?: string;
 }): React.JSX.Element {
   const { resolvedTheme } = useAppTheme();
   const palette = Colors[resolvedTheme];
@@ -112,6 +131,10 @@ function VersePreviewRow({
     const base = arabic ? verse.textArabic : verse.highlightedTranslation;
     return highlightMissingQueryWords(base ?? '', query);
   }, [arabic, query, verse.highlightedTranslation, verse.textArabic]);
+  const arabicFamily = React.useMemo(
+    () => resolveArabicFontFamily(arabicFontFace, verse.textArabic ?? ''),
+    [arabicFontFace, verse.textArabic]
+  );
 
   return (
     <View>
@@ -135,6 +158,7 @@ function VersePreviewRow({
                 color: palette.text,
                 fontSize: arabic ? arabicFontSize : Math.max(13, translationFontSize - 2),
                 lineHeight: arabic ? Math.max(22, arabicFontSize + 6) : 22,
+                fontFamily: arabic ? arabicFamily : undefined,
                 writingDirection: arabic ? 'rtl' : 'auto',
                 textAlign: arabic ? 'right' : 'left',
               }}
@@ -307,8 +331,9 @@ export function ComprehensiveSearchModal({
   const hasResults = hasNavigationResults || hasVerseResults;
 
   const maxHeight = Math.max(0, Math.round(windowHeight * 0.9));
+  const goToMinHeight = Math.min(360, Math.max(300, Math.round(windowHeight * 0.3)));
   const minHeight = showGoTo
-    ? Math.min(maxHeight, Math.max(420, Math.round(windowHeight * 0.58)))
+    ? Math.min(maxHeight, goToMinHeight)
     : Math.min(maxHeight, Math.max(520, Math.round(windowHeight * 0.72)));
 
   return (
@@ -438,6 +463,7 @@ export function ComprehensiveSearchModal({
                                 showDivider={index < previewVerses.length - 1}
                                 arabicFontSize={settings.arabicFontSize}
                                 translationFontSize={settings.translationFontSize}
+                                arabicFontFace={settings.arabicFontFace}
                               />
                             ))}
                           </View>
@@ -498,7 +524,7 @@ const styles = StyleSheet.create({
   },
   safeArea: { flex: 1 },
   inner: { flex: 1 },
-  goToContent: { padding: 16, paddingBottom: 20 },
+  goToContent: { padding: 16, paddingBottom: 4 },
   resultsContainer: { flex: 1 },
   resultsScrollContent: { paddingVertical: 4 },
 });

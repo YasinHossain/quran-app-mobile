@@ -36,7 +36,16 @@ export default function RootLayout() {
   const [loaded, error] = useFonts({
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
     UthmanicHafs1Ver18: require('../assets/fonts/UthmanicHafs1Ver18.ttf'),
+    'KFGQ V2': require('../assets/fonts/KFGQPC-Uthman-Taha.ttf'),
+    'Me Quran': require('../assets/fonts/me_quran.ttf'),
+    'Amiri Quran': require('../assets/fonts/AmiriQuran.ttf'),
     'Scheherazade New': require('../assets/fonts/Scheherazade-New.ttf'),
+    'Noto Naskh Arabic': require('../assets/fonts/Noto-Naskh-Arabic.ttf'),
+    IndoPak: require('../assets/fonts/indopak-nastaleeq-waqf-lazim-v4.2.1.ttf'),
+    'Noor-e-Huda': require('../assets/fonts/Noor-e-Huda.ttf'),
+    'Noor-e-Hidayat': require('../assets/fonts/Noor-e-Hidayat.ttf'),
+    'Noor-e-Hira': require('../assets/fonts/Noor-e-Hira.ttf'),
+    Lateef: require('../assets/fonts/Lateef.ttf'),
   });
 
   useEffect(() => {

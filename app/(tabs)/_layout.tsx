@@ -1,5 +1,5 @@
 import React from 'react';
-import { Bookmark, BookOpen, Info, Search, Settings } from 'lucide-react-native';
+import { Bookmark, BookOpen, Calendar, Info, Settings } from 'lucide-react-native';
 import { Link, Tabs } from 'expo-router';
 import { Pressable, View, type LayoutChangeEvent } from 'react-native';
 import { BottomTabBar, type BottomTabBarProps } from '@react-navigation/bottom-tabs';
@@ -87,7 +87,7 @@ export default function TabLayout() {
         name="search"
         options={{
           title: 'Search',
-          tabBarIcon: ({ color }) => <TabBarIcon Icon={Search} color={color} />,
+          href: null,
         }}
       />
       <Tabs.Screen
@@ -95,6 +95,13 @@ export default function TabLayout() {
         options={{
           title: 'Bookmarks',
           tabBarIcon: ({ color }) => <TabBarIcon Icon={Bookmark} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="planner"
+        options={{
+          title: 'Planner',
+          tabBarIcon: ({ color }) => <TabBarIcon Icon={Calendar} color={color} />,
         }}
       />
       <Tabs.Screen

@@ -8,7 +8,7 @@ import type { VerseWord } from '@/types';
 
 import { WordByWordVerse } from './WordByWordVerse';
 
-const QURAN_ANNOTATION_MARKS_REGEX = /[\u06D6-\u06ED]/;
+const QPC_UNSUPPORTED_GLYPH = '\u06DF';
 
 function getFirstFontFamily(fontFace: string | undefined): string | undefined {
   if (!fontFace) return undefined;
@@ -53,7 +53,7 @@ function VerseCardComponent({
   const normalizedArabicFontFamily = arabicFontFamily ?? 'UthmanicHafs1Ver18';
   const shouldUseScheherazadeFallback =
     normalizedArabicFontFamily.includes('UthmanicHafs1Ver18') &&
-    (sanitizedArabicText.includes('\u06DF') || QURAN_ANNOTATION_MARKS_REGEX.test(sanitizedArabicText));
+    sanitizedArabicText.includes(QPC_UNSUPPORTED_GLYPH);
   const effectiveArabicFontFamily = shouldUseScheherazadeFallback
     ? 'Scheherazade New'
     : normalizedArabicFontFamily;

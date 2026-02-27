@@ -7,8 +7,9 @@ This app uses Expo Router’s file-based routing with React Navigation under the
 - **Route root**: All route files live under `app/`.
 - **Screen files** map to paths:
   - `app/(tabs)/index.tsx` → `/` (Read tab).
-  - `app/(tabs)/search.tsx` → `/search`.
+  - `app/(tabs)/search.tsx` → `/search` (hidden from the bottom tabs; opened from in-reader search / Go To).
   - `app/(tabs)/bookmarks.tsx` → `/bookmarks`.
+  - `app/(tabs)/planner.tsx` → `/planner`.
   - `app/(tabs)/settings.tsx` → `/settings`.
   - `app/juz/[juzNumber].tsx` → `/juz/:juzNumber` (dynamic segment).
   - `app/surah/[surahId].tsx` → `/surah/:surahId` (dynamic segment).
@@ -29,6 +30,7 @@ This app uses Expo Router’s file-based routing with React Navigation under the
 - To add a new tab:
   1. Create `app/(tabs)/<name>.tsx`.
   2. Add a corresponding `<Tabs.Screen name="<name>" ... />` in `app/(tabs)/_layout.tsx`.
+- To keep a route under `app/(tabs)/` but remove it from the bottom tab bar, set `href: null` (and optionally `tabBarButton: () => null`) in `app/(tabs)/_layout.tsx`.
 - To add a new stack screen at the root:
   1. Create `app/<route>.tsx` (or nested folders as needed).
   2. Register it in `app/_layout.tsx` if you need to customize its presentation options.
