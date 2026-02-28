@@ -114,7 +114,6 @@ export default function SurahScreen(): React.JSX.Element {
     chapterNumber,
     translationIds,
     wordLang: settings.wordLang,
-    enabled: !isSettingsOpen,
   });
 
   const openVerseActions = React.useCallback(
