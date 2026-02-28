@@ -57,8 +57,9 @@ This document lists reusable UI components currently available in the codebase s
 | Component | Description | File Path |
 | --- | --- | --- |
 | `SurahHeaderCard` | Surah intro/header block (calligraphy + metadata), web-like. | `components/surah/SurahHeaderCard.tsx` |
-| `VerseCard` | Separated verse row (verse key + Arabic + translations + ellipsis trigger). | `components/surah/VerseCard.tsx` |
-| `WordByWordVerse` | Word-by-word verse renderer (per-word Arabic with optional per-word translation + tap-to-show translation). | `components/surah/WordByWordVerse.tsx` |
+| `VerseCard` | Separated verse row (verse key + Arabic + translations + ellipsis trigger) with optional subtle highlight for the active audio verse. | `components/surah/VerseCard.tsx` |
+| `WordByWordVerse` | Word-by-word verse renderer (per-word Arabic with optional per-word translation). When the audio player is visible, words are tap-to-seek and the active word is highlighted. | `components/surah/WordByWordVerse.tsx` |
+| `useVerseAudioWordSync` | Hook that wires QDC word timing segments to the verse renderer (active word highlight + tap-to-seek). | `components/surah/useVerseAudioWordSync.ts` |
 | `VerseActionsSheet` | Bottom sheet for per-verse actions (play, tafsir, pin/bookmark, add to plan, share). | `components/surah/VerseActionsSheet.tsx` |
 | `AddToPlannerModal` | Modal for selecting an existing planner to track progress from a verse (web-style Add-to-plan flow). | `components/verse-planner-modal/AddToPlannerModal.tsx` |
 

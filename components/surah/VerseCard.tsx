@@ -7,6 +7,7 @@ import { useAppTheme } from '@/providers/ThemeContext';
 import type { VerseWord } from '@/types';
 
 import { WordByWordVerse } from './WordByWordVerse';
+import type { VerseAudioWordSync } from './useVerseAudioWordSync';
 
 const QPC_UNSUPPORTED_GLYPH = '\u06DF';
 
@@ -22,10 +23,14 @@ function VerseCardComponent({
   arabicText,
   words,
   translationTexts,
+  translationItems,
+  showTranslationAttribution,
   arabicFontSize,
   arabicFontFace,
   translationFontSize,
   showByWords,
+  isAudioActive,
+  audioWordSync,
   renderSignal: _renderSignal,
   onOpenActions,
   onPress,
@@ -34,10 +39,18 @@ function VerseCardComponent({
   arabicText: string;
   words?: VerseWord[];
   translationTexts?: string[];
+  translationItems?: Array<{
+    text: string;
+    resourceId?: number;
+    resourceName?: string;
+  }>;
+  showTranslationAttribution?: boolean;
   arabicFontSize: number;
   arabicFontFace?: string;
   translationFontSize: number;
   showByWords?: boolean;
+  isAudioActive?: boolean;
+  audioWordSync?: VerseAudioWordSync;
   renderSignal?: number;
   onOpenActions?: () => void;
   onPress?: () => void;
@@ -65,7 +78,25 @@ function VerseCardComponent({
     Math.round(translationFontSize * 1.7)
   );
 
-  const cleanedTranslations = (translationTexts ?? []).map((t) => t.trim()).filter(Boolean);
+  const cleanedTranslationItems = React.useMemo(() => {
+    const incomingItems = (translationItems ?? [])
+      .map((item) => ({
+        ...item,
+        text: String(item?.text ?? '').trim(),
+        resourceName: String(item?.resourceName ?? '').trim() || undefined,
+      }))
+      .filter((item) => item.text.length > 0);
+
+    if (incomingItems.length) return incomingItems;
+
+    return (translationTexts ?? [])
+      .map((text) => ({ text: String(text ?? '').trim() }))
+      .filter((item) => item.text.length > 0);
+  }, [translationItems, translationTexts]);
+
+  const shouldShowTranslationAttribution =
+    Boolean(showTranslationAttribution) &&
+    cleanedTranslationItems.some((t) => Boolean((t as { resourceName?: string }).resourceName));
   const renderSignal = typeof _renderSignal === 'number' ? _renderSignal : 0;
 
   React.useEffect(() => {
@@ -94,6 +125,23 @@ function VerseCardComponent({
     }, 2500);
   }, []);
 
+  const isSeekEnabled = Boolean(audioWordSync?.isSeekEnabled);
+
+  const handleSeekWordPress = React.useCallback(
+    ({ wordPosition }: { word: VerseWord; wordPosition: number }) => {
+      audioWordSync?.seekToWord({ verseKey, wordPosition });
+    },
+    [audioWordSync, verseKey]
+  );
+
+  const handleTranslationWordPress = React.useCallback(
+    ({ word }: { word: VerseWord; wordPosition: number }) => {
+      if (!word.translationText) return;
+      showWordTranslation(word.translationText);
+    },
+    [showWordTranslation]
+  );
+
   const content = (
     <View className="flex-1 gap-4">
         <View
@@ -121,18 +169,14 @@ function VerseCardComponent({
 
         {Array.isArray(words) && words.length ? (
           <WordByWordVerse
+            verseKey={verseKey}
             words={words}
             arabicFontSize={arabicFontSize}
             arabicFontFamily={effectiveArabicFontFamily}
             showTranslations={Boolean(showByWords)}
-            onWordPress={
-              showByWords
-                ? undefined
-                : (word) => {
-                    if (!word.translationText) return;
-                    showWordTranslation(word.translationText);
-                  }
-            }
+            pressBehavior={isSeekEnabled ? 'seek' : showByWords ? 'none' : 'translation'}
+            onWordPress={isSeekEnabled ? handleSeekWordPress : handleTranslationWordPress}
+            registerWordHighlight={audioWordSync?.registerWordHighlight}
           />
         ) : (
           <Text
@@ -154,32 +198,52 @@ function VerseCardComponent({
           <Text className="text-xs text-muted dark:text-muted-dark">{wordTranslationTooltip}</Text>
         ) : null}
 
-        {cleanedTranslations.length ? (
+        {cleanedTranslationItems.length ? (
           <View className="gap-6">
-            {cleanedTranslations.map((text, idx) => (
-              <Text
-                key={`${renderSignal}-${idx}-${text.slice(0, 24)}`}
-                className="text-content-secondary dark:text-content-secondary-dark"
-                style={{
-                  fontSize: translationFontSize,
-                  lineHeight: translationLineHeight,
-                  writingDirection: 'auto',
-                }}
-              >
-                {text}
-              </Text>
-            ))}
+            {cleanedTranslationItems.map((translation, idx) => {
+              const resourceName =
+                'resourceName' in translation && typeof translation.resourceName === 'string'
+                  ? translation.resourceName
+                  : undefined;
+
+              return (
+                <View key={`${renderSignal}-${idx}-${translation.text.slice(0, 24)}`} className="gap-2">
+                  {shouldShowTranslationAttribution && resourceName ? (
+                    <Text className="text-xs font-normal uppercase tracking-wider text-muted dark:text-muted-dark">
+                      {resourceName}
+                    </Text>
+                  ) : null}
+                  <Text
+                    className="text-foreground dark:text-foreground-dark"
+                    style={{
+                      fontSize: translationFontSize,
+                      lineHeight: translationLineHeight,
+                      writingDirection: 'auto',
+                    }}
+                  >
+                    {translation.text}
+                  </Text>
+                </View>
+              );
+            })}
           </View>
         ) : null}
     </View>
   );
+
+  const containerClassName = [
+    'border-b border-border/40 py-4 dark:border-border-dark/30',
+    isAudioActive ? 'bg-accent/5 rounded-xl' : null,
+  ]
+    .filter(Boolean)
+    .join(' ');
 
   if (onPress) {
     return (
       <Pressable
         onPress={onPress}
         accessibilityRole="button"
-        className="border-b border-border/40 py-4 dark:border-border-dark/30"
+        className={containerClassName}
         style={({ pressed }) => ({ opacity: pressed ? 0.95 : 1 })}
       >
         {content}
@@ -187,7 +251,7 @@ function VerseCardComponent({
     );
   }
 
-  return <View className="border-b border-border/40 py-4 dark:border-border-dark/30">{content}</View>;
+  return <View className={containerClassName}>{content}</View>;
 }
 
 export const VerseCard = React.memo(VerseCardComponent);

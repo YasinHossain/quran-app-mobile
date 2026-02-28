@@ -2,7 +2,6 @@ import { Mic, Minus, Plus, Repeat, SlidersHorizontal, X } from 'lucide-react-nat
 import React from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Animated,
   KeyboardAvoidingView,
   Modal,
@@ -21,13 +20,8 @@ import { SurahVerseSelectorRow } from '@/components/search/SurahVerseSelectorRow
 import Colors from '@/constants/Colors';
 import { DEFAULT_RECITER, type Reciter, useReciters } from '@/hooks/audio/useReciters';
 import { useChapters } from '@/hooks/useChapters';
-import { useQdcAudioFile } from '@/hooks/audio/useQdcAudioFile';
-import { useDownloadIndexItems } from '@/hooks/useDownloadIndexItems';
 import { useAudioPlayer, type RepeatOptions } from '@/providers/AudioPlayerContext';
 import { useAppTheme } from '@/providers/ThemeContext';
-import type { DownloadIndexItemWithKey, DownloadProgress } from '@/src/core/domain/entities/DownloadIndexItem';
-import { getDownloadKey } from '@/src/core/domain/entities/DownloadIndexItem';
-import { container } from '@/src/core/infrastructure/di/container';
 import type { Chapter } from '@/types';
 
 type PlaybackOptionsTab = 'reciter' | 'repeat';
@@ -131,35 +125,6 @@ function buildInitialRepeatOptions({
   };
 }
 
-function formatProgress(progress: DownloadProgress | undefined): string {
-  if (!progress) return '';
-  if (progress.kind === 'percent') return `${Math.round(progress.percent)}%`;
-  if (progress.kind === 'items') return `${progress.completed}/${progress.total}`;
-  return '';
-}
-
-function getStatusLabel(item: DownloadIndexItemWithKey | undefined): string {
-  if (!item) return 'Not installed';
-
-  const progressLabel = formatProgress(item.progress);
-  const suffix = progressLabel ? ` · ${progressLabel}` : '';
-
-  switch (item.status) {
-    case 'queued':
-      return `Queued${suffix}`;
-    case 'downloading':
-      return `Downloading${suffix}`;
-    case 'installed':
-      return 'Installed';
-    case 'failed':
-      return `Failed${suffix}`;
-    case 'deleting':
-      return 'Deleting';
-    default:
-      return item.status;
-  }
-}
-
 export function PlaybackOptionsModal({
   isOpen,
   onClose,
@@ -178,7 +143,6 @@ export function PlaybackOptionsModal({
   const [localReciter, setLocalReciter] = React.useState<Reciter>(audio.reciter);
   const [localRepeat, setLocalRepeat] = React.useState<RepeatOptions>(audio.repeatOptions);
   const [rangeWarning, setRangeWarning] = React.useState<string | null>(null);
-  const [audioDownloadBusy, setAudioDownloadBusy] = React.useState(false);
 
   const prevIsOpenRef = React.useRef(false);
   React.useEffect(() => {
@@ -192,7 +156,6 @@ export function PlaybackOptionsModal({
         })
       );
       setRangeWarning(null);
-      setAudioDownloadBusy(false);
     }
     prevIsOpenRef.current = isOpen;
   }, [audio.activeVerseKey, audio.reciter, audio.repeatOptions, isOpen]);
@@ -214,129 +177,6 @@ export function PlaybackOptionsModal({
   const animationTokenRef = React.useRef(0);
   const dismissEnabledRef = React.useRef(false);
   const [visible, setVisible] = React.useState(isOpen);
-
-  const activeSurahId = React.useMemo(
-    () => parseChapterIdFromVerseKey(audio.activeVerseKey),
-    [audio.activeVerseKey]
-  );
-
-  const downloadReciterId = localReciter.id;
-  const downloadKey = React.useMemo(() => {
-    if (!activeSurahId) return null;
-    return getDownloadKey({
-      kind: 'audio',
-      reciterId: downloadReciterId,
-      scope: 'surah',
-      surahId: activeSurahId,
-    });
-  }, [activeSurahId, downloadReciterId]);
-
-  const { itemsByKey, refresh: refreshDownloadIndex } = useDownloadIndexItems({
-    enabled: visible,
-    pollIntervalMs: 800,
-  });
-
-  const downloadItem = downloadKey ? itemsByKey.get(downloadKey) : undefined;
-  const downloadStatusLabel = getStatusLabel(downloadItem);
-  const isDownloading = downloadItem?.status === 'queued' || downloadItem?.status === 'downloading';
-  const isDeleting = downloadItem?.status === 'deleting';
-  const isInstalled = downloadItem?.status === 'installed';
-  const isFailed = downloadItem?.status === 'failed';
-
-  const shouldLoadDownloadAudioFile = Boolean(visible && activeSurahId);
-  const {
-    audioFile: downloadAudioFile,
-    isLoading: downloadAudioFileLoading,
-    error: downloadAudioFileError,
-  } = useQdcAudioFile(
-    shouldLoadDownloadAudioFile ? downloadReciterId : null,
-    shouldLoadDownloadAudioFile ? activeSurahId : null,
-    true
-  );
-
-  const downloadUrl = downloadAudioFile?.audioUrl?.trim() ?? '';
-  const hasDownloadUrl = Boolean(downloadUrl);
-
-  const canDownload =
-    !audioDownloadBusy &&
-    !isDownloading &&
-    !isDeleting &&
-    !isInstalled &&
-    hasDownloadUrl &&
-    !downloadAudioFileLoading &&
-    !downloadAudioFileError;
-  const canDelete = !audioDownloadBusy && !isDownloading && !isDeleting && isInstalled;
-
-  const downloadSurahAudio = React.useCallback(async (): Promise<void> => {
-    if (!activeSurahId) return;
-    if (audioDownloadBusy) return;
-
-    if (!downloadUrl) {
-      const message = downloadAudioFileError?.message || 'Unable to load the surah audio source.';
-      Alert.alert('Unable to download', message);
-      return;
-    }
-
-    setAudioDownloadBusy(true);
-    try {
-      await container.getAudioDownloadManager().downloadSurahAudio({
-        reciterId: downloadReciterId,
-        surahId: activeSurahId,
-        audioUrl: downloadUrl,
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      Alert.alert('Download failed', message);
-    } finally {
-      setAudioDownloadBusy(false);
-      refreshDownloadIndex();
-    }
-  }, [
-    activeSurahId,
-    audioDownloadBusy,
-    downloadAudioFileError?.message,
-    downloadUrl,
-    downloadReciterId,
-    refreshDownloadIndex,
-  ]);
-
-  const deleteSurahAudio = React.useCallback(async (): Promise<void> => {
-    if (!activeSurahId) return;
-    if (audioDownloadBusy) return;
-
-    setAudioDownloadBusy(true);
-    try {
-      await container.getAudioDownloadManager().deleteSurahAudio({
-        reciterId: downloadReciterId,
-        surahId: activeSurahId,
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      Alert.alert('Delete failed', message);
-    } finally {
-      setAudioDownloadBusy(false);
-      refreshDownloadIndex();
-    }
-  }, [activeSurahId, audioDownloadBusy, downloadReciterId, refreshDownloadIndex]);
-
-  const handlePressDeleteSurahAudio = React.useCallback(() => {
-    if (!activeSurahId) return;
-    if (audioDownloadBusy) return;
-
-    Alert.alert(
-      'Delete download?',
-      'This removes the downloaded surah audio file for offline playback.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => void deleteSurahAudio(),
-        },
-      ],
-      { cancelable: true }
-    );
-  }, [activeSurahId, audioDownloadBusy, deleteSurahAudio]);
 
   const maxDialogHeight = Math.max(0, Math.round(windowHeight * 0.85));
   const minDialogHeight = Math.min(maxDialogHeight, Math.max(420, Math.round(windowHeight * 0.7)));
@@ -585,74 +425,6 @@ export function PlaybackOptionsModal({
                   >
                     {activeTab === 'reciter' ? (
                       <View className="gap-4">
-                        <View className="rounded-2xl border border-border/30 dark:border-border-dark/20 p-4">
-                        <Text className="text-sm font-semibold text-foreground dark:text-foreground-dark">
-                          Offline audio
-                        </Text>
-
-                        {activeSurahId ? (
-                          <View className="mt-2 gap-3">
-                            <View className="flex-row items-center gap-2">
-                              {(isDownloading || isDeleting) && (
-                                <ActivityIndicator size="small" color={palette.muted} />
-                              )}
-                              <Text className="text-xs font-semibold text-muted dark:text-muted-dark">
-                                {downloadStatusLabel}
-                              </Text>
-                            </View>
-
-                            {downloadItem?.error ? (
-                              <Text className="text-xs text-error dark:text-error-dark">
-                                {downloadItem.error}
-                              </Text>
-                            ) : null}
-
-                            {isInstalled ? (
-                              <Pressable
-                                onPress={handlePressDeleteSurahAudio}
-                                disabled={!canDelete}
-                                accessibilityRole="button"
-                                accessibilityLabel="Delete download"
-                                className={[
-                                  'px-4 py-3 rounded-xl bg-error dark:bg-error-dark',
-                                  canDelete ? '' : 'opacity-40',
-                                ].join(' ')}
-                                style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
-                              >
-                                <Text className="text-sm font-semibold text-on-accent">
-                                  Delete download
-                                </Text>
-                              </Pressable>
-                            ) : (
-                              <Pressable
-                                onPress={() => void downloadSurahAudio()}
-                                disabled={!canDownload}
-                                accessibilityRole="button"
-                                accessibilityLabel={isFailed ? 'Retry download' : 'Download this surah'}
-                                className={[
-                                  'px-4 py-3 rounded-xl bg-accent',
-                                  canDownload ? '' : 'opacity-40',
-                                ].join(' ')}
-                                style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
-                              >
-                                <View className="flex-row items-center justify-center gap-2">
-                                  {downloadAudioFileLoading ? (
-                                    <ActivityIndicator size="small" color="#FFFFFF" />
-                                  ) : null}
-                                  <Text className="text-sm font-semibold text-on-accent">
-                                    Download this surah
-                                  </Text>
-                                </View>
-                              </Pressable>
-                            )}
-                          </View>
-                        ) : (
-                          <Text className="mt-2 text-sm text-muted dark:text-muted-dark">
-                            Start playing a verse to download.
-                          </Text>
-                        )}
-                      </View>
-
                       <View className="gap-2">
                         {(recitersLoading || recitersError) && (
                           <View className="flex-row items-center gap-2 px-1">

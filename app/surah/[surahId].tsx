@@ -22,9 +22,11 @@ import { BookmarkModal } from '@/components/bookmarks/BookmarkModal';
 import { SurahHeaderCard } from '@/components/surah/SurahHeaderCard';
 import { VerseActionsSheet } from '@/components/surah/VerseActionsSheet';
 import { VerseCard } from '@/components/surah/VerseCard';
+import { useVerseAudioWordSync } from '@/components/surah/useVerseAudioWordSync';
 import { AddToPlannerModal, type VerseSummaryDetails } from '@/components/verse-planner-modal';
 import Colors from '@/constants/Colors';
 import { useSurahVerses, type SurahVerse } from '@/hooks/useSurahVerses';
+import { useTranslationResources } from '@/hooks/useTranslationResources';
 import { useBookmarks } from '@/providers/BookmarkContext';
 import { useAudioPlayer } from '@/providers/AudioPlayerContext';
 import { useLayoutMetrics } from '@/providers/LayoutMetricsContext';
@@ -32,6 +34,20 @@ import { useSettings } from '@/providers/SettingsContext';
 import { useAppTheme } from '@/providers/ThemeContext';
 
 import type { Bookmark } from '@/types';
+
+function parseVerseKeyNumbers(
+  verseKey: string | null
+): { surahId: number; verseNumber: number } | null {
+  if (!verseKey) return null;
+  const [surahRaw, verseRaw] = verseKey.split(':');
+  const surahId = Number.parseInt(surahRaw ?? '', 10);
+  const verseNumber = Number.parseInt(verseRaw ?? '', 10);
+  if (!Number.isFinite(surahId) || !Number.isFinite(verseNumber)) return null;
+  const normalizedSurah = Math.trunc(surahId);
+  const normalizedVerse = Math.trunc(verseNumber);
+  if (normalizedSurah <= 0 || normalizedVerse <= 0) return null;
+  return { surahId: normalizedSurah, verseNumber: normalizedVerse };
+}
 
 export default function SurahScreen(): React.JSX.Element {
   const params = useLocalSearchParams<{ surahId?: string | string[]; startVerse?: string | string[] }>();
@@ -59,6 +75,7 @@ export default function SurahScreen(): React.JSX.Element {
   const { resolvedTheme } = useAppTheme();
   const palette = Colors[resolvedTheme];
   const audio = useAudioPlayer();
+  const verseAudioWordSync = useVerseAudioWordSync();
   const { audioPlayerBarHeight } = useLayoutMetrics();
   const listContentContainerStyle = React.useMemo(
     () => ({ padding: 16, paddingBottom: 24 + audioPlayerBarHeight }),
@@ -75,6 +92,12 @@ export default function SurahScreen(): React.JSX.Element {
       : [settings.translationId ?? 20];
     return ids.filter((id) => Number.isFinite(id) && id > 0);
   }, [settings.translationId, settings.translationIds]);
+
+  const showTranslationAttribution = translationIds.length > 1;
+  const { translationsById } = useTranslationResources({
+    enabled: showTranslationAttribution,
+    language: settings.contentLanguage,
+  });
 
   const {
     chapter,
@@ -173,12 +196,16 @@ export default function SurahScreen(): React.JSX.Element {
       translationFontSize: settings.translationFontSize,
       arabicFontFace: settings.arabicFontFace,
       showByWords: settings.showByWords,
+      audioActiveVerseKey: audio.activeVerseKey,
+      audioIsVisible: audio.isVisible,
     }),
     [
       settings.arabicFontFace,
       settings.arabicFontSize,
       settings.showByWords,
       settings.translationFontSize,
+      audio.activeVerseKey,
+      audio.isVisible,
     ]
   );
 
@@ -238,6 +265,16 @@ export default function SurahScreen(): React.JSX.Element {
   const renderVerseItem = React.useCallback(
     ({ item }: { item: SurahVerse }) => {
       const translationTexts = item.translationTexts ?? [];
+      const translationItems = showTranslationAttribution
+        ? (item.translationItems ?? []).map((t) => {
+            if (t.resourceName) return t;
+            const fallbackName =
+              typeof t.resourceId === 'number'
+                ? translationsById.get(t.resourceId)?.name ?? `Translation ${t.resourceId}`
+                : undefined;
+            return { ...t, resourceName: fallbackName };
+          })
+        : item.translationItems ?? [];
       const verseApiId =
         typeof item.id === 'number' && Number.isFinite(item.id) && item.id > 0 ? item.id : undefined;
 
@@ -247,6 +284,10 @@ export default function SurahScreen(): React.JSX.Element {
           arabicText={item.text_uthmani ?? ''}
           words={item.words}
           translationTexts={translationTexts}
+          translationItems={translationItems}
+          showTranslationAttribution={showTranslationAttribution}
+          isAudioActive={Boolean(audio.isVisible && audio.activeVerseKey === item.verse_key)}
+          audioWordSync={verseAudioWordSync}
           arabicFontSize={settings.arabicFontSize}
           arabicFontFace={settings.arabicFontFace}
           translationFontSize={settings.translationFontSize}
@@ -263,11 +304,16 @@ export default function SurahScreen(): React.JSX.Element {
       );
     },
     [
+      audio.activeVerseKey,
+      audio.isVisible,
       openVerseActions,
+      showTranslationAttribution,
       settings.arabicFontFace,
       settings.arabicFontSize,
       settings.showByWords,
       settings.translationFontSize,
+      translationsById,
+      verseAudioWordSync,
     ]
   );
 
@@ -277,6 +323,11 @@ export default function SurahScreen(): React.JSX.Element {
   const [scrollTick, bumpScrollTick] = React.useReducer((value) => value + 1, 0);
   const scrollRetryCountRef = React.useRef(0);
   const scrollRetryTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const didAutoScrollToAudioVerseRef = React.useRef<string | null>(null);
+  const [autoScrollTick, bumpAutoScrollTick] = React.useReducer((value) => value + 1, 0);
+  const autoScrollRetryCountRef = React.useRef(0);
+  const autoScrollRetryTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const chapterNumberRef = React.useRef(chapterNumber);
   React.useEffect(() => {
@@ -336,18 +387,29 @@ export default function SurahScreen(): React.JSX.Element {
 
   React.useEffect(() => {
     return () => {
-      if (!scrollRetryTimeoutRef.current) return;
-      clearTimeout(scrollRetryTimeoutRef.current);
-      scrollRetryTimeoutRef.current = null;
+      if (scrollRetryTimeoutRef.current) {
+        clearTimeout(scrollRetryTimeoutRef.current);
+        scrollRetryTimeoutRef.current = null;
+      }
+      if (autoScrollRetryTimeoutRef.current) {
+        clearTimeout(autoScrollRetryTimeoutRef.current);
+        autoScrollRetryTimeoutRef.current = null;
+      }
     };
   }, []);
 
   React.useEffect(() => {
     didScrollToStartRef.current = false;
     scrollRetryCountRef.current = 0;
+    didAutoScrollToAudioVerseRef.current = null;
+    autoScrollRetryCountRef.current = 0;
     if (scrollRetryTimeoutRef.current) {
       clearTimeout(scrollRetryTimeoutRef.current);
       scrollRetryTimeoutRef.current = null;
+    }
+    if (autoScrollRetryTimeoutRef.current) {
+      clearTimeout(autoScrollRetryTimeoutRef.current);
+      autoScrollRetryTimeoutRef.current = null;
     }
   }, [surahId, startVerseParam]);
 
@@ -381,6 +443,63 @@ export default function SurahScreen(): React.JSX.Element {
       }, 120);
     }
   }, [errorMessage, isLoading, isLoadingMore, loadMore, scrollTick, startVerse, verses.length]);
+
+  React.useEffect(() => {
+    if (!audio.isPlaying) {
+      didAutoScrollToAudioVerseRef.current = null;
+      autoScrollRetryCountRef.current = 0;
+      if (autoScrollRetryTimeoutRef.current) {
+        clearTimeout(autoScrollRetryTimeoutRef.current);
+        autoScrollRetryTimeoutRef.current = null;
+      }
+      return;
+    }
+
+    const verseKey = audio.activeVerseKey;
+    if (!verseKey) return;
+
+    const parsed = parseVerseKeyNumbers(verseKey);
+    if (!parsed) return;
+    if (!Number.isFinite(chapterNumber)) return;
+    if (parsed.surahId !== Math.trunc(chapterNumber)) return;
+
+    if (didAutoScrollToAudioVerseRef.current === verseKey) return;
+
+    const targetIndex = Math.max(0, parsed.verseNumber - 1);
+
+    if (targetIndex >= verses.length) {
+      if (!isLoadingMore && !errorMessage) {
+        loadMore();
+      }
+      return;
+    }
+
+    const list = Platform.OS === 'web' ? flatListRef.current : flashListRef.current;
+    if (!list) return;
+
+    try {
+      list.scrollToIndex({ index: targetIndex, animated: true, viewPosition: 0 });
+      didAutoScrollToAudioVerseRef.current = verseKey;
+      autoScrollRetryCountRef.current = 0;
+    } catch {
+      if (autoScrollRetryCountRef.current >= 6) return;
+      autoScrollRetryCountRef.current += 1;
+      if (autoScrollRetryTimeoutRef.current) return;
+      autoScrollRetryTimeoutRef.current = setTimeout(() => {
+        autoScrollRetryTimeoutRef.current = null;
+        bumpAutoScrollTick();
+      }, 120);
+    }
+  }, [
+    audio.activeVerseKey,
+    audio.isPlaying,
+    autoScrollTick,
+    chapterNumber,
+    errorMessage,
+    isLoadingMore,
+    loadMore,
+    verses.length,
+  ]);
 
   const activeVersePinned = React.useMemo(() => {
     if (!activeVerse) return false;

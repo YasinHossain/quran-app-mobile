@@ -29,8 +29,11 @@ export const HeaderSearchInput = React.forwardRef(
     const showClear = value.trim().length > 0;
 
     return (
-      <View className="flex-1" style={{ flex: 1, width: '100%' }}>
-        <View className="flex-row items-center gap-2 rounded-xl bg-interactive px-3 py-2 dark:bg-interactive-dark border border-border/30 dark:border-border-dark/20">
+      <View className="w-full" style={{ width: '100%' }}>
+        <View
+          className="flex-row items-center gap-2 rounded-xl bg-interactive px-3 py-2 dark:bg-interactive-dark border border-border/30 dark:border-border-dark/20"
+          style={{ minHeight: 44 }}
+        >
           <View className="h-4 w-4 items-center justify-center">
             <Search color={palette.muted} size={16} strokeWidth={2.25} />
           </View>
@@ -46,6 +49,7 @@ export const HeaderSearchInput = React.forwardRef(
             autoCorrect={false}
             returnKeyType="search"
             onSubmitEditing={onSubmitEditing}
+            style={{ paddingVertical: 0 }}
             className="flex-1 text-sm text-foreground dark:text-foreground-dark"
           />
 
@@ -68,4 +72,3 @@ export const HeaderSearchInput = React.forwardRef(
     );
   }
 );
-

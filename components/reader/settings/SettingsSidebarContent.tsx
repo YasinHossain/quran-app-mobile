@@ -15,6 +15,7 @@ import { FontSizeSlider } from './FontSizeSlider';
 import { ManageTafsirsPanel } from './ManageTafsirsPanel';
 import { ManageTranslationsPanel } from './ManageTranslationsPanel';
 import { SelectionBox } from './SelectionBox';
+import { ResourceItem } from './resource-panel/ResourceItem';
 import { capitalizeLanguageName, type ResourceRecord } from './resource-panel/resourcePanel.utils';
 import { SettingsTabToggle, type SettingsTab } from './SettingsTabToggle';
 import { ToggleRow } from './ToggleRow';
@@ -38,6 +39,24 @@ const WORD_LANGUAGES = [
 ] as const;
 
 const UI_LANGUAGES = WORD_LANGUAGES;
+
+type WordLanguageItem = ResourceRecord & {
+  code: string;
+};
+
+const WORD_LANGUAGE_ITEMS: WordLanguageItem[] = WORD_LANGUAGES.map((item, index) => ({
+  id: index + 1,
+  name: item.name,
+  lang: item.name,
+  code: item.code,
+}));
+
+const UI_LANGUAGE_ITEMS: WordLanguageItem[] = UI_LANGUAGES.map((item, index) => ({
+  id: index + 1,
+  name: item.name,
+  lang: item.name,
+  code: item.code,
+}));
 
 function getLanguageName(code: string | undefined): string {
   if (!code) return '';
@@ -122,6 +141,45 @@ export function SettingsSidebarContent({
     arabicFonts.find((f) => f.value === settings.arabicFontFace)?.name ?? 'KFGQ';
   const selectedUiLanguageName = getUiLanguageName(settings.contentLanguage);
   const selectedMushafName = findMushafOption(settings.mushafId)?.name ?? 'King Fahad Complex V1';
+  const filteredArabicFonts = React.useMemo(
+    () => arabicFonts.filter((font) => font.category === arabicFontFilter),
+    [arabicFontFilter, arabicFonts]
+  );
+  const arabicFontItems = React.useMemo(
+    () =>
+      filteredArabicFonts.map((font, index) => ({
+        id: index + 1,
+        name: font.name,
+        lang: font.category,
+        value: font.value,
+      })),
+    [filteredArabicFonts]
+  );
+
+  const handleSelectWordLanguage = React.useCallback(
+    (id: number) => {
+      const selected = WORD_LANGUAGE_ITEMS.find((item) => item.id === id);
+      if (!selected) return;
+      setWordLang(selected.code);
+    },
+    [setWordLang]
+  );
+  const handleSelectArabicFont = React.useCallback(
+    (id: number) => {
+      const selected = arabicFontItems.find((item) => item.id === id);
+      if (!selected) return;
+      setArabicFontFace(selected.value);
+    },
+    [arabicFontItems, setArabicFontFace]
+  );
+  const handleSelectUiLanguage = React.useCallback(
+    (id: number) => {
+      const selected = UI_LANGUAGE_ITEMS.find((item) => item.id === id);
+      if (!selected) return;
+      setContentLanguage(selected.code);
+    },
+    [setContentLanguage]
+  );
 
   const {
     tafsirs,
@@ -247,34 +305,26 @@ export function SettingsSidebarContent({
 
         {panel.type === 'word-language' ? (
           <FlatList
-            data={WORD_LANGUAGES}
+            data={WORD_LANGUAGE_ITEMS}
             keyExtractor={(item) => item.code}
-            contentContainerStyle={{ padding: 12, gap: 10 }}
+            contentContainerStyle={{ paddingVertical: 12, paddingBottom: 20 }}
             renderItem={({ item }) => (
-              <Pressable
-                onPress={() => {
-                  setWordLang(item.code);
-                  setPanel({ type: 'root' });
-                }}
-                className={[
-                  'rounded-xl border px-4 py-3',
-                  'border-border/30 dark:border-border-dark/20',
-                  'bg-interactive dark:bg-interactive-dark',
-                ].join(' ')}
-              >
-                <Text className="text-sm font-semibold text-foreground dark:text-foreground-dark">
-                  {item.name}
-                </Text>
-              </Pressable>
+              <View className="px-4 py-1">
+                <ResourceItem
+                  item={item}
+                  isSelected={item.code === settings.wordLang}
+                  onToggle={handleSelectWordLanguage}
+                />
+              </View>
             )}
           />
         ) : null}
 
         {panel.type === 'arabic-font' ? (
           <FlatList
-            data={arabicFonts.filter((font) => font.category === arabicFontFilter)}
+            data={arabicFontItems}
             keyExtractor={(item) => item.value}
-            contentContainerStyle={{ padding: 12, gap: 10 }}
+            contentContainerStyle={{ paddingVertical: 12, paddingBottom: 20 }}
             ListHeaderComponent={
               <View className="pb-2">
                 <ArabicFontFilterToggle
@@ -284,51 +334,30 @@ export function SettingsSidebarContent({
               </View>
             }
             renderItem={({ item }) => (
-              <Pressable
-                onPress={() => {
-                  setArabicFontFace(item.value);
-                  setPanel({ type: 'root' });
-                }}
-                className={[
-                  'rounded-xl border px-4 py-3',
-                  'border-border/30 dark:border-border-dark/20',
-                  'bg-interactive dark:bg-interactive-dark',
-                ].join(' ')}
-              >
-                <Text className="text-sm font-semibold text-foreground dark:text-foreground-dark">
-                  {item.name}
-                </Text>
-                {item.value === settings.arabicFontFace ? (
-                  <Text className="mt-1 text-xs font-semibold text-muted dark:text-muted-dark">
-                    Selected
-                  </Text>
-                ) : null}
-              </Pressable>
+              <View className="px-4 py-1">
+                <ResourceItem
+                  item={item}
+                  isSelected={item.value === settings.arabicFontFace}
+                  onToggle={handleSelectArabicFont}
+                />
+              </View>
             )}
           />
         ) : null}
 
         {panel.type === 'ui-language' ? (
           <FlatList
-            data={UI_LANGUAGES}
+            data={UI_LANGUAGE_ITEMS}
             keyExtractor={(item) => item.code}
-            contentContainerStyle={{ padding: 12, gap: 10 }}
+            contentContainerStyle={{ paddingVertical: 12, paddingBottom: 20 }}
             renderItem={({ item }) => (
-              <Pressable
-                onPress={() => {
-                  setContentLanguage(item.code);
-                  setPanel({ type: 'root' });
-                }}
-                className={[
-                  'rounded-xl border px-4 py-3',
-                  'border-border/30 dark:border-border-dark/20',
-                  'bg-interactive dark:bg-interactive-dark',
-                ].join(' ')}
-              >
-                <Text className="text-sm font-semibold text-foreground dark:text-foreground-dark">
-                  {item.name}
-                </Text>
-              </Pressable>
+              <View className="px-4 py-1">
+                <ResourceItem
+                  item={item}
+                  isSelected={item.code === (settings.contentLanguage ?? 'en')}
+                  onToggle={handleSelectUiLanguage}
+                />
+              </View>
             )}
           />
         ) : null}

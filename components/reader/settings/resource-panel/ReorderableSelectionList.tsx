@@ -1,4 +1,4 @@
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { GripVertical, RotateCcw, X } from 'lucide-react-native';
 import React from 'react';
 import {
   Animated,
@@ -237,7 +237,7 @@ export function ReorderableSelectionList({
               style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
               className="p-1.5 rounded-full"
             >
-              <MaterialCommunityIcons name="rotate-left" size={16} color={palette.text} />
+              <RotateCcw color={palette.text} size={16} strokeWidth={2.25} />
             </Pressable>
           ) : null}
         </View>
@@ -348,7 +348,7 @@ function SelectionListRow({
           accessibilityRole="button"
           accessibilityLabel="Reorder"
         >
-          <MaterialCommunityIcons name="drag-vertical" size={18} color={mutedColor} />
+          <GripVertical color={mutedColor} size={18} strokeWidth={2.25} />
         </View>
         <View className="flex-1 min-w-0">
           <Text
@@ -371,7 +371,7 @@ function SelectionListRow({
           className={[removeButtonClassName, 'h-7 w-7 items-center justify-center'].join(' ')}
           style={({ pressed }) => ({ opacity: isDragging ? 0.4 : pressed ? 0.7 : 1 })}
         >
-          <MaterialCommunityIcons name="close" size={variant === 'tafsir' ? 16 : 14} color={mutedColor} />
+          <X color={mutedColor} size={variant === 'tafsir' ? 16 : 14} strokeWidth={2.25} />
         </Pressable>
       </View>
     </Animated.View>

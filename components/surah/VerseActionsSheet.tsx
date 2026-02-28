@@ -21,6 +21,7 @@ export function VerseActionsSheet({
   verseKey,
   isPlaying = false,
   isBookmarked = false,
+  showViewTafsir = true,
   showRemove = false,
   onPlayPause,
   onOpenTafsir,
@@ -34,6 +35,7 @@ export function VerseActionsSheet({
   verseKey: string;
   isPlaying?: boolean;
   isBookmarked?: boolean;
+  showViewTafsir?: boolean;
   showRemove?: boolean;
   onPlayPause?: () => void;
   onOpenTafsir?: () => void;
@@ -165,12 +167,14 @@ export function VerseActionsSheet({
                     onPress={() => runAndClose(onPlayPause)}
                     disabled={!onPlayPause}
                   />
-                  <ActionRow
-                    icon={<BookOpenText color={palette.muted} size={20} strokeWidth={2.25} />}
-                    label="View Tafsir"
-                    onPress={() => runAndClose(onOpenTafsir)}
-                    disabled={!onOpenTafsir}
-                  />
+                  {showViewTafsir ? (
+                    <ActionRow
+                      icon={<BookOpenText color={palette.muted} size={20} strokeWidth={2.25} />}
+                      label="View Tafsir"
+                      onPress={() => runAndClose(onOpenTafsir)}
+                      disabled={!onOpenTafsir}
+                    />
+                  ) : null}
                   <ActionRow
                     icon={<Bookmark color={palette.muted} size={20} strokeWidth={2.25} />}
                     label={showRemove ? 'Remove Bookmark' : 'Pin or Bookmark'}

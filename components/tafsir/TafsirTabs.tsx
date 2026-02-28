@@ -187,7 +187,7 @@ export function TafsirTabs({
         ) : null}
       </ScrollView>
 
-      <View className="mt-4 rounded-2xl bg-surface dark:bg-surface-dark border border-border/40 dark:border-border-dark/20 p-4">
+      <View className="mt-4">
         <Text className="mb-5 text-center text-lg font-bold text-foreground dark:text-foreground-dark">
           {activeTab.name}
         </Text>

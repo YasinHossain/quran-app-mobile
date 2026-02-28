@@ -12,9 +12,10 @@ export type SurahVerse = {
   verse_number: number;
   verse_key: string;
   text_uthmani?: string;
-  translations?: Array<{ resource_id: number; text: string }>;
+  translations?: Array<{ resource_id: number; resource_name?: string; text: string }>;
   words?: VerseWord[];
   translationTexts: string[];
+  translationItems: Array<{ resourceId: number; resourceName?: string; text: string }>;
 };
 
 type ApiVersesResponse = {
@@ -23,7 +24,7 @@ type ApiVersesResponse = {
     verse_number: number;
     verse_key: string;
     text_uthmani?: string;
-    translations?: Array<{ resource_id: number; text: string }>;
+    translations?: Array<{ resource_id: number; resource_name?: string; text: string }>;
     words?: Array<{
       id: number;
       position?: number;
@@ -49,24 +50,44 @@ function stripHtml(input: string): string {
 }
 
 function buildTranslationTexts(
-  translations: Array<{ resource_id: number; text: string }> | undefined,
+  translations: Array<{ resource_id: number; resource_name?: string; text: string }> | undefined,
   translationIds: number[]
 ): string[] {
+  return buildTranslationItems(translations, translationIds).map((t) => t.text);
+}
+
+function buildTranslationItems(
+  translations: Array<{ resource_id: number; resource_name?: string; text: string }> | undefined,
+  translationIds: number[]
+): Array<{ resourceId: number; resourceName?: string; text: string }> {
   const incoming = translations ?? [];
   if (incoming.length === 0) return [];
 
-  const byResourceId = new Map(incoming.map((t) => [t.resource_id, t.text]));
+  const byResourceId = new Map(incoming.map((t) => [t.resource_id, t]));
   const ordered = translationIds
-    .map((id) => byResourceId.get(id))
-    .filter((t): t is string => typeof t === 'string' && t.trim().length > 0)
-    .map(stripHtml)
-    .filter(Boolean);
+    .map((id) => {
+      const match = byResourceId.get(id);
+      const text = typeof match?.text === 'string' ? stripHtml(match.text).trim() : '';
+      if (!text) return null;
+
+      const name =
+        typeof match?.resource_name === 'string' ? match.resource_name.trim() : undefined;
+      const base = { resourceId: id, text };
+      return name ? { ...base, resourceName: name } : base;
+    })
+    .filter((t): t is { resourceId: number; resourceName?: string; text: string } => t !== null);
 
   if (ordered.length) return ordered;
 
   return incoming
-    .map((t) => stripHtml(t.text ?? ''))
-    .filter((text) => text.length > 0);
+    .map((t) => {
+      const text = stripHtml(t.text ?? '').trim();
+      if (!text) return null;
+      const name = typeof t.resource_name === 'string' ? t.resource_name.trim() : undefined;
+      const base = { resourceId: t.resource_id, text };
+      return name ? { ...base, resourceName: name } : base;
+    })
+    .filter((t): t is { resourceId: number; resourceName?: string; text: string } => t !== null);
 }
 
 function buildVerseWords(words: ApiWord[] | undefined): VerseWord[] | undefined {
@@ -243,6 +264,7 @@ export function useSurahVerses({
           (versesJson.verses ?? []).map((verse) => ({
             ...verse,
             words: buildVerseWords(verse.words),
+            translationItems: buildTranslationItems(verse.translations, resolvedTranslationIds),
             translationTexts: buildTranslationTexts(verse.translations, resolvedTranslationIds),
           }))
         );
@@ -280,6 +302,7 @@ export function useSurahVerses({
                     verse_key: verse.verseKey,
                     text_uthmani: verse.arabicUthmani,
                     translations,
+                    translationItems: buildTranslationItems(translations, resolvedTranslationIds),
                     translationTexts: buildTranslationTexts(translations, resolvedTranslationIds),
                   };
                 })
@@ -373,6 +396,7 @@ export function useSurahVerses({
         const preparedIncoming = (json.verses ?? []).map((verse) => ({
           ...verse,
           words: buildVerseWords(verse.words),
+          translationItems: buildTranslationItems(verse.translations, resolvedTranslationIds),
           translationTexts: buildTranslationTexts(verse.translations, resolvedTranslationIds),
         }));
 

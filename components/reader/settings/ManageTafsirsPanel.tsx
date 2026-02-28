@@ -171,10 +171,23 @@ export function ManageTafsirsPanel({
   }, [handleReset, handleToggle, onChangeSelection, orderedSelection, searchTerm, tafsirs]);
 
   const renderItem = React.useCallback(
-    ({ item }: { item: Row }): React.JSX.Element | null => {
+    ({
+      item,
+      target,
+    }: {
+      item: Row;
+      target: 'Cell' | 'StickyHeader' | 'Measurement';
+    }): React.JSX.Element | null => {
       if (item.type === 'tabs') {
         return (
-          <View className="py-2 border-b bg-background dark:bg-background-dark border-border dark:border-border-dark">
+          <View
+            className="py-2 border-b bg-background dark:bg-background-dark border-border dark:border-border-dark"
+            style={
+              target === 'StickyHeader'
+                ? { zIndex: 10, elevation: 8 }
+                : undefined
+            }
+          >
             <View className="px-4">
               <ResourceTabs
                 languages={languages}
@@ -254,13 +267,13 @@ export function ManageTafsirsPanel({
         }}
         renderItem={renderItem}
         ListHeaderComponent={renderHeader}
-        stickyHeaderIndices={[1]}
+        stickyHeaderIndices={[0]}
         keyboardShouldPersistTaps="handled"
         removeClippedSubviews={Platform.OS === 'android'}
         drawDistance={Platform.OS === 'android' ? 350 : 250}
         getItemType={getRowType}
         overrideItemLayout={overrideRowLayout}
-        overrideProps={{ initialDrawBatchSize: 8 }}
+        overrideProps={{ initialDrawBatchSize: 8, scrollEventThrottle: 16 }}
         scrollEnabled={!isReordering}
         contentContainerStyle={{ paddingBottom: 20 }}
       />

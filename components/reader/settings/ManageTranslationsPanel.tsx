@@ -1,9 +1,9 @@
-import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { FlashList } from '@shopify/flash-list';
+import { Download, Trash2, X } from 'lucide-react-native';
 import React from 'react';
 import {
   ActivityIndicator,
   Alert,
+  FlatList,
   InteractionManager,
   Modal,
   Platform,
@@ -239,13 +239,14 @@ function CompactProgressRing({
       </Svg>
 
       <View className="absolute inset-0 items-center justify-center">
-        <MaterialCommunityIcons name="close" size={12} color={crossColor} />
+        <X color={crossColor} size={12} strokeWidth={2.75} />
       </View>
     </View>
   );
 }
 
 type Row =
+  | { type: 'tabs' }
   | { type: 'section'; language: string }
   | { type: 'resource'; item: ResourceRecord }
   | { type: 'empty'; text: string };
@@ -317,7 +318,7 @@ const TranslationResourceRow = React.memo(function TranslationResourceRow({
         isSelected ? 'border-white/30 bg-white/15' : 'border-error/40 bg-error/10',
       ].join(' ')}
     >
-      <MaterialCommunityIcons name="trash-can-outline" size={16} color={destructiveColor} />
+      <Trash2 color={destructiveColor} size={16} strokeWidth={2.25} />
     </View>
   ) : (
     <View
@@ -328,11 +329,7 @@ const TranslationResourceRow = React.memo(function TranslationResourceRow({
           : 'border-border/60 bg-interactive dark:border-border-dark/60 dark:bg-interactive-dark',
       ].join(' ')}
     >
-      <MaterialCommunityIcons
-        name="download"
-        size={16}
-        color={isFailed ? destructiveColor : iconColor}
-      />
+      <Download color={isFailed ? destructiveColor : iconColor} size={16} strokeWidth={2.25} />
     </View>
   );
 
@@ -731,7 +728,7 @@ export function ManageTranslationsPanel({
   }, [scheduleSelectionCommit, translations]);
 
   const rows = React.useMemo<Row[]>(() => {
-    const base: Row[] = [];
+    const base: Row[] = [{ type: 'tabs' }];
 
     if (resourcesToRender.length === 0) {
       base.push({ type: 'empty', text: 'No translation resources found for the selected filter.' });
@@ -749,24 +746,6 @@ export function ManageTranslationsPanel({
     resourcesToRender.forEach((item) => base.push({ type: 'resource', item }));
     return base;
   }, [activeFilter, resourcesToRender, sectionsToRender]);
-
-  const getRowType = React.useCallback((row: Row): string => row.type, []);
-
-  const overrideRowLayout = React.useCallback((layout: { span?: number }, row: Row): void => {
-    const sizedLayout = layout as { span?: number; size?: number };
-
-    if (row.type === 'resource') {
-      sizedLayout.size = 58;
-      return;
-    }
-
-    if (row.type === 'section') {
-      sizedLayout.size = 48;
-      return;
-    }
-
-    sizedLayout.size = 90;
-  }, []);
 
   const handleReorderSelection = React.useCallback(
     (ids: number[]) => {
@@ -802,6 +781,23 @@ export function ManageTranslationsPanel({
 
   const renderItem = React.useCallback(
     ({ item }: { item: Row }): React.JSX.Element | null => {
+      if (item.type === 'tabs') {
+        return (
+          <View
+            className="py-2 border-b bg-background dark:bg-background-dark border-border dark:border-border-dark"
+            style={{ zIndex: 10, elevation: 8 }}
+          >
+            <View className="px-4">
+              <ResourceTabs
+                languages={languages}
+                activeFilter={activeFilter}
+                onTabPress={setActiveFilter}
+              />
+            </View>
+          </View>
+        );
+      }
+
       if (item.type === 'section') {
         return (
           <View className="px-4 pt-4 pb-2">
@@ -840,6 +836,7 @@ export function ManageTranslationsPanel({
       );
     },
     [
+      activeFilter,
       busyTranslationIds,
       handleCancelDownload,
       handlePressDelete,
@@ -847,6 +844,7 @@ export function ManageTranslationsPanel({
       handleToggle,
       isDark,
       itemsByKey,
+      languages,
       palette.tint,
       selectedIds,
     ]
@@ -889,32 +887,23 @@ export function ManageTranslationsPanel({
 
   return (
     <View className="flex-1">
-      {headerComponent}
-      <View className="py-2 border-b bg-background dark:bg-background-dark border-border dark:border-border-dark">
-        <View className="px-4">
-          <ResourceTabs
-            languages={languages}
-            activeFilter={activeFilter}
-            onTabPress={setActiveFilter}
-          />
-        </View>
-      </View>
-
-      <FlashList
-        style={{ flex: 1, minHeight: 0 }}
+      <FlatList
         data={rows}
         keyExtractor={(row) => {
+          if (row.type === 'tabs') return 'tabs';
           if (row.type === 'section') return `section:${row.language}`;
           if (row.type === 'empty') return 'empty';
           return `resource:${row.item.id}`;
         }}
         renderItem={renderItem}
-        keyboardShouldPersistTaps="always"
-        removeClippedSubviews={false}
-        drawDistance={Platform.OS === 'android' ? 350 : 250}
-        getItemType={getRowType}
-        overrideItemLayout={overrideRowLayout}
-        overrideProps={{ initialDrawBatchSize: 8 }}
+        ListHeaderComponent={headerComponent}
+        stickyHeaderIndices={[1]}
+        keyboardShouldPersistTaps="handled"
+        removeClippedSubviews={Platform.OS === 'android'}
+        scrollEventThrottle={16}
+        initialNumToRender={8}
+        maxToRenderPerBatch={8}
+        updateCellsBatchingPeriod={50}
         scrollEnabled={!isReordering}
         contentContainerStyle={{ paddingBottom: 20 }}
       />
@@ -948,7 +937,7 @@ export function ManageTranslationsPanel({
                 accessibilityLabel="Close"
                 style={({ pressed }) => ({ opacity: pressed ? 0.75 : 1 })}
               >
-                <MaterialCommunityIcons name="close" size={18} color={palette.muted} />
+                <X color={palette.muted} size={18} strokeWidth={2.25} />
               </Pressable>
             </View>
 
@@ -1024,7 +1013,7 @@ export function ManageTranslationsPanel({
                 accessibilityLabel="Close"
                 style={({ pressed }) => ({ opacity: pressed ? 0.75 : 1 })}
               >
-                <MaterialCommunityIcons name="close" size={18} color={palette.muted} />
+                <X color={palette.muted} size={18} strokeWidth={2.25} />
               </Pressable>
             </View>
 
