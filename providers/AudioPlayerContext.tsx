@@ -16,8 +16,9 @@ import { logger } from '@/src/core/infrastructure/monitoring/logger';
 
 const AUDIO_SETTINGS_KEY = 'quranAppAudioSettings';
 const SETTINGS_PERSIST_DEBOUNCE_MS = 300;
-const STATUS_UPDATE_INTERVAL_MS = 250;
+const STATUS_UPDATE_INTERVAL_MS = 100;
 const END_EPSILON_SEC = 0.05;
+const CONTINUOUS_SEGMENT_TOLERANCE_SEC = 0.3;
 const MAX_PLAYER_LOAD_WAIT_MS = 10_000;
 
 type PersistedAudioSettings = {
@@ -158,6 +159,11 @@ type QueueDescriptor =
       endVerseNumber: number;
     };
 
+type PlaybackRequest = {
+  verseKey: string;
+  sessionId: number;
+};
+
 function getQueueDescriptorKey(descriptor: QueueDescriptor): string {
   if (descriptor.kind === 'chapter') return `chapter:${descriptor.chapterId}`;
   return `range:${descriptor.startSurahId}:${descriptor.startVerseNumber}-${descriptor.endSurahId}:${descriptor.endVerseNumber}`;
@@ -229,6 +235,7 @@ export function AudioPlayerProvider({ children }: { children: React.ReactNode })
 
   const [isVisible, setIsVisible] = useState(false);
   const [activeVerseKey, setActiveVerseKey] = useState<string | null>(null);
+  const [playbackRequest, setPlaybackRequest] = useState<PlaybackRequest | null>(null);
   const [segmentStartSec, setSegmentStartSec] = useState(0);
   const [segmentEndSec, setSegmentEndSec] = useState(0);
   const [queueVerseKeys, setQueueVerseKeys] = useState<string[]>([]);
@@ -252,14 +259,18 @@ export function AudioPlayerProvider({ children }: { children: React.ReactNode })
   const [playRepeatsLeft, setPlayRepeatsLeft] = useState(repeatOptions.playCount ?? 1);
 
   const isPlaying = Boolean(status.playing);
+  const playbackVerseKey = playbackRequest?.verseKey ?? activeVerseKey;
   const activeChapterId = useMemo(() => parseChapterIdFromVerseKey(activeVerseKey), [activeVerseKey]);
+  const playbackChapterId = useMemo(() => parseChapterIdFromVerseKey(playbackVerseKey), [playbackVerseKey]);
   const { audioFile, isLoading: isAudioFileLoading, error: audioFileError } = useQdcAudioFile(
     reciter.id,
-    activeChapterId,
+    playbackChapterId,
     true
   );
 
   const audioSourceRef = useRef<string | null>(null);
+  const audioSourceKeyRef = useRef<string | null>(null);
+  const resolvedSourceCacheRef = useRef(new Map<string, string>());
   const sessionIdRef = useRef(0);
   const wasAtEndRef = useRef(false);
   const lockScreenActiveRef = useRef(false);
@@ -270,6 +281,8 @@ export function AudioPlayerProvider({ children }: { children: React.ReactNode })
   const persistTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasHydratedSettingsRef = useRef(false);
   const latestSettingsRef = useRef({ reciter, volume, playbackRate });
+  const statusCurrentTimeRef = useRef(status.currentTime);
+  const statusPlayingRef = useRef(Boolean(status.playing));
 
   useEffect(() => {
     let cancelled = false;
@@ -353,6 +366,11 @@ export function AudioPlayerProvider({ children }: { children: React.ReactNode })
       logger.warn('Failed to set audio playback rate', undefined, e as Error);
     }
   }, [player, playbackRate]);
+
+  useEffect(() => {
+    statusCurrentTimeRef.current = status.currentTime;
+    statusPlayingRef.current = Boolean(status.playing);
+  }, [status.currentTime, status.playing]);
 
   useEffect(() => {
     setVerseRepeatsLeft(repeatOptions.repeatEach ?? 1);
@@ -498,11 +516,10 @@ export function AudioPlayerProvider({ children }: { children: React.ReactNode })
       sessionIdRef.current = sessionId;
       setIsVisible(true);
       setError(null);
-      setIsLoading(true);
-      setActiveVerseKey(normalized);
-      setSegmentStartSec(0);
-      setSegmentEndSec(0);
-      wasAtEndRef.current = false;
+      const sourceKey = `${reciter.id}:${chapterId}`;
+      const canReuseCurrentSource = audioSourceKeyRef.current === sourceKey && player.isLoaded;
+      setIsLoading(!canReuseCurrentSource);
+      setPlaybackRequest({ verseKey: normalized, sessionId });
 
       const currentRepeatOptions = repeatOptionsRef.current;
       const descriptor: QueueDescriptor = (() => {
@@ -537,7 +554,7 @@ export function AudioPlayerProvider({ children }: { children: React.ReactNode })
       setQueueIndex(-1);
       void ensureQueueAsync({ descriptor, verseKey: normalized, sessionId });
     },
-    [ensureQueueAsync, queueKey, queueVerseKeys]
+    [ensureQueueAsync, player, queueKey, queueVerseKeys, reciter.id]
   );
 
   const closePlayer = React.useCallback(() => {
@@ -545,6 +562,7 @@ export function AudioPlayerProvider({ children }: { children: React.ReactNode })
     setIsVisible(false);
     setIsLoading(false);
     setError(null);
+    setPlaybackRequest(null);
     setActiveVerseKey(null);
     setQueueVerseKeys([]);
     setQueueIndex(-1);
@@ -552,6 +570,7 @@ export function AudioPlayerProvider({ children }: { children: React.ReactNode })
     setSegmentStartSec(0);
     setSegmentEndSec(0);
     audioSourceRef.current = null;
+    audioSourceKeyRef.current = null;
     wasAtEndRef.current = false;
 
     try {
@@ -561,7 +580,7 @@ export function AudioPlayerProvider({ children }: { children: React.ReactNode })
     }
 
     try {
-      player.replace(null);
+      player.remove();
     } catch (e) {
       logger.warn('Failed to unload audio source', undefined, e as Error);
     }
@@ -678,25 +697,28 @@ export function AudioPlayerProvider({ children }: { children: React.ReactNode })
   }, []);
 
   useEffect(() => {
-    if (!activeVerseKey || !isVisible) return;
+    const request = playbackRequest;
+    if (!request || !isVisible) return;
     if (audioFileError) {
       setError(audioFileError.message || 'Unable to load audio');
       setIsLoading(false);
+      setPlaybackRequest((current) => (current?.sessionId === request.sessionId ? null : current));
     }
-  }, [activeVerseKey, audioFileError, isVisible]);
+  }, [audioFileError, isVisible, playbackRequest]);
 
   useEffect(() => {
-    if (!activeVerseKey || !isVisible) return;
+    const request = playbackRequest;
+    if (!request || !isVisible) return;
     if (!audioFile) return;
 
-    const sessionId = sessionIdRef.current;
-    const verseKey = activeVerseKey;
+    const { sessionId, verseKey } = request;
     const remoteSource = audioFile.audioUrl;
 
     const timing = audioFile.verseTimings.find((t) => t.verseKey === verseKey);
     if (!timing) {
       setError('Unable to load audio timing for this verse');
       setIsLoading(false);
+      setPlaybackRequest((current) => (current?.sessionId === sessionId ? null : current));
       return;
     }
 
@@ -705,11 +727,9 @@ export function AudioPlayerProvider({ children }: { children: React.ReactNode })
     if (!(endSec > startSec)) {
       setError('Invalid audio segment timing');
       setIsLoading(false);
+      setPlaybackRequest((current) => (current?.sessionId === sessionId ? null : current));
       return;
     }
-
-    setSegmentStartSec(startSec);
-    setSegmentEndSec(endSec);
 
     let cancelled = false;
 
@@ -717,9 +737,28 @@ export function AudioPlayerProvider({ children }: { children: React.ReactNode })
       const startAt = Date.now();
 
       let resolvedSource = remoteSource;
-      const surahId = activeChapterId ?? parseChapterIdFromVerseKey(verseKey);
+      const surahId = playbackChapterId ?? parseChapterIdFromVerseKey(verseKey);
+      const sourceKey = surahId ? `${reciter.id}:${surahId}` : null;
 
-      if (surahId) {
+      if (typeof surahId === 'number' && sourceKey) {
+        const cachedSource = resolvedSourceCacheRef.current.get(sourceKey);
+        if (cachedSource) {
+          resolvedSource = cachedSource;
+        } else if (audioSourceKeyRef.current === sourceKey && audioSourceRef.current) {
+          resolvedSource = audioSourceRef.current;
+          resolvedSourceCacheRef.current.set(sourceKey, resolvedSource);
+        } else {
+          try {
+            const store = new AudioFileStore({ reciterId: reciter.id, surahId });
+            if (await store.isDownloaded()) {
+              resolvedSource = store.getLocalUri();
+            }
+          } catch (e) {
+            logger.warn('Failed to resolve local audio source', { reciterId: reciter.id, surahId }, e as Error);
+          }
+          resolvedSourceCacheRef.current.set(sourceKey, resolvedSource);
+        }
+      } else if (typeof surahId === 'number') {
         try {
           const store = new AudioFileStore({ reciterId: reciter.id, surahId });
           if (await store.isDownloaded()) {
@@ -734,13 +773,20 @@ export function AudioPlayerProvider({ children }: { children: React.ReactNode })
       if (sessionIdRef.current !== sessionId) return;
 
       if (audioSourceRef.current !== resolvedSource) {
+        try {
+          player.pause();
+        } catch {
+          // ignore pause errors before replacing source
+        }
         audioSourceRef.current = resolvedSource;
+        audioSourceKeyRef.current = sourceKey;
         try {
           player.replace(resolvedSource);
         } catch (e) {
           logger.error('Failed to replace audio source', { src: resolvedSource }, e as Error);
           setError('Unable to load audio source');
           setIsLoading(false);
+          setPlaybackRequest((current) => (current?.sessionId === sessionId ? null : current));
           return;
         }
       }
@@ -751,25 +797,42 @@ export function AudioPlayerProvider({ children }: { children: React.ReactNode })
         if (Date.now() - startAt > MAX_PLAYER_LOAD_WAIT_MS) {
           setError('Timed out loading audio');
           setIsLoading(false);
+          setPlaybackRequest((current) => (current?.sessionId === sessionId ? null : current));
           return;
         }
-        await delay(100);
+        await delay(50);
       }
 
       if (cancelled) return;
       if (sessionIdRef.current !== sessionId) return;
 
-      try {
-        await player.seekTo(startSec);
-      } catch (e) {
-        logger.warn('Failed to seek to segment start', { startSec }, e as Error);
+      const currentTime = statusCurrentTimeRef.current;
+      const shouldSkipSeek =
+        audioSourceRef.current === resolvedSource &&
+        player.isLoaded &&
+        Math.abs(currentTime - startSec) <= CONTINUOUS_SEGMENT_TOLERANCE_SEC;
+
+      if (!shouldSkipSeek) {
+        try {
+          await player.seekTo(startSec);
+        } catch (e) {
+          logger.warn('Failed to seek to segment start', { startSec }, e as Error);
+        }
       }
 
       if (cancelled) return;
       if (sessionIdRef.current !== sessionId) return;
 
+      setSegmentStartSec(startSec);
+      setSegmentEndSec(endSec);
+      setActiveVerseKey(verseKey);
+      setPlaybackRequest((current) => (current?.sessionId === sessionId ? null : current));
+      wasAtEndRef.current = false;
+
       try {
-        player.play();
+        if (!shouldSkipSeek || !statusPlayingRef.current) {
+          player.play();
+        }
       } catch (e) {
         logger.error('Failed to play audio', { verseKey }, e as Error);
         setError('Unable to play audio');
@@ -782,7 +845,7 @@ export function AudioPlayerProvider({ children }: { children: React.ReactNode })
     return () => {
       cancelled = true;
     };
-  }, [activeChapterId, activeVerseKey, audioFile, isVisible, player, reciter.id]);
+  }, [audioFile, isVisible, playbackChapterId, playbackRequest, player, reciter.id]);
 
   const durationSec = useMemo(
     () => Math.max(0, segmentEndSec - segmentStartSec),
@@ -946,6 +1009,10 @@ export function AudioPlayerProvider({ children }: { children: React.ReactNode })
       return;
     }
 
+    if (playbackRequest) {
+      return;
+    }
+
     if (!isPlaying || durationSec <= 0) {
       wasAtEndRef.current = false;
       return;
@@ -961,12 +1028,12 @@ export function AudioPlayerProvider({ children }: { children: React.ReactNode })
     if (!nearEnd) {
       wasAtEndRef.current = false;
     }
-  }, [activeVerseKey, durationSec, handlePlaybackCompletion, isPlaying, isVisible, positionSec]);
+  }, [activeVerseKey, durationSec, handlePlaybackCompletion, isPlaying, isVisible, playbackRequest, positionSec]);
 
   const contextValue = useMemo<AudioPlayerContextType>(
     () => ({
       isVisible,
-      isLoading: Boolean(isLoading || (isVisible && isAudioFileLoading && !audioFile)),
+      isLoading: Boolean(isLoading || (Boolean(playbackRequest) && isVisible && isAudioFileLoading && !audioFile)),
       error,
       isPlaying,
       activeVerseKey,
@@ -1002,6 +1069,7 @@ export function AudioPlayerProvider({ children }: { children: React.ReactNode })
       isPlaying,
       isVisible,
       nextVerse,
+      playbackRequest,
       playVerse,
       playbackRate,
       positionSec,

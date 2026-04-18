@@ -39,6 +39,14 @@ type ApiVersesResponse = {
 
 type ApiWord = NonNullable<ApiVersesResponse['verses'][number]['words']>[number];
 
+type WordsLoadMode = 'none' | 'words' | 'words_with_translations';
+
+function wordsLoadModeRank(mode: WordsLoadMode): number {
+  if (mode === 'words_with_translations') return 2;
+  if (mode === 'words') return 1;
+  return 0;
+}
+
 function stripHtml(input: string): string {
   return input
     .replace(/<[^>]*>/g, '')
@@ -154,12 +162,16 @@ export function useSurahVerses({
   translationIds,
   wordLang = 'en',
   perPage = 30,
+  includeWords = false,
+  includeWordTranslations = false,
   enabled = true,
 }: {
   chapterNumber: number;
   translationIds: number[];
   wordLang?: string;
   perPage?: number;
+  includeWords?: boolean;
+  includeWordTranslations?: boolean;
   enabled?: boolean;
 }): {
   chapter: SurahHeaderChapter | null;
@@ -187,6 +199,15 @@ export function useSurahVerses({
   const isLoadingMoreRef = React.useRef(false);
   const requestTokenRef = React.useRef(0);
   const dataSourceRef = React.useRef<'network' | 'offline'>('network');
+
+  const includeWordsRef = React.useRef(includeWords);
+  includeWordsRef.current = includeWords;
+
+  const includeWordTranslationsRef = React.useRef(includeWordTranslations);
+  includeWordTranslationsRef.current = includeWordTranslations;
+
+  const wordsLoadModeRef = React.useRef<WordsLoadMode>('none');
+  const isUpgradingWordsRef = React.useRef(false);
 
   const resolvedWordLang = React.useMemo(() => {
     const normalized = typeof wordLang === 'string' ? wordLang.trim().toLowerCase() : '';
@@ -227,6 +248,7 @@ export function useSurahVerses({
       pageRef.current = 1;
       totalPagesRef.current = 1;
       dataSourceRef.current = 'network';
+      wordsLoadModeRef.current = 'none';
 
       if (mode === 'initial') setIsLoading(true);
       if (mode === 'refresh') setIsRefreshing(true);
@@ -243,13 +265,23 @@ export function useSurahVerses({
 
         dataSourceRef.current = 'network';
 
+        const shouldIncludeWords = includeWordsRef.current;
+        const shouldIncludeWordTranslations =
+          shouldIncludeWords && includeWordTranslationsRef.current;
+        const nextWordsLoadMode: WordsLoadMode = shouldIncludeWordTranslations
+          ? 'words_with_translations'
+          : shouldIncludeWords
+            ? 'words'
+            : 'none';
+
         const versesJson = await apiFetch<ApiVersesResponse>(
           `/verses/by_chapter/${chapterNumber}`,
           {
             language: resolvedWordLang,
-            words: 'true',
-            word_translation_language: resolvedWordLang,
-            word_fields: 'text_uthmani,char_type_name,position',
+            ...(shouldIncludeWords
+              ? { words: 'true', word_fields: 'text_uthmani,char_type_name,position' }
+              : {}),
+            ...(shouldIncludeWordTranslations ? { word_translation_language: resolvedWordLang } : {}),
             fields: 'text_uthmani',
             ...(translationsKey ? { translations: translationsKey } : {}),
             per_page: perPage.toString(),
@@ -260,16 +292,21 @@ export function useSurahVerses({
 
         if (requestTokenRef.current !== token) return;
 
-        setVerses(
-          (versesJson.verses ?? []).map((verse) => ({
-            ...verse,
-            words: buildVerseWords(verse.words),
-            translationItems: buildTranslationItems(verse.translations, resolvedTranslationIds),
-            translationTexts: buildTranslationTexts(verse.translations, resolvedTranslationIds),
-          }))
-        );
+        const loadedVerses = (versesJson.verses ?? []).map((verse) => ({
+          id: verse.id,
+          verse_number: verse.verse_number,
+          verse_key: verse.verse_key,
+          text_uthmani: verse.text_uthmani,
+          translations: verse.translations,
+          ...(shouldIncludeWords ? { words: buildVerseWords(verse.words) } : {}),
+          translationItems: buildTranslationItems(verse.translations, resolvedTranslationIds),
+          translationTexts: buildTranslationTexts(verse.translations, resolvedTranslationIds),
+        }));
+
+        setVerses(loadedVerses);
         pageRef.current = versesJson.pagination?.current_page ?? 1;
         totalPagesRef.current = versesJson.pagination?.total_pages ?? 1;
+        wordsLoadModeRef.current = nextWordsLoadMode;
       } catch (error) {
         if (requestTokenRef.current !== token) return;
 
@@ -310,6 +347,7 @@ export function useSurahVerses({
 
               pageRef.current = 1;
               totalPagesRef.current = 1;
+              wordsLoadModeRef.current = 'none';
               setOfflineNotInstalled(false);
               setErrorMessage(null);
               return;
@@ -346,11 +384,111 @@ export function useSurahVerses({
       pageRef.current = 1;
       totalPagesRef.current = 1;
       isLoadingMoreRef.current = false;
+      wordsLoadModeRef.current = 'none';
       return;
     }
 
     void loadFirstPage('initial');
   }, [chapterNumber, enabled, loadFirstPage]);
+
+  React.useEffect(() => {
+    if (!enabled) return;
+    if (!Number.isFinite(chapterNumber)) return;
+
+    const desiredWordsLoadMode: WordsLoadMode = includeWords
+      ? includeWordTranslations
+        ? 'words_with_translations'
+        : 'words'
+      : 'none';
+
+    if (desiredWordsLoadMode === 'none') {
+      if (wordsLoadModeRef.current === 'none') return;
+      setVerses((prev) => {
+        if (prev.length === 0) return prev;
+        if (!prev.some((verse) => verse.words && verse.words.length)) return prev;
+        return prev.map((verse) => (verse.words ? { ...verse, words: undefined } : verse));
+      });
+      wordsLoadModeRef.current = 'none';
+      return;
+    }
+
+    if (dataSourceRef.current !== 'network') return;
+    if (verses.length === 0) return;
+
+    if (
+      wordsLoadModeRank(wordsLoadModeRef.current) >= wordsLoadModeRank(desiredWordsLoadMode)
+    ) {
+      return;
+    }
+
+    if (isUpgradingWordsRef.current) return;
+    isUpgradingWordsRef.current = true;
+
+    const token = requestTokenRef.current;
+    const loadedPages = Math.max(1, pageRef.current);
+
+    async function upgradeWords(): Promise<void> {
+      try {
+        const wordsByVerseKey = new Map<string, VerseWord[] | undefined>();
+
+        for (let page = 1; page <= loadedPages; page += 1) {
+          if (requestTokenRef.current !== token) return;
+          if (!includeWordsRef.current) return;
+
+          const json = await apiFetch<ApiVersesResponse>(
+            `/verses/by_chapter/${chapterNumber}`,
+            {
+              language: resolvedWordLang,
+              words: 'true',
+              ...(desiredWordsLoadMode === 'words_with_translations'
+                ? { word_translation_language: resolvedWordLang }
+                : {}),
+              word_fields: 'text_uthmani,char_type_name,position',
+              fields: 'text_uthmani',
+              per_page: perPage.toString(),
+              page: page.toString(),
+            },
+            'Failed to load verse words'
+          );
+
+          if (requestTokenRef.current !== token) return;
+
+          for (const verse of json.verses ?? []) {
+            const verseKey = verse.verse_key;
+            if (!verseKey) continue;
+            wordsByVerseKey.set(verseKey, buildVerseWords(verse.words));
+          }
+        }
+
+        if (requestTokenRef.current !== token) return;
+
+        if (!includeWordsRef.current) return;
+
+        setVerses((prev) =>
+          prev.map((verse) => {
+            if (!wordsByVerseKey.has(verse.verse_key)) return verse;
+            return { ...verse, words: wordsByVerseKey.get(verse.verse_key) };
+          })
+        );
+
+        wordsLoadModeRef.current = desiredWordsLoadMode;
+      } catch {
+        // Optional enhancement; ignore failures so base verse reading remains usable.
+      } finally {
+        isUpgradingWordsRef.current = false;
+      }
+    }
+
+    void upgradeWords();
+  }, [
+    chapterNumber,
+    enabled,
+    includeWordTranslations,
+    includeWords,
+    perPage,
+    resolvedWordLang,
+    verses.length,
+  ]);
 
   const refresh = React.useCallback(() => {
     void loadFirstPage('refresh');
@@ -376,13 +514,23 @@ export function useSurahVerses({
 
     async function run(): Promise<void> {
       try {
+        const shouldIncludeWords = includeWordsRef.current;
+        const shouldIncludeWordTranslations =
+          shouldIncludeWords && includeWordTranslationsRef.current;
+        const incomingWordsLoadMode: WordsLoadMode = shouldIncludeWordTranslations
+          ? 'words_with_translations'
+          : shouldIncludeWords
+            ? 'words'
+            : 'none';
+
         const json = await apiFetch<ApiVersesResponse>(
           `/verses/by_chapter/${chapterNumber}`,
           {
             language: resolvedWordLang,
-            words: 'true',
-            word_translation_language: resolvedWordLang,
-            word_fields: 'text_uthmani,char_type_name,position',
+            ...(shouldIncludeWords
+              ? { words: 'true', word_fields: 'text_uthmani,char_type_name,position' }
+              : {}),
+            ...(shouldIncludeWordTranslations ? { word_translation_language: resolvedWordLang } : {}),
             fields: 'text_uthmani',
             ...(translationsKey ? { translations: translationsKey } : {}),
             per_page: perPage.toString(),
@@ -394,8 +542,12 @@ export function useSurahVerses({
         if (requestTokenRef.current !== token) return;
 
         const preparedIncoming = (json.verses ?? []).map((verse) => ({
-          ...verse,
-          words: buildVerseWords(verse.words),
+          id: verse.id,
+          verse_number: verse.verse_number,
+          verse_key: verse.verse_key,
+          text_uthmani: verse.text_uthmani,
+          translations: verse.translations,
+          ...(shouldIncludeWords ? { words: buildVerseWords(verse.words) } : {}),
           translationItems: buildTranslationItems(verse.translations, resolvedTranslationIds),
           translationTexts: buildTranslationTexts(verse.translations, resolvedTranslationIds),
         }));
@@ -409,6 +561,12 @@ export function useSurahVerses({
 
         pageRef.current = json.pagination?.current_page ?? nextPage;
         totalPagesRef.current = json.pagination?.total_pages ?? totalPagesRef.current;
+
+        if (
+          wordsLoadModeRank(incomingWordsLoadMode) < wordsLoadModeRank(wordsLoadModeRef.current)
+        ) {
+          wordsLoadModeRef.current = incomingWordsLoadMode;
+        }
       } catch (error) {
         if (requestTokenRef.current !== token) return;
         setErrorMessage((error as Error).message);

@@ -114,6 +114,8 @@ export default function SurahScreen(): React.JSX.Element {
     chapterNumber,
     translationIds,
     wordLang: settings.wordLang,
+    includeWords: Boolean(settings.showByWords || audio.isVisible),
+    includeWordTranslations: Boolean(settings.showByWords),
   });
 
   const openVerseActions = React.useCallback(
@@ -344,9 +346,12 @@ export default function SurahScreen(): React.JSX.Element {
   }, [surahId]);
 
   const viewabilityConfig = React.useRef({ itemVisiblePercentThreshold: 60 }).current;
+  const visibleRangeRef = React.useRef<{ first: number; last: number } | null>(null);
 
   const onViewableItemsChanged = React.useRef(
     ({ viewableItems }: { viewableItems: Array<ViewToken> }) => {
+      let firstVisibleIndex = Number.POSITIVE_INFINITY;
+      let lastVisibleIndex = -1;
       const currentSurahId = chapterNumberRef.current;
       if (!Number.isFinite(currentSurahId) || currentSurahId <= 0) return;
 
@@ -356,10 +361,19 @@ export default function SurahScreen(): React.JSX.Element {
       for (const token of viewableItems) {
         if (!token.isViewable) continue;
         const index = typeof token.index === 'number' ? token.index : Number.POSITIVE_INFINITY;
+        if (Number.isFinite(index)) {
+          firstVisibleIndex = Math.min(firstVisibleIndex, index);
+          lastVisibleIndex = Math.max(lastVisibleIndex, index);
+        }
         if (index >= bestIndex) continue;
         bestIndex = index;
         bestItem = token.item as SurahVerse;
       }
+
+      visibleRangeRef.current =
+        lastVisibleIndex >= 0 && Number.isFinite(firstVisibleIndex)
+          ? { first: firstVisibleIndex, last: lastVisibleIndex }
+          : null;
 
       if (!bestItem) return;
 
@@ -475,6 +489,13 @@ export default function SurahScreen(): React.JSX.Element {
 
     const list = Platform.OS === 'web' ? flatListRef.current : flashListRef.current;
     if (!list) return;
+
+    const visibleRange = visibleRangeRef.current;
+    if (visibleRange && targetIndex >= visibleRange.first && targetIndex <= visibleRange.last) {
+      didAutoScrollToAudioVerseRef.current = verseKey;
+      autoScrollRetryCountRef.current = 0;
+      return;
+    }
 
     try {
       list.scrollToIndex({ index: targetIndex, animated: true, viewPosition: 0 });
