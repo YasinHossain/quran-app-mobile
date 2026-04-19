@@ -1,7 +1,6 @@
 import React from 'react';
 import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 
-import { getJuzByPage } from '@/lib/utils/surah-navigation';
 import { DEFAULT_ARABIC_FONT_FAMILY } from '@/src/core/infrastructure/fonts/arabicFonts';
 
 import type { MushafLineGroup, MushafPageData, MushafScaleStep, MushafWord } from '@/types';
@@ -14,7 +13,6 @@ import { mushafScaleStepToFontSize } from '@/types';
 
 type MushafNativePageProps = {
   data: MushafPageData;
-  mushafName: string;
   mushafScaleStep: MushafScaleStep;
   onWordLongPress?: (payload: MushafWordPressPayload) => void;
   onWordPress?: (payload: MushafWordPressPayload) => void;
@@ -109,75 +107,42 @@ function MushafLineText({
 
 export function MushafNativePage({
   data,
-  mushafName,
   mushafScaleStep,
   onWordLongPress,
   onWordPress,
 }: MushafNativePageProps): React.JSX.Element {
   const { width } = useWindowDimensions();
-  const pageWidth = Math.min(Math.max(width - 32, 280), PAGE_MAX_WIDTH);
+  const pageWidth = Math.min(Math.max(width - 8, 280), PAGE_MAX_WIDTH);
   const fontSize = mushafScaleStepToFontSize(mushafScaleStep);
   const lineHeight = Math.round(fontSize * 1.72);
-  const verticalPadding = Math.max(18, Math.round(fontSize * 0.8));
+  const verticalPadding = Math.max(6, Math.round(fontSize * 0.18));
   const lineSlots = React.useMemo(() => buildLineSlots(data), [data]);
-  const juzNumber = getJuzByPage(data.pageNumber);
 
   return (
     <View className="items-center">
       <View
-        className="w-full rounded-[32px] border border-border/40 bg-surface px-4 py-4 dark:border-border-dark/30 dark:bg-surface-dark"
-        style={{ maxWidth: pageWidth }}
+        className="w-full"
+        style={{
+          maxWidth: pageWidth,
+          minHeight: lineHeight * data.pack.lines + verticalPadding * 2,
+          paddingVertical: verticalPadding,
+        }}
       >
-        <View className="flex-row items-center justify-between gap-3 border-b border-border/30 pb-3 dark:border-border-dark/20">
-          <View className="flex-1">
-            <Text className="text-base font-semibold text-foreground dark:text-foreground-dark">
-              {mushafName}
-            </Text>
-            <Text className="mt-1 text-xs text-muted dark:text-muted-dark">
-              Native Unicode renderer
-            </Text>
+        {lineSlots.map((line, index) => (
+          <View
+            key={line?.key ?? `${data.pageNumber}:blank:${index + 1}`}
+            style={index > 0 ? styles.lineSpacing : null}
+          >
+            <MushafLineText
+              page={data}
+              line={line}
+              fontSize={fontSize}
+              lineHeight={lineHeight}
+              onWordLongPress={onWordLongPress}
+              onWordPress={onWordPress}
+            />
           </View>
-          <View className="rounded-full bg-interactive px-3 py-1.5 dark:bg-interactive-dark">
-            <Text className="text-xs font-semibold text-foreground dark:text-foreground-dark">
-              Page {data.pageNumber}
-            </Text>
-          </View>
-        </View>
-
-        <View
-          className="mt-4 rounded-[24px] px-4"
-          style={{
-            backgroundColor: '#FCFBF7',
-            borderColor: '#E5D9C5',
-            borderWidth: 1,
-            minHeight: lineHeight * data.pack.lines + verticalPadding * 2,
-            paddingVertical: verticalPadding,
-          }}
-        >
-          {lineSlots.map((line, index) => (
-            <View key={line?.key ?? `${data.pageNumber}:blank:${index + 1}`} style={index > 0 ? styles.lineSpacing : null}>
-              <MushafLineText
-                page={data}
-                line={line}
-                fontSize={fontSize}
-                lineHeight={lineHeight}
-                onWordLongPress={onWordLongPress}
-                onWordPress={onWordPress}
-              />
-            </View>
-          ))}
-        </View>
-
-        <View className="mt-4 flex-row items-center justify-center gap-2">
-          <View className="rounded-full bg-interactive px-3 py-1.5 dark:bg-interactive-dark">
-            <Text className="text-xs font-semibold uppercase tracking-[0.5px] text-foreground dark:text-foreground-dark">
-              Juz {juzNumber}
-            </Text>
-          </View>
-          <Text className="text-xs text-muted dark:text-muted-dark">
-            Selectable offline text from {data.pack.packId}@{data.pack.version}
-          </Text>
-        </View>
+        ))}
       </View>
     </View>
   );

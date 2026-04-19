@@ -1,15 +1,8 @@
+import { FlashList } from '@shopify/flash-list';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { ArrowLeft, ChevronLeft, ChevronRight, RotateCw, Settings } from 'lucide-react-native';
+import { Settings } from 'lucide-react-native';
 import React from 'react';
-import {
-  ActivityIndicator,
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  Share,
-  Text,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Pressable, Share, Text, View, useWindowDimensions } from 'react-native';
 
 import { BookmarkModal } from '@/components/bookmarks/BookmarkModal';
 import { MushafNativePage } from '@/components/mushaf/MushafNativePage';
@@ -20,19 +13,20 @@ import {
 } from '@/components/mushaf/mushafWordPayload';
 import { MushafWebViewPage } from '@/components/mushaf/MushafWebViewPage';
 import { SettingsSidebar } from '@/components/reader/settings/SettingsSidebar';
-import type { SettingsTab } from '@/components/reader/settings/SettingsTabToggle';
 import { VerseActionsSheet } from '@/components/surah/VerseActionsSheet';
 import { AddToPlannerModal, type VerseSummaryDetails } from '@/components/verse-planner-modal';
 import Colors from '@/constants/Colors';
-import { DEFAULT_MUSHAF_ID, findMushafOption } from '@/data/mushaf/options';
+import { DEFAULT_MUSHAF_ID } from '@/data/mushaf/options';
 import { useChapters } from '@/hooks/useChapters';
 import { useMushafPageData } from '@/hooks/useMushafPageData';
 import { useAudioPlayer } from '@/providers/AudioPlayerContext';
 import { useBookmarks } from '@/providers/BookmarkContext';
+import { useLayoutMetrics } from '@/providers/LayoutMetricsContext';
 import { useSettings } from '@/providers/SettingsContext';
 import { useAppTheme } from '@/providers/ThemeContext';
 
-import type { Bookmark, MushafVerse } from '@/types';
+import type { Bookmark, MushafPackId, MushafScaleStep, MushafVerse } from '@/types';
+import { mushafScaleStepToFontSize } from '@/types';
 
 const FALLBACK_TOTAL_PAGES = 604;
 
@@ -45,6 +39,11 @@ type ActiveMushafVerse = {
   translationTexts: string[];
   wordPosition: number;
 };
+
+function clampPageNumber(value: number | null): number {
+  if (value === null || !Number.isInteger(value)) return 1;
+  return Math.min(Math.max(value, 1), FALLBACK_TOTAL_PAGES);
+}
 
 function parseVerseKeyNumbers(
   verseKey: string | null
@@ -74,197 +73,90 @@ function resolveMushafVerseText(verse: MushafVerse): string {
     .trim();
 }
 
-function ActionButton({
+function LoadingState({
   label,
-  onPress,
-  disabled = false,
-  tone = 'default',
+  color,
 }: {
   label: string;
-  onPress: () => void;
-  disabled?: boolean;
-  tone?: 'default' | 'accent';
+  color: string;
 }): React.JSX.Element {
   return (
-    <Pressable
-      onPress={onPress}
-      disabled={disabled}
-      accessibilityRole="button"
-      className={[
-        'rounded-full px-4 py-2.5',
-        tone === 'accent' ? 'bg-accent' : 'bg-interactive dark:bg-interactive-dark',
-      ].join(' ')}
-      style={({ pressed }) => ({
-        opacity: disabled ? 0.5 : pressed ? 0.85 : 1,
-      })}
-    >
-      <Text
-        className={[
-          'text-sm font-semibold',
-          tone === 'accent' ? 'text-on-accent' : 'text-foreground dark:text-foreground-dark',
-        ].join(' ')}
-      >
-        {label}
-      </Text>
-    </Pressable>
-  );
-}
-
-function StateCard({
-  title,
-  message,
-  children,
-}: {
-  title: string;
-  message: string;
-  children?: React.ReactNode;
-}): React.JSX.Element {
-  return (
-    <View className="rounded-[28px] border border-border/40 bg-surface px-4 py-4 dark:border-border-dark/30 dark:bg-surface-dark">
-      <Text className="text-lg font-semibold text-foreground dark:text-foreground-dark">
-        {title}
-      </Text>
-      <Text className="mt-2 text-sm leading-6 text-muted dark:text-muted-dark">{message}</Text>
-      {children ? <View className="mt-4 flex-row flex-wrap gap-3">{children}</View> : null}
+    <View className="flex-1 items-center justify-center gap-4 px-6">
+      <ActivityIndicator color={color} />
+      <Text className="text-center text-sm text-muted dark:text-muted-dark">{label}</Text>
     </View>
   );
 }
 
-function NavigationButton({
-  label,
-  icon,
-  onPress,
-  disabled = false,
-}: {
-  label: string;
-  icon: React.ReactNode;
-  onPress: () => void;
-  disabled?: boolean;
-}): React.JSX.Element {
+function ErrorState({ message }: { message: string }): React.JSX.Element {
   return (
-    <Pressable
-      onPress={onPress}
-      disabled={disabled}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      className="flex-1 rounded-[24px] border border-border/40 bg-interactive px-4 py-4 dark:border-border-dark/30 dark:bg-interactive-dark"
-      style={({ pressed }) => ({
-        opacity: disabled ? 0.45 : pressed ? 0.88 : 1,
-      })}
-    >
-      <View className="items-center gap-2">
-        {icon}
-        <Text className="text-sm font-semibold text-foreground dark:text-foreground-dark">
-          {label}
-        </Text>
-      </View>
-    </Pressable>
+    <View className="flex-1 items-center justify-center px-6">
+      <Text className="text-center text-sm leading-6 text-muted dark:text-muted-dark">
+        {message}
+      </Text>
+    </View>
   );
 }
 
-export default function PageScreen(): React.JSX.Element {
-  const params = useLocalSearchParams<{ pageNumber?: string | string[] }>();
-  const router = useRouter();
-  const { resolvedTheme } = useAppTheme();
-  const palette = Colors[resolvedTheme];
-  const pageNumberParam = Array.isArray(params.pageNumber)
-    ? params.pageNumber[0]
-    : params.pageNumber;
-  const parsedPageNumber = Number.parseInt(pageNumberParam ?? '', 10);
-  const pageNumber = Number.isInteger(parsedPageNumber) ? parsedPageNumber : null;
-
-  const [isSettingsOpen, setIsSettingsOpen] = React.useState(false);
-  const [isVerseActionsOpen, setIsVerseActionsOpen] = React.useState(false);
-  const [isBookmarkModalOpen, setIsBookmarkModalOpen] = React.useState(false);
-  const [isAddToPlannerOpen, setIsAddToPlannerOpen] = React.useState(false);
-  const [plannerVerseSummary, setPlannerVerseSummary] =
-    React.useState<VerseSummaryDetails | null>(null);
-  const [activeVerse, setActiveVerse] = React.useState<ActiveMushafVerse | null>(null);
-
-  const selectionMetadataRef = React.useRef<MushafSelectionPayload | null>(null);
-
-  const { settings, isHydrated, setMushafId } = useSettings();
-  const { chapters } = useChapters();
-  const { isPinned } = useBookmarks();
-  const audio = useAudioPlayer();
-
-  const selectedMushafId = settings.mushafId ?? DEFAULT_MUSHAF_ID;
-  const mushafOption = findMushafOption(selectedMushafId);
-  const mushafName = mushafOption?.name ?? selectedMushafId;
-
-  const { data, isLoading, errorKind, errorMessage, refresh } = useMushafPageData({
-    packId: selectedMushafId,
-    pageNumber,
-    enabled: isHydrated,
-  });
-
-  const totalPages = data?.pack.totalPages ?? FALLBACK_TOTAL_PAGES;
-  const canGoPrevious = pageNumber !== null && pageNumber > 1;
-  const canGoNext = pageNumber !== null && pageNumber < totalPages;
-
-  const chaptersById = React.useMemo(
-    () => new Map(chapters.map((chapter) => [chapter.id, chapter] as const)),
-    [chapters]
+function MushafFeedPlaceholder({
+  color,
+  height,
+}: {
+  color: string;
+  height: number;
+}): React.JSX.Element {
+  return (
+    <View
+      className="items-center justify-center"
+      style={{ height: Math.max(320, height) }}
+    >
+      <ActivityIndicator color={color} />
+    </View>
   );
+}
+
+function MushafFeedPageRow({
+  pageNumber,
+  packId,
+  mushafScaleStep,
+  estimatedHeight,
+  chapterNamesById,
+  loadingColor,
+  onSelectionChange,
+  onVersePress,
+}: {
+  pageNumber: number;
+  packId: MushafPackId;
+  mushafScaleStep: MushafScaleStep;
+  estimatedHeight: number;
+  chapterNamesById: Map<number, string>;
+  loadingColor: string;
+  onSelectionChange: (payload: MushafSelectionPayload) => void;
+  onVersePress: (verse: ActiveMushafVerse) => void;
+}): React.JSX.Element {
+  const { data, isLoading, errorMessage } = useMushafPageData({
+    packId,
+    pageNumber,
+  });
 
   const versesByKey = React.useMemo(
     () => new Map((data?.verses ?? []).map((verse) => [verse.verseKey, verse] as const)),
     [data?.verses]
   );
 
-  React.useEffect(() => {
-    setIsVerseActionsOpen(false);
-    setIsBookmarkModalOpen(false);
-    setIsAddToPlannerOpen(false);
-    setPlannerVerseSummary(null);
-    setActiveVerse(null);
-    selectionMetadataRef.current = null;
-  }, [pageNumber, selectedMushafId]);
-
-  const navigateToPage = React.useCallback(
-    (targetPageNumber: number) => {
-      if (!Number.isInteger(targetPageNumber) || targetPageNumber < 1) return;
-      router.replace({
-        pathname: '/page/[pageNumber]',
-        params: { pageNumber: String(targetPageNumber) },
-      });
-    },
-    [router]
-  );
-
-  const openBundledMushaf = React.useCallback(() => {
-    setMushafId(DEFAULT_MUSHAF_ID);
-  }, [setMushafId]);
-
-  const openVerseActions = React.useCallback((nextVerse: ActiveMushafVerse) => {
-    setActiveVerse(nextVerse);
-    setIsVerseActionsOpen(true);
-  }, []);
-
-  const closeVerseActions = React.useCallback(() => {
-    setIsVerseActionsOpen(false);
-  }, []);
-
-  const buildActiveVerse = React.useCallback(
-    (payload: MushafWordPressPayload): ActiveMushafVerse | null => {
+  const handleWordPress = React.useCallback(
+    (payload: MushafWordPressPayload) => {
       const verseKey = resolveMushafVerseKey(payload);
-      if (!verseKey) {
-        return null;
-      }
+      if (!verseKey) return;
 
       const verse = versesByKey.get(verseKey);
-      if (!verse) {
-        return null;
-      }
+      if (!verse) return;
 
       const parsed = parseVerseKeyNumbers(verseKey);
-      if (!parsed) {
-        return null;
-      }
+      if (!parsed) return;
 
-      const chapter = chaptersById.get(parsed.surahId);
-      return {
-        title: chapter?.name_simple ?? `Surah ${parsed.surahId}`,
+      onVersePress({
+        title: chapterNamesById.get(parsed.surahId) ?? `Surah ${parsed.surahId}`,
         surahId: parsed.surahId,
         verseKey,
         ...(typeof verse.id === 'number' && Number.isFinite(verse.id) && verse.id > 0
@@ -276,54 +168,146 @@ export default function PageScreen(): React.JSX.Element {
           typeof payload.wordPosition === 'number' && Number.isFinite(payload.wordPosition)
             ? Math.trunc(payload.wordPosition)
             : 0,
-      };
+      });
     },
-    [chaptersById, versesByKey]
+    [chapterNamesById, onVersePress, versesByKey]
   );
+
+  if (errorMessage) {
+    return (
+      <View className="px-6 py-6">
+        <Text className="text-center text-sm text-muted dark:text-muted-dark">{errorMessage}</Text>
+      </View>
+    );
+  }
+
+  if (isLoading || !data) {
+    return <MushafFeedPlaceholder color={loadingColor} height={estimatedHeight} />;
+  }
+
+  return (
+    <View>
+      {data.pack.renderer === 'text' ? (
+        <MushafNativePage
+          data={data}
+          mushafScaleStep={mushafScaleStep}
+          onWordPress={handleWordPress}
+        />
+      ) : (
+        <MushafWebViewPage
+          data={data}
+          mushafScaleStep={mushafScaleStep}
+          onSelectionChange={onSelectionChange}
+          onWordPress={handleWordPress}
+        />
+      )}
+      <View className="items-center px-3 pt-3">
+        <View className="w-full max-w-[220px] flex-row items-center justify-center gap-3">
+          <View className="h-px flex-1 bg-border/55 dark:bg-border-dark/40" />
+          <Text className="text-xs font-medium text-muted dark:text-muted-dark">
+            Page {pageNumber}
+          </Text>
+          <View className="h-px flex-1 bg-border/55 dark:bg-border-dark/40" />
+        </View>
+      </View>
+    </View>
+  );
+}
+
+export default function PageScreen(): React.JSX.Element {
+  const params = useLocalSearchParams<{ pageNumber?: string | string[] }>();
+  const router = useRouter();
+  const { height } = useWindowDimensions();
+  const { resolvedTheme } = useAppTheme();
+  const { audioPlayerBarHeight } = useLayoutMetrics();
+  const palette = Colors[resolvedTheme];
+  const pageNumberParam = Array.isArray(params.pageNumber)
+    ? params.pageNumber[0]
+    : params.pageNumber;
+  const parsedPageNumber = Number.parseInt(pageNumberParam ?? '', 10);
+  const initialPageNumber = clampPageNumber(
+    Number.isInteger(parsedPageNumber) ? parsedPageNumber : null
+  );
+
+  const [isVerseActionsOpen, setIsVerseActionsOpen] = React.useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = React.useState(false);
+  const [isBookmarkModalOpen, setIsBookmarkModalOpen] = React.useState(false);
+  const [isAddToPlannerOpen, setIsAddToPlannerOpen] = React.useState(false);
+  const [plannerVerseSummary, setPlannerVerseSummary] =
+    React.useState<VerseSummaryDetails | null>(null);
+  const [activeVerse, setActiveVerse] = React.useState<ActiveMushafVerse | null>(null);
+
+  const selectionMetadataRef = React.useRef<MushafSelectionPayload | null>(null);
+
+  const { settings, isHydrated } = useSettings();
+  const { chapters } = useChapters();
+  const { isPinned } = useBookmarks();
+  const audio = useAudioPlayer();
+
+  const selectedMushafId = settings.mushafId ?? DEFAULT_MUSHAF_ID;
+
+  const initialPageProbe = useMushafPageData({
+    packId: selectedMushafId,
+    pageNumber: initialPageNumber,
+    enabled: isHydrated,
+  });
+
+  const chapterNamesById = React.useMemo(
+    () => new Map(chapters.map((chapter) => [chapter.id, chapter.name_simple] as const)),
+    [chapters]
+  );
+
+  const totalPages = initialPageProbe.data?.pack.totalPages ?? FALLBACK_TOTAL_PAGES;
+  const pageNumbers = React.useMemo(
+    () => Array.from({ length: totalPages }, (_value, index) => index + 1),
+    [totalPages]
+  );
+  const initialPageIndex = Math.min(Math.max(initialPageNumber - 1, 0), pageNumbers.length - 1);
+  const estimatedItemSize = React.useMemo(() => {
+    if (initialPageProbe.data?.pack.renderer === 'text') {
+      const fontSize = mushafScaleStepToFontSize(settings.mushafScaleStep);
+      return Math.round(fontSize * 1.72 * initialPageProbe.data.pack.lines + fontSize * 2);
+    }
+
+    return Math.round(Math.max(height * 0.9, 620));
+  }, [height, initialPageProbe.data, settings.mushafScaleStep]);
+  const listContentContainerStyle = React.useMemo(
+    () => ({ paddingTop: 12, paddingBottom: 24 + audioPlayerBarHeight }),
+    [audioPlayerBarHeight]
+  );
+
+  React.useEffect(() => {
+    setIsVerseActionsOpen(false);
+    setIsSettingsOpen(false);
+    setIsBookmarkModalOpen(false);
+    setIsAddToPlannerOpen(false);
+    setPlannerVerseSummary(null);
+    setActiveVerse(null);
+    selectionMetadataRef.current = null;
+  }, [initialPageNumber, selectedMushafId]);
+
+  const openVerseActions = React.useCallback((nextVerse: ActiveMushafVerse) => {
+    setActiveVerse(nextVerse);
+    setIsVerseActionsOpen(true);
+  }, []);
+
+  const closeVerseActions = React.useCallback(() => {
+    setIsVerseActionsOpen(false);
+  }, []);
 
   const handleMushafSelectionChange = React.useCallback((payload: MushafSelectionPayload) => {
     selectionMetadataRef.current = payload.isCollapsed ? null : payload;
   }, []);
 
-  const handleMushafWordPress = React.useCallback(
-    (payload: MushafWordPressPayload) => {
+  const handleVersePress = React.useCallback(
+    (nextVerse: ActiveMushafVerse) => {
       if (selectionMetadataRef.current && !selectionMetadataRef.current.isCollapsed) {
-        return;
-      }
-
-      const nextVerse = buildActiveVerse(payload);
-      if (!nextVerse) {
         return;
       }
 
       openVerseActions(nextVerse);
     },
-    [buildActiveVerse, openVerseActions]
-  );
-
-  const handleSettingsTabChange = React.useCallback(
-    (nextTab: SettingsTab) => {
-      if (nextTab !== 'translations') return;
-
-      const firstVerseKey = data?.lookup.firstVerseKey ?? data?.verses[0]?.verseKey ?? null;
-      const parsed = parseVerseKeyNumbers(firstVerseKey);
-
-      setIsSettingsOpen(false);
-
-      if (!parsed) {
-        router.back();
-        return;
-      }
-
-      router.push({
-        pathname: '/surah/[surahId]',
-        params: {
-          surahId: String(parsed.surahId),
-          startVerse: String(parsed.verseNumber),
-        },
-      });
-    },
-    [data?.lookup.firstVerseKey, data?.verses, router]
+    [openVerseActions]
   );
 
   const handlePlayPause = React.useCallback(() => {
@@ -414,194 +398,66 @@ export default function PageScreen(): React.JSX.Element {
     return metadata;
   }, [activeVerse]);
 
-  const refreshControl = (
-    <RefreshControl
-      refreshing={Boolean(isHydrated && isLoading && data)}
-      onRefresh={refresh}
-      tintColor={palette.text}
-    />
-  );
-
   return (
     <View className="flex-1 bg-background dark:bg-background-dark">
       <Stack.Screen
         options={{
-          title: '',
+          headerShown: true,
+          title: 'Mushaf',
           headerTitleAlign: 'center',
-          headerLeft: () => (
-            <Pressable
-              onPress={() => router.back()}
-              hitSlop={10}
-              accessibilityRole="button"
-              accessibilityLabel="Go back"
-              style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1, marginLeft: 12 })}
-            >
-              <ArrowLeft color={palette.text} size={22} strokeWidth={2.25} />
-            </Pressable>
-          ),
-          headerTitle: () => (
-            <View className="items-center">
-              <Text className="text-base font-semibold text-foreground dark:text-foreground-dark">
-                {pageNumber ? `Page ${pageNumber}` : 'Mushaf'}
-              </Text>
-              <Text className="text-xs text-muted dark:text-muted-dark">{mushafName}</Text>
-            </View>
-          ),
+          headerShadowVisible: false,
           headerRight: () => (
             <Pressable
               onPress={() => setIsSettingsOpen(true)}
               hitSlop={10}
               accessibilityRole="button"
               accessibilityLabel="Open reader settings"
+              style={({ pressed }) => ({
+                opacity: pressed ? 0.55 : 1,
+                marginRight: 12,
+              })}
             >
-              {({ pressed }) => (
-                <Settings
-                  color={palette.text}
-                  size={22}
-                  strokeWidth={2.25}
-                  style={{ marginRight: 12, opacity: pressed ? 0.5 : 1 }}
-                />
-              )}
+              <Settings color={palette.text} size={20} strokeWidth={2.25} />
             </Pressable>
           ),
         }}
       />
 
-      <ScrollView
-        refreshControl={refreshControl}
-        contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
-        showsVerticalScrollIndicator={false}
-      >
-        <View className="gap-4">
-          <View className="rounded-[28px] border border-border/40 bg-surface px-4 py-4 dark:border-border-dark/30 dark:bg-surface-dark">
-            <Text className="text-xs font-semibold uppercase tracking-wide text-muted dark:text-muted-dark">
-              Mushaf Reader
-            </Text>
-            <Text className="mt-2 text-2xl font-semibold text-foreground dark:text-foreground-dark">
-              {pageNumber ? `Page ${pageNumber}` : 'Select a page'}
-            </Text>
-            <Text className="mt-1 text-sm text-muted dark:text-muted-dark">
-              Canonical native shell for the offline mushaf route. Verse actions stay native while
-              the page body comes entirely from the active local pack.
-            </Text>
-
-            <View className="mt-4 flex-row gap-3">
-              <NavigationButton
-                label="Previous"
-                icon={<ChevronLeft color={palette.text} size={20} strokeWidth={2.25} />}
-                onPress={() => navigateToPage((pageNumber ?? 1) - 1)}
-                disabled={!canGoPrevious}
-              />
-              <NavigationButton
-                label="Next"
-                icon={<ChevronRight color={palette.text} size={20} strokeWidth={2.25} />}
-                onPress={() => navigateToPage((pageNumber ?? 1) + 1)}
-                disabled={!canGoNext}
-              />
-            </View>
-
-            <View className="mt-4 flex-row flex-wrap gap-3">
-              <ActionButton label="Reader settings" onPress={() => setIsSettingsOpen(true)} />
-              <ActionButton label="Refresh" onPress={refresh} />
-            </View>
-          </View>
-
-          {!isHydrated ? (
-            <StateCard
-              title="Loading reader settings"
-              message="Hydrating the saved mushaf selection and reader preferences on this device."
-            >
-              <View className="flex-row items-center gap-3">
-                <ActivityIndicator color={palette.text} />
-                <Text className="text-sm text-muted dark:text-muted-dark">
-                  Preparing local reader state…
-                </Text>
-              </View>
-            </StateCard>
-          ) : null}
-
-          {isHydrated && pageNumber === null ? (
-            <StateCard
-              title="Invalid page"
-              message="This route needs a numeric mushaf page number between 1 and the pack’s total page count."
-            >
-              <ActionButton label="Go to Page 1" onPress={() => navigateToPage(1)} tone="accent" />
-            </StateCard>
-          ) : null}
-
-          {isHydrated && pageNumber !== null && isLoading && !data ? (
-            <StateCard
-              title="Loading local page"
-              message="Reading the active mushaf payload from local bundled or installed files."
-            >
-              <View className="flex-row items-center gap-3">
-                <ActivityIndicator color={palette.text} />
-                <Text className="text-sm text-muted dark:text-muted-dark">
-                  Loading page metadata…
-                </Text>
-              </View>
-            </StateCard>
-          ) : null}
-
-          {isHydrated && pageNumber !== null && !isLoading && errorMessage ? (
-            <StateCard
-              title={errorKind === 'pack-not-installed' ? 'Download needed' : 'Unable to load page'}
-              message={
-                errorKind === 'pack-not-installed'
-                  ? `${errorMessage} Open reader settings to choose another mushaf, or switch back to the bundled default for immediate offline reading.`
-                  : errorMessage
-              }
-            >
-              <ActionButton label="Retry" onPress={refresh} />
-              <ActionButton label="Reader settings" onPress={() => setIsSettingsOpen(true)} />
-              {selectedMushafId !== DEFAULT_MUSHAF_ID ? (
-                <ActionButton
-                  label="Use bundled default"
-                  onPress={openBundledMushaf}
-                  tone="accent"
-                />
-              ) : null}
-              {errorKind !== 'pack-not-installed' ? (
-                <ActionButton label="Go to Page 1" onPress={() => navigateToPage(1)} />
-              ) : null}
-            </StateCard>
-          ) : null}
-
-          {isHydrated && pageNumber !== null && data ? (
-            data.pack.renderer === 'text' ? (
-              <MushafNativePage
-                data={data}
-                mushafName={mushafName}
-                mushafScaleStep={settings.mushafScaleStep}
-                onWordPress={handleMushafWordPress}
-              />
-            ) : (
-              <MushafWebViewPage
-                data={data}
-                mushafName={mushafName}
-                mushafScaleStep={settings.mushafScaleStep}
-                onSelectionChange={handleMushafSelectionChange}
-                onWordPress={handleMushafWordPress}
-              />
-            )
-          ) : null}
-
-          {isHydrated && pageNumber !== null && data && isLoading ? (
-            <View className="flex-row items-center justify-center gap-3 py-2">
-              <RotateCw color={palette.text} size={16} strokeWidth={2.25} />
-              <Text className="text-sm text-muted dark:text-muted-dark">
-                Refreshing local page…
-              </Text>
-            </View>
-          ) : null}
-        </View>
-      </ScrollView>
+      {!isHydrated ? (
+        <LoadingState label="Loading local mushaf settings…" color={palette.text} />
+      ) : initialPageProbe.isLoading && !initialPageProbe.data ? (
+        <LoadingState label="Loading mushaf pages…" color={palette.text} />
+      ) : initialPageProbe.errorMessage ? (
+        <ErrorState message={initialPageProbe.errorMessage} />
+      ) : (
+        <FlashList
+          key={`mushaf-feed:${selectedMushafId}:${initialPageNumber}`}
+          data={pageNumbers}
+          keyExtractor={(item) => `mushaf-page:${selectedMushafId}:${item}`}
+          renderItem={({ item }) => (
+            <MushafFeedPageRow
+              pageNumber={item}
+              packId={selectedMushafId}
+              mushafScaleStep={settings.mushafScaleStep}
+              estimatedHeight={estimatedItemSize}
+              chapterNamesById={chapterNamesById}
+              loadingColor={palette.text}
+              onSelectionChange={handleMushafSelectionChange}
+              onVersePress={handleVersePress}
+            />
+          )}
+          initialScrollIndex={initialPageIndex}
+          drawDistance={Math.max(estimatedItemSize * 2, 1200)}
+          ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
+          contentContainerStyle={listContentContainerStyle}
+          showsVerticalScrollIndicator={false}
+        />
+      )}
 
       <SettingsSidebar
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
         activeTab="mushaf"
-        onTabChange={handleSettingsTabChange}
       />
 
       <VerseActionsSheet

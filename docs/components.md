@@ -46,8 +46,8 @@ This document lists reusable UI components currently available in the codebase s
 
 | Component | Description | File Path |
 | --- | --- | --- |
-| `MushafNativePage` | Native Unicode mushaf renderer for offline text packs; renders page lines/words from local pack payloads with stepped `mushafScaleStep` sizing, selectable text, and per-word press events that the page route can map into native mushaf actions. | `components/mushaf/MushafNativePage.tsx` |
-| `MushafWebViewPage` | Local WebView mushaf renderer for exact/downloadable packs; ports the web stepped preset sizing, fit detection, centered RTL overflow reflow, local QCF page-font loading, and the message bridge used to send native word-tap plus selection/copy metadata back out of exact mode. | `components/mushaf/MushafWebViewPage.tsx` |
+| `MushafNativePage` | Native Unicode mushaf renderer for offline text packs; renders page lines/words from local pack payloads with stepped `mushafScaleStep` sizing, selectable text, per-word press events, and no route-level chrome so the page route can present a text-only mushaf feed. | `components/mushaf/MushafNativePage.tsx` |
+| `MushafWebViewPage` | Local WebView mushaf renderer for exact/downloadable packs; ports the web stepped preset sizing, fit detection, centered RTL overflow reflow, local QCF page-font loading, and the selection/word-tap bridge while keeping the rendered surface free of extra cards, labels, and buttons. | `components/mushaf/MushafWebViewPage.tsx` |
 
 ## Reader Settings Components
 

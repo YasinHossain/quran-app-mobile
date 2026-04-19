@@ -1,5 +1,5 @@
 import React from 'react';
-import { ActivityIndicator, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { WebView } from 'react-native-webview';
 
 import Colors from '@/constants/Colors';
@@ -17,7 +17,6 @@ import { buildMushafWebViewDocument } from './webview/buildMushafWebViewDocument
 
 type MushafWebViewPageProps = {
   data: MushafPageData;
-  mushafName: string;
   mushafScaleStep: MushafScaleStep;
   onSelectionChange?: (payload: MushafSelectionPayload) => void;
   onWordLongPress?: (payload: MushafWordPressPayload) => void;
@@ -47,7 +46,6 @@ function isMushafWebViewMessage(value: unknown): value is MushafWebViewMessage {
 
 export function MushafWebViewPage({
   data,
-  mushafName,
   mushafScaleStep,
   onSelectionChange,
   onWordLongPress,
@@ -56,7 +54,7 @@ export function MushafWebViewPage({
   const { width, height } = useWindowDimensions();
   const { resolvedTheme } = useAppTheme();
   const palette = Colors[resolvedTheme];
-  const pageWidth = Math.min(Math.max(width - 32, 280), PAGE_MAX_WIDTH);
+  const pageWidth = Math.min(Math.max(width - 8, 280), PAGE_MAX_WIDTH);
   const initialHeight = React.useMemo(
     () => getInitialHeight(data, mushafScaleStep, height),
     [data, height, mushafScaleStep]
@@ -73,12 +71,11 @@ export function MushafWebViewPage({
     () =>
       buildMushafWebViewDocument({
         data,
-        mushafName,
         mushafScaleStep,
         theme: resolvedTheme,
         viewportHeight: height,
       }),
-    [data, height, mushafName, mushafScaleStep, resolvedTheme]
+    [data, height, mushafScaleStep, resolvedTheme]
   );
   const packDirectoryUri = data.rendererAssets?.packDirectoryUri;
 
@@ -121,64 +118,40 @@ export function MushafWebViewPage({
 
   return (
     <View className="items-center">
-      <View
-        className="w-full rounded-[32px] border border-border/40 bg-surface px-4 py-4 dark:border-border-dark/30 dark:bg-surface-dark"
-        style={{ maxWidth: pageWidth }}
-      >
-        <View className="flex-row items-center justify-between gap-3 border-b border-border/30 pb-3 dark:border-border-dark/20">
-          <View className="flex-1">
-            <Text className="text-base font-semibold text-foreground dark:text-foreground-dark">
-              {mushafName}
-            </Text>
-            <Text className="mt-1 text-xs text-muted dark:text-muted-dark">
-              Exact presets with auto reflow
-            </Text>
+      <View style={[styles.webViewShell, { maxWidth: pageWidth }]}>
+        {!isMeasured ? (
+          <View pointerEvents="none" style={styles.loadingOverlay}>
+            <ActivityIndicator color={palette.text} />
           </View>
-          <View className="rounded-full bg-interactive px-3 py-1.5 dark:bg-interactive-dark">
-            <Text className="text-xs font-semibold text-foreground dark:text-foreground-dark">
-              Page {data.pageNumber}
-            </Text>
-          </View>
-        </View>
-
-        <View
-          className="mt-4 overflow-hidden rounded-[28px] border border-border/30 dark:border-border-dark/20"
-          style={styles.webViewFrame}
-        >
-          {!isMeasured ? (
-            <View pointerEvents="none" style={styles.loadingOverlay}>
-              <ActivityIndicator color={palette.text} />
-            </View>
-          ) : null}
-          <WebView
-            originWhitelist={['*']}
-            source={{
-              html,
-              ...(packDirectoryUri ? { baseUrl: packDirectoryUri } : {}),
-            }}
-            scrollEnabled={false}
-            nestedScrollEnabled={false}
-            javaScriptEnabled
-            domStorageEnabled
-            setSupportMultipleWindows={false}
-            allowFileAccess
-            allowFileAccessFromFileURLs
-            allowUniversalAccessFromFileURLs
-            {...(packDirectoryUri ? { allowingReadAccessToURL: packDirectoryUri } : {})}
-            showsHorizontalScrollIndicator={false}
-            showsVerticalScrollIndicator={false}
-            bounces={false}
-            automaticallyAdjustContentInsets={false}
-            onMessage={(event) => handleMessage(event.nativeEvent.data)}
-            style={[
-              styles.webView,
-              {
-                backgroundColor: resolvedTheme === 'dark' ? '#102033' : '#F7F9F9',
-                height: webViewHeight,
-              },
-            ]}
-          />
-        </View>
+        ) : null}
+        <WebView
+          originWhitelist={['*']}
+          source={{
+            html,
+            ...(packDirectoryUri ? { baseUrl: packDirectoryUri } : {}),
+          }}
+          scrollEnabled={false}
+          nestedScrollEnabled={false}
+          javaScriptEnabled
+          domStorageEnabled
+          setSupportMultipleWindows={false}
+          allowFileAccess
+          allowFileAccessFromFileURLs
+          allowUniversalAccessFromFileURLs
+          {...(packDirectoryUri ? { allowingReadAccessToURL: packDirectoryUri } : {})}
+          showsHorizontalScrollIndicator={false}
+          showsVerticalScrollIndicator={false}
+          bounces={false}
+          automaticallyAdjustContentInsets={false}
+          onMessage={(event) => handleMessage(event.nativeEvent.data)}
+          style={[
+            styles.webView,
+            {
+              backgroundColor: resolvedTheme === 'dark' ? '#102033' : '#F7F9F9',
+              height: webViewHeight,
+            },
+          ]}
+        />
       </View>
     </View>
   );
@@ -198,7 +171,9 @@ const styles = StyleSheet.create({
   webView: {
     width: '100%',
   },
-  webViewFrame: {
+  webViewShell: {
     minHeight: 280,
+    position: 'relative',
+    width: '100%',
   },
 });

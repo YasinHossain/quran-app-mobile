@@ -26,13 +26,11 @@ function serializeJson(value: unknown): string {
 
 export function buildMushafWebViewDocument({
   data,
-  mushafName,
   mushafScaleStep,
   theme,
   viewportHeight,
 }: {
   data: MushafPageData;
-  mushafName: string;
   mushafScaleStep: MushafScaleStep;
   theme: MushafWebViewTheme;
   viewportHeight: number;
@@ -42,26 +40,15 @@ export function buildMushafWebViewDocument({
     theme === 'dark'
       ? {
           background: '#102033',
-          surface: '#132338',
-          page: '#0F1B2A',
-          pageBorder: '#264158',
           text: '#E7E5E4',
           muted: '#94A3B8',
-          accent: '#14B8A6',
-          accentText: '#052F2D',
         }
       : {
           background: '#F7F9F9',
-          surface: '#FFFFFF',
-          page: '#FCFBF7',
-          pageBorder: '#E5D9C5',
           text: '#111827',
           muted: '#6B7280',
-          accent: '#CCFBF1',
-          accentText: '#115E59',
         };
-
-  const shellTitle = escapeHtml(mushafName);
+  const documentTitle = escapeHtml(`Mushaf Page ${data.pageNumber}`);
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -71,18 +58,13 @@ export function buildMushafWebViewDocument({
       name="viewport"
       content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
     />
-    <title>${shellTitle}</title>
+    <title>${documentTitle}</title>
     <style>
       :root {
         color-scheme: ${theme};
         --background: ${palette.background};
-        --surface: ${palette.surface};
-        --page: ${palette.page};
-        --page-border: ${palette.pageBorder};
         --text: ${palette.text};
         --muted: ${palette.muted};
-        --accent: ${palette.accent};
-        --accent-text: ${palette.accentText};
         --font-size: ${layout.fontSizeCss};
         --line-height-multiplier: ${layout.lineHeightMultiplier};
         --line-height: calc(var(--font-size) * var(--line-height-multiplier));
@@ -90,7 +72,6 @@ export function buildMushafWebViewDocument({
         --reflow-line-height: calc(var(--font-size) * var(--reflow-line-height-multiplier));
         --exact-line-width: ${layout.lineWidthCss};
         --line-gap: 4px;
-        --page-radius: 28px;
         --qcf-font-family: serif;
       }
 
@@ -112,61 +93,13 @@ export function buildMushafWebViewDocument({
       }
 
       #app {
-        padding: 16px 0 24px;
-      }
-
-      .shell {
-        width: min(calc(100vw - 32px), 720px);
+        width: min(calc(100vw - 8px), 720px);
         margin: 0 auto;
-        border-radius: 32px;
-        border: 1px solid rgba(148, 163, 184, 0.22);
-        background: var(--surface);
-        padding: 16px;
+        padding: 4px 0 8px;
       }
 
-      .header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 12px;
-        border-bottom: 1px solid rgba(148, 163, 184, 0.18);
-        padding-bottom: 12px;
-      }
-
-      .header-copy {
-        min-width: 0;
-      }
-
-      .title {
-        font-size: 16px;
-        font-weight: 700;
-        line-height: 1.2;
-      }
-
-      .subtitle {
-        margin-top: 4px;
-        color: var(--muted);
-        font-size: 12px;
-        line-height: 1.4;
-      }
-
-      .chip {
-        border-radius: 999px;
-        background: var(--accent);
-        color: var(--accent-text);
-        padding: 8px 12px;
-        font-size: 12px;
-        font-weight: 700;
-        line-height: 1;
-        white-space: nowrap;
-      }
-
-      .page-frame {
-        margin-top: 16px;
-        border-radius: var(--page-radius);
-        border: 1px solid var(--page-border);
-        background: var(--page);
-        padding: 24px 16px;
+      .page {
+        width: 100%;
         overflow: hidden;
       }
 
@@ -208,7 +141,7 @@ export function buildMushafWebViewDocument({
         user-select: none;
       }
 
-      .page-frame.reflow .standard-view {
+      .page.reflow .standard-view {
         display: none;
       }
 
@@ -217,7 +150,7 @@ export function buildMushafWebViewDocument({
         width: 100%;
       }
 
-      .page-frame.reflow .reflow-view {
+      .page.reflow .reflow-view {
         display: block;
       }
 
@@ -249,24 +182,6 @@ export function buildMushafWebViewDocument({
       .reflow-spacer {
         white-space: pre;
       }
-
-      .footer {
-        display: flex;
-        justify-content: center;
-        margin-top: 16px;
-      }
-
-      .footer-chip {
-        border-radius: 999px;
-        background: rgba(20, 184, 166, 0.12);
-        padding: 8px 14px;
-        font-size: 12px;
-        color: var(--muted);
-      }
-
-      .footer-chip strong {
-        color: var(--text);
-      }
     </style>
   </head>
   <body>
@@ -278,7 +193,6 @@ export function buildMushafWebViewDocument({
         isExactPreset: layout.isExactPreset,
         lineWidthCss: layout.lineWidthCss,
       },
-      mushafName,
     })}</script>
     <script>
       (async function () {
@@ -294,25 +208,13 @@ export function buildMushafWebViewDocument({
           return;
         }
 
-        var shell = document.createElement('article');
-        shell.className = 'shell';
-        shell.setAttribute('aria-label', 'Page ' + String(data.pageNumber));
-
-        shell.innerHTML =
-          '<div class="header">' +
-          '<div class="header-copy">' +
-          '<div class="title">' + escapeHtml(payload.mushafName) + '</div>' +
-          '<div class="subtitle">Web exact presets with automatic centered reflow</div>' +
-          '</div>' +
-          '<div class="chip">Page ' + String(data.pageNumber) + '</div>' +
-          '</div>';
-
-        var pageFrame = document.createElement('div');
-        pageFrame.className = 'page-frame';
+        var pageRoot = document.createElement('article');
+        pageRoot.className = 'page';
+        pageRoot.setAttribute('aria-label', 'Page ' + String(data.pageNumber));
 
         var pageContent = document.createElement('div');
         pageContent.className = 'page-content';
-        pageFrame.appendChild(pageContent);
+        pageRoot.appendChild(pageContent);
 
         var standardView = document.createElement('div');
         standardView.className = 'standard-view';
@@ -322,21 +224,7 @@ export function buildMushafWebViewDocument({
         reflowView.className = 'reflow-view';
         pageContent.appendChild(reflowView);
 
-        shell.appendChild(pageFrame);
-
-        var footer = document.createElement('div');
-        footer.className = 'footer';
-        footer.innerHTML =
-          '<div class="footer-chip"><strong>' +
-          escapeHtml(String(data.pack.packId)) +
-          '@' +
-          escapeHtml(String(data.pack.version)) +
-          '</strong> · ' +
-          escapeHtml(String(data.pack.renderer)) +
-          ' renderer</div>';
-        shell.appendChild(footer);
-
-        app.appendChild(shell);
+        app.appendChild(pageRoot);
 
         var heightRafId = null;
         var selectionRafId = null;
@@ -444,7 +332,7 @@ export function buildMushafWebViewDocument({
           }
 
           heightRafId = requestAnimationFrame(function () {
-            var height = Math.ceil(shell.getBoundingClientRect().height);
+            var height = Math.ceil(pageRoot.getBoundingClientRect().height);
             emit({
               type: 'content-height',
               payload: {
@@ -602,7 +490,7 @@ export function buildMushafWebViewDocument({
           lastContainerWidth = containerWidth;
           var nextReflowState = shouldUseReflow(containerWidth);
           stableReflowState = nextReflowState;
-          pageFrame.classList.toggle('reflow', nextReflowState);
+          pageRoot.classList.toggle('reflow', nextReflowState);
           scheduleHeightReport();
         }
 
