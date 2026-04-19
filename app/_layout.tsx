@@ -4,7 +4,7 @@ import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native
 import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import 'react-native-reanimated';
 import { View } from 'react-native';
 
@@ -17,7 +17,8 @@ import { LayoutMetricsProvider } from '@/providers/LayoutMetricsContext';
 import { SettingsProvider } from '@/providers/SettingsContext';
 import { AppThemeProvider, useAppTheme } from '@/providers/ThemeContext';
 import { initializeAudioModeAsync } from '@/src/core/infrastructure/audio/audioMode';
-import { initializeAppDbAsync } from '@/src/core/infrastructure/db';
+import { STARTUP_FONT_ASSETS } from '@/src/core/infrastructure/fonts/arabicFonts';
+import { bootstrapBundledMushafPacksAsync } from '@/src/core/infrastructure/mushaf/bootstrapBundledPacks';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -30,30 +31,30 @@ export const unstable_settings = {
 };
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
-SplashScreen.preventAutoHideAsync();
+void SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
-  const [loaded, error] = useFonts({
-    SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
-    UthmanicHafs1Ver18: require('../assets/fonts/UthmanicHafs1Ver18.ttf'),
-    'KFGQ V2': require('../assets/fonts/KFGQPC-Uthman-Taha.ttf'),
-    'Me Quran': require('../assets/fonts/me_quran.ttf'),
-    'Amiri Quran': require('../assets/fonts/AmiriQuran.ttf'),
-    'Scheherazade New': require('../assets/fonts/Scheherazade-New.ttf'),
-    'Noto Naskh Arabic': require('../assets/fonts/Noto-Naskh-Arabic.ttf'),
-    IndoPak: require('../assets/fonts/indopak-nastaleeq-waqf-lazim-v4.2.1.ttf'),
-    'Noor-e-Huda': require('../assets/fonts/Noor-e-Huda.ttf'),
-    'Noor-e-Hidayat': require('../assets/fonts/Noor-e-Hidayat.ttf'),
-    'Noor-e-Hira': require('../assets/fonts/Noor-e-Hira.ttf'),
-    Lateef: require('../assets/fonts/Lateef.ttf'),
-  });
+  const [loaded, error] = useFonts(STARTUP_FONT_ASSETS);
+  const [isBootstrapped, setIsBootstrapped] = useState(false);
 
   useEffect(() => {
-    void initializeAppDbAsync();
-  }, []);
+    let cancelled = false;
 
-  useEffect(() => {
-    void initializeAudioModeAsync();
+    async function bootstrapAsync(): Promise<void> {
+      try {
+        await Promise.all([initializeAudioModeAsync(), bootstrapBundledMushafPacksAsync()]);
+      } finally {
+        if (!cancelled) {
+          setIsBootstrapped(true);
+        }
+      }
+    }
+
+    void bootstrapAsync();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Expo Router uses Error Boundaries to catch errors in the navigation tree.
@@ -62,12 +63,12 @@ export default function RootLayout() {
   }, [error]);
 
   useEffect(() => {
-    if (loaded) {
-      SplashScreen.hideAsync();
+    if (loaded && isBootstrapped) {
+      void SplashScreen.hideAsync();
     }
-  }, [loaded]);
+  }, [loaded, isBootstrapped]);
 
-  if (!loaded) {
+  if (!loaded || !isBootstrapped) {
     return null;
   }
 

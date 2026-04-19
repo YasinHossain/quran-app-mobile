@@ -1,5 +1,6 @@
 export * from './Bookmark';
 export * from './DownloadIndexItem';
+export * from './MushafPackInstall';
 export * from './Surah';
 export * from './Surah.types';
 export * from './Surah.utils';

@@ -18,6 +18,7 @@ import {
 import { ComprehensiveSearchDropdown } from '@/components/search/ComprehensiveSearchDropdown';
 import { HeaderSearchInput } from '@/components/search/HeaderSearchInput';
 import { SettingsSidebar } from '@/components/reader/settings/SettingsSidebar';
+import type { SettingsTab } from '@/components/reader/settings/SettingsTabToggle';
 import { BookmarkModal } from '@/components/bookmarks/BookmarkModal';
 import { SurahHeaderCard } from '@/components/surah/SurahHeaderCard';
 import { VerseActionsSheet } from '@/components/surah/VerseActionsSheet';
@@ -25,6 +26,7 @@ import { VerseCard } from '@/components/surah/VerseCard';
 import { useVerseAudioWordSync } from '@/components/surah/useVerseAudioWordSync';
 import { AddToPlannerModal, type VerseSummaryDetails } from '@/components/verse-planner-modal';
 import Colors from '@/constants/Colors';
+import { useChapters } from '@/hooks/useChapters';
 import { useSurahVerses, type SurahVerse } from '@/hooks/useSurahVerses';
 import { useTranslationResources } from '@/hooks/useTranslationResources';
 import { useBookmarks } from '@/providers/BookmarkContext';
@@ -74,6 +76,7 @@ export default function SurahScreen(): React.JSX.Element {
 
   const { resolvedTheme } = useAppTheme();
   const palette = Colors[resolvedTheme];
+  const { chapters } = useChapters();
   const audio = useAudioPlayer();
   const verseAudioWordSync = useVerseAudioWordSync();
   const { audioPlayerBarHeight } = useLayoutMetrics();
@@ -190,6 +193,27 @@ export default function SurahScreen(): React.JSX.Element {
   const openTranslationSettings = React.useCallback(() => {
     setIsSettingsOpen(true);
   }, []);
+
+  const handleSettingsTabChange = React.useCallback(
+    (nextTab: SettingsTab) => {
+      if (nextTab !== 'mushaf') return;
+
+      const currentChapter = chapters.find((item) => item.id === chapterNumber);
+      const startPage =
+        Array.isArray(currentChapter?.pages) &&
+        typeof currentChapter.pages[0] === 'number' &&
+        currentChapter.pages[0] > 0
+          ? currentChapter.pages[0]
+          : 1;
+
+      setIsSettingsOpen(false);
+      router.push({
+        pathname: '/page/[pageNumber]',
+        params: { pageNumber: String(startPage) },
+      });
+    },
+    [chapterNumber, chapters, router]
+  );
 
   const listExtraData = React.useMemo(
     () => ({
@@ -820,7 +844,12 @@ export default function SurahScreen(): React.JSX.Element {
           router.push({ pathname: '/search', params: { query: trimmed } });
         }}
       />
-      <SettingsSidebar isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
+      <SettingsSidebar
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        activeTab="translations"
+        onTabChange={handleSettingsTabChange}
+      />
     </View>
   );
 }

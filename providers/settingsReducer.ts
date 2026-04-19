@@ -1,4 +1,4 @@
-import type { Settings } from '@/types';
+import { clampMushafScaleStep, type MushafPackId, type MushafScaleStep, type Settings } from '@/types';
 
 export type SettingsAction =
   | { type: 'SET_SETTINGS'; value: Settings }
@@ -12,7 +12,8 @@ export type SettingsAction =
   | { type: 'SET_TRANSLATION_FONT_SIZE'; value: number }
   | { type: 'SET_TAFSIR_FONT_SIZE'; value: number }
   | { type: 'SET_ARABIC_FONT_FACE'; value: string }
-  | { type: 'SET_MUSHAF_ID'; value: string }
+  | { type: 'SET_MUSHAF_ID'; value: MushafPackId }
+  | { type: 'SET_MUSHAF_SCALE_STEP'; value: MushafScaleStep }
   | { type: 'SET_CONTENT_LANGUAGE'; value: string };
 
 function normalizeIdList(value: number[]): number[] {
@@ -60,6 +61,10 @@ const actionHandlers = {
   SET_TAFSIR_FONT_SIZE: (state, action) => ({ ...state, tafsirFontSize: action.value }),
   SET_ARABIC_FONT_FACE: (state, action) => ({ ...state, arabicFontFace: action.value }),
   SET_MUSHAF_ID: (state, action) => ({ ...state, mushafId: action.value }),
+  SET_MUSHAF_SCALE_STEP: (state, action) => ({
+    ...state,
+    mushafScaleStep: clampMushafScaleStep(action.value),
+  }),
   SET_CONTENT_LANGUAGE: (state, action) => ({ ...state, contentLanguage: action.value }),
 } satisfies ActionHandlerMap;
 

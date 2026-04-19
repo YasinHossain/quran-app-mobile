@@ -1,7 +1,14 @@
-import { DEFAULT_MUSHAF_ID } from '@/data/mushaf/options';
+import { DEFAULT_MUSHAF_ID, isMushafPackId } from '@/data/mushaf/options';
 import { getItem, parseJson, setItem } from '@/lib/storage/appStorage';
+import { DEFAULT_ARABIC_FONT_VALUE } from '@/src/core/infrastructure/fonts/arabicFonts';
 
-import type { Settings } from '@/types';
+import {
+  DEFAULT_MUSHAF_SCALE_STEP,
+  clampMushafScaleStep,
+  fontSizeToMushafScaleStep,
+  type MushafPackId,
+  type Settings,
+} from '@/types';
 
 export const ARABIC_FONTS = [
   { name: 'KFGQ', value: '"UthmanicHafs1Ver18", serif', category: 'Uthmani' },
@@ -19,7 +26,6 @@ export const ARABIC_FONTS = [
   { name: 'Lateef', value: '"Lateef", serif', category: 'IndoPak' },
 ] as const;
 
-const DEFAULT_ARABIC_FONT_VALUE = '"UthmanicHafs1Ver18", serif';
 const DEFAULT_ARABIC_FONT =
   ARABIC_FONTS.find((font) => font.value === DEFAULT_ARABIC_FONT_VALUE)?.value ??
   DEFAULT_ARABIC_FONT_VALUE;
@@ -37,6 +43,7 @@ export const defaultSettings: Settings = {
   showByWords: false,
   tajweed: false,
   mushafId: DEFAULT_MUSHAF_ID,
+  mushafScaleStep: DEFAULT_MUSHAF_SCALE_STEP,
   contentLanguage: 'en',
 };
 
@@ -83,6 +90,16 @@ function normalizeSettings(raw: RawSettings, defaults: Settings): Settings {
     ? normalizeIdList(mutable.tafsirIds)
     : defaults.tafsirIds;
 
+  const mushafId: MushafPackId = typeof mutable.mushafId === 'string' && isMushafPackId(mutable.mushafId)
+    ? mutable.mushafId
+    : defaults.mushafId ?? DEFAULT_MUSHAF_ID;
+
+  const mushafScaleStep = typeof mutable.mushafScaleStep === 'number' && Number.isFinite(mutable.mushafScaleStep)
+    ? clampMushafScaleStep(mutable.mushafScaleStep)
+    : fontSizeToMushafScaleStep(
+        typeof mutable.arabicFontSize === 'number' ? mutable.arabicFontSize : defaults.arabicFontSize
+      );
+
   const merged = { ...defaults, ...mutable } as Settings;
 
   return {
@@ -90,6 +107,8 @@ function normalizeSettings(raw: RawSettings, defaults: Settings): Settings {
     translationIds,
     translationId,
     tafsirIds,
+    mushafId,
+    mushafScaleStep,
   };
 }
 

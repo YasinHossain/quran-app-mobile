@@ -1,14 +1,15 @@
 import { ArrowLeft, BookOpenText, Globe, Type, Wand2 } from 'lucide-react-native';
 import React from 'react';
-import { FlatList, Pressable, Text, View } from 'react-native';
+import { Alert, FlatList, Pressable, Text, View } from 'react-native';
 
-import { TAJWEED_MUSHAF_ID, findMushafOption } from '@/data/mushaf/options';
+import { DEFAULT_MUSHAF_ID, TAJWEED_MUSHAF_ID, findMushafOption } from '@/data/mushaf/options';
 import Colors from '@/constants/Colors';
+import { MushafPackOptionCard } from '@/components/reader/settings/MushafPackOptionCard';
 import { useTafsirResources } from '@/hooks/useTafsirResources';
+import { useMushafPackManager } from '@/hooks/useMushafPackManager';
 import { useTranslationResources } from '@/hooks/useTranslationResources';
 import { useSettings } from '@/providers/SettingsContext';
 import { useAppTheme } from '@/providers/ThemeContext';
-import { MUSHAF_OPTIONS } from '@/data/mushaf/options';
 
 import { CollapsibleSection } from './CollapsibleSection';
 import { FontSizeSlider } from './FontSizeSlider';
@@ -20,6 +21,9 @@ import { capitalizeLanguageName, type ResourceRecord } from './resource-panel/re
 import { SettingsTabToggle, type SettingsTab } from './SettingsTabToggle';
 import { ToggleRow } from './ToggleRow';
 import { ArabicFontFilterToggle, type ArabicFontFilter } from './ArabicFontFilterToggle';
+
+import type { MushafPackId } from '@/types';
+import { clampMushafScaleStep, MUSHAF_SCALE_MAX, MUSHAF_SCALE_MIN } from '@/types';
 
 type Panel =
   | { type: 'root' }
@@ -72,10 +76,14 @@ export function SettingsSidebarContent({
   onClose,
   showTafsirSetting = false,
   pageType,
+  activeTabOverride,
+  onTabChange,
 }: {
   onClose?: () => void;
   showTafsirSetting?: boolean;
   pageType?: 'verse' | 'tafsir' | 'bookmarks';
+  activeTabOverride?: SettingsTab;
+  onTabChange?: (tab: SettingsTab) => void;
 }): React.JSX.Element {
   const {
     settings,
@@ -90,18 +98,19 @@ export function SettingsSidebarContent({
     setTafsirIds,
     setContentLanguage,
     setMushafId,
+    setMushafScaleStep,
   } = useSettings();
   const { resolvedTheme, setDarkModeEnabled, isDark } = useAppTheme();
   const palette = Colors[resolvedTheme];
 
-  const [activeTab, setActiveTab] = React.useState<SettingsTab>('translations');
+  const [activeTab, setActiveTab] = React.useState<SettingsTab>(activeTabOverride ?? 'translations');
   const [panel, setPanel] = React.useState<Panel>({ type: 'root' });
   const [isReadingOpen, setIsReadingOpen] = React.useState(true);
   const [isTafsirOpen, setIsTafsirOpen] = React.useState(showTafsirSetting && pageType === 'tafsir');
   const [isFontOpen, setIsFontOpen] = React.useState(true);
   const [arabicFontFilter, setArabicFontFilter] = React.useState<ArabicFontFilter>('Uthmani');
 
-  const previousMushafIdRef = React.useRef<string | undefined>(settings.mushafId);
+  const previousMushafIdRef = React.useRef<MushafPackId | undefined>(settings.mushafId);
 
   const {
     translations: translationResources,
@@ -140,7 +149,18 @@ export function SettingsSidebarContent({
   const selectedArabicFontName =
     arabicFonts.find((f) => f.value === settings.arabicFontFace)?.name ?? 'KFGQ';
   const selectedUiLanguageName = getUiLanguageName(settings.contentLanguage);
-  const selectedMushafName = findMushafOption(settings.mushafId)?.name ?? 'King Fahad Complex V1';
+  const selectedMushafName =
+    findMushafOption(settings.mushafId)?.name ?? findMushafOption(DEFAULT_MUSHAF_ID)?.name ?? 'Uthmani Unicode';
+  const {
+    entries: mushafPackEntries,
+    isLoading: isMushafPackManagerLoading,
+    errorMessage: mushafPackManagerError,
+    installPack,
+    deletePack,
+    refresh: refreshMushafPacks,
+  } = useMushafPackManager({
+    selectedPackId: settings.mushafId ?? DEFAULT_MUSHAF_ID,
+  });
   const filteredArabicFonts = React.useMemo(
     () => arabicFonts.filter((font) => font.category === arabicFontFilter),
     [arabicFontFilter, arabicFonts]
@@ -240,7 +260,71 @@ export function SettingsSidebarContent({
     [setSettings, settings]
   );
 
+  const applyMushafSelection = React.useCallback(
+    (packId: MushafPackId) => {
+      setSettings({
+        ...settings,
+        mushafId: packId,
+        tajweed: packId === TAJWEED_MUSHAF_ID,
+      });
+    },
+    [setSettings, settings]
+  );
+
+  const handleInstallMushafPack = React.useCallback(
+    async (packId: MushafPackId) => {
+      try {
+        await installPack(packId);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        Alert.alert('Install failed', message);
+      }
+    },
+    [installPack]
+  );
+
+  const handleDeleteMushafPack = React.useCallback(
+    (packId: MushafPackId) => {
+      const option = findMushafOption(packId);
+      if (!option) return;
+
+      Alert.alert(
+        'Delete mushaf download?',
+        `This removes ${option.name} from local storage.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Delete',
+            style: 'destructive',
+            onPress: () => {
+              void (async () => {
+                try {
+                  await deletePack(packId);
+                  if (settings.mushafId === packId) {
+                    applyMushafSelection(DEFAULT_MUSHAF_ID);
+                  }
+                } catch (error) {
+                  const message = error instanceof Error ? error.message : String(error);
+                  Alert.alert('Delete failed', message);
+                }
+              })();
+            },
+          },
+        ]
+      );
+    },
+    [applyMushafSelection, deletePack, settings.mushafId]
+  );
+
   const goBack = React.useCallback(() => setPanel({ type: 'root' }), []);
+
+  const handleActiveTabChange = React.useCallback(
+    (nextTab: SettingsTab) => {
+      setActiveTab(nextTab);
+      onTabChange?.(nextTab);
+    },
+    [onTabChange]
+  );
 
   React.useEffect(() => {
     if (panel.type !== 'arabic-font') return;
@@ -248,6 +332,11 @@ export function SettingsSidebarContent({
     const nextFilter: ArabicFontFilter = selected?.category === 'IndoPak' ? 'IndoPak' : 'Uthmani';
     setArabicFontFilter(nextFilter);
   }, [arabicFonts, panel.type, settings.arabicFontFace]);
+
+  React.useEffect(() => {
+    if (!activeTabOverride) return;
+    setActiveTab(activeTabOverride);
+  }, [activeTabOverride]);
 
   if (panel.type !== 'root') {
     const title =
@@ -364,29 +453,91 @@ export function SettingsSidebarContent({
 
         {panel.type === 'mushaf' ? (
           <FlatList
-            data={MUSHAF_OPTIONS}
-            keyExtractor={(item) => item.id}
-            contentContainerStyle={{ padding: 12, gap: 10 }}
-            renderItem={({ item }) => (
-              <Pressable
-                onPress={() => {
-                  setMushafId(item.id);
-                  setPanel({ type: 'root' });
-                }}
-                className={[
-                  'rounded-xl border px-4 py-3',
-                  'border-border/30 dark:border-border-dark/20',
-                  'bg-interactive dark:bg-interactive-dark',
-                ].join(' ')}
-              >
-                <Text className="text-sm font-semibold text-foreground dark:text-foreground-dark">
-                  {item.name}
+            data={mushafPackEntries}
+            keyExtractor={(item) => item.option.id}
+            contentContainerStyle={{ padding: 12, gap: 10, paddingBottom: 24 }}
+            ListHeaderComponent={
+              <View className="px-1 pb-3">
+                <Text className="text-xs leading-5 text-muted dark:text-muted-dark">
+                  Keep the bundled Unicode mushaf for instant offline reading. Exact packs download
+                  into local versioned storage and stay available offline once installed.
                 </Text>
-                <Text className="mt-1 text-xs text-muted dark:text-muted-dark">
-                  {item.description}
-                </Text>
-              </Pressable>
-            )}
+                {isMushafPackManagerLoading ? (
+                  <Text className="mt-3 text-xs text-muted dark:text-muted-dark">
+                    Refreshing local mushaf pack status…
+                  </Text>
+                ) : null}
+                {mushafPackManagerError ? (
+                  <View className="mt-3 rounded-2xl border border-error/30 bg-error/10 px-4 py-3 dark:border-error-dark/30 dark:bg-error-dark/10">
+                    <Text className="text-xs leading-5 text-error dark:text-error-dark">
+                      {mushafPackManagerError}
+                    </Text>
+                    <View className="mt-3 flex-row">
+                      <Pressable
+                        onPress={refreshMushafPacks}
+                        className="rounded-full bg-interactive px-4 py-2 dark:bg-interactive-dark"
+                        style={({ pressed }) => ({ opacity: pressed ? 0.88 : 1 })}
+                      >
+                        <Text className="text-xs font-semibold text-foreground dark:text-foreground-dark">
+                          Retry
+                        </Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                ) : null}
+              </View>
+            }
+            renderItem={({ item }) => {
+              const isSelectable = item.isInstalled || item.isBundled;
+              const primaryAction = isSelectable
+                ? {
+                    label: item.isSelected ? 'Selected' : 'Use',
+                    onPress: () => {
+                      applyMushafSelection(item.option.id);
+                      setPanel({ type: 'root' });
+                    },
+                    disabled: item.isSelected || item.isBusy,
+                    tone: item.isSelected ? ('default' as const) : ('accent' as const),
+                  }
+                : item.isInstallImplemented
+                  ? {
+                      label: item.downloadItem?.status === 'failed' ? 'Retry install' : 'Install',
+                      onPress: () => {
+                        void handleInstallMushafPack(item.option.id);
+                      },
+                      disabled: item.isBusy,
+                      tone: 'accent' as const,
+                    }
+                  : {
+                      label: 'Coming soon',
+                      onPress: () => undefined,
+                      disabled: true,
+                    };
+
+              const secondaryAction =
+                item.isInstalled && !item.isBundled
+                  ? {
+                      label: 'Delete',
+                      onPress: () => handleDeleteMushafPack(item.option.id),
+                      disabled: item.isBusy,
+                      tone: 'danger' as const,
+                    }
+                  : undefined;
+
+              return (
+                <MushafPackOptionCard
+                  title={item.option.name}
+                  description={item.option.description}
+                  statusLabel={item.statusLabel}
+                  progressLabel={item.progressLabel}
+                  errorMessage={item.errorMessage}
+                  sourceLabel={item.definition?.sourceLabel ?? null}
+                  isSelected={item.isSelected}
+                  primaryAction={primaryAction}
+                  secondaryAction={secondaryAction}
+                />
+              );
+            }}
           />
         ) : null}
       </View>
@@ -418,9 +569,9 @@ export function SettingsSidebarContent({
   ) : null;
 
   return (
-    <View className="flex-1">
+      <View className="flex-1">
       <View className="border-b border-border/30 dark:border-border-dark/20 px-4 py-3">
-        <SettingsTabToggle activeTab={activeTab} onTabChange={setActiveTab} />
+        <SettingsTabToggle activeTab={activeTab} onTabChange={handleActiveTabChange} />
       </View>
 
       <View className="flex-1 px-3 py-3">
@@ -518,9 +669,13 @@ export function SettingsSidebarContent({
           <View className="flex-1">
             <View className="gap-4 p-2">
               <SelectionBox label="Mushaf" value={selectedMushafName} onPress={() => setPanel({ type: 'mushaf' })} />
-              <Text className="text-xs text-muted dark:text-muted-dark">
-                Mushaf rendering mode will be implemented next. This panel is UI-ready.
-              </Text>
+              <FontSizeSlider
+                label="Mushaf Font Size"
+                value={settings.mushafScaleStep}
+                min={MUSHAF_SCALE_MIN}
+                max={MUSHAF_SCALE_MAX}
+                onChange={(next) => setMushafScaleStep(clampMushafScaleStep(next))}
+              />
             </View>
           </View>
         )}

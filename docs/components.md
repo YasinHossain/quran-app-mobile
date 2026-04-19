@@ -35,6 +35,20 @@ This document lists reusable UI components currently available in the codebase s
 | `HighlightedText` | Lightweight `<em>` tag highlighter renderer for search result snippets. | `components/search/HighlightedText.tsx` |
 | `SearchVerseResultCard` | Search results list item (Arabic + highlighted match snippet). | `components/search/SearchVerseResultCard.tsx` |
 
+## Reader Data Hooks
+
+| Hook | Description | File Path |
+| --- | --- | --- |
+| `useMushafPageData` | Local-only mushaf page data hook that resolves the active installed pack version and returns page lookup, verse/word payload, and grouped page lines for the page route. | `hooks/useMushafPageData.ts` |
+| `useMushafPackManager` | Local mushaf pack manager hook used by reader settings; loads install state from the mushaf registry, merges download-index progress/errors, and exposes install/delete actions for exact packs like `qcf-madani-v1`. | `hooks/useMushafPackManager.ts` |
+
+## Mushaf Reader Components
+
+| Component | Description | File Path |
+| --- | --- | --- |
+| `MushafNativePage` | Native Unicode mushaf renderer for offline text packs; renders page lines/words from local pack payloads with stepped `mushafScaleStep` sizing, selectable text, and per-word press events that the page route can map into native mushaf actions. | `components/mushaf/MushafNativePage.tsx` |
+| `MushafWebViewPage` | Local WebView mushaf renderer for exact/downloadable packs; ports the web stepped preset sizing, fit detection, centered RTL overflow reflow, local QCF page-font loading, and the message bridge used to send native word-tap plus selection/copy metadata back out of exact mode. | `components/mushaf/MushafWebViewPage.tsx` |
+
 ## Reader Settings Components
 
 | Component | Description | File Path |
@@ -46,6 +60,7 @@ This document lists reusable UI components currently available in the codebase s
 | `ToggleRow` | Label + switch row for boolean settings. | `components/reader/settings/ToggleRow.tsx` |
 | `FontSizeSlider` | Slider row used for font size controls. | `components/reader/settings/FontSizeSlider.tsx` |
 | `SelectionBox` | Pressable selection row used for “pick one” settings. | `components/reader/settings/SelectionBox.tsx` |
+| `MushafPackOptionCard` | Mushaf-pack settings card that shows install status, progress/error state, source note, and pack actions like Use / Install / Delete. | `components/reader/settings/MushafPackOptionCard.tsx` |
 | `ManageTranslationsPanel` | Web-parity “Manage Translations” panel (search + language tabs + My Selections). | `components/reader/settings/ManageTranslationsPanel.tsx` |
 | `ManageTafsirsPanel` | Web-parity “Manage Tafsirs” panel (search + language tabs + My Selections + limit warning). | `components/reader/settings/ManageTafsirsPanel.tsx` |
 | `ResourceTabs` | Horizontal language tabs with scroll buttons (used by translation/tafsir panels). | `components/reader/settings/resource-panel/ResourceTabs.tsx` |

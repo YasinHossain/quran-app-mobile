@@ -6,16 +6,22 @@ import { useAppTheme } from '@/providers/ThemeContext';
 
 import { SettingsSidebarContent } from './SettingsSidebarContent';
 
+import type { SettingsTab } from './SettingsTabToggle';
+
 export function SettingsSidebar({
   isOpen,
   onClose,
   showTafsirSetting = false,
   pageType,
+  activeTab,
+  onTabChange,
 }: {
   isOpen: boolean;
   onClose: () => void;
   showTafsirSetting?: boolean;
   pageType?: 'verse' | 'tafsir' | 'bookmarks';
+  activeTab?: SettingsTab;
+  onTabChange?: (tab: SettingsTab) => void;
 }): React.JSX.Element {
   const { width } = useWindowDimensions();
   const { isDark } = useAppTheme();
@@ -89,6 +95,8 @@ export function SettingsSidebar({
                 onClose={onClose}
                 showTafsirSetting={showTafsirSetting}
                 pageType={pageType}
+                activeTabOverride={activeTab}
+                onTabChange={onTabChange}
               />
             </View>
           </SafeAreaView>

@@ -62,6 +62,31 @@ const APP_DB_MIGRATIONS: AppDbMigration[] = [
       `,
     ],
   },
+  {
+    version: 4,
+    statements: [
+      `
+      CREATE TABLE IF NOT EXISTS mushaf_pack_installs(
+        pack_id TEXT NOT NULL,
+        version TEXT NOT NULL,
+        channel TEXT NOT NULL,
+        is_active INTEGER NOT NULL DEFAULT 0,
+        installed_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY(pack_id, version)
+      );
+      `,
+      `
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_mushaf_pack_installs_active_pack
+      ON mushaf_pack_installs(pack_id)
+      WHERE is_active = 1;
+      `,
+      `
+      CREATE INDEX IF NOT EXISTS idx_mushaf_pack_installs_lookup
+      ON mushaf_pack_installs(pack_id, updated_at DESC);
+      `,
+    ],
+  },
 ];
 
 export const APP_DB_LATEST_SCHEMA_VERSION =

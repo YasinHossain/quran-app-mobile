@@ -1,3 +1,5 @@
+import type { MushafPackId } from '@/types';
+
 export const DOWNLOAD_STATUSES = [
   'queued',
   'downloading',
@@ -13,7 +15,8 @@ export type DownloadableContent =
   | { kind: 'tafsir'; tafsirId: number }
   | { kind: 'tafsir'; scope: 'surah'; surahId: number; tafsirId: number }
   | { kind: 'audio'; reciterId: number; scope: 'surah'; surahId: number }
-  | { kind: 'words'; scope: 'surah'; surahId: number };
+  | { kind: 'words'; scope: 'surah'; surahId: number }
+  | { kind: 'mushaf-pack'; packId: MushafPackId; version: string };
 
 export type DownloadProgress =
   | { kind: 'percent'; percent: number } // 0..100
@@ -53,6 +56,8 @@ export function getDownloadKey(content: DownloadableContent): DownloadKey {
       return `audio:${content.reciterId}:${content.scope}:${content.surahId}`;
     case 'words':
       return `words:${content.scope}:${content.surahId}`;
+    case 'mushaf-pack':
+      return `mushaf-pack:${content.packId}:${content.version}`;
     default: {
       const exhaustiveCheck: never = content;
       return String(exhaustiveCheck);
@@ -108,6 +113,16 @@ export function isDownloadableContent(value: unknown): value is DownloadableCont
       typeof words.surahId === 'number' &&
       Number.isFinite(words.surahId) &&
       words.surahId > 0
+    );
+  }
+
+  if (candidate.kind === 'mushaf-pack') {
+    const pack = candidate as Partial<Extract<DownloadableContent, { kind: 'mushaf-pack' }>>;
+    return (
+      typeof pack.packId === 'string' &&
+      pack.packId.trim().length > 0 &&
+      typeof pack.version === 'string' &&
+      pack.version.trim().length > 0
     );
   }
 

@@ -1,3 +1,5 @@
+import type { MushafPackId, MushafScaleStep } from './mushaf';
+
 /**
  * User preferences controlling fonts, translations and reading options.
  */
@@ -13,11 +15,11 @@ export interface Settings {
   wordTranslationId: number;
   showByWords: boolean;
   tajweed: boolean;
-  mushafId?: string;
+  mushafId?: MushafPackId;
+  mushafScaleStep: MushafScaleStep;
   /**
    * The UI language code that was last used to apply language-specific defaults
    * for translations, tafsir and word-by-word settings.
    */
   contentLanguage?: string;
 }
-

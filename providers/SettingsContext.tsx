@@ -1,9 +1,10 @@
-import React, { createContext, useContext, useMemo } from 'react';
+import React, { createContext, useContext, useEffect, useMemo } from 'react';
 
 import { usePersistentSettings } from '@/providers/hooks/usePersistentSettings';
 import { ARABIC_FONTS } from '@/providers/settingsStorage';
+import { loadArabicSupportFontsAsync } from '@/src/core/infrastructure/fonts/arabicFonts';
 
-import type { Settings } from '@/types';
+import type { MushafPackId, MushafScaleStep, Settings } from '@/types';
 
 type SettingsSetters = Pick<
   SettingsContextType,
@@ -19,6 +20,7 @@ type SettingsSetters = Pick<
   | 'setTafsirFontSize'
   | 'setArabicFontFace'
   | 'setMushafId'
+  | 'setMushafScaleStep'
   | 'setContentLanguage'
 >;
 
@@ -40,7 +42,9 @@ const createSetters = (
   setTafsirFontSize: (size: number): void =>
     dispatch({ type: 'SET_TAFSIR_FONT_SIZE', value: size }),
   setArabicFontFace: (font: string): void => dispatch({ type: 'SET_ARABIC_FONT_FACE', value: font }),
-  setMushafId: (mushafId: string): void => dispatch({ type: 'SET_MUSHAF_ID', value: mushafId }),
+  setMushafId: (mushafId: MushafPackId): void => dispatch({ type: 'SET_MUSHAF_ID', value: mushafId }),
+  setMushafScaleStep: (step: MushafScaleStep): void =>
+    dispatch({ type: 'SET_MUSHAF_SCALE_STEP', value: step }),
   setContentLanguage: (language: string): void =>
     dispatch({ type: 'SET_CONTENT_LANGUAGE', value: language }),
 });
@@ -60,7 +64,8 @@ interface SettingsContextType {
   setTranslationFontSize: (size: number) => void;
   setTafsirFontSize: (size: number) => void;
   setArabicFontFace: (font: string) => void;
-  setMushafId: (mushafId: string) => void;
+  setMushafId: (mushafId: MushafPackId) => void;
+  setMushafScaleStep: (step: MushafScaleStep) => void;
   setContentLanguage: (language: string) => void;
 }
 
@@ -69,6 +74,11 @@ const SettingsContext = createContext<SettingsContextType | undefined>(undefined
 export const SettingsProvider = ({ children }: { children: React.ReactNode }): React.JSX.Element => {
   const { settings, dispatch, isHydrated } = usePersistentSettings();
   const setters = useMemo(() => createSetters(dispatch), [dispatch]);
+
+  useEffect(() => {
+    void loadArabicSupportFontsAsync(settings.arabicFontFace);
+  }, [settings.arabicFontFace]);
+
   const contextValue = useMemo<SettingsContextType>(
     () => ({
       settings,
@@ -87,4 +97,3 @@ export const useSettings = (): SettingsContextType => {
   if (!ctx) throw new Error('useSettings must be used within SettingsProvider');
   return ctx;
 };
-

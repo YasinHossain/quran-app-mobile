@@ -1,0 +1,13 @@
+{
+  "packId": "unicode-uthmani-v1",
+  "version": "v1",
+  "channel": "bundled",
+  "renderer": "text",
+  "script": "uthmani",
+  "lines": 15,
+  "totalPages": 604,
+  "bundled": true,
+  "payloadFile": "payload.json",
+  "generatedAt": "2026-04-18T23:02:57.389Z",
+  "source": "https://api.quran.com/api/v4/verses/by_page?mushaf=2"
+}

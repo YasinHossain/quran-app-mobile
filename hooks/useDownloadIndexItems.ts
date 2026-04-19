@@ -34,6 +34,10 @@ function isSameDownloadContent(a: DownloadableContent, b: DownloadableContent): 
     return a.scope === b.scope && a.surahId === b.surahId;
   }
 
+  if (a.kind === 'mushaf-pack' && b.kind === 'mushaf-pack') {
+    return a.packId === b.packId && a.version === b.version;
+  }
+
   return false;
 }
 
