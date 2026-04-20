@@ -8,6 +8,9 @@ import type {
   HostedMushafPackCatalogEntry,
   MushafPackChecksum,
   MushafPackId,
+  MushafPackPageAddressableLocalPayload,
+  MushafPackPageLookupPayload,
+  MushafPackPagePayload,
   MushafPackManifest,
   MushafPackPayload,
   MushafPackRemoteFile,
@@ -75,6 +78,9 @@ type QcfApiVerseResponse = {
 type QcfApiPageResponse = {
   verses?: QcfApiVerseResponse[] | null;
 };
+
+const PAGE_ADDRESSABLE_LOOKUP_FILE = 'page-data/lookup.json';
+const PAGE_ADDRESSABLE_PAGES_DIRECTORY = 'page-data/pages';
 
 function asNonEmptyString(value: string): string {
   const normalized = value.trim();
@@ -238,6 +244,11 @@ async function writeJsonFileAsync(fileUri: string, value: unknown): Promise<void
   await FileSystem.writeAsStringAsync(fileUri, JSON.stringify(value));
 }
 
+async function readJsonFileAsync<T>(fileUri: string): Promise<T> {
+  const raw = await FileSystem.readAsStringAsync(fileUri);
+  return JSON.parse(raw) as T;
+}
+
 async function runPromisePool<TInput, TOutput>(
   items: TInput[],
   concurrency: number,
@@ -272,6 +283,68 @@ function toDownloadContent(packId: MushafPackId, version: string): DownloadableC
     packId,
     version,
   };
+}
+
+function buildPageAddressableLocalPayload(): MushafPackPageAddressableLocalPayload {
+  return {
+    format: 'page-json-v1',
+    lookupFile: PAGE_ADDRESSABLE_LOOKUP_FILE,
+    pagesDirectory: PAGE_ADDRESSABLE_PAGES_DIRECTORY,
+  };
+}
+
+function buildPageAddressablePageRelativePath(
+  localPayload: MushafPackPageAddressableLocalPayload,
+  pageNumber: number
+): string {
+  return `${normalizeRelativePath(localPayload.pagesDirectory)}/${Math.trunc(pageNumber)}.json`;
+}
+
+function buildPageLookupPayload(
+  packId: MushafPackId,
+  version: string,
+  totalPages: number,
+  lookup: Record<string, MushafPackPayload['lookup'][string]>
+): MushafPackPageLookupPayload {
+  return {
+    packId,
+    version,
+    totalPages,
+    lookup,
+  };
+}
+
+function buildPagePayload(
+  packId: MushafPackId,
+  version: string,
+  pageNumber: number,
+  verses: MushafVerse[]
+): MushafPackPagePayload {
+  return {
+    packId,
+    version,
+    pageNumber,
+    verses,
+  };
+}
+
+function ensurePayloadMatchesManifest(
+  manifest: MushafPackManifest,
+  payload: MushafPackPayload
+): MushafPackPayload {
+  if (payload.packId !== manifest.packId) {
+    throw new Error(
+      `Installed mushaf payload packId mismatch: expected ${manifest.packId}, received ${payload.packId}`
+    );
+  }
+
+  if (payload.version.trim() !== manifest.version.trim()) {
+    throw new Error(
+      `Installed mushaf payload version mismatch: expected ${manifest.version}, received ${payload.version}`
+    );
+  }
+
+  return payload;
 }
 
 function ensureManifestMatchesCatalog(
@@ -436,6 +509,64 @@ async function downloadFileAsync(
   }
 }
 
+async function convertInstalledPayloadToPageAddressableFormatAsync(
+  temporaryDirectory: string,
+  manifest: MushafPackManifest
+): Promise<MushafPackManifest> {
+  if (manifest.renderer !== 'webview' || manifest.localPayload?.format === 'page-json-v1') {
+    return manifest;
+  }
+
+  const normalizedPayloadFile = normalizeRelativePath(manifest.payloadFile);
+  if (!normalizedPayloadFile.toLowerCase().endsWith('.json')) {
+    return manifest;
+  }
+
+  const payloadUri = `${temporaryDirectory}${normalizedPayloadFile}`;
+  const payloadInfo = await FileSystem.getInfoAsync(payloadUri);
+  if (!payloadInfo.exists || payloadInfo.isDirectory) {
+    throw new Error(`Downloaded mushaf payload is missing at ${payloadUri}`);
+  }
+
+  const payload = ensurePayloadMatchesManifest(
+    manifest,
+    await readJsonFileAsync<MushafPackPayload>(payloadUri)
+  );
+  const localPayload = buildPageAddressableLocalPayload();
+
+  await writeJsonFileAsync(
+    `${temporaryDirectory}${localPayload.lookupFile}`,
+    buildPageLookupPayload(payload.packId, payload.version, payload.totalPages, payload.lookup)
+  );
+
+  for (let pageNumber = 1; pageNumber <= payload.totalPages; pageNumber += 1) {
+    await writeJsonFileAsync(
+      `${temporaryDirectory}${buildPageAddressablePageRelativePath(localPayload, pageNumber)}`,
+      buildPagePayload(
+        payload.packId,
+        payload.version,
+        pageNumber,
+        payload.pages[String(pageNumber)] ?? []
+      )
+    );
+  }
+
+  await FileSystem.deleteAsync(payloadUri, { idempotent: true });
+
+  const {
+    payloadChecksum: _payloadChecksum,
+    payloadSizeBytes: _payloadSizeBytes,
+    localPayload: _existingLocalPayload,
+    ...nextManifest
+  } = manifest;
+
+  return {
+    ...nextManifest,
+    payloadFile: localPayload.lookupFile,
+    localPayload,
+  };
+}
+
 export class MushafPackInstaller {
   constructor(
     private readonly fileStore: MushafPackFileStore,
@@ -490,7 +621,7 @@ export class MushafPackInstaller {
         sizeBytes: entry.manifestSizeBytes,
       });
 
-      const manifest = JSON.parse(
+      let manifest = JSON.parse(
         await FileSystem.readAsStringAsync(temporaryManifestUri)
       ) as MushafPackManifest;
       ensureManifestMatchesCatalog(entry, manifest);
@@ -533,6 +664,12 @@ export class MushafPackInstaller {
           error: null,
         });
       }
+
+      manifest = await convertInstalledPayloadToPageAddressableFormatAsync(
+        temporaryDirectory,
+        manifest
+      );
+      await writeJsonFileAsync(temporaryManifestUri, manifest);
 
       await this.fileStore.promoteTemporaryVersionDirectoryAsync(temporaryDirectory, entry.packId, version);
 
@@ -647,22 +784,24 @@ export class MushafPackInstaller {
         error: null,
       });
 
+      const localPayload = buildPageAddressableLocalPayload();
       const pages = await runPromisePool(pageNumbers, 4, async (pageNumber) => {
-        emitProgress(`pages/${pageNumber}.json`, 0);
-        const page = await fetchQcfV1PageAsync(pageNumber);
-        completedFiles += 1;
-        emitProgress(`pages/${pageNumber}.json`, 100);
-        await persistProgressAsync();
-        return page;
-      });
+        const relativePageFile = buildPageAddressablePageRelativePath(localPayload, pageNumber);
 
-      const payload: MushafPackPayload = {
-        packId: pack.packId,
-        version,
-        totalPages: pack.totalPages,
-        lookup: Object.fromEntries(pages.map((page) => [String(page.pageNumber), page.lookup])),
-        pages: Object.fromEntries(pages.map((page) => [String(page.pageNumber), page.verses])),
-      };
+        emitProgress(relativePageFile, 0);
+        const page = await fetchQcfV1PageAsync(pageNumber);
+        await writeJsonFileAsync(
+          `${temporaryDirectory}${relativePageFile}`,
+          buildPagePayload(pack.packId, version, pageNumber, page.verses)
+        );
+        completedFiles += 1;
+        emitProgress(relativePageFile, 100);
+        await persistProgressAsync();
+        return {
+          pageNumber,
+          lookup: page.lookup,
+        };
+      });
 
       const assetFiles = pageNumbers.map((pageNumber) => {
         const relativePath = getExactPackPageFontRelativePath(pack.packId, pageNumber);
@@ -690,7 +829,8 @@ export class MushafPackInstaller {
         lines: pack.lines,
         totalPages: pack.totalPages,
         bundled: false,
-        payloadFile: 'payload.json',
+        payloadFile: localPayload.lookupFile,
+        localPayload,
         assetFiles,
         generatedAt: new Date().toISOString(),
         source: [
@@ -701,10 +841,18 @@ export class MushafPackInstaller {
           .join(' | '),
       };
 
-      emitProgress('payload.json', 0);
-      await writeJsonFileAsync(`${temporaryDirectory}payload.json`, payload);
+      emitProgress(localPayload.lookupFile, 0);
+      await writeJsonFileAsync(
+        `${temporaryDirectory}${localPayload.lookupFile}`,
+        buildPageLookupPayload(
+          pack.packId,
+          version,
+          pack.totalPages,
+          Object.fromEntries(pages.map((page) => [String(page.pageNumber), page.lookup]))
+        )
+      );
       completedFiles += 1;
-      emitProgress('payload.json', 100);
+      emitProgress(localPayload.lookupFile, 100);
       await persistProgressAsync(true);
 
       emitProgress('manifest.json', 0);

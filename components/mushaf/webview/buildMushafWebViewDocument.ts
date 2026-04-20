@@ -1,10 +1,30 @@
-import type { MushafPageData, MushafScaleStep } from '@/types';
+import type { MushafPackId, MushafPageData, MushafScaleStep } from '@/types';
 
 import { getMushafWebViewLayoutConfig } from '@/components/mushaf/mushafLayoutPresets';
 
 type MushafWebViewTheme = 'light' | 'dark';
 
+type MushafWebViewLayoutPayload = {
+  fontSizeCss: string;
+  isExactPreset: boolean;
+  lineWidthCss: string;
+  lineHeightMultiplier: number;
+  reflowLineHeightMultiplier: number;
+};
+
+type MushafWebViewRenderPayload = {
+  data: MushafPageData;
+  layout: MushafWebViewLayoutPayload;
+};
+
 const REFLOW_HYSTERESIS_PX = 20;
+const shellDocumentCache = new Map<
+  string,
+  {
+    html: string;
+    layout: MushafWebViewLayoutPayload;
+  }
+>();
 
 function escapeHtml(value: string): string {
   return value
@@ -24,18 +44,13 @@ function serializeJson(value: unknown): string {
     .replace(/\u2029/g, '\\u2029');
 }
 
-export function buildMushafWebViewDocument({
-  data,
-  mushafScaleStep,
+function buildShellDocumentHtml({
+  layout,
   theme,
-  viewportHeight,
 }: {
-  data: MushafPageData;
-  mushafScaleStep: MushafScaleStep;
+  layout: MushafWebViewLayoutPayload;
   theme: MushafWebViewTheme;
-  viewportHeight: number;
 }): string {
-  const layout = getMushafWebViewLayoutConfig(data.pack.packId, mushafScaleStep, viewportHeight);
   const palette =
     theme === 'dark'
       ? {
@@ -48,7 +63,6 @@ export function buildMushafWebViewDocument({
           text: '#111827',
           muted: '#6B7280',
         };
-  const documentTitle = escapeHtml(`Mushaf Page ${data.pageNumber}`);
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -58,7 +72,7 @@ export function buildMushafWebViewDocument({
       name="viewport"
       content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
     />
-    <title>${documentTitle}</title>
+    <title>${escapeHtml('Mushaf Page')}</title>
     <style>
       :root {
         color-scheme: ${theme};
@@ -66,9 +80,9 @@ export function buildMushafWebViewDocument({
         --text: ${palette.text};
         --muted: ${palette.muted};
         --font-size: ${layout.fontSizeCss};
-        --line-height-multiplier: ${layout.lineHeightMultiplier};
+        --line-height-multiplier: 1;
         --line-height: calc(var(--font-size) * var(--line-height-multiplier));
-        --reflow-line-height-multiplier: ${layout.reflowLineHeightMultiplier};
+        --reflow-line-height-multiplier: 1;
         --reflow-line-height: calc(var(--font-size) * var(--reflow-line-height-multiplier));
         --exact-line-width: ${layout.lineWidthCss};
         --line-gap: 4px;
@@ -186,31 +200,15 @@ export function buildMushafWebViewDocument({
   </head>
   <body>
     <div id="app"></div>
-    <script id="mushaf-page-data" type="application/json">${serializeJson({
-      data,
-      layout: {
-        fontSizeCss: layout.fontSizeCss,
-        isExactPreset: layout.isExactPreset,
-        lineWidthCss: layout.lineWidthCss,
-      },
-    })}</script>
     <script>
-      (async function () {
-        var payloadNode = document.getElementById('mushaf-page-data');
-        if (!payloadNode || !payloadNode.textContent) {
-          return;
-        }
-
-        var payload = JSON.parse(payloadNode.textContent);
-        var data = payload.data;
+      (function () {
         var app = document.getElementById('app');
-        if (!app || !data || !data.pack) {
+        if (!app) {
           return;
         }
 
         var pageRoot = document.createElement('article');
         pageRoot.className = 'page';
-        pageRoot.setAttribute('aria-label', 'Page ' + String(data.pageNumber));
 
         var pageContent = document.createElement('div');
         pageContent.className = 'page-content';
@@ -226,25 +224,19 @@ export function buildMushafWebViewDocument({
 
         app.appendChild(pageRoot);
 
+        var currentPayload = null;
         var heightRafId = null;
         var selectionRafId = null;
         var lastContainerWidth = 0;
         var stableReflowState = null;
-        var rendererAssets = data.rendererAssets || {};
-        var qcfVersion = typeof rendererAssets.qcfVersion === 'string' ? rendererAssets.qcfVersion : null;
-        var qcfFontFamily =
-          typeof rendererAssets.pageFontFamily === 'string' ? rendererAssets.pageFontFamily : null;
-        var qcfFontFileUri =
-          typeof rendererAssets.pageFontFileUri === 'string' ? rendererAssets.pageFontFileUri : null;
-        var qcfFontLoaded = false;
+        var activeRenderToken = 0;
 
-        function escapeHtml(value) {
-          return String(value)
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#39;');
+        function emit(message) {
+          if (!window.ReactNativeWebView) {
+            return;
+          }
+
+          window.ReactNativeWebView.postMessage(JSON.stringify(message));
         }
 
         function parseCssLengthToPx(value) {
@@ -266,12 +258,50 @@ export function buildMushafWebViewDocument({
           return Number.isFinite(numeric) ? numeric : 0;
         }
 
+        function escapeHtml(value) {
+          return String(value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+        }
+
+        function normalizeCopyText(value) {
+          return String(value || '')
+            .replace(/\\s+/g, ' ')
+            .trim();
+        }
+
+        function applyCssVariables(layout) {
+          document.documentElement.style.setProperty('--font-size', layout.fontSizeCss);
+          document.documentElement.style.setProperty('--exact-line-width', layout.lineWidthCss);
+          document.documentElement.style.setProperty(
+            '--line-height-multiplier',
+            String(layout.lineHeightMultiplier)
+          );
+          document.documentElement.style.setProperty(
+            '--reflow-line-height-multiplier',
+            String(layout.reflowLineHeightMultiplier)
+          );
+        }
+
         function resolveWordText(word) {
+          if (!currentPayload || !currentPayload.data) {
+            return '';
+          }
+
+          var qcfVersion =
+            currentPayload.rendererAssets &&
+            typeof currentPayload.rendererAssets.qcfVersion === 'string'
+              ? currentPayload.rendererAssets.qcfVersion
+              : null;
+
           if (qcfVersion) {
             return word.textQpcHafs || word.textUthmani || word.textIndopak || '';
           }
 
-          if (data.pack.script === 'indopak') {
+          if (currentPayload.data.pack.script === 'indopak') {
             return word.textIndopak || word.textUthmani || '';
           }
 
@@ -279,17 +309,17 @@ export function buildMushafWebViewDocument({
         }
 
         function getGlyphCode(word) {
-          if (!qcfVersion) {
+          if (
+            !currentPayload ||
+            !currentPayload.rendererAssets ||
+            !currentPayload.rendererAssets.qcfVersion
+          ) {
             return '';
           }
 
-          return qcfVersion === 'v1' ? word.codeV1 || '' : word.codeV2 || '';
-        }
-
-        function normalizeCopyText(value) {
-          return String(value || '')
-            .replace(/\\s+/g, ' ')
-            .trim();
+          return currentPayload.rendererAssets.qcfVersion === 'v1'
+            ? word.codeV1 || ''
+            : word.codeV2 || '';
         }
 
         function resolveVerseKey(word) {
@@ -318,39 +348,16 @@ export function buildMushafWebViewDocument({
           };
         }
 
-        function emit(message) {
-          if (!window.ReactNativeWebView) {
-            return;
-          }
-
-          window.ReactNativeWebView.postMessage(JSON.stringify(message));
-        }
-
-        function scheduleHeightReport() {
-          if (heightRafId !== null) {
-            cancelAnimationFrame(heightRafId);
-          }
-
-          heightRafId = requestAnimationFrame(function () {
-            var height = Math.ceil(pageRoot.getBoundingClientRect().height);
-            emit({
-              type: 'content-height',
-              payload: {
-                height: height,
-              },
-            });
-            heightRafId = null;
-          });
-        }
-
         function getSelectionWordNodes(range) {
-          return Array.from(pageContent.querySelectorAll('[data-mushaf-word="true"]')).filter(function (node) {
-            try {
-              return range.intersectsNode(node);
-            } catch (error) {
-              return false;
+          return Array.from(pageContent.querySelectorAll('[data-mushaf-word="true"]')).filter(
+            function (node) {
+              try {
+                return range.intersectsNode(node);
+              } catch (error) {
+                return false;
+              }
             }
-          });
+          );
         }
 
         function collectSelectionPayload() {
@@ -366,7 +373,12 @@ export function buildMushafWebViewDocument({
 
           var anchorNode = selection.anchorNode;
           var focusNode = selection.focusNode;
-          if (!anchorNode || !focusNode || !pageContent.contains(anchorNode) || !pageContent.contains(focusNode)) {
+          if (
+            !anchorNode ||
+            !focusNode ||
+            !pageContent.contains(anchorNode) ||
+            !pageContent.contains(focusNode)
+          ) {
             return {
               isCollapsed: true,
               text: '',
@@ -430,46 +442,29 @@ export function buildMushafWebViewDocument({
           });
         }
 
-        async function loadQcfPageFontIfNeeded() {
-          if (!qcfVersion || !qcfFontFamily || !qcfFontFileUri || typeof FontFace === 'undefined') {
-            return false;
+        function scheduleHeightReport() {
+          if (heightRafId !== null) {
+            cancelAnimationFrame(heightRafId);
           }
 
-          var existingFontLoaded = Array.from(document.fonts || []).some(function (font) {
-            return font.family === qcfFontFamily && font.status === 'loaded';
+          heightRafId = requestAnimationFrame(function () {
+            var height = Math.ceil(pageRoot.getBoundingClientRect().height);
+            emit({
+              type: 'content-height',
+              payload: {
+                height: height,
+              },
+            });
+            heightRafId = null;
           });
-
-          if (existingFontLoaded) {
-            document.documentElement.style.setProperty('--qcf-font-family', "'" + qcfFontFamily + "'");
-            qcfFontLoaded = true;
-            return true;
-          }
-
-          try {
-            var fontFace = new FontFace(
-              qcfFontFamily,
-              "url('" + String(qcfFontFileUri).replace(/'/g, "\\'") + "')"
-            );
-            fontFace.display = 'block';
-            var loadedFace = await fontFace.load();
-            if (document.fonts) {
-              document.fonts.add(loadedFace);
-            }
-            document.documentElement.style.setProperty('--qcf-font-family', "'" + qcfFontFamily + "'");
-            qcfFontLoaded = true;
-            return true;
-          } catch (error) {
-            console.error('Failed to load local QCF page font', error);
-            return false;
-          }
         }
 
         function shouldUseReflow(containerWidth) {
-          if (containerWidth <= 0) {
+          if (!currentPayload || containerWidth <= 0) {
             return false;
           }
 
-          var lineWidthPx = parseCssLengthToPx(payload.layout.lineWidthCss);
+          var lineWidthPx = parseCssLengthToPx(currentPayload.layout.lineWidthCss);
           var threshold = containerWidth * 0.95;
 
           if (stableReflowState !== null) {
@@ -480,6 +475,11 @@ export function buildMushafWebViewDocument({
         }
 
         function applyLayoutMode() {
+          if (!currentPayload) {
+            scheduleHeightReport();
+            return;
+          }
+
           var containerWidth = pageContent.clientWidth;
 
           if (Math.abs(containerWidth - lastContainerWidth) < 10 && stableReflowState !== null) {
@@ -495,6 +495,14 @@ export function buildMushafWebViewDocument({
         }
 
         function createWordNode(word, className) {
+          if (!currentPayload) {
+            return null;
+          }
+
+          var rendererAssets = currentPayload.rendererAssets || {};
+          var qcfVersion =
+            typeof rendererAssets.qcfVersion === 'string' ? rendererAssets.qcfVersion : null;
+          var qcfFontLoaded = Boolean(currentPayload.qcfFontLoaded);
           var wordText = resolveWordText(word);
           var glyphCode = getGlyphCode(word);
           var shouldUseQcfGlyph = Boolean(qcfVersion && qcfFontLoaded && glyphCode);
@@ -527,11 +535,17 @@ export function buildMushafWebViewDocument({
         }
 
         function renderStandardLines() {
-          var linesByNumber = new Map((data.pageLines.lines || []).map(function (line) {
-            return [line.lineNumber, line];
-          }));
+          if (!currentPayload || !currentPayload.data) {
+            return;
+          }
 
-          for (var lineNumber = 1; lineNumber <= data.pack.lines; lineNumber += 1) {
+          var linesByNumber = new Map(
+            (currentPayload.data.pageLines.lines || []).map(function (line) {
+              return [line.lineNumber, line];
+            })
+          );
+
+          for (var lineNumber = 1; lineNumber <= currentPayload.data.pack.lines; lineNumber += 1) {
             var line = linesByNumber.get(lineNumber) || null;
             var lineShell = document.createElement('div');
             lineShell.className = 'line-shell';
@@ -561,13 +575,19 @@ export function buildMushafWebViewDocument({
         }
 
         function renderReflowContent() {
+          if (!currentPayload || !currentPayload.data) {
+            return;
+          }
+
           var reflowCopy = document.createElement('div');
           reflowCopy.className = 'reflow-copy';
           reflowCopy.setAttribute('dir', 'rtl');
           reflowCopy.setAttribute('translate', 'no');
 
           var words = [];
-          var pageLines = Array.isArray(data.pageLines.lines) ? data.pageLines.lines : [];
+          var pageLines = Array.isArray(currentPayload.data.pageLines.lines)
+            ? currentPayload.data.pageLines.lines
+            : [];
 
           for (var lineIndex = 0; lineIndex < pageLines.length; lineIndex += 1) {
             var line = pageLines[lineIndex];
@@ -597,6 +617,93 @@ export function buildMushafWebViewDocument({
           }
 
           reflowView.appendChild(reflowCopy);
+        }
+
+        async function loadQcfPageFontIfNeeded(rendererAssets) {
+          if (
+            !rendererAssets ||
+            !rendererAssets.qcfVersion ||
+            !rendererAssets.pageFontFamily ||
+            !rendererAssets.pageFontFileUri ||
+            typeof FontFace === 'undefined'
+          ) {
+            return false;
+          }
+
+          var qcfFontFamily = rendererAssets.pageFontFamily;
+          var qcfFontFileUri = rendererAssets.pageFontFileUri;
+          var existingFontLoaded = Array.from(document.fonts || []).some(function (font) {
+            return font.family === qcfFontFamily && font.status === 'loaded';
+          });
+
+          if (existingFontLoaded) {
+            document.documentElement.style.setProperty('--qcf-font-family', "'" + qcfFontFamily + "'");
+            return true;
+          }
+
+          try {
+            var fontFace = new FontFace(
+              qcfFontFamily,
+              "url('" + String(qcfFontFileUri).replace(/'/g, "\\'") + "')"
+            );
+            fontFace.display = 'block';
+            var loadedFace = await fontFace.load();
+            if (document.fonts) {
+              document.fonts.add(loadedFace);
+            }
+            document.documentElement.style.setProperty('--qcf-font-family', "'" + qcfFontFamily + "'");
+            return true;
+          } catch (error) {
+            console.error('Failed to load local QCF page font', error);
+            return false;
+          }
+        }
+
+        function clearRenderedPage() {
+          standardView.innerHTML = '';
+          reflowView.innerHTML = '';
+          pageRoot.classList.remove('reflow');
+          stableReflowState = null;
+          lastContainerWidth = 0;
+
+          try {
+            var selection = window.getSelection();
+            if (selection) {
+              selection.removeAllRanges();
+            }
+          } catch (error) {}
+        }
+
+        async function render(nextPayload) {
+          if (!nextPayload || !nextPayload.data || !nextPayload.layout) {
+            return;
+          }
+
+          var renderToken = activeRenderToken + 1;
+          activeRenderToken = renderToken;
+
+          currentPayload = {
+            data: nextPayload.data,
+            layout: nextPayload.layout,
+            rendererAssets: nextPayload.data.rendererAssets || {},
+            qcfFontLoaded: false,
+          };
+
+          document.title = escapeHtml('Mushaf Page ' + String(nextPayload.data.pageNumber));
+          pageRoot.setAttribute('aria-label', 'Page ' + String(nextPayload.data.pageNumber));
+          applyCssVariables(nextPayload.layout);
+          clearRenderedPage();
+
+          currentPayload.qcfFontLoaded = await loadQcfPageFontIfNeeded(currentPayload.rendererAssets);
+          if (renderToken !== activeRenderToken) {
+            return;
+          }
+
+          renderStandardLines();
+          renderReflowContent();
+          applyLayoutMode();
+          scheduleSelectionReport();
+          setTimeout(applyLayoutMode, 0);
         }
 
         function getWordTarget(node) {
@@ -661,12 +768,6 @@ export function buildMushafWebViewDocument({
           event.clipboardData.setData('text/plain', normalized);
         });
 
-        await loadQcfPageFontIfNeeded();
-        renderStandardLines();
-        renderReflowContent();
-        applyLayoutMode();
-        scheduleSelectionReport();
-
         if (typeof ResizeObserver !== 'undefined') {
           var resizeObserver = new ResizeObserver(function () {
             applyLayoutMode();
@@ -677,9 +778,76 @@ export function buildMushafWebViewDocument({
         }
 
         window.addEventListener('load', scheduleHeightReport);
-        setTimeout(applyLayoutMode, 0);
+
+        window.__MUSHAF_RENDERER__ = {
+          render: function (nextPayload) {
+            return Promise.resolve()
+              .then(function () {
+                return render(nextPayload);
+              })
+              .catch(function (error) {
+                console.error('Failed to render mushaf page payload', error);
+              });
+          },
+        };
       })();
     </script>
   </body>
 </html>`;
+}
+
+export function buildMushafWebViewShellDocument({
+  packId,
+  mushafScaleStep,
+  theme,
+  viewportHeight,
+}: {
+  packId: MushafPackId;
+  mushafScaleStep: MushafScaleStep;
+  theme: MushafWebViewTheme;
+  viewportHeight: number;
+}): {
+  html: string;
+  layout: MushafWebViewLayoutPayload;
+} {
+  const layoutConfig = getMushafWebViewLayoutConfig(packId, mushafScaleStep, viewportHeight);
+  const layout = {
+    fontSizeCss: layoutConfig.fontSizeCss,
+    isExactPreset: layoutConfig.isExactPreset,
+    lineWidthCss: layoutConfig.lineWidthCss,
+    lineHeightMultiplier: layoutConfig.lineHeightMultiplier,
+    reflowLineHeightMultiplier: layoutConfig.reflowLineHeightMultiplier,
+  };
+  const cacheKey = `${packId}:${mushafScaleStep}:${theme}:${Math.round(viewportHeight)}`;
+  const cached = shellDocumentCache.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  const shellDocument = {
+    html: buildShellDocumentHtml({
+      layout,
+      theme,
+    }),
+    layout,
+  };
+  shellDocumentCache.set(cacheKey, shellDocument);
+  return shellDocument;
+}
+
+export function buildMushafWebViewRenderScript({
+  data,
+  layout,
+}: MushafWebViewRenderPayload): string {
+  return `
+    (function () {
+      var renderer = window.__MUSHAF_RENDERER__;
+      if (!renderer || typeof renderer.render !== 'function') {
+        return true;
+      }
+
+      renderer.render(${serializeJson({ data, layout })});
+      return true;
+    })();
+  `;
 }

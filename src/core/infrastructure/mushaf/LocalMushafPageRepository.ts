@@ -4,10 +4,14 @@ import type { IMushafPageRepository } from '@/src/core/domain/repositories/IMush
 import type {
   MushafPackId,
   MushafPackManifest,
+  MushafPackPageAddressableLocalPayload,
+  MushafPackPageLookupPayload,
+  MushafPackPagePayload,
   MushafPackPayload,
   MushafPageData,
   MushafPageRendererAssets,
   MushafResolvedPackVersion,
+  MushafVerse,
 } from '@/types';
 
 import type { IMushafPackInstallRegistry } from '@/src/core/domain/repositories/IMushafPackInstallRegistry';
@@ -23,14 +27,33 @@ import { mapVersesToPageLines } from './mushafPageMapping';
 
 type ResolvedPackData = {
   manifest: MushafPackManifest;
-  payload: MushafPackPayload;
   pack: MushafResolvedPackVersion;
+  lookup: Record<string, MushafPackPageLookupPayload['lookup'][string]>;
+  readVerses: (pageNumber: number) => Promise<MushafVerse[]>;
 };
 
+const ENABLE_MUSHAF_QCF_DEV_LOGS = __DEV__;
+const resolvedPackCache = new Map<string, Promise<ResolvedPackData>>();
 const payloadCache = new Map<string, Promise<MushafPackPayload>>();
+const lookupCache = new Map<string, Promise<MushafPackPageLookupPayload>>();
+const pageDataCache = new Map<string, Promise<MushafPageData>>();
+const resolvedPageDataCache = new Map<string, MushafPageData>();
+const activePageCacheVersionByPackId = new Map<MushafPackId, string>();
 
 function getPayloadCacheKey(packId: MushafPackId, version: string): string {
   return `${packId}@${version}`;
+}
+
+function getPageDataCacheKey(packId: MushafPackId, version: string, pageNumber: number): string {
+  return `${packId}|${version}|${pageNumber}`;
+}
+
+function logMushafQcfDev(event: string, details: Record<string, unknown>): void {
+  if (!ENABLE_MUSHAF_QCF_DEV_LOGS) {
+    return;
+  }
+
+  console.log(`[mushaf-qcf][LocalMushafPageRepository] ${event}`, details);
 }
 
 function normalizePageNumber(pageNumber: number): number {
@@ -54,6 +77,51 @@ function ensurePayloadMatchesManifest(
   if (payload.version.trim() !== manifest.version.trim()) {
     throw new Error(
       `Installed mushaf payload version mismatch: expected ${manifest.version}, received ${payload.version}`
+    );
+  }
+
+  return payload;
+}
+
+function ensureLookupPayloadMatchesManifest(
+  manifest: MushafPackManifest,
+  payload: MushafPackPageLookupPayload
+): MushafPackPageLookupPayload {
+  if (payload.packId !== manifest.packId) {
+    throw new Error(
+      `Installed mushaf lookup packId mismatch: expected ${manifest.packId}, received ${payload.packId}`
+    );
+  }
+
+  if (payload.version.trim() !== manifest.version.trim()) {
+    throw new Error(
+      `Installed mushaf lookup version mismatch: expected ${manifest.version}, received ${payload.version}`
+    );
+  }
+
+  return payload;
+}
+
+function ensurePagePayloadMatchesManifest(
+  manifest: MushafPackManifest,
+  payload: MushafPackPagePayload,
+  pageNumber: number
+): MushafPackPagePayload {
+  if (payload.packId !== manifest.packId) {
+    throw new Error(
+      `Installed mushaf page packId mismatch: expected ${manifest.packId}, received ${payload.packId}`
+    );
+  }
+
+  if (payload.version.trim() !== manifest.version.trim()) {
+    throw new Error(
+      `Installed mushaf page version mismatch: expected ${manifest.version}, received ${payload.version}`
+    );
+  }
+
+  if (payload.pageNumber !== pageNumber) {
+    throw new Error(
+      `Installed mushaf page number mismatch: expected ${pageNumber}, received ${payload.pageNumber}`
     );
   }
 
@@ -167,68 +235,362 @@ export class LocalMushafPageRepository implements IMushafPageRepository {
     const normalizedPageNumber = normalizePageNumber(pageNumber);
     const resolvedPack = await this.resolvePackDataAsync(packId);
 
-    if (normalizedPageNumber > resolvedPack.pack.totalPages) {
-      throw new MushafPageNotFoundError(packId, resolvedPack.pack.version, normalizedPageNumber);
+    return this.getPageFromResolvedPackAsync(resolvedPack, normalizedPageNumber);
+  }
+
+  peekCachedPage(params: {
+    packId: MushafPackId;
+    pageNumber: number;
+    expectedVersion?: string;
+  }): MushafPageData | null {
+    if (!Number.isInteger(params.pageNumber) || params.pageNumber < 1) {
+      return null;
     }
 
-    const lookup = resolvedPack.payload.lookup[String(normalizedPageNumber)];
-    const verses = resolvedPack.payload.pages[String(normalizedPageNumber)] ?? [];
-
-    if (!lookup) {
-      throw new MushafPageNotFoundError(packId, resolvedPack.pack.version, normalizedPageNumber);
+    const candidateVersions = new Set<string>();
+    const expectedVersion = params.expectedVersion?.trim();
+    if (expectedVersion) {
+      candidateVersions.add(expectedVersion);
     }
 
-    return {
-      pack: resolvedPack.pack,
-      pageNumber: normalizedPageNumber,
-      lookup,
-      verses,
-      pageLines: mapVersesToPageLines(normalizedPageNumber, verses),
-      rendererAssets: buildRendererAssets(
-        resolvedPack.manifest,
-        this.fileStore,
-        normalizedPageNumber
-      ),
-    };
+    const activeVersion = activePageCacheVersionByPackId.get(params.packId);
+    if (activeVersion) {
+      candidateVersions.add(activeVersion);
+    }
+
+    for (const candidateVersion of candidateVersions) {
+      const cached = resolvedPageDataCache.get(
+        getPageDataCacheKey(params.packId, candidateVersion, params.pageNumber)
+      );
+      if (cached) {
+        return cached;
+      }
+    }
+
+    return null;
+  }
+
+  async prefetchPages(params: {
+    packId: MushafPackId;
+    pageNumbers: number[];
+    expectedVersion?: string;
+  }): Promise<void> {
+    const normalizedPageNumbers = Array.from(
+      new Set(
+        params.pageNumbers
+          .filter((candidate) => Number.isInteger(candidate) && candidate > 0)
+          .map((candidate) => normalizePageNumber(candidate))
+      )
+    );
+
+    if (normalizedPageNumbers.length === 0) {
+      return;
+    }
+
+    const resolvedPack = await this.resolvePackDataAsync(params.packId);
+    if (
+      params.expectedVersion &&
+      resolvedPack.pack.version.trim() !== params.expectedVersion.trim()
+    ) {
+      logMushafQcfDev('prefetch-skipped-version-mismatch', {
+        expectedVersion: params.expectedVersion,
+        packId: params.packId,
+        resolvedVersion: resolvedPack.pack.version,
+      });
+      return;
+    }
+
+    const pageNumbers = normalizedPageNumbers.filter(
+      (candidate) => candidate <= resolvedPack.pack.totalPages
+    );
+    if (pageNumbers.length === 0) {
+      return;
+    }
+
+    logMushafQcfDev('prefetch-start', {
+      packId: params.packId,
+      pageNumbers,
+      version: resolvedPack.pack.version,
+    });
+
+    await Promise.all(
+      pageNumbers.map(async (candidate) => {
+        try {
+          await this.getPageFromResolvedPackAsync(resolvedPack, candidate);
+        } catch (error) {
+          logMushafQcfDev('prefetch-error', {
+            error: error instanceof Error ? error.message : String(error),
+            packId: params.packId,
+            pageNumber: candidate,
+            version: resolvedPack.pack.version,
+          });
+        }
+      })
+    );
+  }
+
+  private async getPageFromResolvedPackAsync(
+    resolvedPack: ResolvedPackData,
+    pageNumber: number
+  ): Promise<MushafPageData> {
+    this.prunePackCachesForVersionChange(resolvedPack.pack.packId, resolvedPack.pack.version);
+
+    if (pageNumber > resolvedPack.pack.totalPages) {
+      throw new MushafPageNotFoundError(
+        resolvedPack.pack.packId,
+        resolvedPack.pack.version,
+        pageNumber
+      );
+    }
+
+    const cacheKey = getPageDataCacheKey(
+      resolvedPack.pack.packId,
+      resolvedPack.pack.version,
+      pageNumber
+    );
+    const resolvedSnapshot = resolvedPageDataCache.get(cacheKey);
+    if (resolvedSnapshot) {
+      logMushafQcfDev('page-cache-hit', {
+        cacheKey,
+        kind: 'resolved',
+        packId: resolvedPack.pack.packId,
+        pageNumber,
+        version: resolvedPack.pack.version,
+      });
+      return resolvedSnapshot;
+    }
+
+    const existing = pageDataCache.get(cacheKey);
+    if (existing) {
+      logMushafQcfDev('page-cache-hit', {
+        cacheKey,
+        kind: 'in-flight',
+        packId: resolvedPack.pack.packId,
+        pageNumber,
+        version: resolvedPack.pack.version,
+      });
+      return existing;
+    }
+
+    const loadPromise = Promise.resolve().then(async () => {
+      const lookup = resolvedPack.lookup[String(pageNumber)];
+
+      if (!lookup) {
+        throw new MushafPageNotFoundError(
+          resolvedPack.pack.packId,
+          resolvedPack.pack.version,
+          pageNumber
+        );
+      }
+
+      const verses = await resolvedPack.readVerses(pageNumber);
+
+      const pageData: MushafPageData = {
+        pack: resolvedPack.pack,
+        pageNumber,
+        lookup,
+        verses,
+        pageLines: mapVersesToPageLines(pageNumber, verses),
+        rendererAssets: buildRendererAssets(resolvedPack.manifest, this.fileStore, pageNumber),
+      };
+
+      resolvedPageDataCache.set(cacheKey, pageData);
+      return pageData;
+    });
+
+    pageDataCache.set(cacheKey, loadPromise);
+
+    try {
+      return await loadPromise;
+    } catch (error) {
+      pageDataCache.delete(cacheKey);
+      throw error;
+    }
   }
 
   private async resolvePackDataAsync(packId: MushafPackId): Promise<ResolvedPackData> {
     const activeInstall = await this.installRegistry.getActive(packId);
     if (activeInstall) {
       if (activeInstall.channel === 'bundled') {
-        const bundledPack = getBundledMushafPack(packId);
-        if (!bundledPack) {
-          throw new Error(`Bundled mushaf assets are missing for ${packId}`);
-        }
-
-        return {
-          manifest: bundledPack.manifest,
-          payload: ensurePayloadMatchesManifest(bundledPack.manifest, bundledPack.payload),
-          pack: toResolvedPack(bundledPack.manifest),
-        };
+        return this.resolveBundledPackDataAsync(packId);
       }
 
-      const manifest = await this.fileStore.readInstalledManifestAsync(packId, activeInstall.version);
-      if (!manifest) {
-        throw new MushafPackNotInstalledError(packId);
-      }
-
-      return {
-        manifest,
-        payload: await this.readInstalledPayloadAsync(packId, activeInstall.version, manifest),
-        pack: toResolvedPack(manifest),
-      };
+      return this.resolveInstalledPackDataAsync(packId, activeInstall.version);
     }
 
+    return this.resolveBundledPackDataAsync(packId);
+  }
+
+  private finalizeResolvedPackData(packId: MushafPackId, resolvedPackData: ResolvedPackData): ResolvedPackData {
+    this.prunePackCachesForVersionChange(packId, resolvedPackData.pack.version);
+    return resolvedPackData;
+  }
+
+  private prunePackCachesForVersionChange(packId: MushafPackId, activeVersion: string): void {
+    const previousVersion = activePageCacheVersionByPackId.get(packId);
+    if (previousVersion === activeVersion) {
+      return;
+    }
+
+    activePageCacheVersionByPackId.set(packId, activeVersion);
+
+    for (const cacheKey of pageDataCache.keys()) {
+      const [cachedPackId, cachedVersion] = cacheKey.split('|');
+      if (cachedPackId !== packId || cachedVersion === activeVersion) {
+        continue;
+      }
+
+      pageDataCache.delete(cacheKey);
+    }
+
+    for (const cacheKey of resolvedPageDataCache.keys()) {
+      const [cachedPackId, cachedVersion] = cacheKey.split('|');
+      if (cachedPackId !== packId || cachedVersion === activeVersion) {
+        continue;
+      }
+
+      resolvedPageDataCache.delete(cacheKey);
+    }
+
+    for (const cacheKey of resolvedPackCache.keys()) {
+      const [cachedPackId, cachedVersion] = cacheKey.split('@');
+      if (cachedPackId !== packId || cachedVersion === activeVersion) {
+        continue;
+      }
+
+      resolvedPackCache.delete(cacheKey);
+    }
+
+    for (const cacheKey of payloadCache.keys()) {
+      const [cachedPackId, cachedVersion] = cacheKey.split('@');
+      if (cachedPackId !== packId || cachedVersion === activeVersion) {
+        continue;
+      }
+
+      payloadCache.delete(cacheKey);
+    }
+
+    for (const cacheKey of lookupCache.keys()) {
+      const [cachedPackId, cachedVersion] = cacheKey.split('@');
+      if (cachedPackId !== packId || cachedVersion === activeVersion) {
+        continue;
+      }
+
+      lookupCache.delete(cacheKey);
+    }
+
+    logMushafQcfDev('page-cache-pruned-pack-version-change', {
+      activeVersion,
+      packId,
+      previousVersion: previousVersion ?? null,
+    });
+  }
+
+  private async resolveBundledPackDataAsync(packId: MushafPackId): Promise<ResolvedPackData> {
     const bundledPack = getBundledMushafPack(packId);
     if (!bundledPack) {
       throw new MushafPackNotInstalledError(packId);
     }
 
+    const version = bundledPack.manifest.version.trim();
+    this.prunePackCachesForVersionChange(packId, version);
+
+    const cacheKey = getPayloadCacheKey(packId, version);
+    const existing = resolvedPackCache.get(cacheKey);
+    if (existing) {
+      return existing;
+    }
+
+    const loadPromise = Promise.resolve().then(() => {
+      const payload = ensurePayloadMatchesManifest(bundledPack.manifest, bundledPack.payload);
+
+      return this.finalizeResolvedPackData(packId, {
+        manifest: bundledPack.manifest,
+        pack: toResolvedPack(bundledPack.manifest),
+        lookup: payload.lookup,
+        readVerses: async (pageNumber) => payload.pages[String(pageNumber)] ?? [],
+      });
+    });
+
+    resolvedPackCache.set(cacheKey, loadPromise);
+
+    try {
+      return await loadPromise;
+    } catch (error) {
+      resolvedPackCache.delete(cacheKey);
+      throw error;
+    }
+  }
+
+  private async resolveInstalledPackDataAsync(
+    packId: MushafPackId,
+    version: string
+  ): Promise<ResolvedPackData> {
+    const normalizedVersion = version.trim();
+    this.prunePackCachesForVersionChange(packId, normalizedVersion);
+
+    const cacheKey = getPayloadCacheKey(packId, normalizedVersion);
+    const existing = resolvedPackCache.get(cacheKey);
+    if (existing) {
+      return existing;
+    }
+
+    const loadPromise = (async () => {
+      const manifest = await this.fileStore.readInstalledManifestAsync(packId, normalizedVersion);
+      if (!manifest) {
+        throw new MushafPackNotInstalledError(packId);
+      }
+
+      return this.finalizeResolvedPackData(
+        packId,
+        await this.buildInstalledResolvedPackDataAsync(packId, normalizedVersion, manifest)
+      );
+    })();
+
+    resolvedPackCache.set(cacheKey, loadPromise);
+
+    try {
+      return await loadPromise;
+    } catch (error) {
+      resolvedPackCache.delete(cacheKey);
+      throw error;
+    }
+  }
+
+  private async buildInstalledResolvedPackDataAsync(
+    packId: MushafPackId,
+    version: string,
+    manifest: MushafPackManifest
+  ): Promise<ResolvedPackData> {
+    if (manifest.localPayload?.format === 'page-json-v1') {
+      const lookupPayload = await this.readInstalledLookupPayloadAsync(
+        packId,
+        version,
+        manifest,
+        manifest.localPayload
+      );
+
+      return {
+        manifest,
+        pack: toResolvedPack(manifest),
+        lookup: lookupPayload.lookup,
+        readVerses: async (pageNumber) =>
+          this.readInstalledPageVersesAsync(
+            packId,
+            version,
+            manifest,
+            manifest.localPayload as MushafPackPageAddressableLocalPayload,
+            pageNumber
+          ),
+      };
+    }
+
+    const payload = await this.readInstalledPayloadAsync(packId, version, manifest);
     return {
-      manifest: bundledPack.manifest,
-      payload: ensurePayloadMatchesManifest(bundledPack.manifest, bundledPack.payload),
-      pack: toResolvedPack(bundledPack.manifest),
+      manifest,
+      pack: toResolvedPack(manifest),
+      lookup: payload.lookup,
+      readVerses: async (pageNumber) => payload.pages[String(pageNumber)] ?? [],
     };
   }
 
@@ -261,5 +623,51 @@ export class LocalMushafPageRepository implements IMushafPageRepository {
       payloadCache.delete(cacheKey);
       throw error;
     }
+  }
+
+  private async readInstalledLookupPayloadAsync(
+    packId: MushafPackId,
+    version: string,
+    manifest: MushafPackManifest,
+    localPayload: MushafPackPageAddressableLocalPayload
+  ): Promise<MushafPackPageLookupPayload> {
+    const cacheKey = getPayloadCacheKey(packId, version);
+    const existing = lookupCache.get(cacheKey);
+    if (existing) {
+      return existing;
+    }
+
+    const loadPromise = (async () => {
+      const fileUri = this.fileStore.getInstalledLookupFileUri(packId, version, localPayload);
+      return ensureLookupPayloadMatchesManifest(
+        manifest,
+        await parseJsonFileAsync<MushafPackPageLookupPayload>(fileUri)
+      );
+    })();
+
+    lookupCache.set(cacheKey, loadPromise);
+
+    try {
+      return await loadPromise;
+    } catch (error) {
+      lookupCache.delete(cacheKey);
+      throw error;
+    }
+  }
+
+  private async readInstalledPageVersesAsync(
+    packId: MushafPackId,
+    version: string,
+    manifest: MushafPackManifest,
+    localPayload: MushafPackPageAddressableLocalPayload,
+    pageNumber: number
+  ): Promise<MushafVerse[]> {
+    const fileUri = this.fileStore.getInstalledPageFileUri(packId, version, localPayload, pageNumber);
+    const payload = ensurePagePayloadMatchesManifest(
+      manifest,
+      await parseJsonFileAsync<MushafPackPagePayload>(fileUri),
+      pageNumber
+    );
+    return payload.verses;
   }
 }

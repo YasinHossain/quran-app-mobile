@@ -1,6 +1,10 @@
 import * as FileSystem from 'expo-file-system/legacy';
 
-import type { MushafPackId, MushafPackManifest } from '@/types';
+import type {
+  MushafPackId,
+  MushafPackManifest,
+  MushafPackPageAddressableLocalPayload,
+} from '@/types';
 
 function getDocumentDirectory(): string {
   const dir = FileSystem.documentDirectory;
@@ -46,6 +50,14 @@ function buildDirectoryUri(baseUri: string, segments: string[]): string {
   return `${baseUri}${segments.map(normalizePathSegment).join('/')}/`;
 }
 
+function buildPageAddressablePageRelativePath(
+  localPayload: MushafPackPageAddressableLocalPayload,
+  pageNumber: number
+): string {
+  const normalizedDirectory = normalizeRelativePath(localPayload.pagesDirectory);
+  return `${normalizedDirectory}/${Math.trunc(pageNumber)}.json`;
+}
+
 export class MushafPackFileStore {
   getBaseDirectoryUri(): string {
     return `${getDocumentDirectory()}mushaf-packs/`;
@@ -65,6 +77,27 @@ export class MushafPackFileStore {
 
   getManifestUri(packId: MushafPackId, version: string): string {
     return this.getInstalledFileUri(packId, version, 'manifest.json');
+  }
+
+  getInstalledLookupFileUri(
+    packId: MushafPackId,
+    version: string,
+    localPayload: MushafPackPageAddressableLocalPayload
+  ): string {
+    return this.getInstalledFileUri(packId, version, localPayload.lookupFile);
+  }
+
+  getInstalledPageFileUri(
+    packId: MushafPackId,
+    version: string,
+    localPayload: MushafPackPageAddressableLocalPayload,
+    pageNumber: number
+  ): string {
+    return this.getInstalledFileUri(
+      packId,
+      version,
+      buildPageAddressablePageRelativePath(localPayload, pageNumber)
+    );
   }
 
   getTemporaryVersionDirectoryUri(packId: MushafPackId, version: string, token: string): string {

@@ -88,6 +88,8 @@ export interface MushafPageLookupRecord {
   lastVerseKey: string;
 }
 
+export type MushafLocalPayloadFormat = 'page-json-v1';
+
 export type MushafPackChecksum = string;
 
 export interface MushafPackRemoteFile {
@@ -95,6 +97,12 @@ export interface MushafPackRemoteFile {
   url?: string | undefined;
   checksum?: MushafPackChecksum | undefined;
   sizeBytes?: number | undefined;
+}
+
+export interface MushafPackPageAddressableLocalPayload {
+  format: MushafLocalPayloadFormat;
+  lookupFile: string;
+  pagesDirectory: string;
 }
 
 export interface HostedMushafPackCatalogEntry {
@@ -133,6 +141,7 @@ export interface MushafPackManifest {
   payloadFile: string;
   payloadChecksum?: MushafPackChecksum | undefined;
   payloadSizeBytes?: number | undefined;
+  localPayload?: MushafPackPageAddressableLocalPayload | undefined;
   assetFiles?: MushafPackRemoteFile[] | undefined;
   generatedAt: string;
   source: string;
@@ -144,6 +153,20 @@ export interface MushafPackPayload {
   totalPages: number;
   lookup: Record<string, MushafPageLookupRecord>;
   pages: Record<string, MushafVerse[]>;
+}
+
+export interface MushafPackPageLookupPayload {
+  packId: MushafPackId;
+  version: string;
+  totalPages: number;
+  lookup: Record<string, MushafPageLookupRecord>;
+}
+
+export interface MushafPackPagePayload {
+  packId: MushafPackId;
+  version: string;
+  pageNumber: number;
+  verses: MushafVerse[];
 }
 
 export interface MushafResolvedPackVersion {

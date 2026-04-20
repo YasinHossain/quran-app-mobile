@@ -2,7 +2,15 @@ import { FlashList } from '@shopify/flash-list';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { Settings } from 'lucide-react-native';
 import React from 'react';
-import { ActivityIndicator, Pressable, Share, Text, View, useWindowDimensions } from 'react-native';
+import {
+  ActivityIndicator,
+  Pressable,
+  Share,
+  Text,
+  View,
+  useWindowDimensions,
+  type ViewToken,
+} from 'react-native';
 
 import { BookmarkModal } from '@/components/bookmarks/BookmarkModal';
 import { MushafNativePage } from '@/components/mushaf/MushafNativePage';
@@ -11,12 +19,12 @@ import {
   type MushafSelectionPayload,
   type MushafWordPressPayload,
 } from '@/components/mushaf/mushafWordPayload';
-import { MushafWebViewPage } from '@/components/mushaf/MushafWebViewPage';
+import { MushafWebViewPage, MushafWebViewPagePlaceholder } from '@/components/mushaf/MushafWebViewPage';
 import { SettingsSidebar } from '@/components/reader/settings/SettingsSidebar';
 import { VerseActionsSheet } from '@/components/surah/VerseActionsSheet';
 import { AddToPlannerModal, type VerseSummaryDetails } from '@/components/verse-planner-modal';
 import Colors from '@/constants/Colors';
-import { DEFAULT_MUSHAF_ID } from '@/data/mushaf/options';
+import { DEFAULT_MUSHAF_ID, findMushafOption } from '@/data/mushaf/options';
 import { useChapters } from '@/hooks/useChapters';
 import { useMushafPageData } from '@/hooks/useMushafPageData';
 import { useAudioPlayer } from '@/providers/AudioPlayerContext';
@@ -29,6 +37,72 @@ import type { Bookmark, MushafPackId, MushafScaleStep, MushafVerse } from '@/typ
 import { mushafScaleStepToFontSize } from '@/types';
 
 const FALLBACK_TOTAL_PAGES = 604;
+const ENABLE_MUSHAF_QCF_DEV_LOGS = __DEV__;
+const EXACT_ACTIVE_PAGE_WINDOW_PADDING = 2;
+const EXACT_HEIGHT_CACHE_EPSILON_PX = 1;
+const MUSHAF_WEBVIEW_PAGE_MAX_WIDTH = 720;
+
+const exactPageHeightCache = new Map<string, number>();
+
+function nowMs(): number {
+  return globalThis.performance?.now?.() ?? Date.now();
+}
+
+function logMushafQcfDev(event: string, details: Record<string, unknown>): void {
+  if (!ENABLE_MUSHAF_QCF_DEV_LOGS) {
+    return;
+  }
+
+  console.log(`[mushaf-qcf][page-route] ${event}`, details);
+}
+
+function getMushafWebViewViewportSignature(viewportWidth: number, viewportHeight: number): string {
+  const pageWidth = Math.min(Math.max(viewportWidth - 8, 280), MUSHAF_WEBVIEW_PAGE_MAX_WIDTH);
+  return `${Math.round(pageWidth)}x${Math.round(viewportHeight)}`;
+}
+
+function buildExactPageHeightCacheKey({
+  packId,
+  version,
+  pageNumber,
+  mushafScaleStep,
+  viewportSignature,
+}: {
+  packId: MushafPackId;
+  version: string;
+  pageNumber: number;
+  mushafScaleStep: MushafScaleStep;
+  viewportSignature: string;
+}): string {
+  return `${packId}:${version}:${pageNumber}:${mushafScaleStep}:${viewportSignature}`;
+}
+
+type ExactPageWindow = {
+  firstPageNumber: number;
+  lastPageNumber: number;
+};
+
+function buildExactPageWindow({
+  firstPageNumber,
+  lastPageNumber,
+  totalPages,
+}: {
+  firstPageNumber: number;
+  lastPageNumber: number;
+  totalPages: number;
+}): ExactPageWindow {
+  return {
+    firstPageNumber: Math.max(1, firstPageNumber - EXACT_ACTIVE_PAGE_WINDOW_PADDING),
+    lastPageNumber: Math.min(totalPages, lastPageNumber + EXACT_ACTIVE_PAGE_WINDOW_PADDING),
+  };
+}
+
+function areExactPageWindowsEqual(left: ExactPageWindow, right: ExactPageWindow): boolean {
+  return (
+    left.firstPageNumber === right.firstPageNumber &&
+    left.lastPageNumber === right.lastPageNumber
+  );
+}
 
 type ActiveMushafVerse = {
   title: string;
@@ -118,25 +192,43 @@ function MushafFeedPlaceholder({
 function MushafFeedPageRow({
   pageNumber,
   packId,
+  expectedVersion,
+  exactHeightCacheKey,
+  cachedExactHeight,
+  isExactRenderer,
+  isInExactRenderWindow,
   mushafScaleStep,
   estimatedHeight,
   chapterNamesById,
+  isInitialTargetPage,
   loadingColor,
+  onExactHeightResolved,
+  onExactPageFirstHeight,
   onSelectionChange,
   onVersePress,
 }: {
   pageNumber: number;
   packId: MushafPackId;
+  expectedVersion?: string;
+  exactHeightCacheKey: string | null;
+  cachedExactHeight: number | null;
+  isExactRenderer: boolean;
+  isInExactRenderWindow: boolean;
   mushafScaleStep: MushafScaleStep;
   estimatedHeight: number;
   chapterNamesById: Map<number, string>;
+  isInitialTargetPage: boolean;
   loadingColor: string;
+  onExactHeightResolved: (payload: { cacheKey: string; height: number; pageNumber: number }) => void;
+  onExactPageFirstHeight: (payload: { pageNumber: number; height: number; durationMs: number }) => void;
   onSelectionChange: (payload: MushafSelectionPayload) => void;
   onVersePress: (verse: ActiveMushafVerse) => void;
 }): React.JSX.Element {
   const { data, isLoading, errorMessage } = useMushafPageData({
     packId,
     pageNumber,
+    expectedVersion,
+    enabled: !isExactRenderer || isInExactRenderWindow,
   });
 
   const versesByKey = React.useMemo(
@@ -173,21 +265,29 @@ function MushafFeedPageRow({
     [chapterNamesById, onVersePress, versesByKey]
   );
 
-  if (errorMessage) {
-    return (
+  let content: React.JSX.Element;
+  const resolvedExactHeight = cachedExactHeight ?? estimatedHeight;
+
+  if (isExactRenderer && !isInExactRenderWindow) {
+    content = <MushafWebViewPagePlaceholder estimatedHeight={resolvedExactHeight} />;
+  } else if (errorMessage) {
+    content = (
       <View className="px-6 py-6">
         <Text className="text-center text-sm text-muted dark:text-muted-dark">{errorMessage}</Text>
       </View>
     );
-  }
-
-  if (isLoading || !data) {
-    return <MushafFeedPlaceholder color={loadingColor} height={estimatedHeight} />;
-  }
-
-  return (
-    <View>
-      {data.pack.renderer === 'text' ? (
+  } else if (isLoading || !data) {
+    content = isExactRenderer ? (
+      <MushafWebViewPagePlaceholder
+        estimatedHeight={resolvedExactHeight}
+        showLoadingIndicator={isInExactRenderWindow}
+      />
+    ) : (
+      <MushafFeedPlaceholder color={loadingColor} height={estimatedHeight} />
+    );
+  } else {
+    content =
+      data.pack.renderer === 'text' ? (
         <MushafNativePage
           data={data}
           mushafScaleStep={mushafScaleStep}
@@ -197,10 +297,32 @@ function MushafFeedPageRow({
         <MushafWebViewPage
           data={data}
           mushafScaleStep={mushafScaleStep}
+          initialHeightOverride={cachedExactHeight ?? undefined}
+          onFirstContentHeight={
+            isInitialTargetPage
+              ? ({ height, durationMs }) =>
+                  onExactPageFirstHeight({ durationMs, height, pageNumber })
+              : undefined
+          }
+          onHeightResolved={
+            exactHeightCacheKey
+              ? ({ height }) =>
+                  onExactHeightResolved({
+                    cacheKey: exactHeightCacheKey,
+                    height,
+                    pageNumber,
+                  })
+              : undefined
+          }
           onSelectionChange={onSelectionChange}
           onWordPress={handleWordPress}
         />
-      )}
+      );
+  }
+
+  return (
+    <View>
+      {content}
       <View className="items-center px-3 pt-3">
         <View className="w-full max-w-[220px] flex-row items-center justify-center gap-3">
           <View className="h-px flex-1 bg-border/55 dark:bg-border-dark/40" />
@@ -217,7 +339,7 @@ function MushafFeedPageRow({
 export default function PageScreen(): React.JSX.Element {
   const params = useLocalSearchParams<{ pageNumber?: string | string[] }>();
   const router = useRouter();
-  const { height } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const { resolvedTheme } = useAppTheme();
   const { audioPlayerBarHeight } = useLayoutMetrics();
   const palette = Colors[resolvedTheme];
@@ -245,12 +367,27 @@ export default function PageScreen(): React.JSX.Element {
   const audio = useAudioPlayer();
 
   const selectedMushafId = settings.mushafId ?? DEFAULT_MUSHAF_ID;
+  const selectedMushafOption = findMushafOption(selectedMushafId);
+  const isExactRenderer = selectedMushafOption?.renderer === 'webview';
+  const selectedMushafVersion = selectedMushafOption?.version ?? 'unknown';
+  const exactViewportSignature = React.useMemo(
+    () => getMushafWebViewViewportSignature(width, height),
+    [height, width]
+  );
+  const exactLoadBaselineStartRef = React.useRef<number | null>(null);
+  const hasReportedInitialExactPageRef = React.useRef(false);
+  const [exactHeightCacheVersion, bumpExactHeightCacheVersion] = React.useReducer(
+    (value) => value + 1,
+    0
+  );
 
   const initialPageProbe = useMushafPageData({
     packId: selectedMushafId,
     pageNumber: initialPageNumber,
+    expectedVersion: selectedMushafVersion,
     enabled: isHydrated,
   });
+  const activeMushafVersion = initialPageProbe.data?.pack.version ?? selectedMushafVersion;
 
   const chapterNamesById = React.useMemo(
     () => new Map(chapters.map((chapter) => [chapter.id, chapter.name_simple] as const)),
@@ -262,19 +399,89 @@ export default function PageScreen(): React.JSX.Element {
     () => Array.from({ length: totalPages }, (_value, index) => index + 1),
     [totalPages]
   );
+  const initialExactPageWindow = React.useMemo(
+    () =>
+      buildExactPageWindow({
+        firstPageNumber: initialPageNumber,
+        lastPageNumber: initialPageNumber,
+        totalPages,
+      }),
+    [initialPageNumber, totalPages]
+  );
+  const [activeExactPageWindow, setActiveExactPageWindow] =
+    React.useState<ExactPageWindow>(initialExactPageWindow);
+  const totalPagesRef = React.useRef(FALLBACK_TOTAL_PAGES);
+  const isExactRendererRef = React.useRef(isExactRenderer);
   const initialPageIndex = Math.min(Math.max(initialPageNumber - 1, 0), pageNumbers.length - 1);
+  const initialExactHeightCacheKey = React.useMemo(
+    () =>
+      isExactRenderer
+        ? buildExactPageHeightCacheKey({
+            packId: selectedMushafId,
+            version: activeMushafVersion,
+            pageNumber: initialPageNumber,
+            mushafScaleStep: settings.mushafScaleStep,
+            viewportSignature: exactViewportSignature,
+          })
+        : null,
+    [
+      exactViewportSignature,
+      initialPageNumber,
+      isExactRenderer,
+      selectedMushafId,
+      activeMushafVersion,
+      settings.mushafScaleStep,
+    ]
+  );
+  const initialExactCachedHeight = React.useMemo(
+    () =>
+      initialExactHeightCacheKey ? (exactPageHeightCache.get(initialExactHeightCacheKey) ?? null) : null,
+    [exactHeightCacheVersion, initialExactHeightCacheKey]
+  );
   const estimatedItemSize = React.useMemo(() => {
     if (initialPageProbe.data?.pack.renderer === 'text') {
       const fontSize = mushafScaleStepToFontSize(settings.mushafScaleStep);
       return Math.round(fontSize * 1.72 * initialPageProbe.data.pack.lines + fontSize * 2);
     }
 
+    if (initialExactCachedHeight !== null) {
+      return initialExactCachedHeight;
+    }
+
     return Math.round(Math.max(height * 0.9, 620));
-  }, [height, initialPageProbe.data, settings.mushafScaleStep]);
+  }, [height, initialExactCachedHeight, initialPageProbe.data, settings.mushafScaleStep]);
   const listContentContainerStyle = React.useMemo(
     () => ({ paddingTop: 12, paddingBottom: 24 + audioPlayerBarHeight }),
     [audioPlayerBarHeight]
   );
+  const listExtraData = React.useMemo(
+    () => ({
+      activeExactPageWindowFirst: activeExactPageWindow.firstPageNumber,
+      activeExactPageWindowLast: activeExactPageWindow.lastPageNumber,
+      exactHeightCacheVersion,
+      exactViewportSignature,
+      isExactRenderer,
+      mushafScaleStep: settings.mushafScaleStep,
+      selectedMushafId,
+    }),
+    [
+      activeExactPageWindow,
+      exactHeightCacheVersion,
+      exactViewportSignature,
+      isExactRenderer,
+      selectedMushafId,
+      settings.mushafScaleStep,
+    ]
+  );
+  const viewabilityConfig = React.useRef({ itemVisiblePercentThreshold: 20 }).current;
+
+  React.useEffect(() => {
+    totalPagesRef.current = totalPages;
+  }, [totalPages]);
+
+  React.useEffect(() => {
+    isExactRendererRef.current = isExactRenderer;
+  }, [isExactRenderer]);
 
   React.useEffect(() => {
     setIsVerseActionsOpen(false);
@@ -285,6 +492,80 @@ export default function PageScreen(): React.JSX.Element {
     setActiveVerse(null);
     selectionMetadataRef.current = null;
   }, [initialPageNumber, selectedMushafId]);
+
+  React.useEffect(() => {
+    hasReportedInitialExactPageRef.current = false;
+
+    if (!isHydrated || !isExactRenderer) {
+      exactLoadBaselineStartRef.current = null;
+      return;
+    }
+
+    exactLoadBaselineStartRef.current = nowMs();
+    logMushafQcfDev('exact-load-baseline-start', {
+      initialPageNumber,
+      packId: selectedMushafId,
+    });
+  }, [initialPageNumber, isExactRenderer, isHydrated, selectedMushafId]);
+
+  React.useEffect(() => {
+    setActiveExactPageWindow(initialExactPageWindow);
+
+    if (isExactRenderer) {
+      logMushafQcfDev('exact-render-window-reset', {
+        firstPageNumber: initialExactPageWindow.firstPageNumber,
+        lastPageNumber: initialExactPageWindow.lastPageNumber,
+        packId: selectedMushafId,
+      });
+    }
+  }, [initialExactPageWindow, isExactRenderer, selectedMushafId]);
+
+  const onViewableItemsChanged = React.useRef(
+    ({ viewableItems }: { viewableItems: Array<ViewToken> }) => {
+      if (!isExactRendererRef.current) {
+        return;
+      }
+
+      let firstVisiblePageNumber = Number.POSITIVE_INFINITY;
+      let lastVisiblePageNumber = -1;
+
+      for (const token of viewableItems) {
+        if (!token.isViewable) continue;
+        const pageNumber =
+          typeof token.item === 'number'
+            ? token.item
+            : Number.parseInt(String(token.item ?? ''), 10);
+        if (!Number.isFinite(pageNumber)) continue;
+
+        firstVisiblePageNumber = Math.min(firstVisiblePageNumber, pageNumber);
+        lastVisiblePageNumber = Math.max(lastVisiblePageNumber, pageNumber);
+      }
+
+      if (!Number.isFinite(firstVisiblePageNumber) || lastVisiblePageNumber < 1) {
+        return;
+      }
+
+      const nextWindow = buildExactPageWindow({
+        firstPageNumber: firstVisiblePageNumber,
+        lastPageNumber: lastVisiblePageNumber,
+        totalPages: totalPagesRef.current,
+      });
+
+      setActiveExactPageWindow((currentWindow) => {
+        if (areExactPageWindowsEqual(currentWindow, nextWindow)) {
+          return currentWindow;
+        }
+
+        logMushafQcfDev('exact-render-window-updated', {
+          firstPageNumber: nextWindow.firstPageNumber,
+          lastPageNumber: nextWindow.lastPageNumber,
+          visibleFirstPageNumber: firstVisiblePageNumber,
+          visibleLastPageNumber: lastVisiblePageNumber,
+        });
+        return nextWindow;
+      });
+    }
+  ).current;
 
   const openVerseActions = React.useCallback((nextVerse: ActiveMushafVerse) => {
     setActiveVerse(nextVerse);
@@ -398,6 +679,73 @@ export default function PageScreen(): React.JSX.Element {
     return metadata;
   }, [activeVerse]);
 
+  const handleExactPageFirstHeight = React.useCallback(
+    ({ pageNumber, height: measuredHeight, durationMs }: { pageNumber: number; height: number; durationMs: number }) => {
+      if (hasReportedInitialExactPageRef.current) {
+        return;
+      }
+
+      hasReportedInitialExactPageRef.current = true;
+      const baselineDurationMs =
+        exactLoadBaselineStartRef.current === null
+          ? null
+          : Math.round(nowMs() - exactLoadBaselineStartRef.current);
+
+      logMushafQcfDev('exact-load-baseline-ready', {
+        baselineDurationMs,
+        firstHeightDurationMs: durationMs,
+        initialPageNumber,
+        measuredHeight,
+        packId: selectedMushafId,
+        reportedPageNumber: pageNumber,
+      });
+    },
+    [initialPageNumber, selectedMushafId]
+  );
+
+  const handleExactHeightResolved = React.useCallback(
+    ({ cacheKey, height: measuredHeight, pageNumber }: { cacheKey: string; height: number; pageNumber: number }) => {
+      const currentHeight = exactPageHeightCache.get(cacheKey);
+      if (
+        currentHeight !== undefined &&
+        Math.abs(currentHeight - measuredHeight) <= EXACT_HEIGHT_CACHE_EPSILON_PX
+      ) {
+        return;
+      }
+
+      exactPageHeightCache.set(cacheKey, measuredHeight);
+      bumpExactHeightCacheVersion();
+      logMushafQcfDev('exact-height-cache-store', {
+        cacheKey,
+        height: measuredHeight,
+        pageNumber,
+      });
+    },
+    []
+  );
+
+  const getExactHeightCacheKeyForPage = React.useCallback(
+    (pageNumber: number) =>
+      buildExactPageHeightCacheKey({
+        packId: selectedMushafId,
+        version: activeMushafVersion,
+        pageNumber,
+        mushafScaleStep: settings.mushafScaleStep,
+        viewportSignature: exactViewportSignature,
+      }),
+    [
+      activeMushafVersion,
+      exactViewportSignature,
+      selectedMushafId,
+      settings.mushafScaleStep,
+    ]
+  );
+
+  const getCachedExactHeight = React.useCallback(
+    (pageNumber: number) => exactPageHeightCache.get(getExactHeightCacheKeyForPage(pageNumber)) ?? null,
+    [getExactHeightCacheKeyForPage]
+  );
+
   return (
     <View className="flex-1 bg-background dark:bg-background-dark">
       <Stack.Screen
@@ -434,22 +782,45 @@ export default function PageScreen(): React.JSX.Element {
           key={`mushaf-feed:${selectedMushafId}:${initialPageNumber}`}
           data={pageNumbers}
           keyExtractor={(item) => `mushaf-page:${selectedMushafId}:${item}`}
-          renderItem={({ item }) => (
+          renderItem={({ item }) => {
+            const exactHeightCacheKey = isExactRenderer
+              ? getExactHeightCacheKeyForPage(item)
+              : null;
+            const cachedExactHeight =
+              exactHeightCacheKey === null ? null : (exactPageHeightCache.get(exactHeightCacheKey) ?? null);
+
+            return (
             <MushafFeedPageRow
               pageNumber={item}
               packId={selectedMushafId}
+              expectedVersion={activeMushafVersion}
+              exactHeightCacheKey={exactHeightCacheKey}
+              cachedExactHeight={cachedExactHeight}
+              isExactRenderer={isExactRenderer}
+              isInExactRenderWindow={
+                !isExactRenderer ||
+                (item >= activeExactPageWindow.firstPageNumber &&
+                  item <= activeExactPageWindow.lastPageNumber)
+              }
               mushafScaleStep={settings.mushafScaleStep}
               estimatedHeight={estimatedItemSize}
               chapterNamesById={chapterNamesById}
+              isInitialTargetPage={item === initialPageNumber}
               loadingColor={palette.text}
+              onExactHeightResolved={handleExactHeightResolved}
+              onExactPageFirstHeight={handleExactPageFirstHeight}
               onSelectionChange={handleMushafSelectionChange}
               onVersePress={handleVersePress}
             />
-          )}
+            );
+          }}
+          extraData={listExtraData}
           initialScrollIndex={initialPageIndex}
           drawDistance={Math.max(estimatedItemSize * 2, 1200)}
           ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
           contentContainerStyle={listContentContainerStyle}
+          viewabilityConfig={viewabilityConfig}
+          onViewableItemsChanged={onViewableItemsChanged}
           showsVerticalScrollIndicator={false}
         />
       )}

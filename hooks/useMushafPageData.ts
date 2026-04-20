@@ -9,6 +9,21 @@ import {
 
 import type { MushafPackId, MushafPageData } from '@/types';
 
+const ENABLE_MUSHAF_QCF_DEV_LOGS = __DEV__;
+const FIRST_QCF_V1_LOAD_KEYS = new Set<string>();
+
+function nowMs(): number {
+  return globalThis.performance?.now?.() ?? Date.now();
+}
+
+function logMushafQcfDev(event: string, details: Record<string, unknown>): void {
+  if (!ENABLE_MUSHAF_QCF_DEV_LOGS) {
+    return;
+  }
+
+  console.log(`[mushaf-qcf][useMushafPageData] ${event}`, details);
+}
+
 export type MushafPageErrorKind =
   | 'invalid-page'
   | 'pack-not-installed'
@@ -46,10 +61,12 @@ function getErrorDetails(error: unknown): { kind: MushafPageErrorKind; message: 
 export function useMushafPageData({
   packId,
   pageNumber,
+  expectedVersion,
   enabled = true,
 }: {
   packId: MushafPackId;
   pageNumber: number | null;
+  expectedVersion?: string;
   enabled?: boolean;
 }): {
   data: MushafPageData | null;
@@ -58,7 +75,17 @@ export function useMushafPageData({
   errorMessage: string | null;
   refresh: () => void;
 } {
-  const [data, setData] = React.useState<MushafPageData | null>(null);
+  const [data, setData] = React.useState<MushafPageData | null>(() => {
+    if (!enabled || pageNumber === null) {
+      return null;
+    }
+
+    return container.getMushafPageRepository().peekCachedPage({
+      packId,
+      pageNumber,
+      expectedVersion,
+    });
+  });
   const [isLoading, setIsLoading] = React.useState(false);
   const [errorKind, setErrorKind] = React.useState<MushafPageErrorKind | null>(null);
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
@@ -76,16 +103,74 @@ export function useMushafPageData({
     let cancelled = false;
 
     const load = async (): Promise<void> => {
-      setIsLoading(true);
+      const startedAt = nowMs();
+      const loadKey = `${packId}:${pageNumber}`;
+      const repository = container.getMushafPageRepository();
+      const warmCachedPage = repository.peekCachedPage({
+        packId,
+        pageNumber,
+        expectedVersion,
+      });
+
+      if (warmCachedPage) {
+        setData(warmCachedPage);
+      }
+
+      setIsLoading(warmCachedPage === null);
       setErrorKind(null);
       setErrorMessage(null);
 
+      logMushafQcfDev('page-load-start', {
+        enabled,
+        expectedVersion: expectedVersion ?? null,
+        packId,
+        pageNumber,
+        refreshNonce,
+        usedWarmCache: warmCachedPage !== null,
+      });
+
       try {
-        const repository = container.getMushafPageRepository();
         const result = await repository.getPage({ packId, pageNumber });
 
         if (!cancelled) {
           setData(result);
+        }
+
+        const durationMs = Math.round(nowMs() - startedAt);
+        const isFirstQcfMadaniV1Load = packId === 'qcf-madani-v1' && !FIRST_QCF_V1_LOAD_KEYS.has(loadKey);
+        if (isFirstQcfMadaniV1Load) {
+          FIRST_QCF_V1_LOAD_KEYS.add(loadKey);
+        }
+
+        logMushafQcfDev('page-load-success', {
+          durationMs,
+          isFirstQcfMadaniV1Load,
+          packId,
+          pageNumber,
+          renderer: result.pack.renderer,
+          usedWarmCache: warmCachedPage !== null,
+          version: result.pack.version,
+        });
+
+        if (result.pack.renderer === 'webview') {
+          const nearbyPageNumbers = [pageNumber - 1, pageNumber + 1].filter(
+            (candidate) => candidate >= 1 && candidate <= result.pack.totalPages
+          );
+
+          if (nearbyPageNumbers.length > 0) {
+            logMushafQcfDev('page-prefetch-start', {
+              packId,
+              pageNumber,
+              nearbyPageNumbers,
+              version: result.pack.version,
+            });
+
+            void repository.prefetchPages({
+              packId,
+              pageNumbers: nearbyPageNumbers,
+              expectedVersion: result.pack.version,
+            });
+          }
         }
       } catch (error) {
         if (!cancelled) {
@@ -94,6 +179,13 @@ export function useMushafPageData({
           setErrorKind(details.kind);
           setErrorMessage(details.message);
         }
+
+        logMushafQcfDev('page-load-error', {
+          durationMs: Math.round(nowMs() - startedAt),
+          error: error instanceof Error ? error.message : String(error),
+          packId,
+          pageNumber,
+        });
       } finally {
         if (!cancelled) {
           setIsLoading(false);
@@ -106,7 +198,7 @@ export function useMushafPageData({
     return () => {
       cancelled = true;
     };
-  }, [enabled, packId, pageNumber, refreshNonce]);
+  }, [enabled, expectedVersion, packId, pageNumber, refreshNonce]);
 
   const refresh = React.useCallback(() => {
     setRefreshNonce((current) => current + 1);
