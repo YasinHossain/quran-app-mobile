@@ -342,6 +342,7 @@ function buildShellDocumentHtml({
             charType: word.charType,
             lineNumber: word.lineNumber,
             location: word.location,
+            pageNumber: currentPayload && currentPayload.data ? currentPayload.data.pageNumber : undefined,
             text: resolveWordText(word),
             verseKey: resolveVerseKey(word),
             wordPosition: word.position,
@@ -361,10 +362,13 @@ function buildShellDocumentHtml({
         }
 
         function collectSelectionPayload() {
+          var pageNumber =
+            currentPayload && currentPayload.data ? currentPayload.data.pageNumber : undefined;
           var selection = window.getSelection();
           if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
             return {
               isCollapsed: true,
+              pageNumber: pageNumber,
               text: '',
               verseKeys: [],
               wordPositions: [],
@@ -381,6 +385,7 @@ function buildShellDocumentHtml({
           ) {
             return {
               isCollapsed: true,
+              pageNumber: pageNumber,
               text: '',
               verseKeys: [],
               wordPositions: [],
@@ -418,6 +423,7 @@ function buildShellDocumentHtml({
 
           return {
             isCollapsed: false,
+            pageNumber: pageNumber,
             text: normalizeCopyText(text),
             verseKeys: verseKeys,
             wordPositions: wordPositions,

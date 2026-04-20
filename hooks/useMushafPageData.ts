@@ -175,7 +175,9 @@ export function useMushafPageData({
       } catch (error) {
         if (!cancelled) {
           const details = getErrorDetails(error);
-          setData(null);
+          if (warmCachedPage === null) {
+            setData(null);
+          }
           setErrorKind(details.kind);
           setErrorMessage(details.message);
         }
@@ -185,6 +187,7 @@ export function useMushafPageData({
           error: error instanceof Error ? error.message : String(error),
           packId,
           pageNumber,
+          preservedWarmCache: warmCachedPage !== null,
         });
       } finally {
         if (!cancelled) {

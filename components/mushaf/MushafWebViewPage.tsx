@@ -47,6 +47,16 @@ function logMushafQcfDev(event: string, details: Record<string, unknown>): void 
   console.log(`[mushaf-qcf][MushafWebViewPage] ${event}`, details);
 }
 
+function createCollapsedSelectionPayload(pageNumber: number): MushafSelectionPayload {
+  return {
+    isCollapsed: true,
+    pageNumber,
+    text: '',
+    verseKeys: [],
+    wordPositions: [],
+  };
+}
+
 function getInitialHeight(
   data: MushafPageData,
   mushafScaleStep: MushafScaleStep,
@@ -136,6 +146,11 @@ export function MushafWebViewPage({
   const webViewRef = React.useRef<WebView>(null);
   const isShellLoadedRef = React.useRef(false);
   const lastInjectedPayloadKeyRef = React.useRef<string | null>(null);
+  const latestPageIdentityRef = React.useRef({
+    packId: data.pack.packId,
+    pageNumber: data.pageNumber,
+    version: data.pack.version,
+  });
   const renderIdentityKey = `${data.pack.packId}:${data.pack.version}:${data.pageNumber}:${mushafScaleStep}:${Math.round(pageWidth)}:${Math.round(height)}`;
   const shellIdentityKey = `${data.pack.packId}:${data.pack.version}:${mushafScaleStep}:${resolvedTheme}:${Math.round(height)}`;
 
@@ -149,29 +164,43 @@ export function MushafWebViewPage({
   }, [renderIdentityKey]);
 
   React.useEffect(() => {
+    onSelectionChange?.(createCollapsedSelectionPayload(data.pageNumber));
+  }, [data.pageNumber, onSelectionChange, renderIdentityKey]);
+
+  React.useEffect(() => {
     isShellLoadedRef.current = false;
     lastInjectedPayloadKeyRef.current = null;
   }, [shellIdentityKey]);
 
   React.useEffect(() => {
-    mountedExactWebViews += 1;
-    logMushafQcfDev('mount', {
-      mountedExactWebViews,
+    latestPageIdentityRef.current = {
       packId: data.pack.packId,
       pageNumber: data.pageNumber,
       version: data.pack.version,
+    };
+  }, [data.pageNumber, data.pack.packId, data.pack.version]);
+
+  React.useEffect(() => {
+    mountedExactWebViews += 1;
+    const identity = latestPageIdentityRef.current;
+    logMushafQcfDev('mount', {
+      mountedExactWebViews,
+      packId: identity.packId,
+      pageNumber: identity.pageNumber,
+      version: identity.version,
     });
 
     return () => {
       mountedExactWebViews = Math.max(0, mountedExactWebViews - 1);
+      const latestIdentity = latestPageIdentityRef.current;
       logMushafQcfDev('unmount', {
         mountedExactWebViews,
-        packId: data.pack.packId,
-        pageNumber: data.pageNumber,
-        version: data.pack.version,
+        packId: latestIdentity.packId,
+        pageNumber: latestIdentity.pageNumber,
+        version: latestIdentity.version,
       });
     };
-  }, [data.pageNumber, data.pack.packId, data.pack.version]);
+  }, []);
 
   const shellDocument = React.useMemo(
     () =>
@@ -219,6 +248,28 @@ export function MushafWebViewPage({
   React.useEffect(() => {
     injectRenderPayload('payload-change');
   }, [injectRenderPayload]);
+
+  const isPayloadForCurrentPage = React.useCallback(
+    (
+      messageType: 'selection-change' | 'word-long-press' | 'word-press',
+      payload: { pageNumber?: number }
+    ): boolean => {
+      if (
+        typeof payload.pageNumber === 'number' &&
+        payload.pageNumber !== latestPageIdentityRef.current.pageNumber
+      ) {
+        logMushafQcfDev('stale-interaction-ignored', {
+          currentPageNumber: latestPageIdentityRef.current.pageNumber,
+          messageType,
+          payloadPageNumber: payload.pageNumber,
+        });
+        return false;
+      }
+
+      return true;
+    },
+    []
+  );
 
   const handleMessage = React.useCallback(
     (rawMessage: string) => {
@@ -270,19 +321,35 @@ export function MushafWebViewPage({
           return;
         }
         case 'selection-change':
+          if (!isPayloadForCurrentPage(parsed.type, parsed.payload)) {
+            return;
+          }
           onSelectionChange?.(parsed.payload);
           return;
         case 'word-long-press':
+          if (!isPayloadForCurrentPage(parsed.type, parsed.payload)) {
+            return;
+          }
           onWordLongPress?.(parsed.payload);
           return;
         case 'word-press':
+          if (!isPayloadForCurrentPage(parsed.type, parsed.payload)) {
+            return;
+          }
           onWordPress?.(parsed.payload);
           return;
         default:
           return;
       }
     },
-    [fallbackInitialHeight, onHeightResolved, onSelectionChange, onWordLongPress, onWordPress]
+    [
+      fallbackInitialHeight,
+      isPayloadForCurrentPage,
+      onHeightResolved,
+      onSelectionChange,
+      onWordLongPress,
+      onWordPress,
+    ]
   );
 
   return (

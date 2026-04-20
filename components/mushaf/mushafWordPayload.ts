@@ -4,6 +4,7 @@ export interface MushafWordPressPayload {
   charType?: MushafWord['charType'];
   lineNumber?: number;
   location?: string;
+  pageNumber?: number;
   text: string;
   verseKey?: string;
   wordPosition: number;
@@ -11,6 +12,7 @@ export interface MushafWordPressPayload {
 
 export interface MushafSelectionPayload {
   isCollapsed: boolean;
+  pageNumber?: number;
   text: string;
   verseKeys: string[];
   wordPositions: number[];

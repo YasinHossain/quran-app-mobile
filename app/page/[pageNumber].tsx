@@ -787,31 +787,33 @@ export default function PageScreen(): React.JSX.Element {
               ? getExactHeightCacheKeyForPage(item)
               : null;
             const cachedExactHeight =
-              exactHeightCacheKey === null ? null : (exactPageHeightCache.get(exactHeightCacheKey) ?? null);
+              exactHeightCacheKey === null
+                ? null
+                : (exactPageHeightCache.get(exactHeightCacheKey) ?? null);
 
             return (
-            <MushafFeedPageRow
-              pageNumber={item}
-              packId={selectedMushafId}
-              expectedVersion={activeMushafVersion}
-              exactHeightCacheKey={exactHeightCacheKey}
-              cachedExactHeight={cachedExactHeight}
-              isExactRenderer={isExactRenderer}
-              isInExactRenderWindow={
-                !isExactRenderer ||
-                (item >= activeExactPageWindow.firstPageNumber &&
-                  item <= activeExactPageWindow.lastPageNumber)
-              }
-              mushafScaleStep={settings.mushafScaleStep}
-              estimatedHeight={estimatedItemSize}
-              chapterNamesById={chapterNamesById}
-              isInitialTargetPage={item === initialPageNumber}
-              loadingColor={palette.text}
-              onExactHeightResolved={handleExactHeightResolved}
-              onExactPageFirstHeight={handleExactPageFirstHeight}
-              onSelectionChange={handleMushafSelectionChange}
-              onVersePress={handleVersePress}
-            />
+              <MushafFeedPageRow
+                pageNumber={item}
+                packId={selectedMushafId}
+                expectedVersion={activeMushafVersion}
+                exactHeightCacheKey={exactHeightCacheKey}
+                cachedExactHeight={cachedExactHeight}
+                isExactRenderer={isExactRenderer}
+                isInExactRenderWindow={
+                  !isExactRenderer ||
+                  (item >= activeExactPageWindow.firstPageNumber &&
+                    item <= activeExactPageWindow.lastPageNumber)
+                }
+                mushafScaleStep={settings.mushafScaleStep}
+                estimatedHeight={estimatedItemSize}
+                chapterNamesById={chapterNamesById}
+                isInitialTargetPage={item === initialPageNumber}
+                loadingColor={palette.text}
+                onExactHeightResolved={handleExactHeightResolved}
+                onExactPageFirstHeight={handleExactPageFirstHeight}
+                onSelectionChange={handleMushafSelectionChange}
+                onVersePress={handleVersePress}
+              />
             );
           }}
           extraData={listExtraData}
