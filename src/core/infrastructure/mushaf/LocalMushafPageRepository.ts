@@ -1,6 +1,9 @@
 import * as FileSystem from 'expo-file-system/legacy';
 
-import type { IMushafPageRepository } from '@/src/core/domain/repositories/IMushafPageRepository';
+import type {
+  FindMushafVersePageParams,
+  IMushafPageRepository,
+} from '@/src/core/domain/repositories/IMushafPageRepository';
 import type {
   MushafPackId,
   MushafPackManifest,
@@ -33,19 +36,68 @@ type ResolvedPackData = {
 };
 
 const ENABLE_MUSHAF_QCF_DEV_LOGS = __DEV__;
+const RESOLVED_PAGE_DATA_CACHE_MAX_ENTRIES = 16;
 const resolvedPackCache = new Map<string, Promise<ResolvedPackData>>();
 const payloadCache = new Map<string, Promise<MushafPackPayload>>();
 const lookupCache = new Map<string, Promise<MushafPackPageLookupPayload>>();
 const pageDataCache = new Map<string, Promise<MushafPageData>>();
 const resolvedPageDataCache = new Map<string, MushafPageData>();
 const activePageCacheVersionByPackId = new Map<MushafPackId, string>();
+let activePageCacheIdentity: string | null = null;
+
+type ParsedVerseKey = {
+  surahId: number;
+  verseNumber: number;
+};
 
 function getPayloadCacheKey(packId: MushafPackId, version: string): string {
   return `${packId}@${version}`;
 }
 
+function getPackVersionCacheIdentity(packId: MushafPackId, version: string): string {
+  return `${packId}@${version.trim()}`;
+}
+
 function getPageDataCacheKey(packId: MushafPackId, version: string, pageNumber: number): string {
   return `${packId}|${version}|${pageNumber}`;
+}
+
+function touchCacheEntry<T>(cache: Map<string, T>, key: string, value: T): void {
+  if (cache.has(key)) {
+    cache.delete(key);
+  }
+
+  cache.set(key, value);
+}
+
+function readResolvedPageDataCache(cacheKey: string): MushafPageData | null {
+  const cached = resolvedPageDataCache.get(cacheKey);
+  if (!cached) {
+    return null;
+  }
+
+  touchCacheEntry(resolvedPageDataCache, cacheKey, cached);
+  return cached;
+}
+
+function writeResolvedPageDataCache(cacheKey: string, pageData: MushafPageData): void {
+  touchCacheEntry(resolvedPageDataCache, cacheKey, pageData);
+
+  while (resolvedPageDataCache.size > RESOLVED_PAGE_DATA_CACHE_MAX_ENTRIES) {
+    const oldestCacheKey = resolvedPageDataCache.keys().next().value;
+    if (!oldestCacheKey) {
+      break;
+    }
+
+    resolvedPageDataCache.delete(oldestCacheKey);
+  }
+}
+
+function shouldUseActivePageCaches(packId: MushafPackId, version: string): boolean {
+  return (
+    activePageCacheIdentity === null ||
+    activePageCacheIdentity === getPackVersionCacheIdentity(packId, version)
+  );
 }
 
 function logMushafQcfDev(event: string, details: Record<string, unknown>): void {
@@ -62,6 +114,48 @@ function normalizePageNumber(pageNumber: number): number {
   }
 
   return pageNumber;
+}
+
+function parseVerseKey(value: string): ParsedVerseKey | null {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const [surahRaw, verseRaw] = trimmed.split(':');
+  const surahId = Number.parseInt(surahRaw ?? '', 10);
+  const verseNumber = Number.parseInt(verseRaw ?? '', 10);
+
+  if (!Number.isInteger(surahId) || surahId <= 0) {
+    return null;
+  }
+
+  if (!Number.isInteger(verseNumber) || verseNumber <= 0) {
+    return null;
+  }
+
+  return { surahId, verseNumber };
+}
+
+function compareVerseKeys(left: ParsedVerseKey, right: ParsedVerseKey): number {
+  if (left.surahId !== right.surahId) {
+    return left.surahId - right.surahId;
+  }
+
+  return left.verseNumber - right.verseNumber;
+}
+
+function isVerseWithinLookupRange(
+  verse: ParsedVerseKey,
+  lookup: MushafPackPageLookupPayload['lookup'][string]
+): boolean {
+  const firstVerse = parseVerseKey(lookup.firstVerseKey ?? lookup.from);
+  const lastVerse = parseVerseKey(lookup.lastVerseKey ?? lookup.to);
+  if (!firstVerse || !lastVerse) {
+    return false;
+  }
+
+  return compareVerseKeys(verse, firstVerse) >= 0 && compareVerseKeys(verse, lastVerse) <= 0;
 }
 
 function ensurePayloadMatchesManifest(
@@ -238,6 +332,48 @@ export class LocalMushafPageRepository implements IMushafPageRepository {
     return this.getPageFromResolvedPackAsync(resolvedPack, normalizedPageNumber);
   }
 
+  async findPageForVerse({
+    packId,
+    verseKey,
+  }: FindMushafVersePageParams): Promise<number | null> {
+    const parsedVerseKey = parseVerseKey(verseKey);
+    if (!parsedVerseKey) {
+      return null;
+    }
+
+    const resolvedPack = await this.resolvePackDataAsync(packId);
+
+    for (let pageNumber = 1; pageNumber <= resolvedPack.pack.totalPages; pageNumber += 1) {
+      const lookup = resolvedPack.lookup[String(pageNumber)];
+      if (!lookup) {
+        continue;
+      }
+
+      if (isVerseWithinLookupRange(parsedVerseKey, lookup)) {
+        return pageNumber;
+      }
+    }
+
+    return null;
+  }
+
+  setActivePageCacheIdentity(params: { packId: MushafPackId; version: string }): void {
+    const nextIdentity = getPackVersionCacheIdentity(params.packId, params.version);
+    if (activePageCacheIdentity === nextIdentity) {
+      return;
+    }
+
+    const previousIdentity = activePageCacheIdentity;
+    activePageCacheIdentity = nextIdentity;
+    pageDataCache.clear();
+    resolvedPageDataCache.clear();
+
+    logMushafQcfDev('page-cache-identity-reset', {
+      nextIdentity,
+      previousIdentity,
+    });
+  }
+
   peekCachedPage(params: {
     packId: MushafPackId;
     pageNumber: number;
@@ -259,7 +395,11 @@ export class LocalMushafPageRepository implements IMushafPageRepository {
     }
 
     for (const candidateVersion of candidateVersions) {
-      const cached = resolvedPageDataCache.get(
+      if (!shouldUseActivePageCaches(params.packId, candidateVersion)) {
+        continue;
+      }
+
+      const cached = readResolvedPageDataCache(
         getPageDataCacheKey(params.packId, candidateVersion, params.pageNumber)
       );
       if (cached) {
@@ -334,6 +474,10 @@ export class LocalMushafPageRepository implements IMushafPageRepository {
     pageNumber: number
   ): Promise<MushafPageData> {
     this.prunePackCachesForVersionChange(resolvedPack.pack.packId, resolvedPack.pack.version);
+    const usePageCaches = shouldUseActivePageCaches(
+      resolvedPack.pack.packId,
+      resolvedPack.pack.version
+    );
 
     if (pageNumber > resolvedPack.pack.totalPages) {
       throw new MushafPageNotFoundError(
@@ -348,7 +492,7 @@ export class LocalMushafPageRepository implements IMushafPageRepository {
       resolvedPack.pack.version,
       pageNumber
     );
-    const resolvedSnapshot = resolvedPageDataCache.get(cacheKey);
+    const resolvedSnapshot = usePageCaches ? readResolvedPageDataCache(cacheKey) : null;
     if (resolvedSnapshot) {
       logMushafQcfDev('page-cache-hit', {
         cacheKey,
@@ -360,7 +504,7 @@ export class LocalMushafPageRepository implements IMushafPageRepository {
       return resolvedSnapshot;
     }
 
-    const existing = pageDataCache.get(cacheKey);
+    const existing = usePageCaches ? pageDataCache.get(cacheKey) : undefined;
     if (existing) {
       logMushafQcfDev('page-cache-hit', {
         cacheKey,
@@ -394,17 +538,24 @@ export class LocalMushafPageRepository implements IMushafPageRepository {
         rendererAssets: buildRendererAssets(resolvedPack.manifest, this.fileStore, pageNumber),
       };
 
-      resolvedPageDataCache.set(cacheKey, pageData);
+      if (
+        usePageCaches &&
+        shouldUseActivePageCaches(resolvedPack.pack.packId, resolvedPack.pack.version)
+      ) {
+        writeResolvedPageDataCache(cacheKey, pageData);
+      }
+
       return pageData;
     });
 
-    pageDataCache.set(cacheKey, loadPromise);
+    if (usePageCaches) {
+      pageDataCache.set(cacheKey, loadPromise);
+    }
 
     try {
       return await loadPromise;
-    } catch (error) {
+    } finally {
       pageDataCache.delete(cacheKey);
-      throw error;
     }
   }
 

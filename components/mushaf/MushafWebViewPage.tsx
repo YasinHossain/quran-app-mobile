@@ -7,6 +7,7 @@ import { useAppTheme } from '@/providers/ThemeContext';
 
 import type { MushafPageData, MushafScaleStep } from '@/types';
 import type {
+  MushafHighlightAnchorPayload,
   MushafSelectionPayload,
   MushafWebViewMessage,
   MushafWordPressPayload,
@@ -21,8 +22,10 @@ import {
 type MushafWebViewPageProps = {
   data: MushafPageData;
   mushafScaleStep: MushafScaleStep;
+  highlightVerseKey?: string;
   initialHeightOverride?: number;
   onFirstContentHeight?: (payload: { height: number; durationMs: number }) => void;
+  onHighlightAnchorResolved?: (payload: MushafHighlightAnchorPayload) => void;
   onHeightResolved?: (payload: { height: number }) => void;
   onSelectionChange?: (payload: MushafSelectionPayload) => void;
   onWordLongPress?: (payload: MushafWordPressPayload) => void;
@@ -121,8 +124,10 @@ export function MushafWebViewPagePlaceholder({
 export function MushafWebViewPage({
   data,
   mushafScaleStep,
+  highlightVerseKey,
   initialHeightOverride,
   onFirstContentHeight,
+  onHighlightAnchorResolved,
   onHeightResolved,
   onSelectionChange,
   onWordLongPress,
@@ -146,12 +151,18 @@ export function MushafWebViewPage({
   const webViewRef = React.useRef<WebView>(null);
   const isShellLoadedRef = React.useRef(false);
   const lastInjectedPayloadKeyRef = React.useRef<string | null>(null);
+  const normalizedHighlightVerseKey =
+    typeof highlightVerseKey === 'string' && highlightVerseKey.trim()
+      ? highlightVerseKey.trim()
+      : undefined;
+  const shouldShowLoadingOverlay =
+    !isMeasured && initialHeightOverride == null && normalizedHighlightVerseKey == null;
   const latestPageIdentityRef = React.useRef({
     packId: data.pack.packId,
     pageNumber: data.pageNumber,
     version: data.pack.version,
   });
-  const renderIdentityKey = `${data.pack.packId}:${data.pack.version}:${data.pageNumber}:${mushafScaleStep}:${Math.round(pageWidth)}:${Math.round(height)}`;
+  const renderIdentityKey = `${data.pack.packId}:${data.pack.version}:${data.pageNumber}:${mushafScaleStep}:${Math.round(pageWidth)}:${Math.round(height)}:${normalizedHighlightVerseKey ?? ''}`;
   const shellIdentityKey = `${data.pack.packId}:${data.pack.version}:${mushafScaleStep}:${resolvedTheme}:${Math.round(height)}`;
 
   React.useEffect(() => {
@@ -217,8 +228,9 @@ export function MushafWebViewPage({
       buildMushafWebViewRenderScript({
         data,
         layout: shellDocument.layout,
+        highlightVerseKey: normalizedHighlightVerseKey,
       }),
-    [data, shellDocument.layout]
+    [data, normalizedHighlightVerseKey, shellDocument.layout]
   );
   const packDirectoryUri = data.rendererAssets?.packDirectoryUri;
 
@@ -251,7 +263,7 @@ export function MushafWebViewPage({
 
   const isPayloadForCurrentPage = React.useCallback(
     (
-      messageType: 'selection-change' | 'word-long-press' | 'word-press',
+      messageType: 'highlight-anchor' | 'selection-change' | 'word-long-press' | 'word-press',
       payload: { pageNumber?: number }
     ): boolean => {
       if (
@@ -326,6 +338,12 @@ export function MushafWebViewPage({
           }
           onSelectionChange?.(parsed.payload);
           return;
+        case 'highlight-anchor':
+          if (!isPayloadForCurrentPage(parsed.type, parsed.payload)) {
+            return;
+          }
+          onHighlightAnchorResolved?.(parsed.payload);
+          return;
         case 'word-long-press':
           if (!isPayloadForCurrentPage(parsed.type, parsed.payload)) {
             return;
@@ -346,6 +364,7 @@ export function MushafWebViewPage({
       fallbackInitialHeight,
       isPayloadForCurrentPage,
       onHeightResolved,
+      onHighlightAnchorResolved,
       onSelectionChange,
       onWordLongPress,
       onWordPress,
@@ -355,7 +374,7 @@ export function MushafWebViewPage({
   return (
     <View className="items-center">
       <View style={[styles.webViewShell, { maxWidth: pageWidth }]}>
-        {!isMeasured ? (
+        {shouldShowLoadingOverlay ? (
           <View pointerEvents="none" style={styles.loadingOverlay}>
             <ActivityIndicator color={palette.text} />
           </View>

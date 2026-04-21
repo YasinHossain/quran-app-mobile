@@ -77,6 +77,7 @@ export default function SearchScreen(): React.JSX.Element {
   const [isSettingsOpen, setIsSettingsOpen] = React.useState(false);
 
   const [query, setQuery] = React.useState(paramQuery ?? '');
+  const [isSearchFocused, setIsSearchFocused] = React.useState(false);
   React.useEffect(() => {
     if (typeof paramQuery === 'string') setQuery(paramQuery);
   }, [paramQuery]);
@@ -143,7 +144,10 @@ export default function SearchScreen(): React.JSX.Element {
   );
 
   const renderHeader = React.useMemo(() => {
-    const showGoTo = trimmed.length === 0;
+    // Show "Go To" when the user is actively engaging with the search box and
+    // hasn't typed a query yet. This prevents it from getting "stuck" hidden:
+    // re-focusing the input always re-renders the card.
+    const showGoTo = isSearchFocused && trimmed.length === 0;
     const showShortQueryHint = trimmed.length > 0 && !shouldSearch;
 
     return (
@@ -166,6 +170,8 @@ export default function SearchScreen(): React.JSX.Element {
             autoCapitalize="none"
             autoCorrect={false}
             returnKeyType="search"
+            onFocus={() => setIsSearchFocused(true)}
+            onBlur={() => setIsSearchFocused(false)}
             onSubmitEditing={() => Keyboard.dismiss()}
             className="flex-1 text-base text-foreground dark:text-foreground-dark"
           />
@@ -217,6 +223,7 @@ export default function SearchScreen(): React.JSX.Element {
     errorMessage,
     handleNavResultPress,
     handleNavigateToSurahVerse,
+    isSearchFocused,
     navigationResults,
     palette.muted,
     query,

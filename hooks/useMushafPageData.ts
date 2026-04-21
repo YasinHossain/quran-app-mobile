@@ -114,6 +114,8 @@ export function useMushafPageData({
 
       if (warmCachedPage) {
         setData(warmCachedPage);
+      } else {
+        setData(null);
       }
 
       setIsLoading(warmCachedPage === null);
@@ -153,9 +155,8 @@ export function useMushafPageData({
         });
 
         if (result.pack.renderer === 'webview') {
-          const nearbyPageNumbers = [pageNumber - 1, pageNumber + 1].filter(
-            (candidate) => candidate >= 1 && candidate <= result.pack.totalPages
-          );
+          const nearbyPageNumbers = [pageNumber - 2, pageNumber - 1, pageNumber + 1, pageNumber + 2]
+            .filter((candidate) => candidate >= 1 && candidate <= result.pack.totalPages);
 
           if (nearbyPageNumbers.length > 0) {
             logMushafQcfDev('page-prefetch-start', {

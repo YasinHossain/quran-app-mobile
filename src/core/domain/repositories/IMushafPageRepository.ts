@@ -5,6 +5,12 @@ export type GetMushafPageParams = {
   pageNumber: number;
 };
 
+export type FindMushafVersePageParams = {
+  packId: MushafPackId;
+  verseKey: string;
+};
+
 export interface IMushafPageRepository {
   getPage(params: GetMushafPageParams): Promise<MushafPageData>;
+  findPageForVerse(params: FindMushafVersePageParams): Promise<number | null>;
 }

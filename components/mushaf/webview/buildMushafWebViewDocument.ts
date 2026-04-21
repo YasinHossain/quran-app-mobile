@@ -15,6 +15,7 @@ type MushafWebViewLayoutPayload = {
 type MushafWebViewRenderPayload = {
   data: MushafPageData;
   layout: MushafWebViewLayoutPayload;
+  highlightVerseKey?: string;
 };
 
 const REFLOW_HYSTERESIS_PX = 20;
@@ -55,11 +56,13 @@ function buildShellDocumentHtml({
     theme === 'dark'
       ? {
           background: '#102033',
+          highlight: 'rgba(250, 204, 21, 0.22)',
           text: '#E7E5E4',
           muted: '#94A3B8',
         }
       : {
           background: '#F7F9F9',
+          highlight: 'rgba(245, 158, 11, 0.18)',
           text: '#111827',
           muted: '#6B7280',
         };
@@ -77,6 +80,7 @@ function buildShellDocumentHtml({
       :root {
         color-scheme: ${theme};
         --background: ${palette.background};
+        --highlight: ${palette.highlight};
         --text: ${palette.text};
         --muted: ${palette.muted};
         --font-size: ${layout.fontSizeCss};
@@ -191,6 +195,12 @@ function buildShellDocumentHtml({
       .reflow-word.qcf-word {
         font-family: var(--qcf-font-family), serif;
         font-weight: 400;
+      }
+
+      .word.arrival-highlight,
+      .reflow-word.arrival-highlight {
+        box-shadow: inset 0 -0.5em 0 var(--highlight);
+        border-radius: 0.3em;
       }
 
       .reflow-spacer {
@@ -461,8 +471,58 @@ function buildShellDocumentHtml({
                 height: height,
               },
             });
+
+            var highlightAnchor = collectHighlightAnchorPayload(height);
+            if (highlightAnchor) {
+              emit({
+                type: 'highlight-anchor',
+                payload: highlightAnchor,
+              });
+            }
             heightRafId = null;
           });
+        }
+
+        function collectHighlightAnchorPayload(pageHeight) {
+          if (!currentPayload || !currentPayload.data || !currentPayload.highlightVerseKey) {
+            return null;
+          }
+
+          var activeContainer = pageRoot.classList.contains('reflow') ? reflowView : standardView;
+          if (!activeContainer) {
+            return null;
+          }
+
+          var nodes = Array.from(activeContainer.querySelectorAll('[data-mushaf-word="true"]'));
+          var matchingNodes = nodes.filter(function (node) {
+            return node instanceof HTMLElement && node.dataset.verseKey === currentPayload.highlightVerseKey;
+          });
+
+          if (matchingNodes.length === 0) {
+            return null;
+          }
+
+          var pageRect = pageRoot.getBoundingClientRect();
+          var anchorTop = Number.POSITIVE_INFINITY;
+          var anchorHeight = 0;
+
+          for (var index = 0; index < matchingNodes.length; index += 1) {
+            var nodeRect = matchingNodes[index].getBoundingClientRect();
+            anchorTop = Math.min(anchorTop, nodeRect.top);
+            anchorHeight = Math.max(anchorHeight, Math.ceil(nodeRect.height));
+          }
+
+          if (!Number.isFinite(anchorTop)) {
+            return null;
+          }
+
+          return {
+            height: Math.max(1, anchorHeight),
+            offsetY: Math.max(0, Math.round(anchorTop - pageRect.top)),
+            pageHeight: Math.max(pageHeight, Math.ceil(pageRect.height)),
+            pageNumber: currentPayload.data.pageNumber,
+            verseKey: currentPayload.highlightVerseKey,
+          };
         }
 
         function shouldUseReflow(containerWidth) {
@@ -527,6 +587,13 @@ function buildShellDocumentHtml({
           wordNode.dataset.charType = String(word.charType || '');
           if (verseKey) {
             wordNode.dataset.verseKey = verseKey;
+            if (
+              currentPayload &&
+              typeof currentPayload.highlightVerseKey === 'string' &&
+              currentPayload.highlightVerseKey === verseKey
+            ) {
+              wordNode.classList.add('arrival-highlight');
+            }
           }
           wordNode.dataset.wordPosition = String(word.position);
 
@@ -690,6 +757,10 @@ function buildShellDocumentHtml({
 
           currentPayload = {
             data: nextPayload.data,
+            highlightVerseKey:
+              typeof nextPayload.highlightVerseKey === 'string'
+                ? nextPayload.highlightVerseKey.trim()
+                : '',
             layout: nextPayload.layout,
             rendererAssets: nextPayload.data.rendererAssets || {},
             qcfFontLoaded: false,
@@ -844,6 +915,7 @@ export function buildMushafWebViewShellDocument({
 export function buildMushafWebViewRenderScript({
   data,
   layout,
+  highlightVerseKey,
 }: MushafWebViewRenderPayload): string {
   return `
     (function () {
@@ -852,7 +924,7 @@ export function buildMushafWebViewRenderScript({
         return true;
       }
 
-      renderer.render(${serializeJson({ data, layout })});
+      renderer.render(${serializeJson({ data, layout, highlightVerseKey: highlightVerseKey ?? '' })});
       return true;
     })();
   `;

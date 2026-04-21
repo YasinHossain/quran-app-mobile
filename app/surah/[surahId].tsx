@@ -26,6 +26,7 @@ import { VerseCard } from '@/components/surah/VerseCard';
 import { useVerseAudioWordSync } from '@/components/surah/useVerseAudioWordSync';
 import { AddToPlannerModal, type VerseSummaryDetails } from '@/components/verse-planner-modal';
 import Colors from '@/constants/Colors';
+import { DEFAULT_MUSHAF_ID, findMushafOption } from '@/data/mushaf/options';
 import { useChapters } from '@/hooks/useChapters';
 import { useSurahVerses, type SurahVerse } from '@/hooks/useSurahVerses';
 import { useTranslationResources } from '@/hooks/useTranslationResources';
@@ -34,6 +35,7 @@ import { useAudioPlayer } from '@/providers/AudioPlayerContext';
 import { useLayoutMetrics } from '@/providers/LayoutMetricsContext';
 import { useSettings } from '@/providers/SettingsContext';
 import { useAppTheme } from '@/providers/ThemeContext';
+import { container } from '@/src/core/infrastructure/di/container';
 
 import type { Bookmark } from '@/types';
 
@@ -51,12 +53,29 @@ function parseVerseKeyNumbers(
   return { surahId: normalizedSurah, verseNumber: normalizedVerse };
 }
 
+function VerseCardPlaceholder({ verseKey }: { verseKey: string }): React.JSX.Element {
+  return (
+    <View className="border-b border-border/40 py-4 dark:border-border-dark/30">
+      <View className="gap-4">
+        <Text className="text-sm font-semibold text-accent dark:text-accent-dark">{verseKey}</Text>
+        <View className="h-12 rounded-2xl bg-surface dark:bg-surface-dark" />
+        <View className="gap-3">
+          <View className="h-4 rounded-full bg-surface dark:bg-surface-dark" />
+          <View className="h-4 w-5/6 rounded-full bg-surface dark:bg-surface-dark" />
+          <View className="h-4 w-2/3 rounded-full bg-surface dark:bg-surface-dark" />
+        </View>
+      </View>
+    </View>
+  );
+}
+
 export default function SurahScreen(): React.JSX.Element {
   const params = useLocalSearchParams<{ surahId?: string | string[]; startVerse?: string | string[] }>();
   const router = useRouter();
   const surahId = Array.isArray(params.surahId) ? params.surahId[0] : params.surahId;
   const startVerseParam = Array.isArray(params.startVerse) ? params.startVerse[0] : params.startVerse;
   const startVerse = startVerseParam ? Number(startVerseParam) : NaN;
+  const normalizedStartVerse = Number.isFinite(startVerse) && startVerse > 0 ? Math.floor(startVerse) : undefined;
   const [isSettingsOpen, setIsSettingsOpen] = React.useState(false);
   const [isHeaderSearchOpen, setIsHeaderSearchOpen] = React.useState(false);
   const [headerSearchQuery, setHeaderSearchQuery] = React.useState('');
@@ -88,6 +107,8 @@ export default function SurahScreen(): React.JSX.Element {
   const { settings } = useSettings();
   const { isPinned, setLastRead } = useBookmarks();
   const chapterNumber = surahId ? Number(surahId) : NaN;
+  const selectedMushafId = settings.mushafId ?? DEFAULT_MUSHAF_ID;
+  const selectedMushafVersion = findMushafOption(selectedMushafId)?.version ?? 'unknown';
   const translationIds = React.useMemo(() => {
     // An explicit empty array means "no translations selected" (Arabic-only mode).
     const ids = Array.isArray(settings.translationIds)
@@ -104,7 +125,11 @@ export default function SurahScreen(): React.JSX.Element {
 
   const {
     chapter,
-    verses,
+    verseCount,
+    pagesSignature,
+    hasLoadedContent,
+    getVerseByNumber,
+    ensureVerseRangeLoaded,
     isLoading,
     isRefreshing,
     isLoadingMore,
@@ -112,14 +137,19 @@ export default function SurahScreen(): React.JSX.Element {
     offlineNotInstalled,
     refresh,
     retry,
-    loadMore,
   } = useSurahVerses({
     chapterNumber,
     translationIds,
     wordLang: settings.wordLang,
     includeWords: Boolean(settings.showByWords || audio.isVisible),
     includeWordTranslations: Boolean(settings.showByWords),
+    initialVerseNumber: normalizedStartVerse,
   });
+
+  const verseNumbers = React.useMemo(
+    () => Array.from({ length: Math.max(0, verseCount) }, (_value, index) => index + 1),
+    [verseCount]
+  );
 
   const openVerseActions = React.useCallback(
     (params: {
@@ -195,9 +225,10 @@ export default function SurahScreen(): React.JSX.Element {
   }, []);
 
   const handleSettingsTabChange = React.useCallback(
-    (nextTab: SettingsTab) => {
+    async (nextTab: SettingsTab) => {
       if (nextTab !== 'mushaf') return;
 
+      const mushafRepository = container.getMushafPageRepository();
       const currentChapter = chapters.find((item) => item.id === chapterNumber);
       const startPage =
         Array.isArray(currentChapter?.pages) &&
@@ -205,14 +236,57 @@ export default function SurahScreen(): React.JSX.Element {
         currentChapter.pages[0] > 0
           ? currentChapter.pages[0]
           : 1;
+      const focusVerseKey =
+        visibleVerseKeyRef.current ??
+        (typeof normalizedStartVerse === 'number'
+          ? getVerseByNumber(normalizedStartVerse)?.verse_key ?? null
+          : getVerseByNumber(1)?.verse_key ?? null);
+      let targetPage = startPage;
 
       setIsSettingsOpen(false);
+
+      if (focusVerseKey) {
+        try {
+          const resolvedPage = await mushafRepository.findPageForVerse({
+            packId: selectedMushafId,
+            verseKey: focusVerseKey,
+          });
+
+          if (typeof resolvedPage === 'number' && resolvedPage > 0) {
+            targetPage = resolvedPage;
+          }
+        } catch {
+          // Fall back to the surah's first page if lookup resolution fails.
+        }
+      }
+
+      mushafRepository.setActivePageCacheIdentity({
+        packId: selectedMushafId,
+        version: selectedMushafVersion,
+      });
+      void mushafRepository.prefetchPages({
+        packId: selectedMushafId,
+        pageNumbers: [targetPage - 1, targetPage, targetPage + 1],
+        expectedVersion: selectedMushafVersion,
+      });
+
       router.push({
         pathname: '/page/[pageNumber]',
-        params: { pageNumber: String(startPage) },
+        params: {
+          pageNumber: String(targetPage),
+          ...(focusVerseKey ? { focusVerse: focusVerseKey } : {}),
+        },
       });
     },
-    [chapterNumber, chapters, router]
+    [
+      chapterNumber,
+      chapters,
+      getVerseByNumber,
+      normalizedStartVerse,
+      router,
+      selectedMushafId,
+      selectedMushafVersion,
+    ]
   );
 
   const listExtraData = React.useMemo(
@@ -223,8 +297,10 @@ export default function SurahScreen(): React.JSX.Element {
       showByWords: settings.showByWords,
       audioActiveVerseKey: audio.activeVerseKey,
       audioIsVisible: audio.isVisible,
+      pagesSignature,
     }),
     [
+      pagesSignature,
       settings.arabicFontFace,
       settings.arabicFontSize,
       settings.showByWords,
@@ -288,10 +364,15 @@ export default function SurahScreen(): React.JSX.Element {
   }, [activeVerse, chapter?.name_simple]);
 
   const renderVerseItem = React.useCallback(
-    ({ item }: { item: SurahVerse }) => {
-      const translationTexts = item.translationTexts ?? [];
+    ({ item }: { item: number }) => {
+      const verse = getVerseByNumber(item);
+      if (!verse) {
+        return <VerseCardPlaceholder verseKey={`${chapterNumber}:${item}`} />;
+      }
+
+      const translationTexts = verse.translationTexts ?? [];
       const translationItems = showTranslationAttribution
-        ? (item.translationItems ?? []).map((t) => {
+        ? (verse.translationItems ?? []).map((t) => {
             if (t.resourceName) return t;
             const fallbackName =
               typeof t.resourceId === 'number'
@@ -299,19 +380,19 @@ export default function SurahScreen(): React.JSX.Element {
                 : undefined;
             return { ...t, resourceName: fallbackName };
           })
-        : item.translationItems ?? [];
+        : verse.translationItems ?? [];
       const verseApiId =
-        typeof item.id === 'number' && Number.isFinite(item.id) && item.id > 0 ? item.id : undefined;
+        typeof verse.id === 'number' && Number.isFinite(verse.id) && verse.id > 0 ? verse.id : undefined;
 
       return (
         <VerseCard
-          verseKey={item.verse_key}
-          arabicText={item.text_uthmani ?? ''}
-          words={item.words}
+          verseKey={verse.verse_key}
+          arabicText={verse.text_uthmani ?? ''}
+          words={verse.words}
           translationTexts={translationTexts}
           translationItems={translationItems}
           showTranslationAttribution={showTranslationAttribution}
-          isAudioActive={Boolean(audio.isVisible && audio.activeVerseKey === item.verse_key)}
+          isAudioActive={Boolean(audio.isVisible && audio.activeVerseKey === verse.verse_key)}
           audioWordSync={verseAudioWordSync}
           arabicFontSize={settings.arabicFontSize}
           arabicFontFace={settings.arabicFontFace}
@@ -319,9 +400,9 @@ export default function SurahScreen(): React.JSX.Element {
           showByWords={settings.showByWords}
           onOpenActions={() =>
             openVerseActions({
-              verseKey: item.verse_key,
+              verseKey: verse.verse_key,
               verseApiId,
-              arabicText: item.text_uthmani ?? '',
+              arabicText: verse.text_uthmani ?? '',
               translationTexts,
             })
           }
@@ -339,15 +420,21 @@ export default function SurahScreen(): React.JSX.Element {
       settings.translationFontSize,
       translationsById,
       verseAudioWordSync,
+      chapterNumber,
+      getVerseByNumber,
     ]
   );
 
-  const flatListRef = React.useRef<FlatList<SurahVerse> | null>(null);
-  const flashListRef = React.useRef<FlashListRef<SurahVerse> | null>(null);
+  const flatListRef = React.useRef<FlatList<number> | null>(null);
+  const flashListRef = React.useRef<FlashListRef<number> | null>(null);
+  const visibleVerseKeyRef = React.useRef<string | null>(null);
+  const lastPrefetchedMushafVerseRef = React.useRef<string | null>(null);
+  const mushafPrefetchRequestIdRef = React.useRef(0);
   const didScrollToStartRef = React.useRef(false);
   const [scrollTick, bumpScrollTick] = React.useReducer((value) => value + 1, 0);
   const scrollRetryCountRef = React.useRef(0);
   const scrollRetryTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const startVerseRef = React.useRef(startVerse);
 
   const didAutoScrollToAudioVerseRef = React.useRef<string | null>(null);
   const [autoScrollTick, bumpAutoScrollTick] = React.useReducer((value) => value + 1, 0);
@@ -359,14 +446,99 @@ export default function SurahScreen(): React.JSX.Element {
     chapterNumberRef.current = chapterNumber;
   }, [chapterNumber]);
 
+  const verseCountRef = React.useRef(verseCount);
+  React.useEffect(() => {
+    verseCountRef.current = verseCount;
+  }, [verseCount]);
+
+  React.useEffect(() => {
+    startVerseRef.current = startVerse;
+  }, [startVerse]);
+
+  const getVerseByNumberRef = React.useRef(getVerseByNumber);
+  React.useEffect(() => {
+    getVerseByNumberRef.current = getVerseByNumber;
+  }, [getVerseByNumber]);
+
+  const ensureVerseRangeLoadedRef = React.useRef(ensureVerseRangeLoaded);
+  React.useEffect(() => {
+    ensureVerseRangeLoadedRef.current = ensureVerseRangeLoaded;
+  }, [ensureVerseRangeLoaded]);
+
   const setLastReadRef = React.useRef(setLastRead);
   React.useEffect(() => {
     setLastReadRef.current = setLastRead;
   }, [setLastRead]);
 
+  React.useEffect(() => {
+    lastPrefetchedMushafVerseRef.current = null;
+    mushafPrefetchRequestIdRef.current = 0;
+  }, [selectedMushafId, selectedMushafVersion]);
+
+  const prefetchMushafForVerse = React.useCallback(
+    (verseKey: string | null) => {
+      const normalizedVerseKey = typeof verseKey === 'string' ? verseKey.trim() : '';
+      if (!normalizedVerseKey) return;
+
+      const prefetchKey = `${selectedMushafId}:${selectedMushafVersion}:${normalizedVerseKey}`;
+      if (lastPrefetchedMushafVerseRef.current === prefetchKey) {
+        return;
+      }
+
+      lastPrefetchedMushafVerseRef.current = prefetchKey;
+      const requestId = ++mushafPrefetchRequestIdRef.current;
+      const mushafRepository = container.getMushafPageRepository();
+      mushafRepository.setActivePageCacheIdentity({
+        packId: selectedMushafId,
+        version: selectedMushafVersion,
+      });
+
+      void (async () => {
+        try {
+          const resolvedPage = await mushafRepository.findPageForVerse({
+            packId: selectedMushafId,
+            verseKey: normalizedVerseKey,
+          });
+
+          if (mushafPrefetchRequestIdRef.current !== requestId) {
+            return;
+          }
+
+          if (!resolvedPage) {
+            return;
+          }
+
+          await mushafRepository.prefetchPages({
+            packId: selectedMushafId,
+            pageNumbers: [resolvedPage - 1, resolvedPage, resolvedPage + 1],
+            expectedVersion: selectedMushafVersion,
+          });
+        } catch {
+          // Ignore background mushaf prefetch failures on the translation screen.
+        }
+      })();
+    },
+    [selectedMushafId, selectedMushafVersion]
+  );
+
+  React.useEffect(() => {
+    if (!isSettingsOpen) {
+      return;
+    }
+
+    const focusVerseKey =
+      visibleVerseKeyRef.current ??
+      (typeof normalizedStartVerse === 'number'
+        ? getVerseByNumber(normalizedStartVerse)?.verse_key ?? null
+        : getVerseByNumber(1)?.verse_key ?? null);
+
+    prefetchMushafForVerse(focusVerseKey);
+  }, [getVerseByNumber, isSettingsOpen, normalizedStartVerse, prefetchMushafForVerse]);
+
   const lastReadReportedRef = React.useRef<string | null>(null);
   React.useEffect(() => {
     lastReadReportedRef.current = null;
+    visibleVerseKeyRef.current = null;
   }, [surahId]);
 
   const viewabilityConfig = React.useRef({ itemVisiblePercentThreshold: 60 }).current;
@@ -389,9 +561,18 @@ export default function SurahScreen(): React.JSX.Element {
           firstVisibleIndex = Math.min(firstVisibleIndex, index);
           lastVisibleIndex = Math.max(lastVisibleIndex, index);
         }
+
+        const verseNumber =
+          typeof token.item === 'number'
+            ? token.item
+            : Number.parseInt(String(token.item ?? ''), 10);
+        if (!Number.isFinite(verseNumber) || verseNumber <= 0) continue;
+
+        const loadedVerse = getVerseByNumberRef.current(Math.trunc(verseNumber));
+        if (!loadedVerse) continue;
         if (index >= bestIndex) continue;
         bestIndex = index;
-        bestItem = token.item as SurahVerse;
+        bestItem = loadedVerse;
       }
 
       visibleRangeRef.current =
@@ -399,7 +580,31 @@ export default function SurahScreen(): React.JSX.Element {
           ? { first: firstVisibleIndex, last: lastVisibleIndex }
           : null;
 
+      if (Number.isFinite(firstVisibleIndex) && lastVisibleIndex >= 0) {
+        ensureVerseRangeLoadedRef.current(firstVisibleIndex + 1, lastVisibleIndex + 1, 1);
+      }
+
+      const targetStartVerse = startVerseRef.current;
+      const visibleRange = visibleRangeRef.current;
+      if (
+        visibleRange &&
+        Number.isFinite(targetStartVerse) &&
+        targetStartVerse > 0
+      ) {
+        const targetIndex = Math.max(0, Math.floor(targetStartVerse) - 1);
+        if (targetIndex >= visibleRange.first && targetIndex <= visibleRange.last) {
+          didScrollToStartRef.current = true;
+          scrollRetryCountRef.current = 0;
+          if (scrollRetryTimeoutRef.current) {
+            clearTimeout(scrollRetryTimeoutRef.current);
+            scrollRetryTimeoutRef.current = null;
+          }
+        }
+      }
+
       if (!bestItem) return;
+
+      visibleVerseKeyRef.current = bestItem.verse_key ?? null;
 
       const verseNumber = bestItem.verse_number;
       if (!Number.isFinite(verseNumber) || verseNumber <= 0) return;
@@ -453,33 +658,37 @@ export default function SurahScreen(): React.JSX.Element {
   React.useEffect(() => {
     if (!Number.isFinite(startVerse) || startVerse <= 0) return;
     if (didScrollToStartRef.current) return;
-    if (isLoading) return;
+    if (verseCountRef.current <= 0) return;
 
-    const targetIndex = Math.max(0, Math.floor(startVerse) - 1);
+    ensureVerseRangeLoadedRef.current(startVerse, startVerse, 1);
 
-    if (targetIndex >= verses.length) {
-      if (!isLoadingMore && !errorMessage) {
-        loadMore();
-      }
-      return;
-    }
-
-    const list = Platform.OS === 'web' ? flatListRef.current : flashListRef.current;
-    if (!list) return;
-
-    try {
-      list.scrollToIndex({ index: targetIndex, animated: false, viewPosition: 0 });
-      didScrollToStartRef.current = true;
-    } catch {
-      if (scrollRetryCountRef.current >= 6) return;
-      scrollRetryCountRef.current += 1;
+    const scheduleRetry = () => {
+      if (didScrollToStartRef.current) return;
+      if (scrollRetryCountRef.current >= 10) return;
       if (scrollRetryTimeoutRef.current) return;
+      scrollRetryCountRef.current += 1;
       scrollRetryTimeoutRef.current = setTimeout(() => {
         scrollRetryTimeoutRef.current = null;
         bumpScrollTick();
-      }, 120);
+      }, 140);
+    };
+
+    const targetIndex = Math.max(0, Math.floor(startVerse) - 1);
+
+    if (targetIndex >= verseCountRef.current) return;
+
+    const list = Platform.OS === 'web' ? flatListRef.current : flashListRef.current;
+    if (!list) {
+      scheduleRetry();
+      return;
     }
-  }, [errorMessage, isLoading, isLoadingMore, loadMore, scrollTick, startVerse, verses.length]);
+
+    try {
+      list.scrollToIndex({ index: targetIndex, animated: false, viewPosition: 0 });
+    } catch {}
+
+    scheduleRetry();
+  }, [scrollTick, startVerse, verseCount]);
 
   React.useEffect(() => {
     if (!audio.isPlaying) {
@@ -503,13 +712,8 @@ export default function SurahScreen(): React.JSX.Element {
     if (didAutoScrollToAudioVerseRef.current === verseKey) return;
 
     const targetIndex = Math.max(0, parsed.verseNumber - 1);
-
-    if (targetIndex >= verses.length) {
-      if (!isLoadingMore && !errorMessage) {
-        loadMore();
-      }
-      return;
-    }
+    if (targetIndex >= verseCountRef.current) return;
+    ensureVerseRangeLoadedRef.current(parsed.verseNumber, parsed.verseNumber, 1);
 
     const list = Platform.OS === 'web' ? flatListRef.current : flashListRef.current;
     if (!list) return;
@@ -539,10 +743,7 @@ export default function SurahScreen(): React.JSX.Element {
     audio.isPlaying,
     autoScrollTick,
     chapterNumber,
-    errorMessage,
-    isLoadingMore,
-    loadMore,
-    verses.length,
+    verseCount,
   ]);
 
   const activeVersePinned = React.useMemo(() => {
@@ -620,13 +821,60 @@ export default function SurahScreen(): React.JSX.Element {
         }}
       />
 
-      {Platform.OS === 'web' ? (
+      {!hasLoadedContent && offlineNotInstalled ? (
+        <View className="flex-1 px-4 pt-4">
+          <View className="mt-2 gap-3">
+            <Text className="text-sm text-muted dark:text-muted-dark">
+              You’re offline and this translation isn’t downloaded yet.
+            </Text>
+            <Pressable
+              onPress={openTranslationSettings}
+              accessibilityRole="button"
+              accessibilityLabel="Open translation settings"
+              className="self-start rounded-lg bg-accent px-4 py-2"
+              style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
+            >
+              <Text className="text-sm font-semibold text-on-accent">
+                Open translation settings
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : !hasLoadedContent && errorMessage ? (
+        <View className="flex-1 px-4 pt-4">
+          <View className="mt-2 gap-3">
+            <Text className="text-sm text-error dark:text-error-dark">{errorMessage}</Text>
+            <Pressable
+              onPress={retry}
+              accessibilityRole="button"
+              accessibilityLabel="Retry loading verses"
+              className="self-start rounded-lg bg-number-badge px-4 py-2 dark:bg-number-badge-dark"
+              style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}
+            >
+              <Text className="text-sm font-semibold text-accent dark:text-accent-dark">
+                Retry
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : isLoading && !hasLoadedContent ? (
+        <View className="flex-1 items-center justify-center gap-3 px-4">
+          <ActivityIndicator color={palette.text} />
+          <Text className="text-sm text-muted dark:text-muted-dark">Loading…</Text>
+        </View>
+      ) : verseCount <= 0 ? (
+        <View className="flex-1 px-4 pt-4">
+          <Text className="mt-2 text-sm text-muted dark:text-muted-dark">
+            No verses found for this surah.
+          </Text>
+        </View>
+      ) : Platform.OS === 'web' ? (
         <FlatList
           ref={(node) => {
             flatListRef.current = node;
           }}
-          data={verses}
-          keyExtractor={(item) => item.verse_key}
+          data={verseNumbers}
+          keyExtractor={(item) => `${chapterNumber}:${item}`}
           extraData={listExtraData}
           renderItem={renderVerseItem}
           contentContainerStyle={listContentContainerStyle}
@@ -634,73 +882,16 @@ export default function SurahScreen(): React.JSX.Element {
           onRefresh={refresh}
           viewabilityConfig={viewabilityConfig}
           onViewableItemsChanged={onViewableItemsChanged}
-          onEndReachedThreshold={0.5}
-          onEndReached={loadMore}
           ListHeaderComponent={chapter ? <SurahHeaderCard chapter={chapter} /> : null}
-          ListEmptyComponent={
-            offlineNotInstalled ? (
-              <View className="mt-2 gap-3">
-                <Text className="text-sm text-muted dark:text-muted-dark">
-                  You’re offline and this translation isn’t downloaded yet.
-                </Text>
-                <Pressable
-                  onPress={openTranslationSettings}
-                  accessibilityRole="button"
-                  accessibilityLabel="Open translation settings"
-                  className="self-start rounded-lg bg-accent px-4 py-2"
-                  style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
-                >
-                  <Text className="text-sm font-semibold text-on-accent">
-                    Open translation settings
-                  </Text>
-                </Pressable>
-              </View>
-            ) : errorMessage ? (
-              <View className="mt-2 gap-3">
-                <Text className="text-sm text-error dark:text-error-dark">{errorMessage}</Text>
-                <Pressable
-                  onPress={retry}
-                  accessibilityRole="button"
-                  accessibilityLabel="Retry loading verses"
-                  className="self-start rounded-lg bg-number-badge px-4 py-2 dark:bg-number-badge-dark"
-                  style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}
-                >
-                  <Text className="text-sm font-semibold text-accent dark:text-accent-dark">
-                    Retry
-                  </Text>
-                </Pressable>
-              </View>
-            ) : isLoading ? (
-              <View className="mt-3 flex-row items-center gap-3">
-                <ActivityIndicator color={palette.text} />
-                <Text className="text-sm text-muted dark:text-muted-dark">Loading…</Text>
-              </View>
-            ) : (
-              <Text className="mt-2 text-sm text-muted dark:text-muted-dark">
-                No verses found for this surah.
-              </Text>
-            )
-          }
           ListFooterComponent={
-            isLoadingMore ? (
+            isLoadingMore || (errorMessage && hasLoadedContent) ? (
               <View className="mt-2 flex-row items-center gap-3">
-                <ActivityIndicator color={palette.text} />
-                <Text className="text-sm text-muted dark:text-muted-dark">Loading more…</Text>
-              </View>
-            ) : errorMessage && verses.length ? (
-              <View className="mt-2 gap-3">
-                <Text className="text-sm text-error dark:text-error-dark">{errorMessage}</Text>
-                <Pressable
-                  onPress={loadMore}
-                  accessibilityRole="button"
-                  accessibilityLabel="Retry loading more verses"
-                  className="self-start rounded-lg bg-number-badge px-4 py-2 dark:bg-number-badge-dark"
-                  style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}
-                >
-                  <Text className="text-sm font-semibold text-accent dark:text-accent-dark">
-                    Retry
-                  </Text>
-                </Pressable>
+                {isLoadingMore ? <ActivityIndicator color={palette.text} /> : null}
+                {errorMessage && hasLoadedContent ? (
+                  <Text className="text-sm text-error dark:text-error-dark">{errorMessage}</Text>
+                ) : (
+                  <Text className="text-sm text-muted dark:text-muted-dark">Loading more…</Text>
+                )}
               </View>
             ) : null
           }
@@ -710,8 +901,8 @@ export default function SurahScreen(): React.JSX.Element {
           ref={(node) => {
             flashListRef.current = node;
           }}
-          data={verses}
-          keyExtractor={(item) => item.verse_key}
+          data={verseNumbers}
+          keyExtractor={(item) => `${chapterNumber}:${item}`}
           extraData={listExtraData}
           renderItem={renderVerseItem}
           drawDistance={Platform.OS === 'android' ? 1200 : 800}
@@ -720,73 +911,16 @@ export default function SurahScreen(): React.JSX.Element {
           onRefresh={refresh}
           viewabilityConfig={viewabilityConfig}
           onViewableItemsChanged={onViewableItemsChanged}
-          onEndReachedThreshold={0.5}
-          onEndReached={loadMore}
           ListHeaderComponent={chapter ? <SurahHeaderCard chapter={chapter} /> : null}
-          ListEmptyComponent={
-            offlineNotInstalled ? (
-              <View className="mt-2 gap-3">
-                <Text className="text-sm text-muted dark:text-muted-dark">
-                  You’re offline and this translation isn’t downloaded yet.
-                </Text>
-                <Pressable
-                  onPress={openTranslationSettings}
-                  accessibilityRole="button"
-                  accessibilityLabel="Open translation settings"
-                  className="self-start rounded-lg bg-accent px-4 py-2"
-                  style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
-                >
-                  <Text className="text-sm font-semibold text-on-accent">
-                    Open translation settings
-                  </Text>
-                </Pressable>
-              </View>
-            ) : errorMessage ? (
-              <View className="mt-2 gap-3">
-                <Text className="text-sm text-error dark:text-error-dark">{errorMessage}</Text>
-                <Pressable
-                  onPress={retry}
-                  accessibilityRole="button"
-                  accessibilityLabel="Retry loading verses"
-                  className="self-start rounded-lg bg-number-badge px-4 py-2 dark:bg-number-badge-dark"
-                  style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}
-                >
-                  <Text className="text-sm font-semibold text-accent dark:text-accent-dark">
-                    Retry
-                  </Text>
-                </Pressable>
-              </View>
-            ) : isLoading ? (
-              <View className="mt-3 flex-row items-center gap-3">
-                <ActivityIndicator color={palette.text} />
-                <Text className="text-sm text-muted dark:text-muted-dark">Loading…</Text>
-              </View>
-            ) : (
-              <Text className="mt-2 text-sm text-muted dark:text-muted-dark">
-                No verses found for this surah.
-              </Text>
-            )
-          }
           ListFooterComponent={
-            isLoadingMore ? (
+            isLoadingMore || (errorMessage && hasLoadedContent) ? (
               <View className="mt-2 flex-row items-center gap-3">
-                <ActivityIndicator color={palette.text} />
-                <Text className="text-sm text-muted dark:text-muted-dark">Loading more…</Text>
-              </View>
-            ) : errorMessage && verses.length ? (
-              <View className="mt-2 gap-3">
-                <Text className="text-sm text-error dark:text-error-dark">{errorMessage}</Text>
-                <Pressable
-                  onPress={loadMore}
-                  accessibilityRole="button"
-                  accessibilityLabel="Retry loading more verses"
-                  className="self-start rounded-lg bg-number-badge px-4 py-2 dark:bg-number-badge-dark"
-                  style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}
-                >
-                  <Text className="text-sm font-semibold text-accent dark:text-accent-dark">
-                    Retry
-                  </Text>
-                </Pressable>
+                {isLoadingMore ? <ActivityIndicator color={palette.text} /> : null}
+                {errorMessage && hasLoadedContent ? (
+                  <Text className="text-sm text-error dark:text-error-dark">{errorMessage}</Text>
+                ) : (
+                  <Text className="text-sm text-muted dark:text-muted-dark">Loading more…</Text>
+                )}
               </View>
             ) : null
           }

@@ -1,6 +1,7 @@
 import React from 'react';
 import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 
+import { useAppTheme } from '@/providers/ThemeContext';
 import { DEFAULT_ARABIC_FONT_FAMILY } from '@/src/core/infrastructure/fonts/arabicFonts';
 
 import type { MushafLineGroup, MushafPageData, MushafScaleStep, MushafWord } from '@/types';
@@ -14,6 +15,7 @@ import { mushafScaleStepToFontSize } from '@/types';
 type MushafNativePageProps = {
   data: MushafPageData;
   mushafScaleStep: MushafScaleStep;
+  highlightVerseKey?: string;
   onWordLongPress?: (payload: MushafWordPressPayload) => void;
   onWordPress?: (payload: MushafWordPressPayload) => void;
 };
@@ -49,6 +51,8 @@ function MushafLineText({
   line,
   fontSize,
   lineHeight,
+  highlightVerseKey,
+  highlightBackgroundColor,
   onWordLongPress,
   onWordPress,
 }: {
@@ -56,6 +60,8 @@ function MushafLineText({
   line: MushafLineGroup | null;
   fontSize: number;
   lineHeight: number;
+  highlightVerseKey?: string;
+  highlightBackgroundColor: string;
   onWordLongPress?: (payload: MushafWordPressPayload) => void;
   onWordPress?: (payload: MushafWordPressPayload) => void;
 }): React.JSX.Element {
@@ -86,6 +92,7 @@ function MushafLineText({
         if (!wordText) return null;
 
         const payload = buildWordPayload(word, page);
+        const isHighlighted = highlightVerseKey === resolveMushafVerseKey(word);
         const spacer = index === line.words.length - 1 ? '' : ' ';
 
         return (
@@ -95,6 +102,11 @@ function MushafLineText({
             allowFontScaling={false}
             onLongPress={onWordLongPress ? () => onWordLongPress(payload) : undefined}
             onPress={onWordPress ? () => onWordPress(payload) : undefined}
+            style={
+              isHighlighted
+                ? [styles.highlightedWord, { backgroundColor: highlightBackgroundColor }]
+                : undefined
+            }
           >
             {wordText}
             {spacer}
@@ -108,15 +120,23 @@ function MushafLineText({
 export function MushafNativePage({
   data,
   mushafScaleStep,
+  highlightVerseKey,
   onWordLongPress,
   onWordPress,
 }: MushafNativePageProps): React.JSX.Element {
   const { width } = useWindowDimensions();
+  const { resolvedTheme } = useAppTheme();
   const pageWidth = Math.min(Math.max(width - 8, 280), PAGE_MAX_WIDTH);
   const fontSize = mushafScaleStepToFontSize(mushafScaleStep);
   const lineHeight = Math.round(fontSize * 1.72);
   const verticalPadding = Math.max(6, Math.round(fontSize * 0.18));
   const lineSlots = React.useMemo(() => buildLineSlots(data), [data]);
+  const normalizedHighlightVerseKey =
+    typeof highlightVerseKey === 'string' && highlightVerseKey.trim()
+      ? highlightVerseKey.trim()
+      : undefined;
+  const highlightBackgroundColor =
+    resolvedTheme === 'dark' ? 'rgba(250, 204, 21, 0.22)' : 'rgba(245, 158, 11, 0.18)';
 
   return (
     <View className="items-center">
@@ -138,6 +158,8 @@ export function MushafNativePage({
               line={line}
               fontSize={fontSize}
               lineHeight={lineHeight}
+              highlightVerseKey={normalizedHighlightVerseKey}
+              highlightBackgroundColor={highlightBackgroundColor}
               onWordLongPress={onWordLongPress}
               onWordPress={onWordPress}
             />
@@ -160,5 +182,8 @@ const styles = StyleSheet.create({
     textAlign: 'right',
     writingDirection: 'rtl',
     includeFontPadding: false,
+  },
+  highlightedWord: {
+    borderRadius: 6,
   },
 });

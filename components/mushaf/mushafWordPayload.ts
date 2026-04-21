@@ -18,6 +18,14 @@ export interface MushafSelectionPayload {
   wordPositions: number[];
 }
 
+export interface MushafHighlightAnchorPayload {
+  height: number;
+  offsetY: number;
+  pageHeight: number;
+  pageNumber?: number;
+  verseKey: string;
+}
+
 export function resolveMushafVerseKey(value: {
   verseKey?: string | undefined;
   location?: string | undefined;
@@ -46,6 +54,10 @@ export type MushafWebViewMessage =
       payload: {
         height: number;
       };
+    }
+  | {
+      type: 'highlight-anchor';
+      payload: MushafHighlightAnchorPayload;
     }
   | {
       type: 'selection-change';
