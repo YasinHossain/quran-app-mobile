@@ -28,6 +28,7 @@ import { VerseActionsSheet } from '@/components/surah/VerseActionsSheet';
 import { VerseCard } from '@/components/surah/VerseCard';
 import { AddToPlannerModal, type VerseSummaryDetails } from '@/components/verse-planner-modal';
 import Colors from '@/constants/Colors';
+import { primeVerseDetailsCache } from '@/lib/verse/verseDetailsCache';
 import { useBookmarks } from '@/providers/BookmarkContext';
 import { useAudioPlayer } from '@/providers/AudioPlayerContext';
 import { useLayoutMetrics } from '@/providers/LayoutMetricsContext';
@@ -77,6 +78,12 @@ export default function BookmarksScreen(): React.JSX.Element {
   );
 
   const { settings } = useSettings();
+  const translationIds = React.useMemo(() => {
+    const ids = Array.isArray(settings.translationIds)
+      ? settings.translationIds
+      : [settings.translationId ?? 20];
+    return ids.filter((id) => Number.isFinite(id) && id > 0);
+  }, [settings.translationId, settings.translationIds]);
   const {
     folders,
     pinnedVerses,
@@ -155,12 +162,20 @@ export default function BookmarksScreen(): React.JSX.Element {
     (verseKey: string) => {
       const parsed = parseVerseKey(verseKey);
       if (!parsed) return;
+      if (activeVerse?.verseKey === verseKey) {
+        primeVerseDetailsCache({
+          verseKey,
+          arabicText: activeVerse.verseText,
+          translationIds,
+          translationTexts: activeVerse.translationText ? [activeVerse.translationText] : [],
+        });
+      }
       router.push({
         pathname: '/tafsir/[surahId]/[ayahId]',
         params: { surahId: parsed.surahId, ayahId: parsed.ayahId },
       });
     },
-    [router]
+    [activeVerse, router, translationIds]
   );
 
   const openVerseActionsForBookmark = React.useCallback(

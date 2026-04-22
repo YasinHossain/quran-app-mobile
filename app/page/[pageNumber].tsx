@@ -27,6 +27,7 @@ import Colors from '@/constants/Colors';
 import { DEFAULT_MUSHAF_ID, findMushafOption } from '@/data/mushaf/options';
 import { useChapters } from '@/hooks/useChapters';
 import { useMushafPageData } from '@/hooks/useMushafPageData';
+import { primeVerseDetailsCache } from '@/lib/verse/verseDetailsCache';
 import { useAudioPlayer } from '@/providers/AudioPlayerContext';
 import { useBookmarks } from '@/providers/BookmarkContext';
 import { useLayoutMetrics } from '@/providers/LayoutMetricsContext';
@@ -510,6 +511,12 @@ export default function PageScreen(): React.JSX.Element {
   const { chapters } = useChapters();
   const { isPinned } = useBookmarks();
   const audio = useAudioPlayer();
+  const translationIds = React.useMemo(() => {
+    const ids = Array.isArray(settings.translationIds)
+      ? settings.translationIds
+      : [settings.translationId ?? 20];
+    return ids.filter((id) => Number.isFinite(id) && id > 0);
+  }, [settings.translationId, settings.translationIds]);
 
   const selectedMushafId = settings.mushafId ?? DEFAULT_MUSHAF_ID;
   const selectedMushafOption = findMushafOption(selectedMushafId);
@@ -955,6 +962,13 @@ export default function PageScreen(): React.JSX.Element {
     const parsed = parseVerseKeyNumbers(verseKey);
     if (!parsed) return;
 
+    primeVerseDetailsCache({
+      verseKey,
+      arabicText: activeVerse?.arabicText,
+      translationIds,
+      translationTexts: activeVerse?.translationTexts,
+    });
+
     router.push({
       pathname: '/tafsir/[surahId]/[ayahId]',
       params: {
@@ -962,7 +976,7 @@ export default function PageScreen(): React.JSX.Element {
         ayahId: String(parsed.verseNumber),
       },
     });
-  }, [activeVerse?.verseKey, router]);
+  }, [activeVerse?.arabicText, activeVerse?.translationTexts, activeVerse?.verseKey, router, translationIds]);
 
   const handleAddToPlan = React.useCallback(() => {
     const verseKey = activeVerse?.verseKey;

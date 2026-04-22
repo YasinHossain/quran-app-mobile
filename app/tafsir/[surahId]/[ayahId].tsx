@@ -2,7 +2,6 @@ import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { Settings } from 'lucide-react-native';
 import React from 'react';
 import {
-  ActivityIndicator,
   FlatList,
   Pressable,
   ScrollView,
@@ -26,6 +25,7 @@ import { useChapters } from '@/hooks/useChapters';
 import { useTafsirResources } from '@/hooks/useTafsirResources';
 import { useTranslationResources } from '@/hooks/useTranslationResources';
 import { getTafsirCached } from '@/lib/tafsir/tafsirCache';
+import { getVerseDetailsCached, peekVersePreview } from '@/lib/verse/verseDetailsCache';
 import { useAudioPlayer } from '@/providers/AudioPlayerContext';
 import { useBookmarks } from '@/providers/BookmarkContext';
 import { useSettings } from '@/providers/SettingsContext';
@@ -40,18 +40,9 @@ type ApiVerse = {
   translations?: Array<{ resource_id: number; resource_name?: string; text: string }>;
 };
 
-type ApiVerseResponse = {
-  verse: ApiVerse;
-};
-
 type VerseTarget = {
   surahId: number;
   ayahId: number;
-};
-
-type PagerItem = {
-  slot: 'prev' | 'current' | 'next';
-  target: VerseTarget | null;
 };
 
 type PageState = {
@@ -77,6 +68,51 @@ const EMPTY_PAGE_STATE: PageState = {
   isTafsirLoading: false,
   tafsirError: null,
 };
+
+function SkeletonBar({
+  width,
+  height = 14,
+}: {
+  width: number | `${number}%`;
+  height?: number;
+}): React.JSX.Element {
+  return <View className="rounded-full bg-surface dark:bg-surface-dark" style={{ width, height }} />;
+}
+
+function VerseCardSkeleton({ verseKey }: { verseKey: string }): React.JSX.Element {
+  return (
+    <View className="border-b border-border/40 py-4 dark:border-border-dark/30">
+      <View className="gap-4">
+        <Text className="text-sm font-semibold text-accent dark:text-accent-dark">{verseKey}</Text>
+        <View className="h-14 rounded-2xl bg-surface dark:bg-surface-dark" />
+        <View className="gap-3">
+          <SkeletonBar width="100%" />
+          <SkeletonBar width="88%" />
+          <SkeletonBar width="74%" />
+        </View>
+      </View>
+    </View>
+  );
+}
+
+function TafsirLoadingSkeleton({ minHeight }: { minHeight: number }): React.JSX.Element {
+  return (
+    <View style={{ minHeight }} className="justify-start gap-4 pt-2">
+      <View className="gap-3">
+        <SkeletonBar width="96%" />
+        <SkeletonBar width="92%" />
+        <SkeletonBar width="98%" />
+        <SkeletonBar width="84%" />
+      </View>
+      <View className="gap-3">
+        <SkeletonBar width="94%" />
+        <SkeletonBar width="90%" />
+        <SkeletonBar width="97%" />
+        <SkeletonBar width="78%" />
+      </View>
+    </View>
+  );
+}
 
 function stripHtml(input: string): string {
   return input
@@ -136,6 +172,21 @@ function getAdjacentTargets(
   return { chapter, prev, next };
 }
 
+function buildAllVerseTargets(chapters: SurahHeaderChapter[]): VerseTarget[] {
+  const targets: VerseTarget[] = [];
+
+  for (const chapter of chapters) {
+    const verseCount = Number.isFinite(chapter.verses_count) ? Math.trunc(chapter.verses_count) : 0;
+    if (verseCount <= 0) continue;
+
+    for (let ayahId = 1; ayahId <= verseCount; ayahId += 1) {
+      targets.push({ surahId: chapter.id, ayahId });
+    }
+  }
+
+  return targets;
+}
+
 function buildTranslationItems({
   verse,
   translationIds,
@@ -184,25 +235,15 @@ function buildTranslationItems({
   });
 }
 
-async function fetchVerseByKey(verseKey: string, translationIdsKey: string): Promise<ApiVerse> {
-  const verseUrl = `https://api.quran.com/api/v4/verses/by_key/${encodeURIComponent(
-    verseKey
-  )}?language=en&words=false&translations=${encodeURIComponent(translationIdsKey)}&fields=text_uthmani`;
-
-  const verseRes = await fetch(verseUrl);
-  if (!verseRes.ok) {
-    throw new Error(`Failed to load verse (${verseRes.status})`);
-  }
-
-  const verseJson = (await verseRes.json()) as ApiVerseResponse;
-  return verseJson.verse;
-}
-
 export default function TafsirScreen(): React.JSX.Element {
   const params = useLocalSearchParams<{ surahId?: string | string[]; ayahId?: string | string[] }>();
   const router = useRouter();
-  const { width: viewportWidth } = useWindowDimensions();
+  const { width: viewportWidth, height: viewportHeight } = useWindowDimensions();
   const pageWidth = React.useMemo(() => Math.max(viewportWidth, 1), [viewportWidth]);
+  const tafsirSkeletonMinHeight = React.useMemo(
+    () => Math.max(220, Math.round(viewportHeight * 0.42)),
+    [viewportHeight]
+  );
 
   const surahIdRaw = Array.isArray(params.surahId) ? params.surahId[0] : params.surahId;
   const ayahIdRaw = Array.isArray(params.ayahId) ? params.ayahId[0] : params.ayahId;
@@ -279,6 +320,19 @@ export default function TafsirScreen(): React.JSX.Element {
     () => getAdjacentTargets(currentTarget, chapters),
     [chapters, currentTarget]
   );
+  const allTargets = React.useMemo(() => buildAllVerseTargets(chapters), [chapters]);
+  const pagerTargets = React.useMemo(
+    () => (allTargets.length > 0 ? allTargets : currentTarget ? [currentTarget] : []),
+    [allTargets, currentTarget]
+  );
+  const targetIndexByKey = React.useMemo(
+    () => new Map(pagerTargets.map((target, index) => [getVerseKey(target), index] as const)),
+    [pagerTargets]
+  );
+  const currentTargetIndex = React.useMemo(() => {
+    if (!currentTarget) return -1;
+    return targetIndexByKey.get(getVerseKey(currentTarget)) ?? -1;
+  }, [currentTarget, targetIndexByKey]);
 
   const headerTitle = React.useMemo(() => {
     if (currentNavigation.chapter?.name_simple) return currentNavigation.chapter.name_simple;
@@ -388,6 +442,7 @@ export default function TafsirScreen(): React.JSX.Element {
       if (inflightRequestsRef.current.has(requestKey)) return;
 
       const existing = pageStateByKeyRef.current[verseKey];
+      const previewVerse = peekVersePreview(verseKey);
       const hasVerseReady =
         existing?.signature === pageSignature &&
         !existing.isLoading &&
@@ -397,42 +452,70 @@ export default function TafsirScreen(): React.JSX.Element {
         typeof activeTafsirId !== 'number' ||
         (existing?.signature === pageSignature &&
           !existing.isTafsirLoading &&
-          (typeof existing.tafsirHtml === 'string' || existing.tafsirError !== null));
+          (existing.tafsirHtml.trim().length > 0 || existing.tafsirError !== null));
       if (hasVerseReady && hasTafsirReady) return;
 
       inflightRequestsRef.current.add(requestKey);
       const generation = generationRef.current;
       const chapter = getChapterById(chapters, target.surahId);
       const needsSingleTafsir = tafsirIds.length === 1 && typeof activeTafsirId === 'number';
+      const versePromise = getVerseDetailsCached(verseKey, translationIds);
+      const tafsirPromise = needsSingleTafsir
+        ? getTafsirCached(verseKey, activeTafsirId)
+        : Promise.resolve(existing?.tafsirHtml ?? '');
 
       setPageStateByKey((previous) => ({
         ...previous,
         [verseKey]: {
           signature: pageSignature,
           chapter,
-          verse: previous[verseKey]?.verse ?? null,
-          isLoading: true,
+          verse: previous[verseKey]?.verse ?? previewVerse ?? null,
+          isLoading: previous[verseKey]?.verse == null && previewVerse == null,
           errorMessage: null,
           tafsirHtml: previous[verseKey]?.tafsirHtml ?? '',
-          isTafsirLoading: needsSingleTafsir,
+          isTafsirLoading:
+            needsSingleTafsir && (previous[verseKey]?.tafsirHtml.trim().length ?? 0) === 0,
           tafsirError: null,
         },
       }));
 
       let verse: ApiVerse | null = null;
       let verseError: string | null = null;
-      let tafsirHtml = '';
+      let tafsirHtml = existing?.tafsirHtml ?? '';
       let tafsirError: string | null = null;
 
       try {
-        verse = await fetchVerseByKey(verseKey, translationIdsKey);
+        verse = await versePromise;
       } catch (error) {
         verseError = (error as Error).message;
       }
 
-      if (!verseError && needsSingleTafsir) {
+      if (generation !== generationRef.current) {
+        inflightRequestsRef.current.delete(requestKey);
+        return;
+      }
+
+      setPageStateByKey((previous) => {
+        const retainedVerse = previous[verseKey]?.verse ?? previewVerse ?? verse ?? null;
+        return {
+          ...previous,
+          [verseKey]: {
+            signature: pageSignature,
+            chapter,
+            verse: retainedVerse,
+            isLoading: false,
+            errorMessage: retainedVerse ? null : verseError,
+            tafsirHtml: previous[verseKey]?.tafsirHtml ?? '',
+            isTafsirLoading:
+              needsSingleTafsir && (previous[verseKey]?.tafsirHtml.trim().length ?? 0) === 0,
+            tafsirError: null,
+          },
+        };
+      });
+
+      if (needsSingleTafsir) {
         try {
-          tafsirHtml = await getTafsirCached(verseKey, activeTafsirId);
+          tafsirHtml = await tafsirPromise;
         } catch {
           tafsirError = 'Failed to load tafsir content.';
         }
@@ -448,9 +531,10 @@ export default function TafsirScreen(): React.JSX.Element {
         [verseKey]: {
           signature: pageSignature,
           chapter,
-          verse,
+          verse: previous[verseKey]?.verse ?? previewVerse ?? verse ?? null,
           isLoading: false,
-          errorMessage: verseError,
+          errorMessage:
+            (previous[verseKey]?.verse ?? previewVerse ?? verse) ? null : verseError,
           tafsirHtml,
           isTafsirLoading: false,
           tafsirError,
@@ -458,83 +542,80 @@ export default function TafsirScreen(): React.JSX.Element {
       }));
       inflightRequestsRef.current.delete(requestKey);
     },
-    [activeTafsirId, chapters, pageSignature, tafsirIds.length, translationIdsKey]
+    [activeTafsirId, chapters, pageSignature, tafsirIds.length, translationIds]
   );
 
-  const pagerItems = React.useMemo<PagerItem[]>(
-    () => [
-      { slot: 'prev', target: currentNavigation.prev },
-      { slot: 'current', target: currentTarget },
-      { slot: 'next', target: currentNavigation.next },
-    ],
-    [currentNavigation.next, currentNavigation.prev, currentTarget]
-  );
+  const prefetchTargets = React.useMemo(() => {
+    if (currentTargetIndex < 0) {
+      return currentTarget ? [currentTarget] : [];
+    }
+
+    const startIndex = Math.max(0, currentTargetIndex - 2);
+    const endIndexExclusive = Math.min(pagerTargets.length, currentTargetIndex + 3);
+    return pagerTargets.slice(startIndex, endIndexExclusive);
+  }, [currentTarget, currentTargetIndex, pagerTargets]);
 
   React.useEffect(() => {
-    const targets: VerseTarget[] = pagerItems
-      .map((item) => item.target)
-      .filter((target): target is VerseTarget => target !== null);
-    targets.forEach((target) => {
+    prefetchTargets.forEach((target) => {
       void loadPage(target);
     });
-  }, [loadPage, pagerItems]);
+  }, [loadPage, prefetchTargets]);
 
-  const pagerRef = React.useRef<FlatList<PagerItem> | null>(null);
-  const isPagerResettingRef = React.useRef(false);
-
-  const resetPagerToCenter = React.useCallback(
-    (animated: boolean) => {
-      if (!pagerRef.current) return;
-      isPagerResettingRef.current = true;
-      pagerRef.current.scrollToIndex({ index: 1, animated });
-      requestAnimationFrame(() => {
-        isPagerResettingRef.current = false;
-      });
-    },
-    []
-  );
-
-  React.useLayoutEffect(() => {
-    resetPagerToCenter(false);
-  }, [currentTarget?.ayahId, currentTarget?.surahId, pageWidth, resetPagerToCenter]);
+  const pagerRef = React.useRef<FlatList<VerseTarget> | null>(null);
+  const visibleIndexRef = React.useRef(-1);
+  const didInitialPagerSyncRef = React.useRef(false);
+  const syncedPageWidthRef = React.useRef<number | null>(null);
+  const pageScrollRefsRef = React.useRef<Record<string, ScrollView | null>>({});
+  const pageScrollOffsetsRef = React.useRef<Record<string, number>>({});
 
   const navigateToTarget = React.useCallback(
     (target: VerseTarget) => {
       const nextTarget: VerseTarget = { surahId: target.surahId, ayahId: target.ayahId };
       if (currentTarget && areSameTarget(currentTarget, nextTarget)) return;
       setCurrentTarget(nextTarget);
-      setVerseRenderSignal((value) => value + 1);
-      router.replace({
-        pathname: '/tafsir/[surahId]/[ayahId]',
-        params: { surahId: String(nextTarget.surahId), ayahId: String(nextTarget.ayahId) },
+      router.setParams({
+        surahId: String(nextTarget.surahId),
+        ayahId: String(nextTarget.ayahId),
       });
     },
     [currentTarget, router]
   );
 
+  React.useLayoutEffect(() => {
+    if (!pagerRef.current || currentTargetIndex < 0) return;
+
+    const widthChanged = syncedPageWidthRef.current !== pageWidth;
+    syncedPageWidthRef.current = pageWidth;
+    const needsSync =
+      !didInitialPagerSyncRef.current ||
+      widthChanged ||
+      visibleIndexRef.current !== currentTargetIndex;
+
+    if (!needsSync) return;
+
+    pagerRef.current.scrollToIndex({ index: currentTargetIndex, animated: false });
+    visibleIndexRef.current = currentTargetIndex;
+    didInitialPagerSyncRef.current = true;
+  }, [currentTargetIndex, pageWidth]);
+
   const handlePagerScrollEnd = React.useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-      if (isPagerResettingRef.current) return;
-      const index = Math.round(event.nativeEvent.contentOffset.x / pageWidth);
-      if (index === 1) return;
+      if (pagerTargets.length === 0) return;
+      const rawIndex = Math.round(event.nativeEvent.contentOffset.x / pageWidth);
+      const index = Math.max(0, Math.min(pagerTargets.length - 1, rawIndex));
+      visibleIndexRef.current = index;
 
-      if (index === 0 && currentNavigation.prev) {
-        navigateToTarget(currentNavigation.prev);
-        return;
-      }
+      const target = pagerTargets[index];
+      if (!target) return;
+      if (currentTarget && areSameTarget(currentTarget, target)) return;
 
-      if (index === 2 && currentNavigation.next) {
-        navigateToTarget(currentNavigation.next);
-        return;
-      }
-
-      resetPagerToCenter(true);
+      navigateToTarget(target);
     },
-    [currentNavigation.next, currentNavigation.prev, navigateToTarget, pageWidth, resetPagerToCenter]
+    [currentTarget, navigateToTarget, pageWidth, pagerTargets]
   );
 
   const getPagerItemLayout = React.useCallback(
-    (_: ArrayLike<PagerItem> | null | undefined, index: number) => ({
+    (_: ArrayLike<VerseTarget> | null | undefined, index: number) => ({
       length: pageWidth,
       offset: pageWidth * index,
       index,
@@ -549,21 +630,11 @@ export default function TafsirScreen(): React.JSX.Element {
     [pageWidth]
   );
 
-  const handleActiveTafsirChange = React.useCallback(() => {
-    setVerseRenderSignal((value) => value + 1);
-  }, []);
-
   const renderPagerItem = React.useCallback(
-    ({ item }: { item: PagerItem }) => {
-      if (!item.target) {
-        return <View style={{ width: pageWidth }} />;
-      }
-
-      const verseKey = getVerseKey(item.target);
+    ({ item }: { item: VerseTarget }) => {
+      const verseKey = getVerseKey(item);
       const pageState = pageStateByKey[verseKey] ?? EMPTY_PAGE_STATE;
-      const pageTitle =
-        pageState.chapter?.name_simple ??
-        (item.target?.surahId ? `Surah ${item.target.surahId}` : 'Surah');
+      const pageTitle = pageState.chapter?.name_simple ?? `Surah ${item.surahId}`;
       const translationItems = buildTranslationItems({
         verse: pageState.verse,
         translationIds,
@@ -575,10 +646,28 @@ export default function TafsirScreen(): React.JSX.Element {
       return (
         <View style={{ width: pageWidth }}>
           <ScrollView
-            contentContainerStyle={{ padding: 16, paddingBottom: 28 }}
+            key={`${verseKey}-${pageSignature}`}
+            ref={(ref) => {
+              pageScrollRefsRef.current[verseKey] = ref;
+            }}
+            contentContainerStyle={{
+              padding: 16,
+              paddingBottom: 28,
+              minHeight: Math.max(1, viewportHeight - 120),
+            }}
             keyboardShouldPersistTaps="handled"
             removeClippedSubviews={false}
             nestedScrollEnabled
+            onScroll={(event) => {
+              pageScrollOffsetsRef.current[verseKey] = event.nativeEvent.contentOffset.y;
+            }}
+            onContentSizeChange={() => {
+              if ((pageScrollOffsetsRef.current[verseKey] ?? 0) > 8) return;
+              requestAnimationFrame(() => {
+                pageScrollRefsRef.current[verseKey]?.scrollTo({ x: 0, y: 0, animated: false });
+              });
+            }}
+            scrollEventThrottle={16}
           >
             {pageState.errorMessage ? (
               <Text className="text-sm text-error dark:text-error-dark">{pageState.errorMessage}</Text>
@@ -600,7 +689,7 @@ export default function TafsirScreen(): React.JSX.Element {
                   onOpenActions={() =>
                     openVerseActions({
                       title: pageTitle,
-                      surahId: item.target?.surahId ?? 0,
+                      surahId: item.surahId,
                       verseKey: pageState.verse?.verse_key ?? verseKey,
                       arabicText: pageState.verse?.text_uthmani ?? '',
                       translationTexts,
@@ -609,9 +698,8 @@ export default function TafsirScreen(): React.JSX.Element {
                 />
               </View>
             ) : pageState.isLoading ? (
-              <View className="mt-4 flex-row items-center gap-3">
-                <ActivityIndicator color={palette.text} />
-                <Text className="text-sm text-muted dark:text-muted-dark">Loading…</Text>
+              <View className="mt-4">
+                <VerseCardSkeleton verseKey={verseKey} />
               </View>
             ) : (
               <Text className="mt-4 text-sm text-muted dark:text-muted-dark">Verse not found.</Text>
@@ -622,7 +710,6 @@ export default function TafsirScreen(): React.JSX.Element {
                 verseKey={verseKey}
                 tafsirIds={tafsirIds}
                 onAddTafsir={() => setIsSettingsOpen(true)}
-                onActiveTafsirChange={handleActiveTafsirChange}
               />
             ) : tafsirIds.length === 1 ? (
               <View className="mt-4">
@@ -646,10 +733,7 @@ export default function TafsirScreen(): React.JSX.Element {
                 {pageState.tafsirError ? (
                   <Text className="text-sm text-error dark:text-error-dark">{pageState.tafsirError}</Text>
                 ) : pageState.isTafsirLoading ? (
-                  <View className="flex-row items-center gap-3">
-                    <ActivityIndicator color={palette.text} />
-                    <Text className="text-sm text-muted dark:text-muted-dark">Loading tafsir…</Text>
-                  </View>
+                  <TafsirLoadingSkeleton minHeight={tafsirSkeletonMinHeight} />
                 ) : (
                   <TafsirHtml
                     html={pageState.tafsirHtml}
@@ -672,12 +756,11 @@ export default function TafsirScreen(): React.JSX.Element {
     [
       activeTafsirId,
       activeTafsirName,
-      handleActiveTafsirChange,
-      navigateToTarget,
+      openVerseActions,
       pageStateByKey,
+      pageSignature,
       pageWidth,
       palette.text,
-      router,
       settings.arabicFontFace,
       settings.arabicFontSize,
       settings.showByWords,
@@ -685,9 +768,11 @@ export default function TafsirScreen(): React.JSX.Element {
       settings.translationFontSize,
       showTranslationAttribution,
       tafsirIds,
+      tafsirSkeletonMinHeight,
       translationIds,
       translationsById,
       verseRenderSignal,
+      viewportHeight,
     ]
   );
 
@@ -732,24 +817,24 @@ export default function TafsirScreen(): React.JSX.Element {
 
         <FlatList
           ref={pagerRef}
-          data={pagerItems}
+          data={pagerTargets}
           horizontal
           pagingEnabled
           bounces={false}
           directionalLockEnabled
           showsHorizontalScrollIndicator={false}
-          keyExtractor={(item) => item.slot}
+          keyExtractor={getVerseKey}
           renderItem={renderPagerItem}
           getItemLayout={getPagerItemLayout}
           onMomentumScrollEnd={handlePagerScrollEnd}
           onScrollToIndexFailed={handleScrollToIndexFailed}
+          initialScrollIndex={currentTargetIndex >= 0 ? currentTargetIndex : undefined}
           initialNumToRender={3}
           maxToRenderPerBatch={3}
-          windowSize={3}
-          removeClippedSubviews
+          windowSize={5}
+          removeClippedSubviews={false}
           scrollEventThrottle={16}
           nestedScrollEnabled
-          onLayout={() => resetPagerToCenter(false)}
         />
 
         <VerseActionsSheet

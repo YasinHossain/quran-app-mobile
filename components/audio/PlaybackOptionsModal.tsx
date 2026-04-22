@@ -25,6 +25,7 @@ import { useAppTheme } from '@/providers/ThemeContext';
 import type { Chapter } from '@/types';
 
 type PlaybackOptionsTab = 'reciter' | 'repeat';
+const AUDIO_SELECTOR_DROPDOWN_OFFSET = 1;
 
 function parseChapterIdFromVerseKey(verseKey: string | null): number | null {
   if (!verseKey) return null;
@@ -666,6 +667,7 @@ function RepeatOptionsPanel({
             selectedSurah={localRepeat.surahId}
             selectedVerse={localRepeat.verseNumber ?? localRepeat.start}
             isLoading={isLoading}
+            dropdownVisualOffset={AUDIO_SELECTOR_DROPDOWN_OFFSET}
             onSelectSurah={(surahId) => {
               setLocalRepeat((prev) => ({
                 ...prev,
@@ -694,6 +696,7 @@ function RepeatOptionsPanel({
             selectedVerse={undefined}
             isLoading={isLoading}
             hideVerse
+            dropdownVisualOffset={AUDIO_SELECTOR_DROPDOWN_OFFSET}
             onSelectSurah={(surahId) => {
               setLocalRepeat((prev) => ({
                 ...prev,
@@ -714,6 +717,7 @@ function RepeatOptionsPanel({
               selectedSurah={startSurahId}
               selectedVerse={startVerseNumber}
               isLoading={isLoading}
+              dropdownVisualOffset={AUDIO_SELECTOR_DROPDOWN_OFFSET}
               onSelectSurah={(surahId) => {
                 setLocalRepeat((prev) => ({
                   ...prev,
@@ -748,6 +752,7 @@ function RepeatOptionsPanel({
               selectedSurah={endSurahId}
               selectedVerse={endVerseNumber}
               isLoading={isLoading}
+              dropdownVisualOffset={AUDIO_SELECTOR_DROPDOWN_OFFSET}
               onSelectSurah={(surahId) => {
                 setLocalRepeat((prev) => ({
                   ...prev,

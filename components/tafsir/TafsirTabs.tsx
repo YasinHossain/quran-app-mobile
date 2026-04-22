@@ -15,6 +15,35 @@ type TafsirTab = { id: number; name: string };
 
 let globalLastActiveTafsirId: number | undefined;
 
+function SkeletonBar({
+  width,
+  height = 14,
+}: {
+  width: number | `${number}%`;
+  height?: number;
+}): React.JSX.Element {
+  return <View className="rounded-full bg-surface dark:bg-surface-dark" style={{ width, height }} />;
+}
+
+function TafsirLoadingSkeleton(): React.JSX.Element {
+  return (
+    <View className="justify-start gap-4 pt-2" style={{ minHeight: 220 }}>
+      <View className="gap-3">
+        <SkeletonBar width="96%" />
+        <SkeletonBar width="92%" />
+        <SkeletonBar width="98%" />
+        <SkeletonBar width="84%" />
+      </View>
+      <View className="gap-3">
+        <SkeletonBar width="94%" />
+        <SkeletonBar width="90%" />
+        <SkeletonBar width="97%" />
+        <SkeletonBar width="78%" />
+      </View>
+    </View>
+  );
+}
+
 export function TafsirTabs({
   verseKey,
   tafsirIds,
@@ -193,10 +222,7 @@ export function TafsirTabs({
         </Text>
 
         {isLoading ? (
-          <View className="flex-row items-center gap-3">
-            <ActivityIndicator color={palette.text} />
-            <Text className="text-sm text-muted dark:text-muted-dark">Loading tafsir…</Text>
-          </View>
+          <TafsirLoadingSkeleton />
         ) : (
           <TafsirHtml
             html={activeHtml}

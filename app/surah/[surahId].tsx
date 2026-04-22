@@ -30,6 +30,7 @@ import { DEFAULT_MUSHAF_ID, findMushafOption } from '@/data/mushaf/options';
 import { useChapters } from '@/hooks/useChapters';
 import { useSurahVerses, type SurahVerse } from '@/hooks/useSurahVerses';
 import { useTranslationResources } from '@/hooks/useTranslationResources';
+import { primeVerseDetailsCache } from '@/lib/verse/verseDetailsCache';
 import { useBookmarks } from '@/providers/BookmarkContext';
 import { useAudioPlayer } from '@/providers/AudioPlayerContext';
 import { useLayoutMetrics } from '@/providers/LayoutMetricsContext';
@@ -332,8 +333,14 @@ export default function SurahScreen(): React.JSX.Element {
     if (!verseKey) return;
     const [surah, ayah] = verseKey.split(':');
     if (!surah || !ayah) return;
+    primeVerseDetailsCache({
+      verseKey,
+      arabicText: activeVerse?.arabicText,
+      translationIds,
+      translationTexts: activeVerse?.translationTexts,
+    });
     router.push({ pathname: '/tafsir/[surahId]/[ayahId]', params: { surahId: surah, ayahId: ayah } });
-  }, [activeVerse?.verseKey, router]);
+  }, [activeVerse?.arabicText, activeVerse?.translationTexts, activeVerse?.verseKey, router, translationIds]);
 
   const handleAddToPlan = React.useCallback(() => {
     const verseKey = activeVerse?.verseKey;

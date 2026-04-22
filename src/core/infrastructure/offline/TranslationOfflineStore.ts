@@ -175,6 +175,96 @@ export class TranslationOfflineStore implements ITranslationOfflineStore {
       }));
   }
 
+  async getVerseWithTranslations(
+    verseKey: string,
+    translationIds: number[]
+  ): Promise<OfflineVerseWithTranslations | null> {
+    const db = await getAppDbAsync();
+    const normalizedVerseKey = verseKey.trim();
+    const resolvedTranslationIds = normalizeTranslationIds(translationIds);
+
+    if (!normalizedVerseKey) return null;
+
+    if (resolvedTranslationIds.length === 0) {
+      const row = await db.getFirstAsync<{
+        verse_key: string;
+        surah: number;
+        ayah: number;
+        arabic_uthmani: string;
+      }>(
+        `
+        SELECT verse_key, surah, ayah, arabic_uthmani
+        FROM offline_verses
+        WHERE verse_key = ?
+        LIMIT 1;
+        `,
+        [normalizedVerseKey]
+      );
+
+      if (!row) return null;
+
+      return {
+        verseKey: row.verse_key,
+        surahId: row.surah,
+        ayahNumber: row.ayah,
+        arabicUthmani: row.arabic_uthmani,
+        translations: [],
+      };
+    }
+
+    const placeholders = resolvedTranslationIds.map(() => '?').join(', ');
+    const rows = await db.getAllAsync<{
+      verse_key: string;
+      surah: number;
+      ayah: number;
+      arabic_uthmani: string;
+      translation_id: number | null;
+      translation_text: string | null;
+    }>(
+      `
+      SELECT
+        v.verse_key AS verse_key,
+        v.surah AS surah,
+        v.ayah AS ayah,
+        v.arabic_uthmani AS arabic_uthmani,
+        t.translation_id AS translation_id,
+        t.text AS translation_text
+      FROM offline_verses v
+      LEFT JOIN offline_translations t
+        ON t.verse_key = v.verse_key
+        AND t.translation_id IN (${placeholders})
+      WHERE v.verse_key = ?
+      ORDER BY t.translation_id ASC;
+      `,
+      [...resolvedTranslationIds, normalizedVerseKey]
+    );
+
+    if (rows.length === 0) return null;
+
+    const translationsById = new Map<number, string>();
+    const firstRow = rows[0]!;
+
+    for (const row of rows) {
+      if (row.translation_id !== null && row.translation_text !== null) {
+        translationsById.set(row.translation_id, row.translation_text);
+      }
+    }
+
+    return {
+      verseKey: firstRow.verse_key,
+      surahId: firstRow.surah,
+      ayahNumber: firstRow.ayah,
+      arabicUthmani: firstRow.arabic_uthmani,
+      translations: resolvedTranslationIds
+        .map((translationId) => {
+          const text = translationsById.get(translationId);
+          if (!text) return null;
+          return { translationId, text };
+        })
+        .filter((translation): translation is { translationId: number; text: string } => translation !== null),
+    };
+  }
+
   async deleteTranslation(translationId: number): Promise<void> {
     const db = await getAppDbAsync();
 
