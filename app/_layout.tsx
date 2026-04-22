@@ -7,6 +7,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useState } from 'react';
 import 'react-native-reanimated';
 import { View } from 'react-native';
+import { initialWindowMetrics, SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { AudioPlayerBar } from '@/components/audio/AudioPlayerBar';
 import Colors from '@/constants/Colors';
@@ -15,6 +16,7 @@ import { ChaptersProvider } from '@/providers/ChaptersContext';
 import { AudioPlayerProvider } from '@/providers/AudioPlayerContext';
 import { LayoutMetricsProvider } from '@/providers/LayoutMetricsContext';
 import { SettingsProvider } from '@/providers/SettingsContext';
+import { StartupResourcePrefetch } from '@/providers/StartupResourcePrefetch';
 import { AppThemeProvider, useAppTheme } from '@/providers/ThemeContext';
 import { initializeAudioModeAsync } from '@/src/core/infrastructure/audio/audioMode';
 import { STARTUP_FONT_ASSETS } from '@/src/core/infrastructure/fonts/arabicFonts';
@@ -73,19 +75,22 @@ export default function RootLayout() {
   }
 
   return (
-    <AppThemeProvider>
-      <SettingsProvider>
-        <ChaptersProvider>
-          <BookmarkProvider>
-            <AudioPlayerProvider>
-              <LayoutMetricsProvider>
-                <RootLayoutNav />
-              </LayoutMetricsProvider>
-            </AudioPlayerProvider>
-          </BookmarkProvider>
-        </ChaptersProvider>
-      </SettingsProvider>
-    </AppThemeProvider>
+    <SafeAreaProvider initialMetrics={initialWindowMetrics}>
+      <AppThemeProvider>
+        <SettingsProvider>
+          <StartupResourcePrefetch />
+          <ChaptersProvider>
+            <BookmarkProvider>
+              <AudioPlayerProvider>
+                <LayoutMetricsProvider>
+                  <RootLayoutNav />
+                </LayoutMetricsProvider>
+              </AudioPlayerProvider>
+            </BookmarkProvider>
+          </ChaptersProvider>
+        </SettingsProvider>
+      </AppThemeProvider>
+    </SafeAreaProvider>
   );
 }
 

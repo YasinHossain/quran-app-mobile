@@ -418,6 +418,7 @@ export function ManageTranslationsPanel({
   isLoading,
   errorMessage,
   onRefresh,
+  isActive = true,
 }: {
   translations: ResourceRecord[];
   orderedSelection: number[];
@@ -425,6 +426,7 @@ export function ManageTranslationsPanel({
   isLoading: boolean;
   errorMessage: string | null;
   onRefresh?: () => void;
+  isActive?: boolean;
 }): React.JSX.Element {
   const { resolvedTheme, isDark } = useAppTheme();
   const palette = Colors[resolvedTheme];
@@ -459,7 +461,7 @@ export function ManageTranslationsPanel({
     [translations]
   );
   const { itemsByKey, refresh: refreshIndex } = useDownloadIndexItems({
-    enabled: true,
+    enabled: isActive,
     pollIntervalMs: 800,
   });
 

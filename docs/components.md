@@ -53,8 +53,8 @@ This document lists reusable UI components currently available in the codebase s
 
 | Component | Description | File Path |
 | --- | --- | --- |
-| `SettingsSidebar` | Right-side drawer (modal + animation) used for the reader settings panel. | `components/reader/settings/SettingsSidebar.tsx` |
-| `SettingsSidebarContent` | Settings UI content (tabs + sections + controls). | `components/reader/settings/SettingsSidebarContent.tsx` |
+| `SettingsSidebar` | Right-side drawer (modal + animation) used for the reader settings panel, with explicit safe-area inset padding to keep the first-open animation stable. | `components/reader/settings/SettingsSidebar.tsx` |
+| `SettingsSidebarContent` | Settings UI content (web-parity header, tabs, sections, and subpanels/controls). | `components/reader/settings/SettingsSidebarContent.tsx` |
 | `SettingsTabToggle` | Segmented control for switching between settings tabs. | `components/reader/settings/SettingsTabToggle.tsx` |
 | `CollapsibleSection` | Collapsible section wrapper used by settings groups. | `components/reader/settings/CollapsibleSection.tsx` |
 | `ToggleRow` | Label + switch row for boolean settings. | `components/reader/settings/ToggleRow.tsx` |
@@ -90,7 +90,8 @@ This document lists reusable UI components currently available in the codebase s
 | Component | Description | File Path |
 | --- | --- | --- |
 | `AyahNavigationBar` | Top navigation pill for tafsir (back + previous/next). | `components/tafsir/AyahNavigationBar.tsx` |
-| `TafsirTabs` | Multi-tafsir tab selector + content renderer. | `components/tafsir/TafsirTabs.tsx` |
+| `TafsirTabs` | Sticky multi-tafsir switcher with horizontally scrollable labels, active-tab auto-scroll, and native-safe gesture handling for the tafsir page. | `components/tafsir/TafsirTabs.tsx` |
+| `TafsirTabPanels` | Sliding multi-tafsir content viewport that keeps the verse card outside tafsir-switch state and only animates the tafsir body. | `components/tafsir/TafsirTabs.tsx` |
 | `TafsirHtml` | HTML renderer for tafsir content (headings/paragraphs). | `components/tafsir/TafsirHtml.tsx` |
 
 ## Bookmarks Components

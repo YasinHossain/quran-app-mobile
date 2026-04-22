@@ -1,5 +1,6 @@
 import React from 'react';
 
+import { getItem, parseJson, setItem } from '@/lib/storage/appStorage';
 import { apiFetch } from '@/src/core/infrastructure/api/apiFetch';
 import { logger } from '@/src/core/infrastructure/monitoring/logger';
 
@@ -22,8 +23,20 @@ export type TranslationResource = {
   languageName: string;
 };
 
+type StoredTranslationResourcePayload = {
+  version: 1;
+  language: string;
+  updatedAt: number;
+  translations: TranslationResource[];
+};
+
+const STORAGE_KEY_PREFIX = 'quranApp:translations:resources:v1:';
+const STORAGE_TTL_MS = 1000 * 60 * 60 * 24 * 14; // 14 days
+
 const cachedByLanguage = new Map<string, TranslationResource[]>();
+const cachedMetaByLanguage = new Map<string, { updatedAt: number }>();
 const cachedPromises = new Map<string, Promise<TranslationResource[]>>();
+const cachedStoragePromises = new Map<string, Promise<TranslationResource[] | null>>();
 
 function normalizeLanguage(value: string | undefined): string {
   const trimmed = (value ?? '').trim().toLowerCase();
@@ -49,10 +62,92 @@ function toTranslationResource(resource: ApiTranslationResource): TranslationRes
   };
 }
 
-async function loadTranslations(language: string): Promise<TranslationResource[]> {
+function isStale(updatedAt: number): boolean {
+  return Date.now() - updatedAt > STORAGE_TTL_MS;
+}
+
+function storageKey(language: string): string {
+  return `${STORAGE_KEY_PREFIX}${normalizeLanguage(language)}`;
+}
+
+function toStoredTranslationResource(value: unknown): TranslationResource | null {
+  if (!value || typeof value !== 'object') return null;
+  const record = value as Record<string, unknown>;
+  const id = toPositiveInt(record.id);
+  if (!id) return null;
+  const name = String(record.name ?? '').trim();
+  if (!name) return null;
+
+  return {
+    id,
+    name,
+    authorName: String(record.authorName ?? '').trim(),
+    languageName: String(record.languageName ?? '').trim(),
+  };
+}
+
+async function hydrateTranslationsFromStorage(language: string): Promise<TranslationResource[] | null> {
   const normalizedLanguage = normalizeLanguage(language);
   const cached = cachedByLanguage.get(normalizedLanguage);
   if (cached) return cached;
+
+  const existingPromise = cachedStoragePromises.get(normalizedLanguage);
+  if (existingPromise) return existingPromise;
+
+  const promise = getItem(storageKey(normalizedLanguage))
+    .then((raw) => {
+      const parsed = parseJson<StoredTranslationResourcePayload>(raw);
+      if (!parsed || parsed.version !== 1) return null;
+      if (normalizeLanguage(parsed.language) !== normalizedLanguage) return null;
+      if (!Array.isArray(parsed.translations)) return null;
+
+      const translations = parsed.translations
+        .map(toStoredTranslationResource)
+        .filter((t): t is TranslationResource => t !== null)
+        .sort((a, b) => a.name.localeCompare(b.name));
+
+      if (translations.length === 0) return null;
+
+      cachedByLanguage.set(normalizedLanguage, translations);
+      const updatedAt =
+        typeof parsed.updatedAt === 'number' && Number.isFinite(parsed.updatedAt) && parsed.updatedAt > 0
+          ? parsed.updatedAt
+          : 0;
+      cachedMetaByLanguage.set(normalizedLanguage, { updatedAt });
+      return translations;
+    })
+    .catch(() => null)
+    .finally(() => {
+      cachedStoragePromises.delete(normalizedLanguage);
+    });
+
+  cachedStoragePromises.set(normalizedLanguage, promise);
+  return promise;
+}
+
+async function persistTranslations(language: string, translations: TranslationResource[]): Promise<void> {
+  const normalizedLanguage = normalizeLanguage(language);
+  const payload: StoredTranslationResourcePayload = {
+    version: 1,
+    language: normalizedLanguage,
+    updatedAt: Date.now(),
+    translations,
+  };
+
+  await setItem(storageKey(normalizedLanguage), JSON.stringify(payload));
+}
+
+async function loadTranslations(
+  language: string,
+  options?: {
+    force?: boolean;
+  }
+): Promise<TranslationResource[]> {
+  const normalizedLanguage = normalizeLanguage(language);
+  if (!options?.force) {
+    const cached = cachedByLanguage.get(normalizedLanguage);
+    if (cached) return cached;
+  }
 
   const existingPromise = cachedPromises.get(normalizedLanguage);
   if (existingPromise) return existingPromise;
@@ -69,7 +164,9 @@ async function loadTranslations(language: string): Promise<TranslationResource[]
         .sort((a, b) => a.name.localeCompare(b.name));
 
       cachedByLanguage.set(normalizedLanguage, translations);
+      cachedMetaByLanguage.set(normalizedLanguage, { updatedAt: Date.now() });
       cachedPromises.delete(normalizedLanguage);
+      void persistTranslations(normalizedLanguage, translations);
       return translations;
     })
     .catch((error) => {
@@ -110,13 +207,55 @@ export function useTranslationResources({
     setErrorMessage(null);
   }, [enabled, normalizedLanguage]);
 
-  const fetchNow = React.useCallback(async (): Promise<void> => {
+  const fetchNow = React.useCallback(async (options?: { force?: boolean }): Promise<void> => {
     if (!enabled) return;
-    setIsLoading(true);
     setErrorMessage(null);
 
+    const force = options?.force ?? false;
+
     try {
-      const result = await loadTranslations(normalizedLanguage);
+      const cached = cachedByLanguage.get(normalizedLanguage);
+      if (cached && cached.length > 0 && !force) {
+        setTranslations(cached);
+        setIsLoading(false);
+        const meta = cachedMetaByLanguage.get(normalizedLanguage);
+        if (meta && isStale(meta.updatedAt)) {
+          void loadTranslations(normalizedLanguage, { force: true })
+            .then((result) => setTranslations(result))
+            .catch((error) => {
+              logger.warn(
+                'Failed to refresh translation resources',
+                { language: normalizedLanguage },
+                error as Error
+              );
+            });
+        }
+        return;
+      }
+
+      if (!force) {
+        const stored = await hydrateTranslationsFromStorage(normalizedLanguage);
+        if (stored && stored.length > 0) {
+          setTranslations(stored);
+          setIsLoading(false);
+          const meta = cachedMetaByLanguage.get(normalizedLanguage);
+          if (meta && isStale(meta.updatedAt)) {
+            void loadTranslations(normalizedLanguage, { force: true })
+              .then((result) => setTranslations(result))
+              .catch((error) => {
+                logger.warn(
+                  'Failed to refresh translation resources',
+                  { language: normalizedLanguage },
+                  error as Error
+                );
+              });
+          }
+          return;
+        }
+      }
+
+      setIsLoading(true);
+      const result = await loadTranslations(normalizedLanguage, { force });
       setTranslations(result);
     } catch (error) {
       logger.warn('Failed to load translation resources', { language: normalizedLanguage }, error as Error);
@@ -131,10 +270,8 @@ export function useTranslationResources({
   }, [fetchNow]);
 
   const refresh = React.useCallback(() => {
-    cachedByLanguage.delete(normalizedLanguage);
-    cachedPromises.delete(normalizedLanguage);
-    void fetchNow();
-  }, [fetchNow, normalizedLanguage]);
+    void fetchNow({ force: true });
+  }, [fetchNow]);
 
   const translationsById = React.useMemo(
     () => new Map<number, TranslationResource>(translations.map((t) => [t.id, t])),
@@ -143,4 +280,3 @@ export function useTranslationResources({
 
   return { translations, translationsById, isLoading, errorMessage, refresh };
 }
-

@@ -15,7 +15,11 @@ import {
 
 import { BookmarkModal } from '@/components/bookmarks/BookmarkModal';
 import { TafsirHtml } from '@/components/tafsir/TafsirHtml';
-import { TafsirTabs } from '@/components/tafsir/TafsirTabs';
+import {
+  TafsirTabPanels,
+  TafsirTabs,
+  type TafsirTabContentState,
+} from '@/components/tafsir/TafsirTabs';
 import { SettingsSidebar } from '@/components/reader/settings/SettingsSidebar';
 import { VerseActionsSheet } from '@/components/surah/VerseActionsSheet';
 import { VerseCard } from '@/components/surah/VerseCard';
@@ -51,9 +55,7 @@ type PageState = {
   verse: ApiVerse | null;
   isLoading: boolean;
   errorMessage: string | null;
-  tafsirHtml: string;
-  isTafsirLoading: boolean;
-  tafsirError: string | null;
+  tafsirById: Partial<Record<number, TafsirTabContentState>>;
 };
 
 type TranslationItem = { resourceId: number; resourceName?: string; text: string };
@@ -64,10 +66,10 @@ const EMPTY_PAGE_STATE: PageState = {
   verse: null,
   isLoading: true,
   errorMessage: null,
-  tafsirHtml: '',
-  isTafsirLoading: false,
-  tafsirError: null,
+  tafsirById: {},
 };
+
+let globalLastActiveTafsirTabId: number | undefined;
 
 function SkeletonBar({
   width,
@@ -221,8 +223,8 @@ function buildTranslationItems({
           if (!text) return null;
           const name =
             typeof translation.resource_name === 'string' ? translation.resource_name.trim() : undefined;
-          const base = { resourceId: translation.resource_id, text };
-          return name ? { ...base, resourceName: name } : base;
+          const item = { resourceId: translation.resource_id, text };
+          return name ? { ...item, resourceName: name } : item;
         })
         .filter((item): item is TranslationItem => item !== null);
 
@@ -233,6 +235,63 @@ function buildTranslationItems({
     const fallbackName = translationsById.get(item.resourceId)?.name ?? `Translation ${item.resourceId}`;
     return { ...item, resourceName: fallbackName };
   });
+}
+
+function normalizePositiveIds(ids: number[]): number[] {
+  const seen = new Set<number>();
+  const normalized: number[] = [];
+
+  for (const rawId of ids) {
+    if (typeof rawId !== 'number' || !Number.isFinite(rawId)) continue;
+    const id = Math.trunc(rawId);
+    if (id <= 0 || seen.has(id)) continue;
+    seen.add(id);
+    normalized.push(id);
+  }
+
+  return normalized;
+}
+
+function buildSortedIdKey(ids: number[]): string {
+  return [...ids].sort((a, b) => a - b).join(',');
+}
+
+function hasLoadedTafsirState(state: TafsirTabContentState | undefined): boolean {
+  if (!state) return false;
+  return !state.isLoading && (state.html.trim().length > 0 || state.error !== null);
+}
+
+function buildPendingTafsirStates(
+  tafsirIds: number[],
+  existing: Partial<Record<number, TafsirTabContentState>>,
+  loadingIds: number[]
+): Partial<Record<number, TafsirTabContentState>> {
+  const loadingIdSet = new Set(loadingIds);
+  const nextState: Partial<Record<number, TafsirTabContentState>> = {};
+
+  for (const tafsirId of tafsirIds) {
+    const previousState = existing[tafsirId];
+
+    if (!loadingIdSet.has(tafsirId)) {
+      if (previousState) {
+        nextState[tafsirId] = previousState;
+      }
+      continue;
+    }
+
+    if (hasLoadedTafsirState(previousState)) {
+      nextState[tafsirId] = previousState;
+      continue;
+    }
+
+    nextState[tafsirId] = {
+      html: previousState?.html ?? '',
+      isLoading: true,
+      error: null,
+    };
+  }
+
+  return nextState;
 }
 
 export default function TafsirScreen(): React.JSX.Element {
@@ -272,6 +331,7 @@ export default function TafsirScreen(): React.JSX.Element {
     arabicText: string;
     translationTexts: string[];
   } | null>(null);
+  const [isPagerScrollEnabled, setIsPagerScrollEnabled] = React.useState(true);
 
   React.useEffect(() => {
     if (!parsedRouteTarget) {
@@ -294,9 +354,13 @@ export default function TafsirScreen(): React.JSX.Element {
     const ids = Array.isArray(settings.translationIds)
       ? settings.translationIds
       : [settings.translationId ?? 20];
-    return ids.filter((id) => Number.isFinite(id) && id > 0);
+    return normalizePositiveIds(ids);
   }, [settings.translationId, settings.translationIds]);
   const translationIdsKey = React.useMemo(() => translationIds.join(','), [translationIds]);
+  const translationRequestKey = React.useMemo(
+    () => buildSortedIdKey(translationIds),
+    [translationIdsKey]
+  );
 
   const showTranslationAttribution = translationIds.length > 1;
   const { translationsById } = useTranslationResources({
@@ -304,11 +368,64 @@ export default function TafsirScreen(): React.JSX.Element {
     language: settings.contentLanguage,
   });
 
-  const tafsirIds = settings.tafsirIds ?? [];
+  const tafsirIds = React.useMemo(
+    () => normalizePositiveIds(settings.tafsirIds ?? []),
+    [settings.tafsirIds]
+  );
   const tafsirIdsKey = React.useMemo(() => tafsirIds.join(','), [tafsirIds]);
-  const activeTafsirId = tafsirIds[0];
-  const activeTafsirIdKey = typeof activeTafsirId === 'number' ? String(activeTafsirId) : 'none';
-  const pageSignature = `${translationIdsKey}|${tafsirIdsKey}|${activeTafsirIdKey}`;
+  const tafsirRequestKey = React.useMemo(() => buildSortedIdKey(tafsirIds), [tafsirIdsKey]);
+  const pageSignature = `${translationRequestKey}|${tafsirRequestKey}`;
+
+  const [activeTafsirTabId, setActiveTafsirTabId] = React.useState<number | undefined>(() => {
+    if (
+      typeof globalLastActiveTafsirTabId === 'number' &&
+      tafsirIds.includes(globalLastActiveTafsirTabId)
+    ) {
+      return globalLastActiveTafsirTabId;
+    }
+
+    return typeof tafsirIds[0] === 'number' ? tafsirIds[0] : undefined;
+  });
+
+  React.useEffect(() => {
+    setActiveTafsirTabId((current) => {
+      const candidate = typeof current === 'number' ? current : undefined;
+      if (candidate && tafsirIds.includes(candidate)) return candidate;
+
+      if (
+        typeof globalLastActiveTafsirTabId === 'number' &&
+        tafsirIds.includes(globalLastActiveTafsirTabId)
+      ) {
+        return globalLastActiveTafsirTabId;
+      }
+
+      return typeof tafsirIds[0] === 'number' ? tafsirIds[0] : undefined;
+    });
+  }, [tafsirIdsKey, tafsirIds]);
+
+  const activeTafsirId = React.useMemo(() => {
+    if (typeof activeTafsirTabId === 'number' && tafsirIds.includes(activeTafsirTabId)) {
+      return activeTafsirTabId;
+    }
+    if (
+      typeof globalLastActiveTafsirTabId === 'number' &&
+      tafsirIds.includes(globalLastActiveTafsirTabId)
+    ) {
+      return globalLastActiveTafsirTabId;
+    }
+    return typeof tafsirIds[0] === 'number' ? tafsirIds[0] : undefined;
+  }, [activeTafsirTabId, tafsirIds]);
+
+  React.useEffect(() => {
+    if (typeof activeTafsirId !== 'number') return;
+    globalLastActiveTafsirTabId = activeTafsirId;
+    if (activeTafsirId === activeTafsirTabId) return;
+    setActiveTafsirTabId(activeTafsirId);
+  }, [activeTafsirId, activeTafsirTabId]);
+
+  React.useEffect(() => {
+    setIsPagerScrollEnabled(true);
+  }, [currentTarget?.ayahId, currentTarget?.surahId]);
 
   const { tafsirById } = useTafsirResources({ enabled: tafsirIds.length > 0 });
   const activeTafsirName =
@@ -442,82 +559,88 @@ export default function TafsirScreen(): React.JSX.Element {
       if (inflightRequestsRef.current.has(requestKey)) return;
 
       const existing = pageStateByKeyRef.current[verseKey];
+      const existingMatchesSignature = existing?.signature === pageSignature;
       const previewVerse = peekVersePreview(verseKey);
       const hasVerseReady =
-        existing?.signature === pageSignature &&
+        existingMatchesSignature &&
         !existing.isLoading &&
         (existing.verse !== null || existing.errorMessage !== null);
       const hasTafsirReady =
-        tafsirIds.length !== 1 ||
-        typeof activeTafsirId !== 'number' ||
-        (existing?.signature === pageSignature &&
-          !existing.isTafsirLoading &&
-          (existing.tafsirHtml.trim().length > 0 || existing.tafsirError !== null));
-      if (hasVerseReady && hasTafsirReady) return;
+        existingMatchesSignature &&
+        tafsirIds.every((tafsirId) => hasLoadedTafsirState(existing.tafsirById[tafsirId]));
+
+      if (hasVerseReady && (tafsirIds.length === 0 || hasTafsirReady)) return;
 
       inflightRequestsRef.current.add(requestKey);
       const generation = generationRef.current;
       const chapter = getChapterById(chapters, target.surahId);
-      const needsSingleTafsir = tafsirIds.length === 1 && typeof activeTafsirId === 'number';
-      const versePromise = getVerseDetailsCached(verseKey, translationIds);
-      const tafsirPromise = needsSingleTafsir
-        ? getTafsirCached(verseKey, activeTafsirId)
-        : Promise.resolve(existing?.tafsirHtml ?? '');
+      const tafsirIdsToFetch = tafsirIds.filter((tafsirId) => {
+        if (!existingMatchesSignature) return true;
+        const tafsirState = existing.tafsirById[tafsirId];
+        return !hasLoadedTafsirState(tafsirState) && !tafsirState?.isLoading;
+      });
 
-      setPageStateByKey((previous) => ({
-        ...previous,
-        [verseKey]: {
-          signature: pageSignature,
-          chapter,
-          verse: previous[verseKey]?.verse ?? previewVerse ?? null,
-          isLoading: previous[verseKey]?.verse == null && previewVerse == null,
-          errorMessage: null,
-          tafsirHtml: previous[verseKey]?.tafsirHtml ?? '',
-          isTafsirLoading:
-            needsSingleTafsir && (previous[verseKey]?.tafsirHtml.trim().length ?? 0) === 0,
-          tafsirError: null,
-        },
-      }));
-
-      let verse: ApiVerse | null = null;
-      let verseError: string | null = null;
-      let tafsirHtml = existing?.tafsirHtml ?? '';
-      let tafsirError: string | null = null;
-
-      try {
-        verse = await versePromise;
-      } catch (error) {
-        verseError = (error as Error).message;
-      }
-
-      if (generation !== generationRef.current) {
-        inflightRequestsRef.current.delete(requestKey);
-        return;
-      }
+      const versePromise = hasVerseReady
+        ? Promise.resolve(existing?.verse ?? previewVerse ?? null)
+        : getVerseDetailsCached(verseKey, translationIds);
+      const tafsirPromise = Promise.all(
+        tafsirIdsToFetch.map(async (tafsirId) => {
+          try {
+            const html = await getTafsirCached(verseKey, tafsirId);
+            return {
+              tafsirId,
+              state: { html, isLoading: false, error: null } satisfies TafsirTabContentState,
+            };
+          } catch {
+            return {
+              tafsirId,
+              state: {
+                html: '',
+                isLoading: false,
+                error: 'Failed to load tafsir content.',
+              } satisfies TafsirTabContentState,
+            };
+          }
+        })
+      );
 
       setPageStateByKey((previous) => {
-        const retainedVerse = previous[verseKey]?.verse ?? previewVerse ?? verse ?? null;
+        const current = previous[verseKey];
+        const currentMatchesSignature = current?.signature === pageSignature;
+        const previousTafsirById = currentMatchesSignature ? current.tafsirById : {};
+
         return {
           ...previous,
           [verseKey]: {
             signature: pageSignature,
             chapter,
-            verse: retainedVerse,
-            isLoading: false,
-            errorMessage: retainedVerse ? null : verseError,
-            tafsirHtml: previous[verseKey]?.tafsirHtml ?? '',
-            isTafsirLoading:
-              needsSingleTafsir && (previous[verseKey]?.tafsirHtml.trim().length ?? 0) === 0,
-            tafsirError: null,
+            verse:
+              currentMatchesSignature && current.verse !== null
+                ? current.verse
+                : previewVerse ?? null,
+            isLoading:
+              !hasVerseReady &&
+              !(currentMatchesSignature && current.verse !== null) &&
+              previewVerse == null,
+            errorMessage: null,
+            tafsirById: buildPendingTafsirStates(
+              tafsirIds,
+              previousTafsirById,
+              tafsirIdsToFetch
+            ),
           },
         };
       });
 
-      if (needsSingleTafsir) {
+      let verse: ApiVerse | null = existingMatchesSignature ? existing.verse : null;
+      let verseError: string | null = existingMatchesSignature ? existing.errorMessage : null;
+
+      if (!hasVerseReady) {
         try {
-          tafsirHtml = await tafsirPromise;
-        } catch {
-          tafsirError = 'Failed to load tafsir content.';
+          verse = await versePromise;
+          verseError = null;
+        } catch (error) {
+          verseError = (error as Error).message;
         }
       }
 
@@ -526,23 +649,67 @@ export default function TafsirScreen(): React.JSX.Element {
         return;
       }
 
-      setPageStateByKey((previous) => ({
-        ...previous,
-        [verseKey]: {
-          signature: pageSignature,
-          chapter,
-          verse: previous[verseKey]?.verse ?? previewVerse ?? verse ?? null,
-          isLoading: false,
-          errorMessage:
-            (previous[verseKey]?.verse ?? previewVerse ?? verse) ? null : verseError,
-          tafsirHtml,
-          isTafsirLoading: false,
-          tafsirError,
-        },
-      }));
+      setPageStateByKey((previous) => {
+        const current = previous[verseKey];
+        const retainedVerse = current?.verse ?? previewVerse ?? verse ?? null;
+
+        return {
+          ...previous,
+          [verseKey]: {
+            signature: pageSignature,
+            chapter,
+            verse: retainedVerse,
+            isLoading: false,
+            errorMessage: retainedVerse ? null : verseError,
+            tafsirById: current?.tafsirById ?? buildPendingTafsirStates(tafsirIds, {}, tafsirIdsToFetch),
+          },
+        };
+      });
+
+      const tafsirResults = await tafsirPromise;
+
+      if (generation !== generationRef.current) {
+        inflightRequestsRef.current.delete(requestKey);
+        return;
+      }
+
+      setPageStateByKey((previous) => {
+        const current = previous[verseKey];
+        const nextTafsirById: Partial<Record<number, TafsirTabContentState>> = {};
+        const resultById = new Map<number, TafsirTabContentState>(
+          tafsirResults.map((result) => [result.tafsirId, result.state])
+        );
+
+        for (const tafsirId of tafsirIds) {
+          const fetchedState = resultById.get(tafsirId);
+          if (fetchedState) {
+            nextTafsirById[tafsirId] = fetchedState;
+            continue;
+          }
+
+          const currentState = current?.tafsirById[tafsirId];
+          if (currentState) {
+            nextTafsirById[tafsirId] = { ...currentState, isLoading: false };
+          }
+        }
+
+        const retainedVerse = current?.verse ?? previewVerse ?? verse ?? null;
+
+        return {
+          ...previous,
+          [verseKey]: {
+            signature: pageSignature,
+            chapter,
+            verse: retainedVerse,
+            isLoading: false,
+            errorMessage: retainedVerse ? null : verseError,
+            tafsirById: nextTafsirById,
+          },
+        };
+      });
       inflightRequestsRef.current.delete(requestKey);
     },
-    [activeTafsirId, chapters, pageSignature, tafsirIds.length, translationIds]
+    [chapters, pageSignature, tafsirIds, translationIds]
   );
 
   const prefetchTargets = React.useMemo(() => {
@@ -642,6 +809,9 @@ export default function TafsirScreen(): React.JSX.Element {
         translationsById,
       });
       const translationTexts = translationItems.map((translation) => translation.text);
+      const currentTafsirState =
+        typeof activeTafsirId === 'number' ? pageState.tafsirById[activeTafsirId] : undefined;
+      const isMultiTafsir = tafsirIds.length > 1;
 
       return (
         <View style={{ width: pageWidth }}>
@@ -658,6 +828,7 @@ export default function TafsirScreen(): React.JSX.Element {
             keyboardShouldPersistTaps="handled"
             removeClippedSubviews={false}
             nestedScrollEnabled
+            stickyHeaderIndices={isMultiTafsir ? [2] : undefined}
             onScroll={(event) => {
               pageScrollOffsetsRef.current[verseKey] = event.nativeEvent.contentOffset.y;
             }}
@@ -669,12 +840,14 @@ export default function TafsirScreen(): React.JSX.Element {
             }}
             scrollEventThrottle={16}
           >
-            {pageState.errorMessage ? (
-              <Text className="text-sm text-error dark:text-error-dark">{pageState.errorMessage}</Text>
-            ) : null}
+            <View>
+              {pageState.errorMessage ? (
+                <Text className="text-sm text-error dark:text-error-dark">{pageState.errorMessage}</Text>
+              ) : null}
+            </View>
 
-            {pageState.verse ? (
-              <View className={pageState.errorMessage ? 'mt-4' : ''} collapsable={false}>
+            <View className={pageState.errorMessage ? 'mt-4' : ''} collapsable={false}>
+              {pageState.verse ? (
                 <VerseCard
                   verseKey={pageState.verse.verse_key}
                   arabicText={pageState.verse.text_uthmani ?? ''}
@@ -696,23 +869,48 @@ export default function TafsirScreen(): React.JSX.Element {
                     })
                   }
                 />
-              </View>
-            ) : pageState.isLoading ? (
-              <View className="mt-4">
+              ) : pageState.isLoading ? (
                 <VerseCardSkeleton verseKey={verseKey} />
-              </View>
-            ) : (
-              <Text className="mt-4 text-sm text-muted dark:text-muted-dark">Verse not found.</Text>
-            )}
+              ) : (
+                <Text className="text-sm text-muted dark:text-muted-dark">Verse not found.</Text>
+              )}
+            </View>
 
-            {tafsirIds.length > 1 ? (
-              <TafsirTabs
-                verseKey={verseKey}
-                tafsirIds={tafsirIds}
-                onAddTafsir={() => setIsSettingsOpen(true)}
-              />
-            ) : tafsirIds.length === 1 ? (
-              <View className="mt-4">
+            <View
+              collapsable={false}
+              className={isMultiTafsir ? 'bg-background dark:bg-background-dark' : ''}
+              style={
+                isMultiTafsir
+                  ? {
+                      elevation: 10,
+                      marginHorizontal: -16,
+                      zIndex: 12,
+                    }
+                  : undefined
+              }
+            >
+              {isMultiTafsir ? (
+                <TafsirTabs
+                  tafsirIds={tafsirIds}
+                  activeTafsirId={activeTafsirId}
+                  onActiveTafsirChange={setActiveTafsirTabId}
+                  onAddTafsir={() => setIsSettingsOpen(true)}
+                  onTabsTouchStart={() => setIsPagerScrollEnabled(false)}
+                  onTabsTouchEnd={() => setIsPagerScrollEnabled(true)}
+                />
+              ) : null}
+            </View>
+
+            <View>
+              {isMultiTafsir ? (
+                <TafsirTabPanels
+                  verseKey={verseKey}
+                  tafsirIds={tafsirIds}
+                  activeTafsirId={activeTafsirId}
+                  contentByTafsirId={pageState.tafsirById}
+                />
+              ) : tafsirIds.length === 1 ? (
+                <View className="mt-4">
                 <View className="mb-4 items-center gap-3">
                   <Text className="text-center text-lg font-bold text-foreground dark:text-foreground-dark">
                     {activeTafsirName}
@@ -730,25 +928,26 @@ export default function TafsirScreen(): React.JSX.Element {
                   </Pressable>
                 </View>
 
-                {pageState.tafsirError ? (
-                  <Text className="text-sm text-error dark:text-error-dark">{pageState.tafsirError}</Text>
-                ) : pageState.isTafsirLoading ? (
+                {currentTafsirState?.error ? (
+                  <Text className="text-sm text-error dark:text-error-dark">{currentTafsirState.error}</Text>
+                ) : (currentTafsirState?.isLoading ?? true) ? (
                   <TafsirLoadingSkeleton minHeight={tafsirSkeletonMinHeight} />
                 ) : (
                   <TafsirHtml
-                    html={pageState.tafsirHtml}
+                    html={currentTafsirState?.html ?? ''}
                     fontSize={settings.tafsirFontSize || 18}
                     contentKey={`${verseKey}-${activeTafsirId ?? 'none'}`}
                   />
                 )}
-              </View>
-            ) : (
-              <View className="mt-4">
+                </View>
+              ) : (
+                <View className="mt-4">
                 <Text className="text-sm text-muted dark:text-muted-dark">
                   Please select a tafsir from the settings panel to view commentary.
                 </Text>
-              </View>
-            )}
+                </View>
+              )}
+            </View>
           </ScrollView>
         </View>
       );
@@ -760,7 +959,6 @@ export default function TafsirScreen(): React.JSX.Element {
       pageStateByKey,
       pageSignature,
       pageWidth,
-      palette.text,
       settings.arabicFontFace,
       settings.arabicFontSize,
       settings.showByWords,
@@ -776,10 +974,45 @@ export default function TafsirScreen(): React.JSX.Element {
     ]
   );
 
+  const pagerExtraData = React.useMemo(
+    () => ({
+      activeTafsirId,
+      activeTafsirName,
+      pageSignature,
+      pageStateByKey,
+      showTranslationAttribution,
+      tafsirIdsKey,
+      translationIdsKey,
+      translationsById,
+      verseRenderSignal,
+      arabicFontFace: settings.arabicFontFace,
+      arabicFontSize: settings.arabicFontSize,
+      showByWords: settings.showByWords,
+      tafsirFontSize: settings.tafsirFontSize,
+      translationFontSize: settings.translationFontSize,
+    }),
+    [
+      activeTafsirId,
+      activeTafsirName,
+      pageSignature,
+      pageStateByKey,
+      settings.arabicFontFace,
+      settings.arabicFontSize,
+      settings.showByWords,
+      settings.tafsirFontSize,
+      settings.translationFontSize,
+      showTranslationAttribution,
+      tafsirIdsKey,
+      translationIdsKey,
+      translationsById,
+      verseRenderSignal,
+    ]
+  );
+
   if (!currentTarget) {
     return (
       <View className={isDark ? 'flex-1 dark' : 'flex-1'}>
-        <View className="flex-1 items-center justify-center bg-background dark:bg-background-dark px-6">
+        <View className="flex-1 items-center justify-center bg-background px-6 dark:bg-background-dark">
           <Text className="text-center text-sm text-error dark:text-error-dark">
             Invalid verse reference.
           </Text>
@@ -818,6 +1051,7 @@ export default function TafsirScreen(): React.JSX.Element {
         <FlatList
           ref={pagerRef}
           data={pagerTargets}
+          extraData={pagerExtraData}
           horizontal
           pagingEnabled
           bounces={false}
@@ -835,6 +1069,7 @@ export default function TafsirScreen(): React.JSX.Element {
           removeClippedSubviews={false}
           scrollEventThrottle={16}
           nestedScrollEnabled
+          scrollEnabled={isPagerScrollEnabled}
         />
 
         <VerseActionsSheet
