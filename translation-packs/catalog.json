@@ -1,0 +1,19 @@
+{
+  "generatedAt": "2026-04-23T02:49:03.357Z",
+  "packs": [
+    {
+      "translationId": 20,
+      "name": "Saheeh International",
+      "authorName": "Saheeh International",
+      "languageName": "english",
+      "version": "2026-04-23",
+      "downloadUrl": "https://yasinhossain.github.io/quran-app-mobile/translation-packs/translations/20/2026-04-23/payload.json",
+      "checksum": "47061a48865c07650a74b932ecf9c780",
+      "sizeBytes": 2718150,
+      "totalVerses": 6236,
+      "manifestUrl": "https://yasinhossain.github.io/quran-app-mobile/translation-packs/translations/20/2026-04-23/manifest.json",
+      "manifestChecksum": "435fc80f4a49fa1e616b4b4379737142",
+      "manifestSizeBytes": 501
+    }
+  ]
+}
