@@ -1,0 +1,15 @@
+{
+  "tafsirId": 169,
+  "name": "Ibn Kathir (Abridged)",
+  "authorName": "Hafiz Ibn Kathir",
+  "languageName": "english",
+  "version": "2026-04-23",
+  "bundled": false,
+  "format": "tafsir-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "5d47f4d7a17c6e172a02a1b8cb6819a4",
+  "payloadSizeBytes": 11264624,
+  "totalVerses": 6236,
+  "generatedAt": "2026-04-23T04:25:30.802Z",
+  "source": "https://api.quran.com/api/v4/tafsirs/169/by_chapter/{surahId}?per_page=300"
+}

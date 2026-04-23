@@ -1,0 +1,15 @@
+{
+  "tafsirId": 165,
+  "name": "Tafsir Ahsanul Bayaan",
+  "authorName": "Bayaan Foundation",
+  "languageName": "bengali",
+  "version": "2026-04-23",
+  "bundled": false,
+  "format": "tafsir-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "0c4e705549284254332b846512fe8345",
+  "payloadSizeBytes": 9481416,
+  "totalVerses": 6236,
+  "generatedAt": "2026-04-23T04:37:23.724Z",
+  "source": "https://api.quran.com/api/v4/tafsirs/165/by_chapter/{surahId}?per_page=300"
+}

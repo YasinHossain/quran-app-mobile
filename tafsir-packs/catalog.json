@@ -1,0 +1,33 @@
+{
+  "generatedAt": "2026-04-23T04:37:23.732Z",
+  "packs": [
+    {
+      "tafsirId": 165,
+      "name": "Tafsir Ahsanul Bayaan",
+      "authorName": "Bayaan Foundation",
+      "languageName": "bengali",
+      "version": "2026-04-23",
+      "downloadUrl": "https://yasinhossain.github.io/quran-app-mobile/tafsir-packs/tafsirs/165/2026-04-23/payload.json",
+      "checksum": "0c4e705549284254332b846512fe8345",
+      "sizeBytes": 9481416,
+      "totalVerses": 6236,
+      "manifestUrl": "https://yasinhossain.github.io/quran-app-mobile/tafsir-packs/tafsirs/165/2026-04-23/manifest.json",
+      "manifestChecksum": "823af9b3b2eb513de03030a23a57bd45",
+      "manifestSizeBytes": 479
+    },
+    {
+      "tafsirId": 169,
+      "name": "Ibn Kathir (Abridged)",
+      "authorName": "Hafiz Ibn Kathir",
+      "languageName": "english",
+      "version": "2026-04-23",
+      "downloadUrl": "https://yasinhossain.github.io/quran-app-mobile/tafsir-packs/tafsirs/169/2026-04-23/payload.json",
+      "checksum": "5d47f4d7a17c6e172a02a1b8cb6819a4",
+      "sizeBytes": 11264624,
+      "totalVerses": 6236,
+      "manifestUrl": "https://yasinhossain.github.io/quran-app-mobile/tafsir-packs/tafsirs/169/2026-04-23/manifest.json",
+      "manifestChecksum": "f7e59df91dc61d554f3d0f92101272d2",
+      "manifestSizeBytes": 479
+    }
+  ]
+}
