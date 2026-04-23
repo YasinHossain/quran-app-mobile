@@ -54,6 +54,11 @@ const TOTAL_VERSE_COUNT = (
     : 0
 ) || FALLBACK_TOTAL_VERSE_COUNT;
 
+type DownloadSizeInfo = {
+  mb: number | null;
+  isExact: boolean;
+};
+
 type ApiEstimateVerse = {
   translations?: Array<{ resource_id?: number; text?: string }>;
 };
@@ -194,6 +199,20 @@ async function estimateTranslationSizeMb(translationId: number): Promise<number>
   const estimatedMb = estimatedStoredBytes / BYTES_PER_MEGABYTE;
 
   return Math.max(0.1, Math.round(estimatedMb * 10) / 10);
+}
+
+async function resolveTranslationDownloadSizeInfo(translationId: number): Promise<DownloadSizeInfo> {
+  const packAvailability = await container.getTranslationPackRepository().getPackAvailability(translationId);
+  if (packAvailability && packAvailability.sizeBytes > 0) {
+    const mb = Math.max(0.1, Math.round((packAvailability.sizeBytes / BYTES_PER_MEGABYTE) * 10) / 10);
+    return { mb, isExact: true };
+  }
+
+  const estimatedMb = await estimateTranslationSizeMb(translationId);
+  return {
+    mb: estimatedMb,
+    isExact: false,
+  };
 }
 
 function CompactProgressRing({
@@ -436,7 +455,9 @@ export function ManageTranslationsPanel({
   const [busyTranslationIds, setBusyTranslationIds] = React.useState<Set<number>>(() => new Set());
   const [downloadTarget, setDownloadTarget] = React.useState<ResourceRecord | null>(null);
   const [deleteTarget, setDeleteTarget] = React.useState<ResourceRecord | null>(null);
-  const [sizeEstimatesMbById, setSizeEstimatesMbById] = React.useState<Record<number, number | null>>({});
+  const [downloadSizeInfoById, setDownloadSizeInfoById] = React.useState<
+    Record<number, DownloadSizeInfo | null | undefined>
+  >({});
   const [estimatingTranslationIds, setEstimatingTranslationIds] = React.useState<Set<number>>(
     () => new Set()
   );
@@ -541,7 +562,8 @@ export function ManageTranslationsPanel({
           container.getDownloadIndexRepository(),
           container.getTranslationOfflineStore(),
           container.getTranslationDownloadRepository(),
-          logger
+          logger,
+          container.getTranslationPackRepository()
         );
 
         await useCase.execute(translationId);
@@ -581,9 +603,9 @@ export function ManageTranslationsPanel({
     [busyTranslationIds, refreshIndex, setBusy]
   );
 
-  const ensureEstimatedSize = React.useCallback(
+  const ensureDownloadSizeInfo = React.useCallback(
     async (translationId: number): Promise<void> => {
-      if (sizeEstimatesMbById[translationId] !== undefined) return;
+      if (downloadSizeInfoById[translationId] !== undefined) return;
       if (estimatingTranslationIds.has(translationId)) return;
 
       setEstimatingTranslationIds((prev) => {
@@ -593,15 +615,15 @@ export function ManageTranslationsPanel({
       });
 
       try {
-        const estimatedMb = await estimateTranslationSizeMb(translationId);
-        setSizeEstimatesMbById((prev) => ({ ...prev, [translationId]: estimatedMb }));
+        const sizeInfo = await resolveTranslationDownloadSizeInfo(translationId);
+        setDownloadSizeInfoById((prev) => ({ ...prev, [translationId]: sizeInfo }));
       } catch (error) {
         logger.warn(
-          'Failed to estimate translation download size',
+          'Failed to resolve translation download size',
           { translationId },
           error as Error
         );
-        setSizeEstimatesMbById((prev) => ({ ...prev, [translationId]: null }));
+        setDownloadSizeInfoById((prev) => ({ ...prev, [translationId]: null }));
       } finally {
         setEstimatingTranslationIds((prev) => {
           const next = new Set(prev);
@@ -610,7 +632,7 @@ export function ManageTranslationsPanel({
         });
       }
     },
-    [estimatingTranslationIds, sizeEstimatesMbById]
+    [downloadSizeInfoById, estimatingTranslationIds]
   );
 
   const handlePressDownload = React.useCallback(
@@ -627,14 +649,14 @@ export function ManageTranslationsPanel({
     let cancelled = false;
     const interactionHandle = InteractionManager.runAfterInteractions(() => {
       if (cancelled) return;
-      void ensureEstimatedSize(downloadTarget.id);
+      void ensureDownloadSizeInfo(downloadTarget.id);
     });
 
     return () => {
       cancelled = true;
       interactionHandle.cancel();
     };
-  }, [downloadTarget, ensureEstimatedSize]);
+  }, [downloadTarget, ensureDownloadSizeInfo]);
 
   const handleConfirmDownload = React.useCallback(() => {
     if (!downloadTarget) return;
@@ -877,15 +899,17 @@ export function ManageTranslationsPanel({
     );
   }
 
-  const downloadEstimate = downloadTarget ? sizeEstimatesMbById[downloadTarget.id] : undefined;
+  const downloadSizeInfo = downloadTarget ? downloadSizeInfoById[downloadTarget.id] : undefined;
   const isEstimatingDownloadSize =
     downloadTarget !== null &&
-    (downloadEstimate === undefined || estimatingTranslationIds.has(downloadTarget.id));
+    (downloadSizeInfo === undefined || estimatingTranslationIds.has(downloadTarget.id));
   const downloadEstimateLabel = isEstimatingDownloadSize
     ? 'Estimating size...'
-    : typeof downloadEstimate === 'number'
-      ? `Estimated size: ~${downloadEstimate.toFixed(1)} MB`
-      : 'Estimated size unavailable';
+    : downloadSizeInfo && typeof downloadSizeInfo.mb === 'number'
+      ? downloadSizeInfo.isExact
+        ? `Download size: ${downloadSizeInfo.mb.toFixed(1)} MB`
+        : `Estimated size: ~${downloadSizeInfo.mb.toFixed(1)} MB`
+      : 'Download size unavailable';
 
   return (
     <View className="flex-1">

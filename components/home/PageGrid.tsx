@@ -1,9 +1,7 @@
 import React from 'react';
 import { FlatList, useWindowDimensions, View } from 'react-native';
 
-import type { JuzSummary } from './JuzCard';
-
-import { JuzCard } from './JuzCard';
+import { PageCard } from './PageCard';
 
 function getNumColumns(width: number): number {
   if (width >= 1280) return 4;
@@ -12,11 +10,11 @@ function getNumColumns(width: number): number {
   return 1;
 }
 
-export function JuzGrid({
-  juzs,
+export function PageGrid({
+  pages,
   listHeader,
 }: {
-  juzs: JuzSummary[];
+  pages: number[];
   listHeader?: React.ReactElement | null;
 }): React.JSX.Element {
   const { width } = useWindowDimensions();
@@ -26,8 +24,8 @@ export function JuzGrid({
     <FlatList
       key={numColumns}
       style={{ flex: 1 }}
-      data={juzs}
-      keyExtractor={(item) => String(item.number)}
+      data={pages}
+      keyExtractor={(item) => String(item)}
       numColumns={numColumns}
       contentContainerStyle={{ paddingBottom: 24 }}
       ListHeaderComponent={listHeader}
@@ -43,7 +41,7 @@ export function JuzGrid({
               marginRight: isLastInRow ? 0 : gap,
             }}
           >
-            <JuzCard juz={item} />
+            <PageCard pageNumber={item} />
           </View>
         );
       }}

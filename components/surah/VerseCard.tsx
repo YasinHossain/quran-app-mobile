@@ -1,5 +1,6 @@
 import React from 'react';
 import { MoreHorizontal } from 'lucide-react-native';
+import type { LayoutChangeEvent } from 'react-native';
 import { Platform, Pressable, Text, ToastAndroid, View } from 'react-native';
 
 import Colors from '@/constants/Colors';
@@ -32,6 +33,9 @@ function VerseCardComponent({
   isAudioActive,
   audioWordSync,
   renderSignal: _renderSignal,
+  bodyMinHeight,
+  bodyPlaceholder,
+  onBodyLayout,
   onOpenActions,
   onPress,
 }: {
@@ -52,6 +56,9 @@ function VerseCardComponent({
   isAudioActive?: boolean;
   audioWordSync?: VerseAudioWordSync;
   renderSignal?: number;
+  bodyMinHeight?: number;
+  bodyPlaceholder?: React.ReactNode;
+  onBodyLayout?: (event: LayoutChangeEvent) => void;
   onOpenActions?: () => void;
   onPress?: () => void;
 }): React.JSX.Element {
@@ -142,6 +149,72 @@ function VerseCardComponent({
     [showWordTranslation]
   );
 
+  const defaultBodyContent = (
+    <View className="gap-4">
+      {Array.isArray(words) && words.length ? (
+        <WordByWordVerse
+          verseKey={verseKey}
+          words={words}
+          arabicFontSize={arabicFontSize}
+          arabicFontFamily={effectiveArabicFontFamily}
+          showTranslations={Boolean(showByWords)}
+          pressBehavior={isSeekEnabled ? 'seek' : showByWords ? 'none' : 'translation'}
+          onWordPress={isSeekEnabled ? handleSeekWordPress : handleTranslationWordPress}
+          registerWordHighlight={audioWordSync?.registerWordHighlight}
+        />
+      ) : (
+        <Text
+          key={`${verseKey}-arabic-${renderSignal}`}
+          className="text-right text-foreground dark:text-foreground-dark"
+          style={{
+            fontSize: arabicFontSize,
+            lineHeight: arabicLineHeight,
+            fontFamily: effectiveArabicFontFamily,
+            writingDirection: 'rtl',
+            textAlign: 'right',
+          }}
+        >
+          {sanitizedArabicText}
+        </Text>
+      )}
+
+      {!showByWords && wordTranslationTooltip ? (
+        <Text className="text-xs text-muted dark:text-muted-dark">{wordTranslationTooltip}</Text>
+      ) : null}
+
+      {cleanedTranslationItems.length ? (
+        <View className="gap-6">
+          {cleanedTranslationItems.map((translation, idx) => {
+            const resourceName =
+              'resourceName' in translation && typeof translation.resourceName === 'string'
+                ? translation.resourceName
+                : undefined;
+
+            return (
+              <View key={`${renderSignal}-${idx}-${translation.text.slice(0, 24)}`} className="gap-2">
+                {shouldShowTranslationAttribution && resourceName ? (
+                  <Text className="text-xs font-normal uppercase tracking-wider text-muted dark:text-muted-dark">
+                    {resourceName}
+                  </Text>
+                ) : null}
+                <Text
+                  className="text-foreground dark:text-foreground-dark"
+                  style={{
+                    fontSize: translationFontSize,
+                    lineHeight: translationLineHeight,
+                    writingDirection: 'auto',
+                  }}
+                >
+                  {translation.text}
+                </Text>
+              </View>
+            );
+          })}
+        </View>
+      ) : null}
+    </View>
+  );
+
   const content = (
     <View className="flex-1 gap-4">
         <View
@@ -167,67 +240,12 @@ function VerseCardComponent({
           ) : null}
         </View>
 
-        {Array.isArray(words) && words.length ? (
-          <WordByWordVerse
-            verseKey={verseKey}
-            words={words}
-            arabicFontSize={arabicFontSize}
-            arabicFontFamily={effectiveArabicFontFamily}
-            showTranslations={Boolean(showByWords)}
-            pressBehavior={isSeekEnabled ? 'seek' : showByWords ? 'none' : 'translation'}
-            onWordPress={isSeekEnabled ? handleSeekWordPress : handleTranslationWordPress}
-            registerWordHighlight={audioWordSync?.registerWordHighlight}
-          />
-        ) : (
-          <Text
-            key={`${verseKey}-arabic-${renderSignal}`}
-            className="text-right text-foreground dark:text-foreground-dark"
-            style={{
-              fontSize: arabicFontSize,
-              lineHeight: arabicLineHeight,
-              fontFamily: effectiveArabicFontFamily,
-              writingDirection: 'rtl',
-              textAlign: 'right',
-            }}
-          >
-            {sanitizedArabicText}
-          </Text>
-        )}
-
-        {!showByWords && wordTranslationTooltip ? (
-          <Text className="text-xs text-muted dark:text-muted-dark">{wordTranslationTooltip}</Text>
-        ) : null}
-
-        {cleanedTranslationItems.length ? (
-          <View className="gap-6">
-            {cleanedTranslationItems.map((translation, idx) => {
-              const resourceName =
-                'resourceName' in translation && typeof translation.resourceName === 'string'
-                  ? translation.resourceName
-                  : undefined;
-
-              return (
-                <View key={`${renderSignal}-${idx}-${translation.text.slice(0, 24)}`} className="gap-2">
-                  {shouldShowTranslationAttribution && resourceName ? (
-                    <Text className="text-xs font-normal uppercase tracking-wider text-muted dark:text-muted-dark">
-                      {resourceName}
-                    </Text>
-                  ) : null}
-                  <Text
-                    className="text-foreground dark:text-foreground-dark"
-                    style={{
-                      fontSize: translationFontSize,
-                      lineHeight: translationLineHeight,
-                      writingDirection: 'auto',
-                    }}
-                  >
-                    {translation.text}
-                  </Text>
-                </View>
-              );
-            })}
-          </View>
-        ) : null}
+        <View
+          onLayout={onBodyLayout}
+          style={typeof bodyMinHeight === 'number' && bodyMinHeight > 0 ? { minHeight: bodyMinHeight } : undefined}
+        >
+          {bodyPlaceholder ?? defaultBodyContent}
+        </View>
     </View>
   );
 

@@ -12,7 +12,13 @@ function getNumColumns(width: number): number {
   return 1;
 }
 
-export function SurahGrid({ surahs }: { surahs: Surah[] }): React.JSX.Element {
+export function SurahGrid({
+  surahs,
+  listHeader,
+}: {
+  surahs: Surah[];
+  listHeader?: React.ReactElement | null;
+}): React.JSX.Element {
   const { width } = useWindowDimensions();
   const numColumns = React.useMemo(() => getNumColumns(width), [width]);
 
@@ -24,6 +30,7 @@ export function SurahGrid({ surahs }: { surahs: Surah[] }): React.JSX.Element {
       keyExtractor={(item) => String(item.id)}
       numColumns={numColumns}
       contentContainerStyle={{ paddingBottom: 24 }}
+      ListHeaderComponent={listHeader}
       renderItem={({ item, index }) => {
         const gap = 12;
         const isLastInRow = numColumns === 1 ? true : (index + 1) % numColumns === 0;

@@ -1,5 +1,5 @@
 import { FlashList, type FlashListRef } from '@shopify/flash-list';
-import { Stack, useRouter } from 'expo-router';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import {
   Bookmark as BookmarkIcon,
   ChevronUp,
@@ -39,6 +39,14 @@ import type { Bookmark, Folder } from '@/types';
 
 type SectionId = 'bookmarks' | 'pinned' | 'last-read';
 
+function resolveSectionParam(value?: string | string[]): SectionId | null {
+  const normalized = Array.isArray(value) ? value[0] : value;
+  if (normalized === 'bookmarks' || normalized === 'pinned' || normalized === 'last-read') {
+    return normalized;
+  }
+  return null;
+}
+
 function getFolderGridColumns(width: number): number {
   if (width >= 1280) return 4;
   if (width >= 1024) return 3;
@@ -66,6 +74,7 @@ function getBookmarkVerseKey(bookmark: Bookmark): string | null {
 }
 
 export default function BookmarksScreen(): React.JSX.Element {
+  const params = useLocalSearchParams<{ section?: string | string[] }>();
   const router = useRouter();
   const { resolvedTheme, isDark } = useAppTheme();
   const palette = Colors[resolvedTheme];
@@ -95,6 +104,7 @@ export default function BookmarksScreen(): React.JSX.Element {
     isPinned,
     removeLastRead,
   } = useBookmarks();
+  const requestedSection = React.useMemo(() => resolveSectionParam(params.section), [params.section]);
 
   const [activeSection, setActiveSection] = React.useState<SectionId>('bookmarks');
   const [selectedFolderId, setSelectedFolderId] = React.useState<string | null>(null);
@@ -130,6 +140,12 @@ export default function BookmarksScreen(): React.JSX.Element {
   );
 
   const folderGridColumns = React.useMemo(() => getFolderGridColumns(width), [width]);
+
+  React.useEffect(() => {
+    if (!requestedSection) return;
+    setActiveSection(requestedSection);
+    setSelectedFolderId(null);
+  }, [requestedSection]);
 
   const sortedFolders = React.useMemo(() => {
     const items = [...folders];
@@ -324,7 +340,7 @@ export default function BookmarksScreen(): React.JSX.Element {
         {
           id: 'pinned' as const,
           icon: Pin,
-          label: 'Pinned Verses',
+          label: 'Pinned',
           description: 'Quick access',
         },
       ] satisfies Array<{
@@ -619,7 +635,7 @@ export default function BookmarksScreen(): React.JSX.Element {
                   </View>
                   <View>
                     <Text className="text-lg font-bold text-foreground dark:text-foreground-dark">
-                      Pinned Verses
+                      Pinned
                     </Text>
                     <Text className="text-xs text-muted dark:text-muted-dark">Quick access</Text>
                   </View>
@@ -633,7 +649,7 @@ export default function BookmarksScreen(): React.JSX.Element {
                 <Pin size={32} strokeWidth={2.25} color={palette.muted} />
               </View>
               <Text className="text-lg font-semibold text-foreground dark:text-foreground-dark mb-2">
-                No Pinned Verses
+                No Pinned
               </Text>
               <Text className="text-muted dark:text-muted-dark text-center px-6">
                 Pin your favorite verses while reading to access them quickly from here.

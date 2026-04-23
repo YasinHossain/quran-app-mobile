@@ -39,6 +39,9 @@
       "expo-sqlite",
       "expo-audio"
     ],
+    "extra": {
+      "translationPackCatalogUrl": "https://yasinhossain.github.io/quran-app-mobile/translation-packs/catalog.json"
+    },
     "experiments": {
       "typedRoutes": true
     }

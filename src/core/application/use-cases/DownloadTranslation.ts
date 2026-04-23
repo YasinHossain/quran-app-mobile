@@ -7,6 +7,7 @@ import type {
   OfflineTranslationRowInput,
   OfflineVerseRowInput,
 } from '@/src/domain/repositories/ITranslationOfflineStore';
+import type { ITranslationPackRepository } from '@/src/domain/repositories/ITranslationPackRepository';
 
 const TOTAL_SURAHS = 114;
 const DEFAULT_PER_PAGE = 50;
@@ -68,7 +69,8 @@ export class DownloadTranslationUseCase {
     private readonly downloadIndexRepository: IDownloadIndexRepository,
     private readonly translationOfflineStore: ITranslationOfflineStore,
     private readonly translationDownloadRepository: ITranslationDownloadRepository,
-    private readonly logger?: ILogger
+    private readonly logger?: ILogger,
+    private readonly translationPackRepository?: ITranslationPackRepository
   ) {}
 
   async execute(translationId: number): Promise<void> {
@@ -102,6 +104,41 @@ export class DownloadTranslationUseCase {
     });
 
     try {
+      let lastPersistedPackPercent = -1;
+      const installedFromPack = await this.translationPackRepository?.installPack({
+        translationId: normalizedTranslationId,
+        assertNotCanceled: () => {
+          throwIfCanceled(normalizedTranslationId);
+        },
+        onProgress: (progress) => {
+          const normalizedPercent = Math.max(0, Math.min(100, progress.percent));
+          const persistedPercent =
+            normalizedPercent >= 100 ? 100 : Math.floor(normalizedPercent / 4) * 4;
+
+          if (persistedPercent === lastPersistedPackPercent) return;
+          lastPersistedPackPercent = persistedPercent;
+
+          void this.downloadIndexRepository.upsert(content, {
+            status: 'downloading',
+            progress: {
+              kind: 'percent',
+              percent: persistedPercent,
+            },
+            error: null,
+          });
+        },
+      });
+
+      if (installedFromPack) {
+        throwIfCanceled(normalizedTranslationId);
+        await this.downloadIndexRepository.upsert(content, {
+          status: 'installed',
+          progress: null,
+          error: null,
+        });
+        return;
+      }
+
       for (let surahId = 1; surahId <= TOTAL_SURAHS; surahId += 1) {
         throwIfCanceled(normalizedTranslationId);
         await this.downloadSurahTranslation({

@@ -10,11 +10,13 @@ import { MushafPackFileStore } from '@/src/core/infrastructure/mushaf/MushafPack
 import { MushafPackInstaller } from '@/src/core/infrastructure/mushaf/MushafPackInstaller';
 import { LocalMushafPageRepository } from '@/src/core/infrastructure/mushaf/LocalMushafPageRepository';
 import { logger } from '@/src/core/infrastructure/monitoring/logger';
+import { HostedTranslationPackRepository } from '@/src/core/infrastructure/translations/HostedTranslationPackRepository';
 
 const downloadIndexRepository = new DownloadIndexRepository();
 const tafsirRepository = new TafsirRepository();
 const translationOfflineStore = new TranslationOfflineStore();
 const translationDownloadRepository = new QuranComTranslationDownloadRepository();
+const translationPackRepository = new HostedTranslationPackRepository(translationOfflineStore, logger);
 const chapterVerseKeysRepository = new QuranComChapterVerseKeysRepository();
 const audioDownloadManager = new AudioDownloadManager(downloadIndexRepository);
 const mushafPackInstallRegistry = new MushafPackInstallRegistry();
@@ -37,6 +39,7 @@ export const container = {
   getTranslationOfflineStore: (): TranslationOfflineStore => translationOfflineStore,
   getTranslationDownloadRepository: (): QuranComTranslationDownloadRepository =>
     translationDownloadRepository,
+  getTranslationPackRepository: (): HostedTranslationPackRepository => translationPackRepository,
   getChapterVerseKeysRepository: (): QuranComChapterVerseKeysRepository => chapterVerseKeysRepository,
   getAudioDownloadManager: (): AudioDownloadManager => audioDownloadManager,
   getMushafPackInstallRegistry: (): MushafPackInstallRegistry => mushafPackInstallRegistry,

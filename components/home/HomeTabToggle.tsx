@@ -1,6 +1,6 @@
 import { Platform, Pressable, Text, View } from 'react-native';
 
-export type HomeTab = 'surah' | 'juz';
+export type HomeTab = 'surah' | 'juz' | 'page';
 
 export function HomeTabToggle({
   activeTab,
@@ -10,16 +10,21 @@ export function HomeTabToggle({
   onTabChange: (tab: HomeTab) => void;
 }): React.JSX.Element {
   return (
-    <View className="flex-row items-center rounded-full bg-interactive dark:bg-interactive-dark p-1">
+    <View className="flex-row items-center rounded-[24px] border border-border/15 bg-surface-navigation p-1 dark:border-border-dark/15 dark:bg-surface-navigation-dark">
       <TabButton
-        label="Surah"
-        isActive={activeTab === 'surah'}
-        onPress={() => onTabChange('surah')}
+        label="Page"
+        isActive={activeTab === 'page'}
+        onPress={() => onTabChange('page')}
       />
       <TabButton
         label="Juz"
         isActive={activeTab === 'juz'}
         onPress={() => onTabChange('juz')}
+      />
+      <TabButton
+        label="Surah"
+        isActive={activeTab === 'surah'}
+        onPress={() => onTabChange('surah')}
       />
     </View>
   );
@@ -48,17 +53,17 @@ function TabButton({
     <Pressable
       onPress={onPress}
       className={[
-        'h-11 w-16 items-center justify-center rounded-full',
-        isActive ? 'bg-surface dark:bg-surface-dark' : '',
+        'h-10 flex-1 items-center justify-center rounded-full px-2',
+        isActive ? 'bg-interactive dark:bg-interactive-dark' : '',
       ].join(' ')}
       style={({ pressed }) => [isActive ? activeShadow : null, { opacity: pressed ? 0.9 : 1 }]}
     >
       <Text
         className={[
-          'text-xs font-semibold',
+          'text-[13px] font-semibold',
           isActive
-            ? 'text-foreground dark:text-foreground-dark'
-            : 'text-muted dark:text-muted-dark',
+            ? 'text-content-primary dark:text-content-primary-dark'
+            : 'text-content-secondary dark:text-content-secondary-dark',
         ].join(' ')}
       >
         {label}

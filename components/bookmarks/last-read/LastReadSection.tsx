@@ -17,10 +17,9 @@ import { useAppTheme } from '@/providers/ThemeContext';
 
 import { LastReadCard } from './LastReadCard';
 import { LastReadHeader } from './LastReadHeader';
+import { buildNormalizedLastReadEntries, type NormalizedLastReadEntry } from './lastReadEntries';
 
-import type { Chapter, LastReadMap } from '@/types';
-
-type NormalizedLastReadEntry = { surahId: string; verseNumber: number; chapter: Chapter; verseKey?: string };
+import type { LastReadMap } from '@/types';
 
 function getNumColumns(width: number): number {
   const horizontalPadding = 16 * 2;
@@ -159,65 +158,4 @@ function LastReadEmptyState(): React.JSX.Element {
       </Text>
     </View>
   );
-}
-
-function buildNormalizedLastReadEntries(
-  lastRead: LastReadMap,
-  chapters: Chapter[]
-): NormalizedLastReadEntry[] {
-  const entries = Object.entries(lastRead ?? {});
-  if (entries.length === 0) return [];
-
-  const sorted = entries.sort(([, a], [, b]) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
-  const normalized: NormalizedLastReadEntry[] = [];
-
-  for (const [surahId, entry] of sorted) {
-    const item = normalizeLastReadEntry(surahId, entry, chapters);
-    if (item) {
-      normalized.push(item);
-      if (normalized.length === 5) break;
-    }
-  }
-
-  return normalized;
-}
-
-function normalizeLastReadEntry(
-  surahId: string,
-  entry: LastReadMap[string],
-  chapters: Chapter[]
-): NormalizedLastReadEntry | null {
-  const chapter = chapters.find((c) => c.id === Number(surahId));
-  if (!chapter) return null;
-
-  const totalVerses = chapter.verses_count || 0;
-  const rawVerseNumber = getRawVerseNumber(entry);
-  if (!isValidVerseNumber(rawVerseNumber)) return null;
-  const verseNumber = clampVerseNumber(rawVerseNumber, totalVerses);
-
-  return {
-    surahId,
-    verseNumber,
-    chapter,
-    ...(typeof entry.verseKey === 'string' ? { verseKey: entry.verseKey } : {}),
-  };
-}
-
-function getRawVerseNumber(entry: LastReadMap[string]): number | undefined {
-  const verseNumberFromKeyRaw =
-    typeof entry.verseKey === 'string' ? Number(entry.verseKey.split(':')[1]) : undefined;
-  const verseNumberFromKey =
-    typeof verseNumberFromKeyRaw === 'number' && !Number.isNaN(verseNumberFromKeyRaw)
-      ? verseNumberFromKeyRaw
-      : undefined;
-
-  return entry.verseNumber ?? verseNumberFromKey ?? entry.verseId;
-}
-
-function isValidVerseNumber(value: unknown): value is number {
-  return typeof value === 'number' && !Number.isNaN(value) && value > 0;
-}
-
-function clampVerseNumber(num: number, total: number): number {
-  return total > 0 ? Math.min(num, total) : num;
 }

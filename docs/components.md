@@ -15,9 +15,14 @@ This document lists reusable UI components currently available in the codebase s
 
 | Component | Description | File Path |
 | --- | --- | --- |
-| `HomeTabToggle` | Two-state segmented control for toggling between Surah and Juz tabs. | `components/home/HomeTabToggle.tsx` |
+| `HomeVersePlaceholder` | Centered verse-preview placeholder used as the temporary hero area on the redesigned home screen. | `components/home/HomeVersePlaceholder.tsx` |
+| `HomeShortcutGrid` | Four home shortcut tiles wired to `Recent`, `Bookmarks`, `Planner`, and `Pinned`. | `components/home/HomeShortcutGrid.tsx` |
+| `HomeRecentCard` | Compact recent section with a pill-style continue chip that opens the latest last-read entry. | `components/home/HomeRecentCard.tsx` |
+| `HomeTabToggle` | Three-state segmented control for switching between `Surah`, `Juz`, and `Page`. | `components/home/HomeTabToggle.tsx` |
 | `JuzCard` | Pressable card that links to a Juz detail screen and shows Juz number/range. | `components/home/JuzCard.tsx` |
 | `JuzGrid` | Responsive grid list layout for rendering multiple Juz cards. | `components/home/JuzGrid.tsx` |
+| `PageCard` | Pressable card that links to a mushaf page reader route. | `components/home/PageCard.tsx` |
+| `PageGrid` | Responsive grid list layout for rendering mushaf pages on the home screen. | `components/home/PageGrid.tsx` |
 | `SurahCard` | Pressable card that links to a Surah detail screen with metadata. | `components/home/SurahCard.tsx` |
 | `SurahGrid` | Responsive grid list layout for rendering multiple Surah cards. | `components/home/SurahGrid.tsx` |
 
@@ -111,3 +116,4 @@ This document lists reusable UI components currently available in the codebase s
 | `CreatePlannerModal` | Modal + form for creating planner plans (start/end surah + verse + estimated days). | `components/bookmarks/planner/CreatePlannerModal.tsx` |
 | `LastReadSection` | “Recent / Last visited” section (header + grid + empty state) used in Bookmarks → Recent. | `components/bookmarks/last-read/LastReadSection.tsx` |
 | `LastReadCard` | Recent card showing a surah progress ring + verse position + remove action. | `components/bookmarks/last-read/LastReadCard.tsx` |
+| `buildNormalizedLastReadEntries` | Shared helper that normalizes stored last-read entries for both the bookmarks recent section and the home recent card. | `components/bookmarks/last-read/lastReadEntries.ts` |
