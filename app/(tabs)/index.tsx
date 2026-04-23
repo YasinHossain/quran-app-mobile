@@ -14,6 +14,8 @@ import { SurahGrid } from '@/components/home/SurahGrid';
 import { ComprehensiveSearchDropdown } from '@/components/search/ComprehensiveSearchDropdown';
 import { HeaderSearchInput } from '@/components/search/HeaderSearchInput';
 import { useChapters } from '@/hooks/useChapters';
+import { preloadOfflineSurahNavigationPage } from '@/lib/surah/offlineSurahPageCache';
+import { useSettings } from '@/providers/SettingsContext';
 import juzData from '../../src/data/juz.json';
 
 import type { Chapter } from '@/types';
@@ -71,6 +73,7 @@ export default function ReadScreen(): React.JSX.Element {
   const [headerSearchQuery, setHeaderSearchQuery] = React.useState('');
   const headerSearchInputRef = React.useRef<TextInput | null>(null);
   const { chapters, isLoading, errorMessage } = useChapters();
+  const { settings } = useSettings();
   const surahs = React.useMemo(() => chapters.map(mapChapterToSurah), [chapters]);
   const pageNumbers = React.useMemo(() => Array.from({ length: 604 }, (_, index) => index + 1), []);
 
@@ -97,8 +100,9 @@ export default function ReadScreen(): React.JSX.Element {
   );
 
   const navigateToSurahVerse = React.useCallback(
-    (surahId: number, verse?: number) => {
+    async (surahId: number, verse?: number) => {
       closeHeaderSearch({ clearQuery: true });
+      await preloadOfflineSurahNavigationPage({ surahId, verseNumber: verse, settings });
       router.push({
         pathname: '/surah/[surahId]',
         params: {
@@ -107,7 +111,7 @@ export default function ReadScreen(): React.JSX.Element {
         },
       });
     },
-    [closeHeaderSearch, router]
+    [closeHeaderSearch, router, settings]
   );
 
   const navigateToJuz = React.useCallback(

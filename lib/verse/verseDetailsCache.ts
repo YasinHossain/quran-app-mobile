@@ -144,12 +144,6 @@ async function loadOfflineVerse(
     .getVerseWithTranslations(verseKey, normalizedTranslationIds);
 
   if (!offlineVerse) return null;
-  if (
-    normalizedTranslationIds.length > 0 &&
-    offlineVerse.translations.length < normalizedTranslationIds.length
-  ) {
-    return null;
-  }
 
   return {
     verse_key: offlineVerse.verseKey,
@@ -159,6 +153,30 @@ async function loadOfflineVerse(
       text: translation.text,
     })),
   };
+}
+
+function seedExactVerseCache(
+  verse: CachedVerse,
+  translationIds: number[]
+): void {
+  const normalizedVerseKey = verse.verse_key.trim();
+  if (!normalizedVerseKey) return;
+
+  const normalizedTranslationIds = normalizeTranslationIds(translationIds);
+  const translationCount = verse.translations?.length ?? 0;
+  const isExactMatch =
+    normalizedTranslationIds.length === 0 || translationCount >= normalizedTranslationIds.length;
+
+  if (!isExactMatch) return;
+
+  const now = Date.now();
+  const key = getCacheKey(normalizedVerseKey, normalizedTranslationIds);
+  exactCache.set(key, {
+    value: Promise.resolve(verse),
+    snapshot: verse,
+    timestamp: now,
+  });
+  pruneExactCache(now);
 }
 
 async function fetchVerseByKey(
@@ -206,22 +224,7 @@ export function primeVerseDetailsCache(params: {
 
   const normalizedTranslationIds = normalizeTranslationIds(params.translationIds ?? []);
   touchPreviewCache(cachedVerse);
-
-  const translationCount = cachedVerse.translations?.length ?? 0;
-  const isExactMatch =
-    normalizedTranslationIds.length === 0 || translationCount >= normalizedTranslationIds.length;
-
-  if (!isExactMatch) return;
-
-  const now = Date.now();
-  const key = getCacheKey(cachedVerse.verse_key, normalizedTranslationIds);
-  exactCache.delete(key);
-  exactCache.set(key, {
-    value: Promise.resolve(cachedVerse),
-    snapshot: cachedVerse,
-    timestamp: now,
-  });
-  pruneExactCache(now);
+  seedExactVerseCache(cachedVerse, normalizedTranslationIds);
 }
 
 export function peekVersePreview(verseKey: string): CachedVerse | null {
@@ -281,6 +284,40 @@ export function getVerseDetailsCached(
 
   exactCache.set(key, { value, timestamp: now });
   return value;
+}
+
+export async function getOfflineSurahVerseDetailsCached(
+  surahId: number,
+  translationIds: number[]
+): Promise<Map<string, CachedVerse>> {
+  const normalizedSurahId = Number.isFinite(surahId) ? Math.trunc(surahId) : 0;
+  const normalizedTranslationIds = normalizeTranslationIds(translationIds);
+  const results = new Map<string, CachedVerse>();
+
+  if (normalizedSurahId <= 0) {
+    return results;
+  }
+
+  const offlineVerses = await container
+    .getTranslationOfflineStore()
+    .getSurahVersesWithTranslations(normalizedSurahId, normalizedTranslationIds);
+
+  for (const offlineVerse of offlineVerses) {
+    const cachedVerse: CachedVerse = {
+      verse_key: offlineVerse.verseKey,
+      text_uthmani: offlineVerse.arabicUthmani,
+      translations: offlineVerse.translations.map((translation) => ({
+        resource_id: translation.translationId,
+        text: translation.text,
+      })),
+    };
+
+    touchPreviewCache(cachedVerse);
+    seedExactVerseCache(cachedVerse, normalizedTranslationIds);
+    results.set(cachedVerse.verse_key, cachedVerse);
+  }
+
+  return results;
 }
 
 export function clearVerseDetailsCache(): void {

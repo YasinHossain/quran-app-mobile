@@ -30,6 +30,12 @@ export interface ITranslationOfflineStore {
     translationIds: number[]
   ): Promise<OfflineVerseWithTranslations[]>;
 
+  getSurahVersesPageWithTranslations(params: {
+    surahId: number;
+    translationIds: number[];
+    page: number;
+    perPage: number;
+  }): Promise<OfflineVerseWithTranslations[]>;
+
   deleteTranslation(translationId: number): Promise<void>;
 }
-

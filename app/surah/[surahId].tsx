@@ -29,6 +29,7 @@ import Colors from '@/constants/Colors';
 import { DEFAULT_MUSHAF_ID, findMushafOption } from '@/data/mushaf/options';
 import { useChapters } from '@/hooks/useChapters';
 import { useSurahVerses, type SurahVerse } from '@/hooks/useSurahVerses';
+import { preloadOfflineSurahNavigationPage } from '@/lib/surah/offlineSurahPageCache';
 import { useTranslationResources } from '@/hooks/useTranslationResources';
 import { primeVerseDetailsCache } from '@/lib/verse/verseDetailsCache';
 import { useBookmarks } from '@/providers/BookmarkContext';
@@ -69,6 +70,8 @@ function VerseCardPlaceholder({ verseKey }: { verseKey: string }): React.JSX.Ele
     </View>
   );
 }
+
+const INITIAL_PLACEHOLDER_VERSE_NUMBERS = [1, 2, 3, 4];
 
 export default function SurahScreen(): React.JSX.Element {
   const params = useLocalSearchParams<{ surahId?: string | string[]; startVerse?: string | string[] }>();
@@ -192,8 +195,13 @@ export default function SurahScreen(): React.JSX.Element {
   }, [closeHeaderSearch, headerSearchQuery, router]);
 
   const navigateToSurahVerse = React.useCallback(
-    (targetSurahId: number, verse?: number) => {
+    async (targetSurahId: number, verse?: number) => {
       closeHeaderSearch({ clearQuery: true });
+      await preloadOfflineSurahNavigationPage({
+        surahId: targetSurahId,
+        verseNumber: verse,
+        settings,
+      });
       router.push({
         pathname: '/surah/[surahId]',
         params: {
@@ -202,7 +210,7 @@ export default function SurahScreen(): React.JSX.Element {
         },
       });
     },
-    [closeHeaderSearch, router]
+    [closeHeaderSearch, router, settings]
   );
 
   const navigateToJuz = React.useCallback(
@@ -218,7 +226,7 @@ export default function SurahScreen(): React.JSX.Element {
       closeHeaderSearch({ clearQuery: true });
       router.push({ pathname: '/page/[pageNumber]', params: { pageNumber: String(pageNumber) } });
     },
-    [closeHeaderSearch, router]
+    [closeHeaderSearch, router, settings]
   );
 
   const openTranslationSettings = React.useCallback(() => {
@@ -864,11 +872,17 @@ export default function SurahScreen(): React.JSX.Element {
             </Pressable>
           </View>
         </View>
-      ) : isLoading && !hasLoadedContent ? (
-        <View className="flex-1 items-center justify-center gap-3 px-4">
-          <ActivityIndicator color={palette.text} />
-          <Text className="text-sm text-muted dark:text-muted-dark">Loading…</Text>
-        </View>
+      ) : !hasLoadedContent && verseCount > 0 ? (
+        <FlatList
+          data={INITIAL_PLACEHOLDER_VERSE_NUMBERS}
+          keyExtractor={(item) => `placeholder:${chapterNumber}:${item}`}
+          renderItem={({ item }) => (
+            <VerseCardPlaceholder verseKey={`${chapterNumber}:${item}`} />
+          )}
+          contentContainerStyle={listContentContainerStyle}
+          ListHeaderComponent={chapter ? <SurahHeaderCard chapter={chapter} /> : null}
+          scrollEnabled={false}
+        />
       ) : verseCount <= 0 ? (
         <View className="flex-1 px-4 pt-4">
           <Text className="mt-2 text-sm text-muted dark:text-muted-dark">

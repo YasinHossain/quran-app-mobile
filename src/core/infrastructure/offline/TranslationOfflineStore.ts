@@ -13,6 +13,67 @@ export type {
   OfflineVerseWithTranslations,
 } from '@/src/domain/repositories/ITranslationOfflineStore';
 
+function mapJoinedRowsToOfflineVerses(
+  rows: Array<{
+    verse_key: string;
+    surah: number;
+    ayah: number;
+    arabic_uthmani: string;
+    translation_id: number | null;
+    translation_text: string | null;
+  }>,
+  resolvedTranslationIds: number[]
+): OfflineVerseWithTranslations[] {
+  const byVerseKey = new Map<
+    string,
+    {
+      verseKey: string;
+      surahId: number;
+      ayahNumber: number;
+      arabicUthmani: string;
+      translationsById: Map<number, string>;
+    }
+  >();
+
+  const verseOrder: string[] = [];
+
+  for (const row of rows) {
+    let existing = byVerseKey.get(row.verse_key);
+    if (!existing) {
+      existing = {
+        verseKey: row.verse_key,
+        surahId: row.surah,
+        ayahNumber: row.ayah,
+        arabicUthmani: row.arabic_uthmani,
+        translationsById: new Map<number, string>(),
+      };
+      byVerseKey.set(row.verse_key, existing);
+      verseOrder.push(row.verse_key);
+    }
+
+    if (row.translation_id !== null && row.translation_text !== null) {
+      existing.translationsById.set(row.translation_id, row.translation_text);
+    }
+  }
+
+  return verseOrder
+    .map((verseKey) => byVerseKey.get(verseKey))
+    .filter((verse): verse is NonNullable<typeof verse> => Boolean(verse))
+    .map((verse) => ({
+      verseKey: verse.verseKey,
+      surahId: verse.surahId,
+      ayahNumber: verse.ayahNumber,
+      arabicUthmani: verse.arabicUthmani,
+      translations: resolvedTranslationIds
+        .map((translationId) => {
+          const text = verse.translationsById.get(translationId);
+          if (!text) return null;
+          return { translationId, text };
+        })
+        .filter((t): t is { translationId: number; text: string } => t !== null),
+    }));
+}
+
 export class TranslationOfflineStore implements ITranslationOfflineStore {
   async upsertVersesAndTranslations(params: {
     verses: OfflineVerseRowInput[];
@@ -125,54 +186,90 @@ export class TranslationOfflineStore implements ITranslationOfflineStore {
       [...resolvedTranslationIds, surahId]
     );
 
-    const byVerseKey = new Map<
-      string,
-      {
-        verseKey: string;
-        surahId: number;
-        ayahNumber: number;
-        arabicUthmani: string;
-        translationsById: Map<number, string>;
-      }
-    >();
+    return mapJoinedRowsToOfflineVerses(rows, resolvedTranslationIds);
+  }
 
-    const verseOrder: string[] = [];
+  async getSurahVersesPageWithTranslations(params: {
+    surahId: number;
+    translationIds: number[];
+    page: number;
+    perPage: number;
+  }): Promise<OfflineVerseWithTranslations[]> {
+    const db = await getAppDbAsync();
+    const resolvedTranslationIds = normalizeTranslationIds(params.translationIds);
+    const normalizedSurahId =
+      Number.isFinite(params.surahId) && params.surahId > 0 ? Math.trunc(params.surahId) : 0;
+    const normalizedPage =
+      Number.isFinite(params.page) && params.page > 0 ? Math.trunc(params.page) : 0;
+    const normalizedPerPage =
+      Number.isFinite(params.perPage) && params.perPage > 0 ? Math.trunc(params.perPage) : 0;
 
-    for (const row of rows) {
-      let existing = byVerseKey.get(row.verse_key);
-      if (!existing) {
-        existing = {
-          verseKey: row.verse_key,
-          surahId: row.surah,
-          ayahNumber: row.ayah,
-          arabicUthmani: row.arabic_uthmani,
-          translationsById: new Map<number, string>(),
-        };
-        byVerseKey.set(row.verse_key, existing);
-        verseOrder.push(row.verse_key);
-      }
-
-      if (row.translation_id !== null && row.translation_text !== null) {
-        existing.translationsById.set(row.translation_id, row.translation_text);
-      }
+    if (normalizedSurahId <= 0 || normalizedPage <= 0 || normalizedPerPage <= 0) {
+      return [];
     }
 
-    return verseOrder
-      .map((verseKey) => byVerseKey.get(verseKey))
-      .filter((verse): verse is NonNullable<typeof verse> => Boolean(verse))
-      .map((verse) => ({
-        verseKey: verse.verseKey,
-        surahId: verse.surahId,
-        ayahNumber: verse.ayahNumber,
-        arabicUthmani: verse.arabicUthmani,
-        translations: resolvedTranslationIds
-          .map((translationId) => {
-            const text = verse.translationsById.get(translationId);
-            if (!text) return null;
-            return { translationId, text };
-          })
-          .filter((t): t is { translationId: number; text: string } => t !== null),
+    const offset = (normalizedPage - 1) * normalizedPerPage;
+
+    if (resolvedTranslationIds.length === 0) {
+      const rows = await db.getAllAsync<{
+        verse_key: string;
+        surah: number;
+        ayah: number;
+        arabic_uthmani: string;
+      }>(
+        `
+        SELECT verse_key, surah, ayah, arabic_uthmani
+        FROM offline_verses
+        WHERE surah = ?
+        ORDER BY ayah ASC
+        LIMIT ? OFFSET ?;
+        `,
+        [normalizedSurahId, normalizedPerPage, offset]
+      );
+
+      return rows.map((row) => ({
+        verseKey: row.verse_key,
+        surahId: row.surah,
+        ayahNumber: row.ayah,
+        arabicUthmani: row.arabic_uthmani,
+        translations: [],
       }));
+    }
+
+    const placeholders = resolvedTranslationIds.map(() => '?').join(', ');
+    const rows = await db.getAllAsync<{
+      verse_key: string;
+      surah: number;
+      ayah: number;
+      arabic_uthmani: string;
+      translation_id: number | null;
+      translation_text: string | null;
+    }>(
+      `
+      WITH verse_page AS (
+        SELECT verse_key, surah, ayah, arabic_uthmani
+        FROM offline_verses
+        WHERE surah = ?
+        ORDER BY ayah ASC
+        LIMIT ? OFFSET ?
+      )
+      SELECT
+        v.verse_key AS verse_key,
+        v.surah AS surah,
+        v.ayah AS ayah,
+        v.arabic_uthmani AS arabic_uthmani,
+        t.translation_id AS translation_id,
+        t.text AS translation_text
+      FROM verse_page v
+      LEFT JOIN offline_translations t
+        ON t.verse_key = v.verse_key
+        AND t.translation_id IN (${placeholders})
+      ORDER BY v.ayah ASC, t.translation_id ASC;
+      `,
+      [normalizedSurahId, normalizedPerPage, offset, ...resolvedTranslationIds]
+    );
+
+    return mapJoinedRowsToOfflineVerses(rows, resolvedTranslationIds);
   }
 
   async getVerseWithTranslations(

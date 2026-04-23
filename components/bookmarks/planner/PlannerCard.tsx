@@ -4,6 +4,8 @@ import React from 'react';
 import { Pressable, View } from 'react-native';
 
 import Colors from '@/constants/Colors';
+import { preloadOfflineSurahNavigationPage } from '@/lib/surah/offlineSurahPageCache';
+import { useSettings } from '@/providers/SettingsContext';
 import { useAppTheme } from '@/providers/ThemeContext';
 
 import { DailyFocusSection } from './DailyFocusSection';
@@ -95,8 +97,9 @@ function usePlannerNavigation(
   continueVerse: PlannerCardProps['continueVerse']
 ): () => void {
   const router = useRouter();
+  const { settings } = useSettings();
 
-  return React.useCallback(() => {
+  return React.useCallback(async () => {
     const parsedSurahId = Number.parseInt(surahId, 10);
     const fallbackSurahId = Number.isFinite(parsedSurahId) ? parsedSurahId : Number(surahId);
     const resolvedSurahId =
@@ -108,6 +111,11 @@ function usePlannerNavigation(
       return;
     }
 
+    await preloadOfflineSurahNavigationPage({
+      surahId: resolvedSurahId,
+      verseNumber: resolvedStartVerse,
+      settings,
+    });
     router.push({
       pathname: '/surah/[surahId]',
       params: {
@@ -115,5 +123,5 @@ function usePlannerNavigation(
         ...(resolvedStartVerse ? { startVerse: String(resolvedStartVerse) } : {}),
       },
     });
-  }, [continueVerse?.surahId, continueVerse?.verse, router, surahId]);
+  }, [continueVerse?.surahId, continueVerse?.verse, router, settings, surahId]);
 }

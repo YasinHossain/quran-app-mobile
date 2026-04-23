@@ -19,6 +19,7 @@ import { SettingsProvider } from '@/providers/SettingsContext';
 import { StartupResourcePrefetch } from '@/providers/StartupResourcePrefetch';
 import { AppThemeProvider, useAppTheme } from '@/providers/ThemeContext';
 import { initializeAudioModeAsync } from '@/src/core/infrastructure/audio/audioMode';
+import { initializeAppDbAsync } from '@/src/core/infrastructure/db';
 import { STARTUP_FONT_ASSETS } from '@/src/core/infrastructure/fonts/arabicFonts';
 import { bootstrapBundledMushafPacksAsync } from '@/src/core/infrastructure/mushaf/bootstrapBundledPacks';
 
@@ -44,7 +45,11 @@ export default function RootLayout() {
 
     async function bootstrapAsync(): Promise<void> {
       try {
-        await Promise.all([initializeAudioModeAsync(), bootstrapBundledMushafPacksAsync()]);
+        await Promise.all([
+          initializeAudioModeAsync(),
+          initializeAppDbAsync(),
+          bootstrapBundledMushafPacksAsync(),
+        ]);
       } finally {
         if (!cancelled) {
           setIsBootstrapped(true);

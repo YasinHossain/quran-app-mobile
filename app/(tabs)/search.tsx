@@ -17,6 +17,7 @@ import { SettingsSidebar } from '@/components/reader/settings/SettingsSidebar';
 import Colors from '@/constants/Colors';
 import { usePaginatedSearch } from '@/hooks/usePaginatedSearch';
 import { analyzeQuery } from '@/lib/api/search';
+import { preloadOfflineSurahNavigationPage } from '@/lib/surah/offlineSurahPageCache';
 import { useSettings } from '@/providers/SettingsContext';
 import { useAppTheme } from '@/providers/ThemeContext';
 
@@ -105,8 +106,9 @@ export default function SearchScreen(): React.JSX.Element {
   });
 
   const handleNavigateToSurahVerse = React.useCallback(
-    (surahId: number, verse?: number) => {
+    async (surahId: number, verse?: number) => {
       Keyboard.dismiss();
+      await preloadOfflineSurahNavigationPage({ surahId, verseNumber: verse, settings });
       router.push({
         pathname: '/surah/[surahId]',
         params: {
@@ -115,7 +117,7 @@ export default function SearchScreen(): React.JSX.Element {
         },
       });
     },
-    [router]
+    [router, settings]
   );
 
   const handleNavResultPress = React.useCallback(

@@ -4,7 +4,9 @@ import { Platform, Pressable, Text, View } from 'react-native';
 
 import { buildNormalizedLastReadEntries } from '@/components/bookmarks/last-read/lastReadEntries';
 import { useChapters } from '@/hooks/useChapters';
+import { preloadOfflineSurahNavigationPage } from '@/lib/surah/offlineSurahPageCache';
 import { useBookmarks } from '@/providers/BookmarkContext';
+import { useSettings } from '@/providers/SettingsContext';
 
 const cardShadow =
   Platform.OS === 'android'
@@ -20,6 +22,7 @@ export function HomeRecentCard(): React.JSX.Element {
   const router = useRouter();
   const { lastRead } = useBookmarks();
   const { chapters, isLoading } = useChapters();
+  const { settings } = useSettings();
 
   const latestEntry = React.useMemo(
     () => buildNormalizedLastReadEntries(lastRead, chapters, 1)[0] ?? null,
@@ -32,22 +35,32 @@ export function HomeRecentCard(): React.JSX.Element {
       ? 'Loading recent verse...'
       : 'Your recent verse will appear here';
 
+  const handlePress = React.useCallback(async () => {
+    if (!latestEntry) return;
+    const resolvedSurahId = Number(latestEntry.surahId);
+    if (!Number.isFinite(resolvedSurahId) || resolvedSurahId <= 0) return;
+
+    await preloadOfflineSurahNavigationPage({
+      surahId: resolvedSurahId,
+      verseNumber: latestEntry.verseNumber,
+      settings,
+    });
+    router.push({
+      pathname: '/surah/[surahId]',
+      params: {
+        surahId: latestEntry.surahId,
+        startVerse: String(latestEntry.verseNumber),
+      },
+    });
+  }, [latestEntry, router, settings]);
+
   return (
     <View>
       <Text className="mb-3 text-lg font-semibold text-content-primary dark:text-content-primary-dark">
         Recent
       </Text>
       <Pressable
-        onPress={() => {
-          if (!latestEntry) return;
-          router.push({
-            pathname: '/surah/[surahId]',
-            params: {
-              surahId: latestEntry.surahId,
-              startVerse: String(latestEntry.verseNumber),
-            },
-          });
-        }}
+        onPress={handlePress}
         disabled={isDisabled}
         accessibilityRole="button"
         accessibilityLabel={

@@ -26,9 +26,14 @@ import { VerseCard } from '@/components/surah/VerseCard';
 import { AddToPlannerModal, type VerseSummaryDetails } from '@/components/verse-planner-modal';
 import Colors from '@/constants/Colors';
 import { useChapters } from '@/hooks/useChapters';
+import { useSurahVerses } from '@/hooks/useSurahVerses';
 import { useTafsirResources } from '@/hooks/useTafsirResources';
 import { useTranslationResources } from '@/hooks/useTranslationResources';
-import { getTafsirCached } from '@/lib/tafsir/tafsirCache';
+import {
+  getOfflineTafsirBatchCached,
+  getOfflineTafsirCached,
+  getOfflineTafsirSurahCached,
+} from '@/lib/tafsir/tafsirCache';
 import { getVerseDetailsCached, peekVersePreview } from '@/lib/verse/verseDetailsCache';
 import { useAudioPlayer } from '@/providers/AudioPlayerContext';
 import { useBookmarks } from '@/providers/BookmarkContext';
@@ -68,6 +73,9 @@ const EMPTY_PAGE_STATE: PageState = {
   errorMessage: null,
   tafsirById: {},
 };
+
+const OFFLINE_TAFSIR_UNAVAILABLE_MESSAGE = 'This tafsir is not downloaded for offline reading.';
+const OFFLINE_TAFSIR_PREFETCH_RADIUS = 10;
 
 let globalLastActiveTafsirTabId: number | undefined;
 
@@ -450,6 +458,28 @@ export default function TafsirScreen(): React.JSX.Element {
     if (!currentTarget) return -1;
     return targetIndexByKey.get(getVerseKey(currentTarget)) ?? -1;
   }, [currentTarget, targetIndexByKey]);
+  const currentSurahId = currentTarget?.surahId;
+  const currentSurahVerseKeys = React.useMemo(() => {
+    if (!currentSurahId) return [];
+
+    const chapter = getChapterById(chapters, currentSurahId);
+    const verseCount =
+      chapter && Number.isFinite(chapter.verses_count) ? Math.trunc(chapter.verses_count) : 0;
+    if (verseCount <= 0) return [];
+
+    return Array.from({ length: verseCount }, (_value, index) => `${currentSurahId}:${index + 1}`);
+  }, [chapters, currentSurahId]);
+  const {
+    getVerseByNumber: getCurrentSurahVerseByNumber,
+    pagesSignature: currentSurahPagesSignature,
+    isLoading: isCurrentSurahVersesLoading,
+    errorMessage: currentSurahVerseErrorMessage,
+  } = useSurahVerses({
+    chapterNumber: currentSurahId ?? Number.NaN,
+    translationIds,
+    initialVerseNumber: currentTarget?.ayahId,
+    enabled: Boolean(currentSurahId),
+  });
 
   const headerTitle = React.useMemo(() => {
     if (currentNavigation.chapter?.name_simple) return currentNavigation.chapter.name_simple;
@@ -586,10 +616,16 @@ export default function TafsirScreen(): React.JSX.Element {
       const tafsirPromise = Promise.all(
         tafsirIdsToFetch.map(async (tafsirId) => {
           try {
-            const html = await getTafsirCached(verseKey, tafsirId);
+            const html = await getOfflineTafsirCached(verseKey, tafsirId);
             return {
               tafsirId,
-              state: { html, isLoading: false, error: null } satisfies TafsirTabContentState,
+              state: html?.trim()
+                ? ({ html, isLoading: false, error: null } satisfies TafsirTabContentState)
+                : ({
+                    html: '',
+                    isLoading: false,
+                    error: OFFLINE_TAFSIR_UNAVAILABLE_MESSAGE,
+                  } satisfies TafsirTabContentState),
             };
           } catch {
             return {
@@ -597,7 +633,7 @@ export default function TafsirScreen(): React.JSX.Element {
               state: {
                 html: '',
                 isLoading: false,
-                error: 'Failed to load tafsir content.',
+                error: 'Failed to read offline tafsir content.',
               } satisfies TafsirTabContentState,
             };
           }
@@ -717,8 +753,11 @@ export default function TafsirScreen(): React.JSX.Element {
       return currentTarget ? [currentTarget] : [];
     }
 
-    const startIndex = Math.max(0, currentTargetIndex - 2);
-    const endIndexExclusive = Math.min(pagerTargets.length, currentTargetIndex + 3);
+    const startIndex = Math.max(0, currentTargetIndex - OFFLINE_TAFSIR_PREFETCH_RADIUS);
+    const endIndexExclusive = Math.min(
+      pagerTargets.length,
+      currentTargetIndex + OFFLINE_TAFSIR_PREFETCH_RADIUS + 1
+    );
     return pagerTargets.slice(startIndex, endIndexExclusive);
   }, [currentTarget, currentTargetIndex, pagerTargets]);
 
@@ -727,6 +766,158 @@ export default function TafsirScreen(): React.JSX.Element {
       void loadPage(target);
     });
   }, [loadPage, prefetchTargets]);
+
+  React.useEffect(() => {
+    if (typeof activeTafsirId !== 'number') return;
+    if (!currentSurahId || currentSurahVerseKeys.length === 0) return;
+
+    const generation = generationRef.current;
+
+    void (async () => {
+      try {
+        const tafsirByVerseKey = await getOfflineTafsirSurahCached({
+          surahId: currentSurahId,
+          tafsirId: activeTafsirId,
+          verseKeys: currentSurahVerseKeys,
+        });
+
+        if (generation !== generationRef.current) return;
+
+        setPageStateByKey((previous) => {
+          let didChange = false;
+          const nextState = { ...previous };
+
+          for (const verseKey of currentSurahVerseKeys) {
+            const existing = previous[verseKey];
+            const existingMatchesSignature = existing?.signature === pageSignature;
+            const html = tafsirByVerseKey.get(verseKey) ?? null;
+            const activeTafsirState = html?.trim()
+              ? ({ html, isLoading: false, error: null } satisfies TafsirTabContentState)
+              : ({
+                  html: '',
+                  isLoading: false,
+                  error: OFFLINE_TAFSIR_UNAVAILABLE_MESSAGE,
+                } satisfies TafsirTabContentState);
+            const nextTafsirById: Partial<Record<number, TafsirTabContentState>> = {
+              ...(existingMatchesSignature ? existing?.tafsirById : {}),
+              [activeTafsirId]: activeTafsirState,
+            };
+
+            const nextPageState: PageState = {
+              signature: pageSignature,
+              chapter: (existingMatchesSignature ? existing?.chapter : null) ?? getChapterById(chapters, currentSurahId),
+              verse: existingMatchesSignature ? existing?.verse ?? null : null,
+              isLoading: existingMatchesSignature ? existing?.isLoading ?? false : true,
+              errorMessage: existingMatchesSignature ? existing?.errorMessage ?? null : null,
+              tafsirById: nextTafsirById,
+            };
+
+            if (
+              existing?.signature === nextPageState.signature &&
+              existing?.chapter?.id === nextPageState.chapter?.id &&
+              existing?.errorMessage === nextPageState.errorMessage &&
+              existing?.isLoading === nextPageState.isLoading &&
+              existing?.tafsirById?.[activeTafsirId]?.html === activeTafsirState.html &&
+              existing?.tafsirById?.[activeTafsirId]?.error === activeTafsirState.error &&
+              existing?.tafsirById?.[activeTafsirId]?.isLoading === activeTafsirState.isLoading
+            ) {
+              continue;
+            }
+
+            nextState[verseKey] = nextPageState;
+            didChange = true;
+          }
+
+          return didChange ? nextState : previous;
+        });
+      } catch {
+        // Ignore background whole-surah offline hydration failures.
+      }
+    })();
+  }, [activeTafsirId, chapters, currentSurahId, currentSurahVerseKeys, pageSignature]);
+
+  React.useEffect(() => {
+    if (tafsirIds.length === 0 || prefetchTargets.length === 0) return;
+
+    const generation = generationRef.current;
+    const verseKeys = prefetchTargets.map((target) => getVerseKey(target));
+
+    void (async () => {
+      try {
+        const prefetchedByTafsirId = await Promise.all(
+          tafsirIds.map(async (tafsirId) => ({
+            tafsirId,
+            htmlByVerseKey: await getOfflineTafsirBatchCached(verseKeys, tafsirId),
+          }))
+        );
+
+        if (generation !== generationRef.current) return;
+
+        setPageStateByKey((previous) => {
+          let didChange = false;
+          const nextState = { ...previous };
+
+          for (const target of prefetchTargets) {
+            const verseKey = getVerseKey(target);
+            const existing = previous[verseKey];
+            const existingMatchesSignature = existing?.signature === pageSignature;
+            const previewVerse = peekVersePreview(verseKey);
+            const nextTafsirById: Partial<Record<number, TafsirTabContentState>> = {
+              ...(existingMatchesSignature ? existing?.tafsirById : {}),
+            };
+            let didChangeForVerse = false;
+
+            for (const prefetched of prefetchedByTafsirId) {
+              const currentTafsirState = nextTafsirById[prefetched.tafsirId];
+              if (hasLoadedTafsirState(currentTafsirState)) continue;
+
+              const html = prefetched.htmlByVerseKey.get(verseKey) ?? null;
+              const nextTafsirState = html?.trim()
+                ? ({ html, isLoading: false, error: null } satisfies TafsirTabContentState)
+                : ({
+                    html: '',
+                    isLoading: false,
+                    error: OFFLINE_TAFSIR_UNAVAILABLE_MESSAGE,
+                  } satisfies TafsirTabContentState);
+
+              if (
+                currentTafsirState?.html === nextTafsirState.html &&
+                currentTafsirState?.isLoading === nextTafsirState.isLoading &&
+                currentTafsirState?.error === nextTafsirState.error
+              ) {
+                continue;
+              }
+
+              nextTafsirById[prefetched.tafsirId] = nextTafsirState;
+              didChangeForVerse = true;
+            }
+
+            if (!didChangeForVerse) continue;
+
+            nextState[verseKey] = {
+              signature: pageSignature,
+              chapter:
+                (existingMatchesSignature ? existing?.chapter : null) ??
+                getChapterById(chapters, target.surahId),
+              verse:
+                (existingMatchesSignature ? existing?.verse : null) ??
+                previewVerse ??
+                null,
+              isLoading:
+                existingMatchesSignature ? existing?.isLoading ?? false : previewVerse == null,
+              errorMessage: existingMatchesSignature ? existing?.errorMessage ?? null : null,
+              tafsirById: nextTafsirById,
+            };
+            didChange = true;
+          }
+
+          return didChange ? nextState : previous;
+        });
+      } catch {
+        // Ignore offline batch prefetch failures and let per-verse loading handle visible pages.
+      }
+    })();
+  }, [chapters, pageSignature, prefetchTargets, tafsirIds]);
 
   const pagerRef = React.useRef<FlatList<VerseTarget> | null>(null);
   const visibleIndexRef = React.useRef(-1);
@@ -802,13 +993,39 @@ export default function TafsirScreen(): React.JSX.Element {
       const verseKey = getVerseKey(item);
       const pageState = pageStateByKey[verseKey] ?? EMPTY_PAGE_STATE;
       const pageTitle = pageState.chapter?.name_simple ?? `Surah ${item.surahId}`;
-      const translationItems = buildTranslationItems({
-        verse: pageState.verse,
-        translationIds,
-        showTranslationAttribution,
-        translationsById,
-      });
+      const linkedSurahVerse =
+        item.surahId === currentSurahId ? getCurrentSurahVerseByNumber(item.ayahId) : undefined;
+      const translationItems = linkedSurahVerse
+        ? (showTranslationAttribution
+            ? (linkedSurahVerse.translationItems ?? []).map((translation) => {
+                if (translation.resourceName) return translation;
+                const fallbackName =
+                  typeof translation.resourceId === 'number'
+                    ? translationsById.get(translation.resourceId)?.name ??
+                      `Translation ${translation.resourceId}`
+                    : undefined;
+                return { ...translation, resourceName: fallbackName };
+              })
+            : linkedSurahVerse.translationItems ?? [])
+        : buildTranslationItems({
+            verse: pageState.verse,
+            translationIds,
+            showTranslationAttribution,
+            translationsById,
+          });
       const translationTexts = translationItems.map((translation) => translation.text);
+      const displayVerseKey = linkedSurahVerse?.verse_key ?? pageState.verse?.verse_key ?? verseKey;
+      const displayArabicText = linkedSurahVerse?.text_uthmani ?? pageState.verse?.text_uthmani ?? '';
+      const verseErrorMessage =
+        item.surahId === currentSurahId
+          ? !linkedSurahVerse && !pageState.verse
+            ? currentSurahVerseErrorMessage ?? pageState.errorMessage
+            : null
+          : pageState.errorMessage;
+      const showVerseSkeleton =
+        item.surahId === currentSurahId
+          ? !linkedSurahVerse && !pageState.verse && isCurrentSurahVersesLoading
+          : pageState.isLoading;
       const currentTafsirState =
         typeof activeTafsirId === 'number' ? pageState.tafsirById[activeTafsirId] : undefined;
       const isMultiTafsir = tafsirIds.length > 1;
@@ -841,16 +1058,16 @@ export default function TafsirScreen(): React.JSX.Element {
             scrollEventThrottle={16}
           >
             <View>
-              {pageState.errorMessage ? (
-                <Text className="text-sm text-error dark:text-error-dark">{pageState.errorMessage}</Text>
+              {verseErrorMessage ? (
+                <Text className="text-sm text-error dark:text-error-dark">{verseErrorMessage}</Text>
               ) : null}
             </View>
 
-            <View className={pageState.errorMessage ? 'mt-4' : ''} collapsable={false}>
-              {pageState.verse ? (
+            <View className={verseErrorMessage ? 'mt-4' : ''} collapsable={false}>
+              {linkedSurahVerse || pageState.verse ? (
                 <VerseCard
-                  verseKey={pageState.verse.verse_key}
-                  arabicText={pageState.verse.text_uthmani ?? ''}
+                  verseKey={displayVerseKey}
+                  arabicText={displayArabicText}
                   translationTexts={translationTexts}
                   translationItems={translationItems}
                   showTranslationAttribution={showTranslationAttribution}
@@ -863,13 +1080,13 @@ export default function TafsirScreen(): React.JSX.Element {
                     openVerseActions({
                       title: pageTitle,
                       surahId: item.surahId,
-                      verseKey: pageState.verse?.verse_key ?? verseKey,
-                      arabicText: pageState.verse?.text_uthmani ?? '',
+                      verseKey: displayVerseKey,
+                      arabicText: displayArabicText,
                       translationTexts,
                     })
                   }
                 />
-              ) : pageState.isLoading ? (
+              ) : showVerseSkeleton ? (
                 <VerseCardSkeleton verseKey={verseKey} />
               ) : (
                 <Text className="text-sm text-muted dark:text-muted-dark">Verse not found.</Text>
@@ -955,6 +1172,10 @@ export default function TafsirScreen(): React.JSX.Element {
     [
       activeTafsirId,
       activeTafsirName,
+      currentSurahId,
+      currentSurahVerseErrorMessage,
+      getCurrentSurahVerseByNumber,
+      isCurrentSurahVersesLoading,
       openVerseActions,
       pageStateByKey,
       pageSignature,
@@ -980,6 +1201,10 @@ export default function TafsirScreen(): React.JSX.Element {
       activeTafsirName,
       pageSignature,
       pageStateByKey,
+      currentSurahId,
+      currentSurahPagesSignature,
+      currentSurahVerseErrorMessage,
+      isCurrentSurahVersesLoading,
       showTranslationAttribution,
       tafsirIdsKey,
       translationIdsKey,
@@ -996,6 +1221,10 @@ export default function TafsirScreen(): React.JSX.Element {
       activeTafsirName,
       pageSignature,
       pageStateByKey,
+      currentSurahId,
+      currentSurahPagesSignature,
+      currentSurahVerseErrorMessage,
+      isCurrentSurahVersesLoading,
       settings.arabicFontFace,
       settings.arabicFontSize,
       settings.showByWords,

@@ -4,6 +4,8 @@ import React from 'react';
 import { Pressable, Text, View } from 'react-native';
 
 import Colors from '@/constants/Colors';
+import { preloadOfflineSurahNavigationPage } from '@/lib/surah/offlineSurahPageCache';
+import { useSettings } from '@/providers/SettingsContext';
 import { useAppTheme } from '@/providers/ThemeContext';
 
 import { CircularProgress } from './CircularProgress';
@@ -23,6 +25,7 @@ export function LastReadCard({
 }): React.JSX.Element {
   const router = useRouter();
   const { resolvedTheme, isDark } = useAppTheme();
+  const { settings } = useSettings();
   const palette = Colors[resolvedTheme];
   const dangerColor = isDark ? '#F87171' : '#DC2626';
 
@@ -37,8 +40,13 @@ export function LastReadCard({
   const verseLine =
     total > 0 ? `Verse ${verseNumber} of ${total}` : `Verse ${verseNumber}`;
 
-  const handleNavigate = React.useCallback(() => {
+  const handleNavigate = React.useCallback(async () => {
     if (!Number.isFinite(displaySurahId) || displaySurahId <= 0) return;
+    await preloadOfflineSurahNavigationPage({
+      surahId: displaySurahId,
+      verseNumber,
+      settings,
+    });
     router.push({
       pathname: '/surah/[surahId]',
       params: {
@@ -46,7 +54,7 @@ export function LastReadCard({
         ...(Number.isFinite(verseNumber) && verseNumber > 0 ? { startVerse: String(verseNumber) } : {}),
       },
     });
-  }, [displaySurahId, router, verseNumber]);
+  }, [displaySurahId, router, settings, verseNumber]);
 
   return (
     <Pressable

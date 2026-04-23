@@ -19,6 +19,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import Colors from '@/constants/Colors';
 import { useQuickSearch } from '@/hooks/useQuickSearch';
+import { preloadOfflineSurahNavigationPage } from '@/lib/surah/offlineSurahPageCache';
 import { highlightMissingQueryWords, isArabicQuery } from '@/lib/utils/searchHighlight';
 import { useSettings } from '@/providers/SettingsContext';
 import { useAppTheme } from '@/providers/ThemeContext';
@@ -274,14 +275,15 @@ export function ComprehensiveSearchModal({
   }, [closeAndReset, query, router]);
 
   const navigateToSurahVerse = React.useCallback(
-    (surahId: number, verse?: number) => {
+    async (surahId: number, verse?: number) => {
       closeAndReset();
+      await preloadOfflineSurahNavigationPage({ surahId, verseNumber: verse, settings });
       router.push({
         pathname: '/surah/[surahId]',
         params: { surahId: String(surahId), ...(typeof verse === 'number' ? { startVerse: String(verse) } : {}) },
       });
     },
-    [closeAndReset, router]
+    [closeAndReset, router, settings]
   );
 
   const handleNavPress = React.useCallback(
