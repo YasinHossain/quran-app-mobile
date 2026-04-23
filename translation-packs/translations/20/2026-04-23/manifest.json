@@ -10,6 +10,6 @@
   "payloadChecksum": "47061a48865c07650a74b932ecf9c780",
   "payloadSizeBytes": 2718150,
   "totalVerses": 6236,
-  "generatedAt": "2026-04-23T02:49:03.349Z",
+  "generatedAt": "2026-04-23T03:01:09.066Z",
   "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=20&per_page=300"
 }

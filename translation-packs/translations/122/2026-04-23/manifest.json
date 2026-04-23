@@ -1,0 +1,15 @@
+{
+  "translationId": 122,
+  "name": "Maulana Azizul Haque al-Umari",
+  "authorName": "Maulana Azizul Haque al-Umari",
+  "languageName": "hindi",
+  "version": "2026-04-23",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "4f5dc7f844cb9e16e6767a83ba065fca",
+  "payloadSizeBytes": 4028091,
+  "totalVerses": 6236,
+  "generatedAt": "2026-04-23T03:12:59.323Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=122&per_page=300"
+}

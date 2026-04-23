@@ -1,0 +1,15 @@
+{
+  "translationId": 203,
+  "name": "Al-Hilali & Khan",
+  "authorName": "Muhammad Taqi-ud-Din al-Hilali & Muhammad Muhsin Khan",
+  "languageName": "english",
+  "version": "2026-04-23",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "6ffef0b50c6ddb1c9df79acbba0f82a7",
+  "payloadSizeBytes": 2972108,
+  "totalVerses": 6236,
+  "generatedAt": "2026-04-23T03:08:04.519Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=203&per_page=300"
+}

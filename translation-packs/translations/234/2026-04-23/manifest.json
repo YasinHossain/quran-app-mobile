@@ -1,0 +1,15 @@
+{
+  "translationId": 234,
+  "name": "Fatah Muhammad Jalandhari",
+  "authorName": "Fatah Muhammad Jalandhari",
+  "languageName": "urdu",
+  "version": "2026-04-23",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "74aa8f2b4b15369c7f9567bf4f7d1503",
+  "payloadSizeBytes": 3242484,
+  "totalVerses": 6236,
+  "generatedAt": "2026-04-23T03:18:56.636Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=234&per_page=300"
+}

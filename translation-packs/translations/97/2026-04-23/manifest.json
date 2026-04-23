@@ -1,0 +1,15 @@
+{
+  "translationId": 97,
+  "name": "Tafheem e Qur'an - Syed Abu Ali Maududi",
+  "authorName": "Syed Abu Ali Maududi",
+  "languageName": "urdu",
+  "version": "2026-04-23",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "343c849a770a5b6722367d5a01d07673",
+  "payloadSizeBytes": 3382568,
+  "totalVerses": 6236,
+  "generatedAt": "2026-04-23T03:14:57.776Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=97&per_page=300"
+}

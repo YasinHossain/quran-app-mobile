@@ -1,0 +1,15 @@
+{
+  "translationId": 831,
+  "name": "Abul Ala Maududi(Roman Urdu)",
+  "authorName": "Abul Ala Maududi",
+  "languageName": "urdu",
+  "version": "2026-04-23",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "db691c3e6b655618f662aef09f7e4311",
+  "payloadSizeBytes": 2882604,
+  "totalVerses": 6236,
+  "generatedAt": "2026-04-23T03:20:51.358Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=831&per_page=300"
+}

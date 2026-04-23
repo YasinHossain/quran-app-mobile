@@ -1,0 +1,15 @@
+{
+  "translationId": 151,
+  "name": "Shaykh al-Hind Mahmud al-Hasan(with Tafsir E Usmani)",
+  "authorName": "Shaykh al-Hind Mahmud al-Hasan",
+  "languageName": "urdu",
+  "version": "2026-04-23",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "e42bacd8be23252c5b7e7456c4d769de",
+  "payloadSizeBytes": 3045226,
+  "totalVerses": 6236,
+  "generatedAt": "2026-04-23T03:15:57.092Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=151&per_page=300"
+}

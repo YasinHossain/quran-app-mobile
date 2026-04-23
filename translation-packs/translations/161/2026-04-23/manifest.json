@@ -1,0 +1,15 @@
+{
+  "translationId": 161,
+  "name": "Taisirul Quran",
+  "authorName": "Tawheed Publication",
+  "languageName": "bengali",
+  "version": "2026-04-23",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "5de3a2828ad8ccbc80457b66638c3c14",
+  "payloadSizeBytes": 4074663,
+  "totalVerses": 6236,
+  "generatedAt": "2026-04-23T03:09:03.435Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=161&per_page=300"
+}
