@@ -1,17 +1,13 @@
-import { Download, Trash2, X } from 'lucide-react-native';
 import React from 'react';
 import {
-  ActivityIndicator,
   Alert,
   FlatList,
   InteractionManager,
-  Modal,
   Platform,
   Pressable,
   Text,
   View,
 } from 'react-native';
-import Svg, { Circle } from 'react-native-svg';
 
 import Colors from '@/constants/Colors';
 import { HeaderSearchInput } from '@/components/search/HeaderSearchInput';
@@ -22,7 +18,7 @@ import {
   DownloadTranslationUseCase,
   requestTranslationDownloadCancel,
 } from '@/src/core/application/use-cases/DownloadTranslation';
-import type { DownloadIndexItemWithKey, DownloadProgress } from '@/src/core/domain/entities/DownloadIndexItem';
+import type { DownloadIndexItemWithKey } from '@/src/core/domain/entities/DownloadIndexItem';
 import { getDownloadKey } from '@/src/core/domain/entities/DownloadIndexItem';
 import { apiFetch } from '@/src/core/infrastructure/api/apiFetch';
 import { container } from '@/src/core/infrastructure/di/container';
@@ -31,6 +27,8 @@ import { logger } from '@/src/core/infrastructure/monitoring/logger';
 import chaptersData from '../../../src/data/chapters.en.json';
 
 import { ReorderableSelectionList } from './resource-panel/ReorderableSelectionList';
+import { ResourceConfirmModal } from './resource-panel/ResourceConfirmModal';
+import { ResourceDownloadAction } from './resource-panel/ResourceDownloadAction';
 import { ResourceItem } from './resource-panel/ResourceItem';
 import { ResourceTabs } from './resource-panel/ResourceTabs';
 import { buildLanguages, filterResources, groupResources, type ResourceRecord } from './resource-panel/resourcePanel.utils';
@@ -84,11 +82,6 @@ function translationLanguageSort(a: string, b: string): number {
   return a.localeCompare(b);
 }
 
-function clampPercent(value: number): number {
-  if (!Number.isFinite(value)) return 0;
-  return Math.max(0, Math.min(100, value));
-}
-
 function normalizeOrderedSelection(
   ids: number[],
   options?: { validIds?: Set<number> }
@@ -117,18 +110,6 @@ function areSelectionsEqual(a: number[], b: number[]): boolean {
     if (a[index] !== b[index]) return false;
   }
   return true;
-}
-
-function toProgressPercent(progress: DownloadProgress | undefined): number {
-  if (!progress) return 0;
-  if (progress.kind === 'percent') return clampPercent(progress.percent);
-  if (progress.kind === 'items') {
-    if (!Number.isFinite(progress.total) || progress.total <= 0) return 0;
-    const rawPercent = clampPercent((progress.completed / progress.total) * 100);
-    if (progress.completed > 0 && rawPercent < 12) return 12;
-    return rawPercent;
-  }
-  return 0;
 }
 
 function stripHtml(input: string): string {
@@ -215,55 +196,6 @@ async function resolveTranslationDownloadSizeInfo(translationId: number): Promis
   };
 }
 
-function CompactProgressRing({
-  percent,
-  tintColor,
-  trackColor,
-  crossColor,
-}: {
-  percent: number;
-  tintColor: string;
-  trackColor: string;
-  crossColor: string;
-}): React.JSX.Element {
-  const size = 24;
-  const strokeWidth = 3;
-  const clampedPercent = clampPercent(percent);
-  const radius = (size - strokeWidth) / 2;
-  const circumference = 2 * Math.PI * radius;
-  const strokeDashoffset = circumference - (clampedPercent / 100) * circumference;
-
-  return (
-    <View className="h-8 w-8 items-center justify-center rounded-full border border-border/60 bg-interactive dark:border-border-dark/60 dark:bg-interactive-dark">
-      <Svg width={size} height={size} style={{ transform: [{ rotate: '-90deg' }] }}>
-        <Circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          stroke={trackColor}
-          strokeWidth={strokeWidth}
-          fill="transparent"
-        />
-        <Circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          stroke={tintColor}
-          strokeWidth={strokeWidth}
-          fill="transparent"
-          strokeDasharray={`${circumference} ${circumference}`}
-          strokeDashoffset={strokeDashoffset}
-          strokeLinecap="round"
-        />
-      </Svg>
-
-      <View className="absolute inset-0 items-center justify-center">
-        <X color={crossColor} size={12} strokeWidth={2.75} />
-      </View>
-    </View>
-  );
-}
-
 type Row =
   | { type: 'tabs' }
   | { type: 'section'; language: string }
@@ -297,59 +229,18 @@ const TranslationResourceRow = React.memo(function TranslationResourceRow({
   const isDownloading = status === 'queued' || status === 'downloading';
   const isDeleting = status === 'deleting';
   const isInstalled = status === 'installed';
-  const isFailed = status === 'failed';
 
   const canDownload = !isBusy && !isDownloading && !isDeleting && !isInstalled;
   const canDelete = !isBusy && !isDownloading && !isDeleting && isInstalled;
   const canCancel = isDownloading;
-
-  const progressPercent = toProgressPercent(downloadItem?.progress);
-  const destructiveColor = isSelected ? '#FFFFFF' : isDark ? '#F87171' : '#DC2626';
-  const iconColor = isSelected ? '#FFFFFF' : tintColor;
-  const trackColor = isSelected
-    ? 'rgba(255,255,255,0.35)'
-    : isDark
-      ? 'rgba(20,184,166,0.35)'
-      : 'rgba(13,148,136,0.35)';
-  const progressColor = isSelected ? '#FFFFFF' : tintColor;
-  const crossColor = isSelected ? '#FFFFFF' : tintColor;
-
-  const actionIcon = isDeleting ? (
-    <View
-      className={[
-        'h-8 w-8 items-center justify-center rounded-full border',
-        isSelected ? 'border-white/30 bg-white/15' : 'border-error/40 bg-error/10',
-      ].join(' ')}
-    >
-      <ActivityIndicator size="small" color={destructiveColor} />
-    </View>
-  ) : isDownloading ? (
-    <CompactProgressRing
-      percent={progressPercent}
-      tintColor={progressColor}
-      trackColor={trackColor}
-      crossColor={crossColor}
+  const actionIcon = (
+    <ResourceDownloadAction
+      status={status}
+      progress={downloadItem?.progress}
+      isSelected={isSelected}
+      isDark={isDark}
+      tintColor={tintColor}
     />
-  ) : isInstalled ? (
-    <View
-      className={[
-        'h-8 w-8 items-center justify-center rounded-full border',
-        isSelected ? 'border-white/30 bg-white/15' : 'border-error/40 bg-error/10',
-      ].join(' ')}
-    >
-      <Trash2 color={destructiveColor} size={16} strokeWidth={2.25} />
-    </View>
-  ) : (
-    <View
-      className={[
-        'h-8 w-8 items-center justify-center rounded-full border',
-        isSelected
-          ? 'border-white/30 bg-white/15'
-          : 'border-border/60 bg-interactive dark:border-border-dark/60 dark:bg-interactive-dark',
-      ].join(' ')}
-    >
-      <Download color={isFailed ? destructiveColor : iconColor} size={16} strokeWidth={2.25} />
-    </View>
   );
 
   const trailingPress = isDownloading
@@ -934,148 +825,32 @@ export function ManageTranslationsPanel({
         contentContainerStyle={{ paddingBottom: 20 }}
       />
 
-      <Modal
-        transparent
-        animationType="fade"
+      <ResourceConfirmModal
         visible={downloadTarget !== null}
-        onRequestClose={() => setDownloadTarget(null)}
-      >
-        <View className="flex-1 items-center justify-center px-6">
-          <Pressable
-            onPress={() => setDownloadTarget(null)}
-            style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}
-          >
-            <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.55)' }} />
-          </Pressable>
+        title="Download translation?"
+        resourceName={downloadTarget?.name ?? null}
+        detailLabel={downloadEstimateLabel}
+        isDetailLoading={isEstimatingDownloadSize}
+        description="This downloads the translation for offline reading."
+        confirmLabel="Download"
+        mutedColor={palette.muted}
+        tintColor={palette.tint}
+        onConfirm={handleConfirmDownload}
+        onClose={() => setDownloadTarget(null)}
+      />
 
-          <View
-            style={{ width: '100%', maxWidth: 420 }}
-            className="rounded-2xl border border-border/50 bg-surface px-5 py-5 dark:border-border-dark/40 dark:bg-surface-dark"
-          >
-            <View className="flex-row items-center justify-between">
-              <Text className="text-lg font-bold text-foreground dark:text-foreground-dark">
-                Download translation?
-              </Text>
-              <Pressable
-                onPress={() => setDownloadTarget(null)}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel="Close"
-                style={({ pressed }) => ({ opacity: pressed ? 0.75 : 1 })}
-              >
-                <X color={palette.muted} size={18} strokeWidth={2.25} />
-              </Pressable>
-            </View>
-
-            <View className="mt-4 rounded-xl border border-border/50 bg-interactive/60 px-4 py-3 dark:border-border-dark/40 dark:bg-interactive-dark/60">
-              <Text className="text-sm font-semibold text-foreground dark:text-foreground-dark">
-                {downloadTarget?.name}
-              </Text>
-              <View className="mt-2 flex-row items-center gap-2">
-                {isEstimatingDownloadSize ? (
-                  <ActivityIndicator size="small" color={palette.tint} />
-                ) : null}
-                <Text className="text-xs text-muted dark:text-muted-dark">{downloadEstimateLabel}</Text>
-              </View>
-            </View>
-
-            <Text className="mt-4 text-xs text-muted dark:text-muted-dark">
-              This downloads the translation for offline reading.
-            </Text>
-
-            <View className="mt-5 flex-row items-center justify-end gap-3">
-              <Pressable
-                onPress={() => setDownloadTarget(null)}
-                accessibilityRole="button"
-                accessibilityLabel="Cancel"
-                className="rounded-lg bg-interactive px-4 py-2 dark:bg-interactive-dark"
-                style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
-              >
-                <Text className="text-sm font-semibold text-foreground dark:text-foreground-dark">
-                  Cancel
-                </Text>
-              </Pressable>
-
-              <Pressable
-                onPress={handleConfirmDownload}
-                accessibilityRole="button"
-                accessibilityLabel="Download"
-                className="rounded-lg bg-accent px-4 py-2"
-                style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
-              >
-                <Text className="text-sm font-semibold text-on-accent">Download</Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      <Modal
-        transparent
-        animationType="fade"
+      <ResourceConfirmModal
         visible={deleteTarget !== null}
-        onRequestClose={() => setDeleteTarget(null)}
-      >
-        <View className="flex-1 items-center justify-center px-6">
-          <Pressable
-            onPress={() => setDeleteTarget(null)}
-            style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}
-          >
-            <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.55)' }} />
-          </Pressable>
-
-          <View
-            style={{ width: '100%', maxWidth: 420 }}
-            className="rounded-2xl border border-border/50 bg-surface px-5 py-5 dark:border-border-dark/40 dark:bg-surface-dark"
-          >
-            <View className="flex-row items-center justify-between">
-              <Text className="text-lg font-bold text-foreground dark:text-foreground-dark">
-                Delete download?
-              </Text>
-              <Pressable
-                onPress={() => setDeleteTarget(null)}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel="Close"
-                style={({ pressed }) => ({ opacity: pressed ? 0.75 : 1 })}
-              >
-                <X color={palette.muted} size={18} strokeWidth={2.25} />
-              </Pressable>
-            </View>
-
-            <Text className="mt-4 text-sm text-foreground dark:text-foreground-dark">
-              {deleteTarget?.name}
-            </Text>
-            <Text className="mt-2 text-xs text-muted dark:text-muted-dark">
-              This removes downloaded verses for offline use.
-            </Text>
-
-            <View className="mt-5 flex-row items-center justify-end gap-3">
-              <Pressable
-                onPress={() => setDeleteTarget(null)}
-                accessibilityRole="button"
-                accessibilityLabel="Cancel"
-                className="rounded-lg bg-interactive px-4 py-2 dark:bg-interactive-dark"
-                style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
-              >
-                <Text className="text-sm font-semibold text-foreground dark:text-foreground-dark">
-                  Cancel
-                </Text>
-              </Pressable>
-
-              <Pressable
-                onPress={handleConfirmDelete}
-                accessibilityRole="button"
-                accessibilityLabel="Delete"
-                className="rounded-lg bg-error px-4 py-2 dark:bg-error-dark"
-                style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
-              >
-                <Text className="text-sm font-semibold text-on-accent">Delete</Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
+        title="Delete download?"
+        resourceName={deleteTarget?.name ?? null}
+        description="This removes downloaded verses for offline use."
+        confirmLabel="Delete"
+        confirmTone="danger"
+        mutedColor={palette.muted}
+        tintColor={palette.tint}
+        onConfirm={handleConfirmDelete}
+        onClose={() => setDeleteTarget(null)}
+      />
     </View>
   );
 }

@@ -40,7 +40,8 @@
       "expo-audio"
     ],
     "extra": {
-      "translationPackCatalogUrl": "https://yasinhossain.github.io/quran-app-mobile/translation-packs/catalog.json"
+      "translationPackCatalogUrl": "https://yasinhossain.github.io/quran-app-mobile/translation-packs/catalog.json",
+      "tafsirPackCatalogUrl": "https://yasinhossain.github.io/quran-app-mobile/tafsir-packs/catalog.json"
     },
     "experiments": {
       "typedRoutes": true

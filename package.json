@@ -10,6 +10,7 @@
     "postinstall": "node scripts/postinstall.js",
     "sync:web-core": "node scripts/sync-web-core.js",
     "generate:translation-packs": "node scripts/generate-translation-packs.js",
+    "generate:tafsir-packs": "node scripts/generate-tafsir-packs.js",
     "type-check": "tsc --noEmit",
     "check:core": "node scripts/check-core-purity.js",
     "verify": "npm run type-check && npm run check:core"

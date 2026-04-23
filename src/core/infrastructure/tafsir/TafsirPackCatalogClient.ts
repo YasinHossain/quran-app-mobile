@@ -1,4 +1,4 @@
-import type { HostedTranslationPackCatalog, HostedTranslationPackCatalogEntry } from '@/types';
+import type { HostedTafsirPackCatalog, HostedTafsirPackCatalogEntry } from '@/types';
 
 import {
   asNonEmptyString,
@@ -28,10 +28,10 @@ function mapCompatibility(
     : undefined;
 }
 
-function mapCatalogEntry(value: unknown): HostedTranslationPackCatalogEntry | null {
+function mapCatalogEntry(value: unknown): HostedTafsirPackCatalogEntry | null {
   if (!isRecord(value)) return null;
 
-  const translationId = asPositiveNumber(value.translationId);
+  const tafsirId = asPositiveNumber(value.tafsirId);
   const name = asNonEmptyString(value.name);
   const authorName = asNonEmptyString(value.authorName);
   const languageName = asNonEmptyString(value.languageName);
@@ -40,23 +40,14 @@ function mapCatalogEntry(value: unknown): HostedTranslationPackCatalogEntry | nu
   const checksum = asNonEmptyString(value.checksum);
   const sizeBytes = asPositiveNumber(value.sizeBytes);
 
-  if (
-    !translationId ||
-    !name ||
-    !authorName ||
-    !languageName ||
-    !version ||
-    !downloadUrl ||
-    !checksum ||
-    !sizeBytes
-  ) {
+  if (!tafsirId || !name || !authorName || !languageName || !version || !downloadUrl || !checksum || !sizeBytes) {
     return null;
   }
 
   const compatibility = mapCompatibility(value.compatibility);
 
   return {
-    translationId,
+    tafsirId,
     name,
     authorName,
     languageName,
@@ -64,12 +55,8 @@ function mapCatalogEntry(value: unknown): HostedTranslationPackCatalogEntry | nu
     downloadUrl,
     checksum,
     sizeBytes,
-    ...(asPositiveNumber(value.totalVerses)
-      ? { totalVerses: asPositiveNumber(value.totalVerses) }
-      : {}),
-    ...(asNonEmptyString(value.manifestUrl)
-      ? { manifestUrl: asNonEmptyString(value.manifestUrl) ?? undefined }
-      : {}),
+    ...(asPositiveNumber(value.totalVerses) ? { totalVerses: asPositiveNumber(value.totalVerses) } : {}),
+    ...(asNonEmptyString(value.manifestUrl) ? { manifestUrl: asNonEmptyString(value.manifestUrl) ?? undefined } : {}),
     ...(asNonEmptyString(value.manifestChecksum)
       ? { manifestChecksum: asNonEmptyString(value.manifestChecksum) ?? undefined }
       : {}),
@@ -86,17 +73,17 @@ function mapCatalogEntry(value: unknown): HostedTranslationPackCatalogEntry | nu
   };
 }
 
-export function normalizeHostedTranslationPackCatalog(value: unknown): HostedTranslationPackCatalog {
+export function normalizeHostedTafsirPackCatalog(value: unknown): HostedTafsirPackCatalog {
   if (!isRecord(value) || !Array.isArray(value.packs)) {
-    throw new Error('Hosted translation pack catalog is invalid');
+    throw new Error('Hosted tafsir pack catalog is invalid');
   }
 
   const packs = value.packs
     .map(mapCatalogEntry)
-    .filter((entry): entry is HostedTranslationPackCatalogEntry => entry !== null);
+    .filter((entry): entry is HostedTafsirPackCatalogEntry => entry !== null);
 
   if (packs.length === 0) {
-    throw new Error('Hosted translation pack catalog is empty');
+    throw new Error('Hosted tafsir pack catalog is empty');
   }
 
   return {
@@ -107,8 +94,8 @@ export function normalizeHostedTranslationPackCatalog(value: unknown): HostedTra
   };
 }
 
-export class TranslationPackCatalogClient {
-  async fetchCatalog(catalogUrl: string): Promise<HostedTranslationPackCatalog> {
+export class TafsirPackCatalogClient {
+  async fetchCatalog(catalogUrl: string): Promise<HostedTafsirPackCatalog> {
     const normalizedCatalogUrl = asNonEmptyString(catalogUrl);
     if (!normalizedCatalogUrl) {
       throw new Error('catalogUrl is required');
@@ -121,9 +108,9 @@ export class TranslationPackCatalogClient {
     });
 
     if (!response.ok) {
-      throw new Error(`Failed to fetch translation pack catalog (${response.status})`);
+      throw new Error(`Failed to fetch tafsir pack catalog (${response.status})`);
     }
 
-    return normalizeHostedTranslationPackCatalog(await response.json());
+    return normalizeHostedTafsirPackCatalog(await response.json());
   }
 }

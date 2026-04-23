@@ -66,10 +66,12 @@ This document lists reusable UI components currently available in the codebase s
 | `FontSizeSlider` | Slider row used for font size controls. | `components/reader/settings/FontSizeSlider.tsx` |
 | `SelectionBox` | Pressable selection row used for “pick one” settings. | `components/reader/settings/SelectionBox.tsx` |
 | `MushafPackOptionCard` | Mushaf-pack settings card that shows install status, progress/error state, source note, and pack actions like Use / Install / Delete. | `components/reader/settings/MushafPackOptionCard.tsx` |
-| `ManageTranslationsPanel` | Web-parity “Manage Translations” panel (search + language tabs + My Selections). | `components/reader/settings/ManageTranslationsPanel.tsx` |
-| `ManageTafsirsPanel` | Web-parity “Manage Tafsirs” panel (search + language tabs + My Selections + limit warning). | `components/reader/settings/ManageTafsirsPanel.tsx` |
+| `ManageTranslationsPanel` | Web-parity “Manage Translations” panel (search + language tabs + My Selections) plus offline download/delete/cancel actions with hosted-pack size resolution. | `components/reader/settings/ManageTranslationsPanel.tsx` |
+| `ManageTafsirsPanel` | Web-parity “Manage Tafsirs” panel (search + language tabs + My Selections + limit warning) plus the same offline download/delete/cancel flow used by translations, backed by hosted tafsir packs or the optimized bulk API fallback. | `components/reader/settings/ManageTafsirsPanel.tsx` |
 | `ResourceTabs` | Horizontal language tabs with scroll buttons (used by translation/tafsir panels). | `components/reader/settings/resource-panel/ResourceTabs.tsx` |
 | `ResourceItem` | Selectable resource row (used by translation/tafsir panels). | `components/reader/settings/resource-panel/ResourceItem.tsx` |
+| `ResourceDownloadAction` | Shared trailing action UI for resource downloads (download, progress ring/cancel, delete, deleting state). | `components/reader/settings/resource-panel/ResourceDownloadAction.tsx` |
+| `ResourceConfirmModal` | Shared confirmation modal for resource download/delete flows with optional size detail line. | `components/reader/settings/resource-panel/ResourceConfirmModal.tsx` |
 | `ReorderableSelectionList` | “My Selections” list (remove + reorder + reset). | `components/reader/settings/resource-panel/ReorderableSelectionList.tsx` |
 
 ## Surah Reader Components

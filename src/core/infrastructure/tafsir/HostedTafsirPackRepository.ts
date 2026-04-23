@@ -1,22 +1,21 @@
 import type { ILogger } from '@/src/core/domain/interfaces/ILogger';
-import type { ITranslationOfflineStore } from '@/src/core/domain/repositories/ITranslationOfflineStore';
+import type { ITafsirOfflineStore } from '@/src/core/domain/repositories/ITafsirOfflineStore';
 import type {
-  ITranslationPackRepository,
-  TranslationPackAvailability,
-  TranslationPackInstallPhase,
-  TranslationPackInstallProgress,
-} from '@/src/core/domain/repositories/ITranslationPackRepository';
+  ITafsirPackRepository,
+  TafsirPackAvailability,
+  TafsirPackInstallPhase,
+  TafsirPackInstallProgress,
+} from '@/src/core/domain/repositories/ITafsirPackRepository';
 import type {
-  HostedTranslationPackCatalog,
-  HostedTranslationPackCatalogEntry,
-  TranslationPackManifest,
-  TranslationPackPayload,
-  TranslationPackPayloadVerse,
+  HostedTafsirPackCatalog,
+  HostedTafsirPackCatalogEntry,
+  TafsirPackManifest,
+  TafsirPackPayload,
+  TafsirPackPayloadVerse,
 } from '@/types';
 
 import {
   asNonEmptyString,
-  asPositiveNumber,
   clampPercent,
   downloadHostedPackFileAsync,
   normalizePositiveInt,
@@ -26,16 +25,16 @@ import {
   verifyDownloadedFileAsync,
 } from '@/src/core/infrastructure/hosted-pack/hostedPackSupport';
 
-import { TranslationPackCatalogClient } from './TranslationPackCatalogClient';
-import { TranslationPackFileStore } from './TranslationPackFileStore';
-import { getTranslationPackCatalogUrl } from './translationPackCatalogConfig';
+import { TafsirPackCatalogClient } from './TafsirPackCatalogClient';
+import { TafsirPackFileStore } from './TafsirPackFileStore';
+import { getTafsirPackCatalogUrl } from './tafsirPackCatalogConfig';
 
 const MANIFEST_WEIGHT = 10;
 const PAYLOAD_WEIGHT = 45;
 const IMPORT_WEIGHT = 45;
 const IMPORT_BATCH_SIZE = 250;
 
-function resolveManifestUrl(entry: HostedTranslationPackCatalogEntry, catalogUrl: string): string {
+function resolveManifestUrl(entry: HostedTafsirPackCatalogEntry, catalogUrl: string): string {
   const explicitManifestUrl = entry.manifestUrl?.trim();
   if (explicitManifestUrl) {
     return resolveHostedPackUrl(catalogUrl, explicitManifestUrl);
@@ -44,18 +43,7 @@ function resolveManifestUrl(entry: HostedTranslationPackCatalogEntry, catalogUrl
   return new URL('manifest.json', resolveHostedPackUrl(catalogUrl, entry.downloadUrl)).toString();
 }
 
-function stripHtml(input: string): string {
-  return input
-    .replace(/<[^>]*>/g, ' ')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&amp;/g, '&')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function toOverallPercent(phase: TranslationPackInstallPhase, phasePercent: number): number {
+function toOverallPercent(phase: TafsirPackInstallPhase, phasePercent: number): number {
   const clampedPhasePercent = clampPercent(phasePercent);
 
   if (phase === 'manifest') {
@@ -70,10 +58,10 @@ function toOverallPercent(phase: TranslationPackInstallPhase, phasePercent: numb
 }
 
 function toProgress(
-  phase: TranslationPackInstallPhase,
+  phase: TafsirPackInstallPhase,
   phasePercent: number,
   activeFile: string
-): TranslationPackInstallProgress {
+): TafsirPackInstallProgress {
   return {
     phase,
     percent: clampPercent(toOverallPercent(phase, phasePercent)),
@@ -82,93 +70,84 @@ function toProgress(
 }
 
 function ensureManifestMatchesCatalog(
-  entry: HostedTranslationPackCatalogEntry,
-  manifest: TranslationPackManifest
+  entry: HostedTafsirPackCatalogEntry,
+  manifest: TafsirPackManifest
 ): void {
-  if (manifest.translationId !== entry.translationId) {
+  if (manifest.tafsirId !== entry.tafsirId) {
     throw new Error(
-      `Hosted translation manifest ID mismatch: expected ${entry.translationId}, received ${manifest.translationId}`
+      `Hosted tafsir manifest ID mismatch: expected ${entry.tafsirId}, received ${manifest.tafsirId}`
     );
   }
 
   if (manifest.version.trim() !== entry.version.trim()) {
     throw new Error(
-      `Hosted translation manifest version mismatch: expected ${entry.version}, received ${manifest.version}`
+      `Hosted tafsir manifest version mismatch: expected ${entry.version}, received ${manifest.version}`
     );
   }
 
   if (!manifest.payloadFile.trim()) {
-    throw new Error('Hosted translation manifest payloadFile is required');
+    throw new Error('Hosted tafsir manifest payloadFile is required');
   }
 
   if (typeof entry.totalVerses === 'number' && manifest.totalVerses !== entry.totalVerses) {
     throw new Error(
-      `Hosted translation manifest verse count mismatch: expected ${entry.totalVerses}, received ${manifest.totalVerses}`
+      `Hosted tafsir manifest verse count mismatch: expected ${entry.totalVerses}, received ${manifest.totalVerses}`
     );
   }
 }
 
-function mapPayloadVerse(
-  value: unknown,
-  translationId: number
-): TranslationPackPayloadVerse | null {
+function mapPayloadVerse(value: unknown): TafsirPackPayloadVerse | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
 
   const record = value as Record<string, unknown>;
   const verseKey = asNonEmptyString(record.verseKey);
-  const surahId = asPositiveNumber(record.surahId);
-  const ayahNumber = asPositiveNumber(record.ayahNumber);
-  const arabicUthmani = String(record.arabicUthmani ?? '').trim();
-  const text = stripHtml(String(record.text ?? ''));
+  const html = typeof record.html === 'string' ? record.html : String(record.html ?? '');
 
-  if (!verseKey || !surahId || !ayahNumber || !arabicUthmani) {
+  if (!verseKey) {
     return null;
   }
 
   return {
     verseKey,
-    surahId,
-    ayahNumber,
-    arabicUthmani,
-    text,
+    html,
   };
 }
 
 function ensurePayloadMatchesManifest(
-  manifest: TranslationPackManifest,
-  payload: TranslationPackPayload
-): TranslationPackPayloadVerse[] {
-  if (payload.translationId !== manifest.translationId) {
+  manifest: TafsirPackManifest,
+  payload: TafsirPackPayload
+): TafsirPackPayloadVerse[] {
+  if (payload.tafsirId !== manifest.tafsirId) {
     throw new Error(
-      `Installed translation payload ID mismatch: expected ${manifest.translationId}, received ${payload.translationId}`
+      `Installed tafsir payload ID mismatch: expected ${manifest.tafsirId}, received ${payload.tafsirId}`
     );
   }
 
   if (payload.version.trim() !== manifest.version.trim()) {
     throw new Error(
-      `Installed translation payload version mismatch: expected ${manifest.version}, received ${payload.version}`
+      `Installed tafsir payload version mismatch: expected ${manifest.version}, received ${payload.version}`
     );
   }
 
   if (payload.format !== manifest.format) {
     throw new Error(
-      `Installed translation payload format mismatch: expected ${manifest.format}, received ${payload.format}`
+      `Installed tafsir payload format mismatch: expected ${manifest.format}, received ${payload.format}`
     );
   }
 
   const verses = Array.isArray(payload.verses)
     ? payload.verses
-        .map((verse) => mapPayloadVerse(verse, manifest.translationId))
-        .filter((verse): verse is TranslationPackPayloadVerse => verse !== null)
+        .map((verse) => mapPayloadVerse(verse))
+        .filter((verse): verse is TafsirPackPayloadVerse => verse !== null)
     : [];
 
   if (verses.length === 0) {
-    throw new Error('Hosted translation payload is empty');
+    throw new Error('Hosted tafsir payload is empty');
   }
 
   if (manifest.totalVerses > 0 && verses.length !== manifest.totalVerses) {
     throw new Error(
-      `Hosted translation payload verse count mismatch: expected ${manifest.totalVerses}, received ${verses.length}`
+      `Hosted tafsir payload verse count mismatch: expected ${manifest.totalVerses}, received ${verses.length}`
     );
   }
 
@@ -177,31 +156,30 @@ function ensurePayloadMatchesManifest(
 
 type ResolvedCatalogPack = {
   catalogUrl: string;
-  catalog: HostedTranslationPackCatalog;
-  entry: HostedTranslationPackCatalogEntry;
+  entry: HostedTafsirPackCatalogEntry;
 };
 
-export class HostedTranslationPackRepository implements ITranslationPackRepository {
-  private readonly catalogClient: TranslationPackCatalogClient;
-  private readonly fileStore: TranslationPackFileStore;
+export class HostedTafsirPackRepository implements ITafsirPackRepository {
+  private readonly catalogClient: TafsirPackCatalogClient;
+  private readonly fileStore: TafsirPackFileStore;
   private cachedCatalogUrl: string | null = null;
-  private cachedCatalog: HostedTranslationPackCatalog | null = null;
-  private loadingCatalogPromise: Promise<HostedTranslationPackCatalog | null> | null = null;
+  private cachedCatalog: HostedTafsirPackCatalog | null = null;
+  private loadingCatalogPromise: Promise<HostedTafsirPackCatalog | null> | null = null;
 
   constructor(
-    private readonly translationOfflineStore: ITranslationOfflineStore,
+    private readonly tafsirOfflineStore: ITafsirOfflineStore,
     private readonly logger?: ILogger
   ) {
-    this.catalogClient = new TranslationPackCatalogClient();
-    this.fileStore = new TranslationPackFileStore();
+    this.catalogClient = new TafsirPackCatalogClient();
+    this.fileStore = new TafsirPackFileStore();
   }
 
-  async getPackAvailability(translationId: number): Promise<TranslationPackAvailability | null> {
-    const resolved = await this.getResolvedPack(translationId);
+  async getPackAvailability(tafsirId: number): Promise<TafsirPackAvailability | null> {
+    const resolved = await this.getResolvedPack(tafsirId);
     if (!resolved) return null;
 
     return {
-      translationId: resolved.entry.translationId,
+      tafsirId: resolved.entry.tafsirId,
       name: resolved.entry.name,
       authorName: resolved.entry.authorName,
       languageName: resolved.entry.languageName,
@@ -214,22 +192,22 @@ export class HostedTranslationPackRepository implements ITranslationPackReposito
   }
 
   async installPack(params: {
-    translationId: number;
-    onProgress?: ((progress: TranslationPackInstallProgress) => void) | undefined;
+    tafsirId: number;
+    onProgress?: ((progress: TafsirPackInstallProgress) => void) | undefined;
     assertNotCanceled?: (() => void) | undefined;
   }): Promise<boolean> {
-    const translationId = normalizePositiveInt(params.translationId);
-    if (translationId <= 0) {
-      throw new Error('translationId must be a positive integer');
+    const tafsirId = normalizePositiveInt(params.tafsirId);
+    if (tafsirId <= 0) {
+      throw new Error('tafsirId must be a positive integer');
     }
 
-    const resolved = await this.getResolvedPack(translationId);
+    const resolved = await this.getResolvedPack(tafsirId);
     if (!resolved) return false;
 
     params.assertNotCanceled?.();
 
     const temporaryDirectory = await this.fileStore.prepareTemporaryPackDirectoryAsync(
-      translationId,
+      tafsirId,
       resolved.entry.version
     );
 
@@ -248,7 +226,7 @@ export class HostedTranslationPackRepository implements ITranslationPackReposito
 
       params.assertNotCanceled?.();
 
-      const manifest = await readHostedPackJsonFileAsync<TranslationPackManifest>(manifestUri);
+      const manifest = await readHostedPackJsonFileAsync<TafsirPackManifest>(manifestUri);
       ensureManifestMatchesCatalog(resolved.entry, manifest);
       params.onProgress?.(toProgress('manifest', 100, 'manifest.json'));
 
@@ -267,11 +245,11 @@ export class HostedTranslationPackRepository implements ITranslationPackReposito
 
       params.assertNotCanceled?.();
 
-      const payload = await readHostedPackJsonFileAsync<TranslationPackPayload>(payloadUri);
+      const payload = await readHostedPackJsonFileAsync<TafsirPackPayload>(payloadUri);
       const verses = ensurePayloadMatchesManifest(manifest, payload);
       params.onProgress?.(toProgress('payload', 100, normalizedPayloadFile));
 
-      await this.translationOfflineStore.deleteTranslation(translationId);
+      await this.tafsirOfflineStore.deleteTafsir(tafsirId);
 
       const totalVerses = verses.length;
       let processed = 0;
@@ -280,19 +258,13 @@ export class HostedTranslationPackRepository implements ITranslationPackReposito
         params.assertNotCanceled?.();
 
         const batch = verses.slice(start, start + IMPORT_BATCH_SIZE);
-        await this.translationOfflineStore.upsertVersesAndTranslations({
-          verses: batch.map((verse) => ({
+        await this.tafsirOfflineStore.upsertRows(
+          batch.map((verse) => ({
+            tafsirId,
             verseKey: verse.verseKey,
-            surahId: verse.surahId,
-            ayahNumber: verse.ayahNumber,
-            arabicUthmani: verse.arabicUthmani,
-          })),
-          translations: batch.map((verse) => ({
-            translationId,
-            verseKey: verse.verseKey,
-            text: verse.text,
-          })),
-        });
+            html: verse.html,
+          }))
+        );
 
         processed += batch.length;
         params.onProgress?.(
@@ -308,37 +280,34 @@ export class HostedTranslationPackRepository implements ITranslationPackReposito
         await this.fileStore.deleteTemporaryPackDirectoryAsync(temporaryDirectory);
       } catch (cleanupError) {
         this.logger?.warn(
-          'Failed to clean up temporary translation pack directory',
-          { translationId, version: resolved.entry.version },
+          'Failed to clean up temporary tafsir pack directory',
+          { tafsirId, version: resolved.entry.version },
           cleanupError as Error
         );
       }
     }
   }
 
-  private async getResolvedPack(translationId: number): Promise<ResolvedCatalogPack | null> {
-    const normalizedTranslationId = normalizePositiveInt(translationId);
-    if (normalizedTranslationId <= 0) return null;
+  private async getResolvedPack(tafsirId: number): Promise<ResolvedCatalogPack | null> {
+    const normalizedTafsirId = normalizePositiveInt(tafsirId);
+    if (normalizedTafsirId <= 0) return null;
 
-    const catalogUrl = getTranslationPackCatalogUrl();
+    const catalogUrl = getTafsirPackCatalogUrl();
     if (!catalogUrl) return null;
 
     const catalog = await this.getCatalog(catalogUrl);
     if (!catalog) return null;
 
-    const entry =
-      catalog.packs.find((pack) => pack.translationId === normalizedTranslationId) ?? null;
-
+    const entry = catalog.packs.find((pack) => pack.tafsirId === normalizedTafsirId) ?? null;
     if (!entry) return null;
 
     return {
       catalogUrl,
-      catalog,
       entry,
     };
   }
 
-  private async getCatalog(catalogUrl: string): Promise<HostedTranslationPackCatalog | null> {
+  private async getCatalog(catalogUrl: string): Promise<HostedTafsirPackCatalog | null> {
     const normalizedCatalogUrl = catalogUrl.trim();
     if (!normalizedCatalogUrl) return null;
 
@@ -360,7 +329,7 @@ export class HostedTranslationPackRepository implements ITranslationPackReposito
       .catch((error) => {
         this.cachedCatalog = null;
         this.logger?.warn(
-          'Failed to fetch hosted translation pack catalog',
+          'Failed to fetch hosted tafsir pack catalog',
           { catalogUrl: normalizedCatalogUrl },
           error as Error
         );

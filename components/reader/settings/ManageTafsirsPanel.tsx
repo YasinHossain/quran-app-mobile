@@ -1,15 +1,61 @@
 import React from 'react';
 import { FlashList } from '@shopify/flash-list';
-import { Platform, Pressable, Text, View } from 'react-native';
+import { Alert, InteractionManager, Platform, Pressable, Text, View } from 'react-native';
 
+import Colors from '@/constants/Colors';
 import { HeaderSearchInput } from '@/components/search/HeaderSearchInput';
+import { useDownloadIndexItems } from '@/hooks/useDownloadIndexItems';
+import { useAppTheme } from '@/providers/ThemeContext';
+import { DeleteTafsirUseCase } from '@/src/core/application/use-cases/DeleteTafsir';
+import {
+  DownloadFullTafsirUseCase,
+  requestTafsirDownloadCancel,
+} from '@/src/core/application/use-cases/DownloadFullTafsir';
+import { DownloadTafsirSurahUseCase } from '@/src/core/application/use-cases/DownloadTafsirSurah';
+import type { DownloadIndexItemWithKey } from '@/src/core/domain/entities/DownloadIndexItem';
+import { getDownloadKey } from '@/src/core/domain/entities/DownloadIndexItem';
+import { apiFetch } from '@/src/core/infrastructure/api/apiFetch';
+import { container } from '@/src/core/infrastructure/di/container';
+import { logger } from '@/src/core/infrastructure/monitoring/logger';
+
+import chaptersData from '../../../src/data/chapters.en.json';
 
 import { ReorderableSelectionList } from './resource-panel/ReorderableSelectionList';
+import { ResourceConfirmModal } from './resource-panel/ResourceConfirmModal';
+import { ResourceDownloadAction } from './resource-panel/ResourceDownloadAction';
 import { ResourceItem } from './resource-panel/ResourceItem';
 import { ResourceTabs } from './resource-panel/ResourceTabs';
 import { buildLanguages, filterResources, groupResources, type ResourceRecord } from './resource-panel/resourcePanel.utils';
 
 export const MAX_TAFSIR_SELECTIONS = 3;
+
+const ESTIMATE_SAMPLE_CHAPTERS = [1, 2, 18, 36, 55, 78] as const;
+const ESTIMATE_STORAGE_OVERHEAD_MULTIPLIER = 1.2;
+const BYTES_PER_MEGABYTE = 1024 * 1024;
+const FALLBACK_TOTAL_VERSE_COUNT = 6236;
+
+const TOTAL_VERSE_COUNT = (
+  Array.isArray(chaptersData)
+    ? chaptersData.reduce((total, chapter) => {
+        const verses = typeof chapter?.verses_count === 'number' ? chapter.verses_count : 0;
+        return total + Math.max(0, verses);
+      }, 0)
+    : 0
+) || FALLBACK_TOTAL_VERSE_COUNT;
+
+type DownloadSizeInfo = {
+  mb: number | null;
+  isExact: boolean;
+};
+
+type ApiEstimateTafsir = {
+  resource_id?: number;
+  text?: string;
+};
+
+type ApiEstimateResponse = {
+  tafsirs?: ApiEstimateTafsir[];
+};
 
 type Row =
   | { type: 'tabs' }
@@ -21,6 +67,149 @@ function findEnglishTafsirId(tafsirs: ResourceRecord[]): number | undefined {
   return tafsirs.find((t) => t.lang.toLowerCase() === 'english')?.id;
 }
 
+function utf8ByteLength(input: string): number {
+  const encoded = encodeURIComponent(input);
+  let bytes = 0;
+
+  for (let index = 0; index < encoded.length; index += 1) {
+    if (encoded[index] === '%') {
+      bytes += 1;
+      index += 2;
+      continue;
+    }
+    bytes += 1;
+  }
+
+  return bytes;
+}
+
+async function estimateTafsirSizeMb(tafsirId: number): Promise<number> {
+  const sampleResponses = await Promise.all(
+    ESTIMATE_SAMPLE_CHAPTERS.map((chapterNumber) =>
+      apiFetch<ApiEstimateResponse>(
+        `/tafsirs/${tafsirId}/by_chapter/${chapterNumber}`,
+        {
+          per_page: '300',
+          page: '1',
+        },
+        'Failed to estimate tafsir size'
+      )
+    )
+  );
+
+  let sampleByteCount = 0;
+  let sampleVerseCount = 0;
+
+  for (const response of sampleResponses) {
+    for (const tafsir of response.tafsirs ?? []) {
+      if (Number(tafsir.resource_id ?? tafsirId) !== tafsirId) continue;
+      const html = String(tafsir.text ?? '').trim();
+      sampleByteCount += utf8ByteLength(html);
+      sampleVerseCount += 1;
+    }
+  }
+
+  if (sampleVerseCount <= 0) {
+    throw new Error('No sample tafsir verses available for size estimation');
+  }
+
+  const averageBytesPerVerse = sampleByteCount / sampleVerseCount;
+  const estimatedStoredBytes =
+    averageBytesPerVerse * TOTAL_VERSE_COUNT * ESTIMATE_STORAGE_OVERHEAD_MULTIPLIER;
+  const estimatedMb = estimatedStoredBytes / BYTES_PER_MEGABYTE;
+
+  return Math.max(0.1, Math.round(estimatedMb * 10) / 10);
+}
+
+async function resolveTafsirDownloadSizeInfo(tafsirId: number): Promise<DownloadSizeInfo> {
+  const packAvailability = await container.getTafsirPackRepository().getPackAvailability(tafsirId);
+  if (packAvailability && packAvailability.sizeBytes > 0) {
+    const mb = Math.max(0.1, Math.round((packAvailability.sizeBytes / BYTES_PER_MEGABYTE) * 10) / 10);
+    return { mb, isExact: true };
+  }
+
+  const estimatedMb = await estimateTafsirSizeMb(tafsirId);
+  return {
+    mb: estimatedMb,
+    isExact: false,
+  };
+}
+
+const TafsirResourceRow = React.memo(function TafsirResourceRow({
+  tafsir,
+  downloadItem,
+  isSelected,
+  isBusy,
+  isDark,
+  tintColor,
+  onToggle,
+  onPressDownload,
+  onPressDelete,
+  onCancelDownload,
+}: {
+  tafsir: ResourceRecord;
+  downloadItem: DownloadIndexItemWithKey | undefined;
+  isSelected: boolean;
+  isBusy: boolean;
+  isDark: boolean;
+  tintColor: string;
+  onToggle: (id: number) => void;
+  onPressDownload: (tafsir: ResourceRecord) => void;
+  onPressDelete: (tafsir: ResourceRecord) => void;
+  onCancelDownload: (tafsirId: number) => void;
+}): React.JSX.Element {
+  const status = downloadItem?.status;
+  const isDownloading = status === 'queued' || status === 'downloading';
+  const isDeleting = status === 'deleting';
+  const isInstalled = status === 'installed';
+
+  const canDownload = !isBusy && !isDownloading && !isDeleting && !isInstalled;
+  const canDelete = !isBusy && !isDownloading && !isDeleting && isInstalled;
+  const canCancel = isDownloading;
+
+  const trailingPress = isDownloading
+    ? () => {
+        if (canCancel) onCancelDownload(tafsir.id);
+      }
+    : isInstalled
+      ? () => {
+          if (canDelete) onPressDelete(tafsir);
+        }
+      : () => {
+          if (canDownload) onPressDownload(tafsir);
+        };
+
+  const trailingLabel = isDownloading
+    ? `Cancel ${tafsir.name} download`
+    : isInstalled
+      ? `Delete ${tafsir.name} offline download`
+      : `Download ${tafsir.name} for offline use`;
+
+  return (
+    <View className="px-4 py-1">
+      <ResourceItem
+        item={tafsir}
+        isSelected={isSelected}
+        onToggle={onToggle}
+        trailingAction={
+          <ResourceDownloadAction
+            status={status}
+            progress={downloadItem?.progress}
+            isSelected={isSelected}
+            isDark={isDark}
+            tintColor={tintColor}
+          />
+        }
+        onTrailingPress={trailingPress}
+        trailingAccessibilityLabel={trailingLabel}
+        trailingDisabled={
+          isDeleting || (isDownloading ? !canCancel : isInstalled ? !canDelete : !canDownload)
+        }
+      />
+    </View>
+  );
+});
+
 export function ManageTafsirsPanel({
   tafsirs,
   orderedSelection,
@@ -29,6 +218,7 @@ export function ManageTafsirsPanel({
   errorMessage,
   onRefresh,
   languageSort,
+  isActive = true,
 }: {
   tafsirs: ResourceRecord[];
   orderedSelection: number[];
@@ -37,13 +227,27 @@ export function ManageTafsirsPanel({
   errorMessage: string | null;
   onRefresh?: () => void;
   languageSort?: (a: string, b: string) => number;
+  isActive?: boolean;
 }): React.JSX.Element {
+  const { resolvedTheme, isDark } = useAppTheme();
+  const palette = Colors[resolvedTheme];
   const [isReordering, setIsReordering] = React.useState(false);
   const [searchTerm, setSearchTerm] = React.useState('');
   const [activeFilter, setActiveFilter] = React.useState('All');
   const [showLimitWarning, setShowLimitWarning] = React.useState(false);
+  const [busyTafsirIds, setBusyTafsirIds] = React.useState<Set<number>>(() => new Set());
+  const [downloadTarget, setDownloadTarget] = React.useState<ResourceRecord | null>(null);
+  const [deleteTarget, setDeleteTarget] = React.useState<ResourceRecord | null>(null);
+  const [downloadSizeInfoById, setDownloadSizeInfoById] = React.useState<
+    Record<number, DownloadSizeInfo | null | undefined>
+  >({});
+  const [estimatingTafsirIds, setEstimatingTafsirIds] = React.useState<Set<number>>(() => new Set());
 
   const selectedIds = React.useMemo(() => new Set<number>(orderedSelection ?? []), [orderedSelection]);
+  const { itemsByKey, refresh: refreshIndex } = useDownloadIndexItems({
+    enabled: isActive,
+    pollIntervalMs: 800,
+  });
 
   const languages = React.useMemo(
     () => buildLanguages(tafsirs, languageSort),
@@ -65,10 +269,150 @@ export function ManageTafsirsPanel({
   const sectionsToRender = React.useMemo(() => {
     const languageOrder = new Map(languages.map((lang, idx) => [lang, idx]));
     const entries = Object.entries(groupedTafsirs).sort(
-      ([a], [b]) => (languageOrder.get(a) ?? Number.POSITIVE_INFINITY) - (languageOrder.get(b) ?? Number.POSITIVE_INFINITY)
+      ([a], [b]) =>
+        (languageOrder.get(a) ?? Number.POSITIVE_INFINITY) - (languageOrder.get(b) ?? Number.POSITIVE_INFINITY)
     );
     return entries.map(([language, items]) => ({ language, items }));
   }, [groupedTafsirs, languages]);
+
+  const setBusy = React.useCallback((tafsirId: number, busy: boolean) => {
+    setBusyTafsirIds((prev) => {
+      const next = new Set(prev);
+      if (busy) next.add(tafsirId);
+      else next.delete(tafsirId);
+      return next;
+    });
+  }, []);
+
+  const downloadTafsir = React.useCallback(
+    async (tafsirId: number): Promise<void> => {
+      if (busyTafsirIds.has(tafsirId)) return;
+      setBusy(tafsirId, true);
+
+      try {
+        const downloadTafsirSurahUseCase = new DownloadTafsirSurahUseCase(
+          container.getDownloadIndexRepository(),
+          container.getTafsirDownloadRepository(),
+          container.getTafsirOfflineStore(),
+          logger
+        );
+        const useCase = new DownloadFullTafsirUseCase(
+          container.getDownloadIndexRepository(),
+          downloadTafsirSurahUseCase,
+          container.getTafsirOfflineStore(),
+          logger,
+          container.getTafsirPackRepository()
+        );
+
+        await useCase.execute(tafsirId);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        Alert.alert('Download failed', message);
+        logger.warn('Download tafsir failed', { tafsirId, message }, error as Error);
+      } finally {
+        setBusy(tafsirId, false);
+        refreshIndex();
+      }
+    },
+    [busyTafsirIds, refreshIndex, setBusy]
+  );
+
+  const deleteTafsir = React.useCallback(
+    async (tafsirId: number): Promise<void> => {
+      if (busyTafsirIds.has(tafsirId)) return;
+      setBusy(tafsirId, true);
+
+      try {
+        const useCase = new DeleteTafsirUseCase(
+          container.getDownloadIndexRepository(),
+          container.getTafsirOfflineStore(),
+          logger
+        );
+        await useCase.execute(tafsirId);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        Alert.alert('Delete failed', message);
+        logger.warn('Delete tafsir failed', { tafsirId, message }, error as Error);
+      } finally {
+        setBusy(tafsirId, false);
+        refreshIndex();
+      }
+    },
+    [busyTafsirIds, refreshIndex, setBusy]
+  );
+
+  const ensureDownloadSizeInfo = React.useCallback(
+    async (tafsirId: number): Promise<void> => {
+      if (downloadSizeInfoById[tafsirId] !== undefined) return;
+      if (estimatingTafsirIds.has(tafsirId)) return;
+
+      setEstimatingTafsirIds((prev) => {
+        const next = new Set(prev);
+        next.add(tafsirId);
+        return next;
+      });
+
+      try {
+        const sizeInfo = await resolveTafsirDownloadSizeInfo(tafsirId);
+        setDownloadSizeInfoById((prev) => ({ ...prev, [tafsirId]: sizeInfo }));
+      } catch (error) {
+        logger.warn('Failed to resolve tafsir download size', { tafsirId }, error as Error);
+        setDownloadSizeInfoById((prev) => ({ ...prev, [tafsirId]: null }));
+      } finally {
+        setEstimatingTafsirIds((prev) => {
+          const next = new Set(prev);
+          next.delete(tafsirId);
+          return next;
+        });
+      }
+    },
+    [downloadSizeInfoById, estimatingTafsirIds]
+  );
+
+  const handlePressDownload = React.useCallback(
+    (tafsir: ResourceRecord) => {
+      if (busyTafsirIds.has(tafsir.id)) return;
+      setDownloadTarget(tafsir);
+    },
+    [busyTafsirIds]
+  );
+
+  React.useEffect(() => {
+    if (!downloadTarget) return;
+
+    let cancelled = false;
+    const interactionHandle = InteractionManager.runAfterInteractions(() => {
+      if (cancelled) return;
+      void ensureDownloadSizeInfo(downloadTarget.id);
+    });
+
+    return () => {
+      cancelled = true;
+      interactionHandle.cancel();
+    };
+  }, [downloadTarget, ensureDownloadSizeInfo]);
+
+  const handleConfirmDownload = React.useCallback(() => {
+    if (!downloadTarget) return;
+    const tafsirId = downloadTarget.id;
+    setDownloadTarget(null);
+    void downloadTafsir(tafsirId);
+  }, [downloadTarget, downloadTafsir]);
+
+  const handlePressDelete = React.useCallback((tafsir: ResourceRecord) => {
+    setDeleteTarget(tafsir);
+  }, []);
+
+  const handleCancelDownload = React.useCallback((tafsirId: number) => {
+    requestTafsirDownloadCancel(tafsirId);
+  }, []);
+
+  const handleConfirmDelete = React.useCallback(() => {
+    if (!deleteTarget) return;
+    const tafsirId = deleteTarget.id;
+    setDeleteTarget(null);
+    void deleteTafsir(tafsirId);
+  }, [deleteTarget, deleteTafsir]);
 
   const handleToggle = React.useCallback(
     (id: number): boolean => {
@@ -217,17 +561,38 @@ export function ManageTafsirsPanel({
         );
       }
 
+      const tafsir = item.item;
+      const key = getDownloadKey({ kind: 'tafsir', tafsirId: tafsir.id });
+      const downloadItem = itemsByKey.get(key);
+
       return (
-        <View className="px-4 py-1">
-          <ResourceItem
-            item={item.item}
-            isSelected={selectedIds.has(item.item.id)}
-            onToggle={handleToggle}
-          />
-        </View>
+        <TafsirResourceRow
+          tafsir={tafsir}
+          downloadItem={downloadItem}
+          isSelected={selectedIds.has(tafsir.id)}
+          isBusy={busyTafsirIds.has(tafsir.id)}
+          isDark={isDark}
+          tintColor={palette.tint}
+          onToggle={handleToggle}
+          onPressDownload={handlePressDownload}
+          onPressDelete={handlePressDelete}
+          onCancelDownload={handleCancelDownload}
+        />
       );
     },
-    [activeFilter, handleToggle, languages, selectedIds]
+    [
+      activeFilter,
+      busyTafsirIds,
+      handleCancelDownload,
+      handlePressDelete,
+      handlePressDownload,
+      handleToggle,
+      isDark,
+      itemsByKey,
+      languages,
+      palette.tint,
+      selectedIds,
+    ]
   );
 
   if (errorMessage && tafsirs.length === 0) {
@@ -246,6 +611,26 @@ export function ManageTafsirsPanel({
       </View>
     );
   }
+
+  if (isLoading && tafsirs.length === 0) {
+    return (
+      <View className="flex-1 p-4">
+        <Text className="text-sm text-muted dark:text-muted-dark">Loading tafsirs...</Text>
+      </View>
+    );
+  }
+
+  const downloadSizeInfo = downloadTarget ? downloadSizeInfoById[downloadTarget.id] : undefined;
+  const isEstimatingDownloadSize =
+    downloadTarget !== null &&
+    (downloadSizeInfo === undefined || estimatingTafsirIds.has(downloadTarget.id));
+  const downloadEstimateLabel = isEstimatingDownloadSize
+    ? 'Estimating size...'
+    : downloadSizeInfo && typeof downloadSizeInfo.mb === 'number'
+      ? downloadSizeInfo.isExact
+        ? `Download size: ${downloadSizeInfo.mb.toFixed(1)} MB`
+        : `Estimated size: ~${downloadSizeInfo.mb.toFixed(1)} MB`
+      : 'Download size unavailable';
 
   return (
     <View className="flex-1">
@@ -276,6 +661,33 @@ export function ManageTafsirsPanel({
         overrideProps={{ initialDrawBatchSize: 8, scrollEventThrottle: 16 }}
         scrollEnabled={!isReordering}
         contentContainerStyle={{ paddingBottom: 20 }}
+      />
+
+      <ResourceConfirmModal
+        visible={downloadTarget !== null}
+        title="Download tafsir?"
+        resourceName={downloadTarget?.name ?? null}
+        detailLabel={downloadEstimateLabel}
+        isDetailLoading={isEstimatingDownloadSize}
+        description="This downloads the tafsir for offline reading."
+        confirmLabel="Download"
+        mutedColor={palette.muted}
+        tintColor={palette.tint}
+        onConfirm={handleConfirmDownload}
+        onClose={() => setDownloadTarget(null)}
+      />
+
+      <ResourceConfirmModal
+        visible={deleteTarget !== null}
+        title="Delete download?"
+        resourceName={deleteTarget?.name ?? null}
+        description="This removes downloaded tafsir for offline use."
+        confirmLabel="Delete"
+        confirmTone="danger"
+        mutedColor={palette.muted}
+        tintColor={palette.tint}
+        onConfirm={handleConfirmDelete}
+        onClose={() => setDeleteTarget(null)}
       />
     </View>
   );

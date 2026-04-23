@@ -1,10 +1,10 @@
 import type { DownloadProgress, DownloadableContent } from '@/src/domain/entities';
 import type { ILogger } from '@/src/domain/interfaces/ILogger';
-import type { IChapterVerseKeysRepository } from '@/src/domain/repositories/IChapterVerseKeysRepository';
 import type { IDownloadIndexRepository } from '@/src/domain/repositories/IDownloadIndexRepository';
-import type { ITafsirRepository } from '@/src/domain/repositories/ITafsirRepository';
+import type { ITafsirDownloadRepository } from '@/src/domain/repositories/ITafsirDownloadRepository';
+import type { ITafsirOfflineStore } from '@/src/domain/repositories/ITafsirOfflineStore';
 
-const REPORT_PROGRESS_EVERY_ITEMS = 5;
+const IMPORT_BATCH_SIZE = 250;
 
 function normalizePositiveInt(value: number): number {
   if (!Number.isFinite(value)) return 0;
@@ -42,12 +42,17 @@ function toItemsProgress(completed: number, total: number): DownloadProgress {
 export class DownloadTafsirSurahUseCase {
   constructor(
     private readonly downloadIndexRepository: IDownloadIndexRepository,
-    private readonly tafsirRepository: ITafsirRepository,
-    private readonly chapterVerseKeysRepository: IChapterVerseKeysRepository,
+    private readonly tafsirDownloadRepository: ITafsirDownloadRepository,
+    private readonly tafsirOfflineStore: ITafsirOfflineStore,
     private readonly logger?: ILogger
   ) {}
 
-  async execute(params: { surahId: number; tafsirIds: number[] }): Promise<void> {
+  async execute(params: {
+    surahId: number;
+    tafsirIds: number[];
+    trackDownloadIndex?: boolean;
+    assertNotCanceled?: (() => void) | undefined;
+  }): Promise<void> {
     const surahId = normalizePositiveInt(params.surahId);
     if (surahId <= 0) {
       throw new Error('surahId must be a positive integer');
@@ -58,100 +63,92 @@ export class DownloadTafsirSurahUseCase {
       throw new Error('tafsirIds must include at least one positive integer');
     }
 
-    let verseKeys: string[] = [];
-
-    try {
-      verseKeys = await this.chapterVerseKeysRepository.getChapterVerseKeys(surahId);
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-
-      for (const tafsirId of tafsirIds) {
-        const content: DownloadableContent = { kind: 'tafsir', scope: 'surah', surahId, tafsirId };
-        await this.downloadIndexRepository.upsert(content, {
-          status: 'failed',
-          progress: null,
-          error: errorMessage,
-        });
-      }
-
-      throw error;
-    }
-
-    const totalVerses = verseKeys.length;
-    if (totalVerses <= 0) {
-      const message = `No verses found for surah ${surahId}`;
-      for (const tafsirId of tafsirIds) {
-        const content: DownloadableContent = { kind: 'tafsir', scope: 'surah', surahId, tafsirId };
-        await this.downloadIndexRepository.upsert(content, {
-          status: 'failed',
-          progress: null,
-          error: message,
-        });
-      }
-      throw new Error(message);
-    }
-
+    const shouldTrackDownloadIndex = params.trackDownloadIndex !== false;
     const failures: Array<{ tafsirId: number; error: Error }> = [];
 
     for (const tafsirId of tafsirIds) {
       const content: DownloadableContent = { kind: 'tafsir', scope: 'surah', surahId, tafsirId };
 
-      const existing = await this.downloadIndexRepository.get(content);
-      if (existing?.status === 'installed') continue;
+      if (shouldTrackDownloadIndex) {
+        const existing = await this.downloadIndexRepository.get(content);
+        if (existing?.status === 'installed') continue;
+      }
 
-      await this.downloadIndexRepository.upsert(content, {
-        status: 'queued',
-        progress: toItemsProgress(0, totalVerses),
-        error: null,
-      });
-
-      await this.downloadIndexRepository.upsert(content, {
-        status: 'downloading',
-        progress: toItemsProgress(0, totalVerses),
-        error: null,
-      });
-
-      let completedVerses = 0;
-      let lastReportedCompletedVerses = 0;
+      let totalVerses = 0;
+      let processedVerses = 0;
 
       try {
-        for (const verseKey of verseKeys) {
-          await this.tafsirRepository.getTafsirByVerse(verseKey, tafsirId);
-          completedVerses += 1;
+        params.assertNotCanceled?.();
 
-          const shouldReportProgress =
-            completedVerses === totalVerses ||
-            completedVerses - lastReportedCompletedVerses >= REPORT_PROGRESS_EVERY_ITEMS;
+        const verses = await this.tafsirDownloadRepository.getChapterTafsir({ tafsirId, surahId });
+        totalVerses = verses.length;
 
-          if (shouldReportProgress) {
-            lastReportedCompletedVerses = completedVerses;
+        if (totalVerses <= 0) {
+          throw new Error(`No tafsir content found for surah ${surahId}`);
+        }
+
+        if (shouldTrackDownloadIndex) {
+          await this.downloadIndexRepository.upsert(content, {
+            status: 'queued',
+            progress: toItemsProgress(0, totalVerses),
+            error: null,
+          });
+
+          await this.downloadIndexRepository.upsert(content, {
+            status: 'downloading',
+            progress: toItemsProgress(0, totalVerses),
+            error: null,
+          });
+        }
+
+        for (let start = 0; start < verses.length; start += IMPORT_BATCH_SIZE) {
+          params.assertNotCanceled?.();
+
+          const batch = verses.slice(start, start + IMPORT_BATCH_SIZE);
+          await this.tafsirOfflineStore.upsertRows(
+            batch.map((verse) => ({
+              tafsirId,
+              verseKey: verse.verseKey,
+              html: verse.html,
+            }))
+          );
+
+          processedVerses += batch.length;
+
+          if (shouldTrackDownloadIndex) {
             await this.downloadIndexRepository.upsert(content, {
               status: 'downloading',
-              progress: toItemsProgress(completedVerses, totalVerses),
+              progress: toItemsProgress(processedVerses, totalVerses),
               error: null,
             });
           }
         }
 
-        await this.downloadIndexRepository.upsert(content, {
-          status: 'installed',
-          progress: null,
-          error: null,
-        });
+        params.assertNotCanceled?.();
+
+        if (shouldTrackDownloadIndex) {
+          await this.downloadIndexRepository.upsert(content, {
+            status: 'installed',
+            progress: null,
+            error: null,
+          });
+        }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
 
-        await this.downloadIndexRepository.upsert(content, {
-          status: 'failed',
-          progress: toItemsProgress(completedVerses, totalVerses),
-          error: errorMessage,
-        });
+        if (shouldTrackDownloadIndex) {
+          await this.downloadIndexRepository.upsert(content, {
+            status: 'failed',
+            progress: totalVerses > 0 ? toItemsProgress(processedVerses, totalVerses) : null,
+            error: errorMessage,
+          });
+        }
 
         const errorObject = error instanceof Error ? error : new Error(errorMessage);
         failures.push({ tafsirId, error: errorObject });
         this.logger?.warn(
           'Failed to download surah tafsir',
-          { surahId, tafsirId, completedVerses, totalVerses },
+          { surahId, tafsirId, processedVerses, totalVerses },
           errorObject
         );
       }
@@ -163,4 +160,3 @@ export class DownloadTafsirSurahUseCase {
     }
   }
 }
-

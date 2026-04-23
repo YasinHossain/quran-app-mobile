@@ -47,3 +47,12 @@ export type {
   TranslationPackPayloadVerse,
 } from './translationPack';
 export type { VerseWord } from './verseWord';
+export type {
+  HostedTafsirPackCatalog,
+  HostedTafsirPackCatalogEntry,
+  TafsirPackChecksum,
+  TafsirPackManifest,
+  TafsirPackPayload,
+  TafsirPackPayloadFormat,
+  TafsirPackPayloadVerse,
+} from './tafsirPack';

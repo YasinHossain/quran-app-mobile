@@ -504,6 +504,7 @@ export function SettingsSidebarContent({
     : '';
 
   const isTranslationsVisible = panel.type === 'translations' && isSubPanelContentReady;
+  const isTafsirVisible = panel.type === 'tafsir' && isSubPanelContentReady;
 
   const shouldRenderTranslationsPanel = mountedSubPanels.translations || panel.type === 'translations';
   const shouldRenderTafsirPanel = mountedSubPanels.tafsir || panel.type === 'tafsir';
@@ -573,6 +574,7 @@ export function SettingsSidebarContent({
                 errorMessage={tafsirResourcesError}
                 onRefresh={refreshTafsirResources}
                 languageSort={tafsirLanguageSort}
+                isActive={isTafsirVisible}
               />
             ) : null}
           </View>

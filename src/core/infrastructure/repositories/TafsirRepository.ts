@@ -36,7 +36,7 @@ export class TafsirRepository implements ITafsirRepository {
         'SELECT html FROM offline_tafsir WHERE tafsir_id = ? AND verse_key = ?;',
         [normalizedTafsirId, normalizedVerseKey]
       );
-      if (row?.html && row.html.trim().length > 0) {
+      if (row) {
         return row.html;
       }
     } catch (error) {
@@ -49,25 +49,23 @@ export class TafsirRepository implements ITafsirRepository {
 
     const html = await fetchTafsirByVerse(normalizedVerseKey, normalizedTafsirId);
 
-    if (html && html.trim().length > 0) {
-      try {
-        const db = await getAppDbAsync();
-        await db.runAsync(
-          `
-          INSERT INTO offline_tafsir(tafsir_id, verse_key, html)
-          VALUES (?, ?, ?)
-          ON CONFLICT(tafsir_id, verse_key) DO UPDATE SET
-            html = excluded.html;
-          `,
-          [normalizedTafsirId, normalizedVerseKey, html]
-        );
-      } catch (error) {
-        logger.warn(
-          'Failed to write offline tafsir cache',
-          { tafsirId: normalizedTafsirId, verseKey: normalizedVerseKey },
-          error as Error
-        );
-      }
+    try {
+      const db = await getAppDbAsync();
+      await db.runAsync(
+        `
+        INSERT INTO offline_tafsir(tafsir_id, verse_key, html)
+        VALUES (?, ?, ?)
+        ON CONFLICT(tafsir_id, verse_key) DO UPDATE SET
+          html = excluded.html;
+        `,
+        [normalizedTafsirId, normalizedVerseKey, html]
+      );
+    } catch (error) {
+      logger.warn(
+        'Failed to write offline tafsir cache',
+        { tafsirId: normalizedTafsirId, verseKey: normalizedVerseKey },
+        error as Error
+      );
     }
 
     return html;
