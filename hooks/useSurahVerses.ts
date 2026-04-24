@@ -5,6 +5,7 @@ import {
   DEFAULT_SURAH_VERSES_PER_PAGE,
   getOfflineSurahCached,
   getOfflineSurahPageCached,
+  getOfflineSurahSnapshot,
   peekOfflineSurahCache,
   peekOfflineSurahPageCache,
 } from '@/lib/surah/offlineSurahPageCache';
@@ -230,19 +231,27 @@ function getInitialOfflinePagesSnapshot(params: {
     translationIds: params.translationIds,
   });
 
-  if (
-    !cachedSurah ||
-    !isCompleteOfflineVerseSet({
+  const offlineSurah =
+    cachedSurah &&
+    isCompleteOfflineVerseSet({
       offlineVerses: cachedSurah,
       translationIds: params.translationIds,
       expectedVerseCount: params.verseCount,
     })
-  ) {
+      ? cachedSurah
+      : getOfflineSurahSnapshot({
+          surahId: params.chapterNumber,
+          translationIds: params.translationIds,
+          perPage: params.perPage,
+          expectedVerseCount: params.verseCount,
+        });
+
+  if (!offlineSurah) {
     return {};
   }
 
   return buildOfflinePagesByNumber({
-    offlineVerses: cachedSurah,
+    offlineVerses: offlineSurah,
     translationIds: params.translationIds,
     perPage: params.perPage,
   });

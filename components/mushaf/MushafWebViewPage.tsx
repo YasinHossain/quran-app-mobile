@@ -35,6 +35,11 @@ type MushafWebViewPageProps = {
 const PAGE_MAX_WIDTH = 720;
 const ENABLE_MUSHAF_QCF_DEV_LOGS = __DEV__;
 const HEIGHT_CHANGE_EPSILON_PX = 1;
+const MIN_WEBVIEW_PAGE_HEIGHT = 280;
+const WEBVIEW_APP_HORIZONTAL_INSET_PX = 8;
+const WEBVIEW_APP_VERTICAL_PADDING_PX = 12;
+const WEBVIEW_LINE_GAP_PX = 4;
+const WEBVIEW_REFLOW_WIDTH_RATIO = 0.95;
 
 let mountedExactWebViews = 0;
 
@@ -60,14 +65,58 @@ function createCollapsedSelectionPayload(pageNumber: number): MushafSelectionPay
   };
 }
 
+export function estimateMushafWebViewPageHeight({
+  packId,
+  lines,
+  mushafScaleStep,
+  viewportHeight,
+  viewportWidth,
+}: {
+  packId: MushafPageData['pack']['packId'];
+  lines: number;
+  mushafScaleStep: MushafScaleStep;
+  viewportHeight: number;
+  viewportWidth: number;
+}): number {
+  const layout = getMushafWebViewLayoutConfig(packId, mushafScaleStep, viewportHeight);
+  const pageWidth = Math.min(Math.max(viewportWidth - 8, 280), PAGE_MAX_WIDTH);
+  const appWidth = Math.max(1, pageWidth - WEBVIEW_APP_HORIZONTAL_INSET_PX);
+  const reflowThreshold = appWidth * WEBVIEW_REFLOW_WIDTH_RATIO;
+  const normalizedLines = Math.max(1, Math.trunc(lines));
+  const lineHeight = Math.round(layout.fontSizePx * layout.lineHeightMultiplier);
+  const standardHeight =
+    WEBVIEW_APP_VERTICAL_PADDING_PX +
+    normalizedLines * lineHeight +
+    Math.max(0, normalizedLines - 1) * WEBVIEW_LINE_GAP_PX;
+
+  if (layout.lineWidthPx <= reflowThreshold) {
+    return Math.max(MIN_WEBVIEW_PAGE_HEIGHT, Math.ceil(standardHeight));
+  }
+
+  const reflowLineHeight = Math.round(layout.fontSizePx * layout.reflowLineHeightMultiplier);
+  const estimatedReflowLines = Math.ceil(
+    normalizedLines * Math.max(1, layout.lineWidthPx / Math.max(1, reflowThreshold))
+  );
+
+  return Math.max(
+    MIN_WEBVIEW_PAGE_HEIGHT,
+    Math.ceil(WEBVIEW_APP_VERTICAL_PADDING_PX + estimatedReflowLines * reflowLineHeight)
+  );
+}
+
 function getInitialHeight(
   data: MushafPageData,
   mushafScaleStep: MushafScaleStep,
-  viewportHeight: number
+  viewportHeight: number,
+  viewportWidth: number
 ): number {
-  const layout = getMushafWebViewLayoutConfig(data.pack.packId, mushafScaleStep, viewportHeight);
-  const lineHeight = Math.round(layout.fontSizePx * layout.lineHeightMultiplier);
-  return lineHeight * data.pack.lines + 168;
+  return estimateMushafWebViewPageHeight({
+    packId: data.pack.packId,
+    lines: data.pack.lines,
+    mushafScaleStep,
+    viewportHeight,
+    viewportWidth,
+  });
 }
 
 function isMushafWebViewMessage(value: unknown): value is MushafWebViewMessage {
@@ -138,8 +187,8 @@ export function MushafWebViewPage({
   const palette = Colors[resolvedTheme];
   const pageWidth = Math.min(Math.max(width - 8, 280), PAGE_MAX_WIDTH);
   const fallbackInitialHeight = React.useMemo(
-    () => getInitialHeight(data, mushafScaleStep, height),
-    [data, height, mushafScaleStep]
+    () => getInitialHeight(data, mushafScaleStep, height, width),
+    [data, height, mushafScaleStep, width]
   );
   const initialHeight = initialHeightOverride ?? fallbackInitialHeight;
   const [webViewHeight, setWebViewHeight] = React.useState(initialHeight);
@@ -155,8 +204,7 @@ export function MushafWebViewPage({
     typeof highlightVerseKey === 'string' && highlightVerseKey.trim()
       ? highlightVerseKey.trim()
       : undefined;
-  const shouldShowLoadingOverlay =
-    !isMeasured && initialHeightOverride == null && normalizedHighlightVerseKey == null;
+  const shouldShowLoadingOverlay = !isMeasured;
   const latestPageIdentityRef = React.useRef({
     packId: data.pack.packId,
     pageNumber: data.pageNumber,
@@ -299,7 +347,15 @@ export function MushafWebViewPage({
 
       switch (parsed.type) {
         case 'content-height': {
-          const height = Math.max(fallbackInitialHeight, Math.ceil(parsed.payload.height));
+          if (parsed.payload.contentReady === false) {
+            return;
+          }
+
+          const measuredPayloadHeight =
+            typeof parsed.payload.height === 'number' && Number.isFinite(parsed.payload.height)
+              ? parsed.payload.height
+              : 0;
+          const height = Math.max(MIN_WEBVIEW_PAGE_HEIGHT, Math.ceil(measuredPayloadHeight));
           const durationMs = Math.round(nowMs() - mountStartedAtRef.current);
           setWebViewHeight((current) =>
             Math.abs(current - height) > HEIGHT_CHANGE_EPSILON_PX ? height : current
@@ -361,7 +417,6 @@ export function MushafWebViewPage({
       }
     },
     [
-      fallbackInitialHeight,
       isPayloadForCurrentPage,
       onHeightResolved,
       onHighlightAnchorResolved,

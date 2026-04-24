@@ -1,12 +1,13 @@
-import { openDatabaseAsync, type SQLiteDatabase } from 'expo-sqlite';
+import { openDatabaseAsync, openDatabaseSync, type SQLiteDatabase } from 'expo-sqlite';
 
 import { logger } from '@/src/core/infrastructure/monitoring/logger';
 
-import { migrateAppDbAsync } from './migrations';
+import { migrateAppDbAsync, migrateAppDbSync } from './migrations';
 
-const APP_DB_NAME = 'quran_app.db';
+export const APP_DB_NAME = 'quran_app.db';
 
 let appDbPromise: Promise<SQLiteDatabase> | null = null;
+let appDbSync: SQLiteDatabase | null = null;
 
 export async function getAppDbAsync(): Promise<SQLiteDatabase> {
   if (!appDbPromise) {
@@ -22,6 +23,15 @@ export async function getAppDbAsync(): Promise<SQLiteDatabase> {
   return appDbPromise;
 }
 
+export function getAppDbSync(): SQLiteDatabase {
+  if (!appDbSync) {
+    appDbSync = openDatabaseSync(APP_DB_NAME);
+    migrateAppDbSync(appDbSync);
+  }
+
+  return appDbSync;
+}
+
 export async function initializeAppDbAsync(): Promise<void> {
   try {
     await getAppDbAsync();
@@ -31,9 +41,14 @@ export async function initializeAppDbAsync(): Promise<void> {
 }
 
 export async function closeAppDbAsync(): Promise<void> {
-  if (!appDbPromise) return;
-  const db = await appDbPromise;
-  appDbPromise = null;
-  await db.closeAsync();
-}
+  if (appDbPromise) {
+    const db = await appDbPromise;
+    appDbPromise = null;
+    await db.closeAsync();
+  }
 
+  if (appDbSync) {
+    appDbSync.closeSync();
+    appDbSync = null;
+  }
+}

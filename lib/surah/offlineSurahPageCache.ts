@@ -1,4 +1,5 @@
 import type { OfflineVerseWithTranslations } from '@/src/core/domain/repositories/ITranslationOfflineStore';
+import { getAppDbSync } from '@/src/core/infrastructure/db';
 import { container } from '@/src/core/infrastructure/di/container';
 
 export const DEFAULT_SURAH_VERSES_PER_PAGE = 30;
@@ -251,6 +252,128 @@ function seedPageCacheFromSurah(params: {
   pruneCache(surahPageCache, MAX_PAGE_CACHE_SIZE, now);
 }
 
+function mapJoinedRowsToOfflineVerses(
+  rows: Array<{
+    verse_key: string;
+    surah: number;
+    ayah: number;
+    arabic_uthmani: string;
+    translation_id: number | null;
+    translation_text: string | null;
+  }>,
+  resolvedTranslationIds: number[]
+): OfflineVerseWithTranslations[] {
+  const byVerseKey = new Map<
+    string,
+    {
+      verseKey: string;
+      surahId: number;
+      ayahNumber: number;
+      arabicUthmani: string;
+      translationsById: Map<number, string>;
+    }
+  >();
+  const verseOrder: string[] = [];
+
+  for (const row of rows) {
+    let existing = byVerseKey.get(row.verse_key);
+    if (!existing) {
+      existing = {
+        verseKey: row.verse_key,
+        surahId: row.surah,
+        ayahNumber: row.ayah,
+        arabicUthmani: row.arabic_uthmani,
+        translationsById: new Map<number, string>(),
+      };
+      byVerseKey.set(row.verse_key, existing);
+      verseOrder.push(row.verse_key);
+    }
+
+    if (row.translation_id !== null && row.translation_text !== null) {
+      existing.translationsById.set(row.translation_id, row.translation_text);
+    }
+  }
+
+  return verseOrder
+    .map((verseKey) => byVerseKey.get(verseKey))
+    .filter((verse): verse is NonNullable<typeof verse> => Boolean(verse))
+    .map((verse) => ({
+      verseKey: verse.verseKey,
+      surahId: verse.surahId,
+      ayahNumber: verse.ayahNumber,
+      arabicUthmani: verse.arabicUthmani,
+      translations: resolvedTranslationIds
+        .map((translationId) => {
+          const text = verse.translationsById.get(translationId);
+          if (!text) return null;
+          return { translationId, text };
+        })
+        .filter((translation): translation is { translationId: number; text: string } => translation !== null),
+    }));
+}
+
+function readOfflineSurahRowsSync(
+  surahId: number,
+  translationIds: number[]
+): OfflineVerseWithTranslations[] {
+  const resolvedTranslationIds = normalizeTranslationIds(translationIds);
+  const db = getAppDbSync();
+
+  if (resolvedTranslationIds.length === 0) {
+    const rows = db.getAllSync<{
+      verse_key: string;
+      surah: number;
+      ayah: number;
+      arabic_uthmani: string;
+    }>(
+      `
+      SELECT verse_key, surah, ayah, arabic_uthmani
+      FROM offline_verses
+      WHERE surah = ?
+      ORDER BY ayah ASC;
+      `,
+      [surahId]
+    );
+
+    return rows.map((row) => ({
+      verseKey: row.verse_key,
+      surahId: row.surah,
+      ayahNumber: row.ayah,
+      arabicUthmani: row.arabic_uthmani,
+      translations: [],
+    }));
+  }
+
+  const placeholders = resolvedTranslationIds.map(() => '?').join(', ');
+  const rows = db.getAllSync<{
+    verse_key: string;
+    surah: number;
+    ayah: number;
+    arabic_uthmani: string;
+    translation_id: number | null;
+    translation_text: string | null;
+  }>(
+    `
+    SELECT
+      v.verse_key AS verse_key,
+      v.surah AS surah,
+      v.ayah AS ayah,
+      v.arabic_uthmani AS arabic_uthmani,
+      t.translation_id AS translation_id,
+      t.text AS translation_text
+    FROM offline_verses v
+    LEFT JOIN offline_translations t
+      ON t.verse_key = v.verse_key
+      AND t.translation_id IN (${placeholders})
+    WHERE v.surah = ?
+    ORDER BY v.ayah ASC, t.translation_id ASC;
+    `,
+    [...resolvedTranslationIds, surahId]
+  );
+
+  return mapJoinedRowsToOfflineVerses(rows, resolvedTranslationIds);
+}
+
 export function peekOfflineSurahCache(params: {
   surahId: number;
   translationIds: number[];
@@ -259,6 +382,60 @@ export function peekOfflineSurahCache(params: {
   if (!resolved) return null;
 
   return getFreshSnapshot(surahCache, getSurahCacheKey(resolved));
+}
+
+export function getOfflineSurahSnapshot(params: {
+  surahId: number;
+  translationIds: number[];
+  perPage?: number;
+  expectedVerseCount?: number;
+}): OfflineVerseWithTranslations[] | null {
+  const resolved = resolveSurahParams(params);
+  if (!resolved) return null;
+
+  const cachedSurah = peekOfflineSurahCache(resolved);
+  if (
+    cachedSurah &&
+    canCacheOfflineVerses(
+      cachedSurah,
+      resolved.translationIds,
+      params.expectedVerseCount
+    )
+  ) {
+    return cachedSurah;
+  }
+
+  try {
+    const surahVerses = readOfflineSurahRowsSync(resolved.surahId, resolved.translationIds);
+    if (
+      !canCacheOfflineVerses(
+        surahVerses,
+        resolved.translationIds,
+        params.expectedVerseCount
+      )
+    ) {
+      return null;
+    }
+
+    const now = Date.now();
+    surahCache.set(getSurahCacheKey(resolved), {
+      value: Promise.resolve(surahVerses),
+      snapshot: surahVerses,
+      timestamp: now,
+    });
+    pruneCache(surahCache, MAX_SURAH_CACHE_SIZE, now);
+    seedPageCacheFromSurah({
+      surahId: resolved.surahId,
+      translationIds: resolved.translationIds,
+      perPage: params.perPage ?? DEFAULT_SURAH_VERSES_PER_PAGE,
+      expectedVerseCount: params.expectedVerseCount,
+      surahVerses,
+    });
+
+    return surahVerses;
+  } catch {
+    return null;
+  }
 }
 
 export function peekOfflineSurahPageCache(params: {

@@ -30,6 +30,7 @@ import { DEFAULT_MUSHAF_ID, findMushafOption } from '@/data/mushaf/options';
 import { useChapters } from '@/hooks/useChapters';
 import { useSurahVerses, type SurahVerse } from '@/hooks/useSurahVerses';
 import { preloadOfflineSurahNavigationPage } from '@/lib/surah/offlineSurahPageCache';
+import { preloadOfflineTafsirSurah } from '@/lib/tafsir/tafsirCache';
 import { useTranslationResources } from '@/hooks/useTranslationResources';
 import { primeVerseDetailsCache } from '@/lib/verse/verseDetailsCache';
 import { useBookmarks } from '@/providers/BookmarkContext';
@@ -120,6 +121,10 @@ export default function SurahScreen(): React.JSX.Element {
       : [settings.translationId ?? 20];
     return ids.filter((id) => Number.isFinite(id) && id > 0);
   }, [settings.translationId, settings.translationIds]);
+  const tafsirIds = React.useMemo(() => {
+    const ids = Array.isArray(settings.tafsirIds) ? settings.tafsirIds : [];
+    return ids.filter((id) => Number.isFinite(id) && id > 0);
+  }, [settings.tafsirIds]);
 
   const showTranslationAttribution = translationIds.length > 1;
   const { translationsById } = useTranslationResources({
@@ -273,9 +278,20 @@ export default function SurahScreen(): React.JSX.Element {
         packId: selectedMushafId,
         version: selectedMushafVersion,
       });
+
+      try {
+        await mushafRepository.prefetchPages({
+          packId: selectedMushafId,
+          pageNumbers: [targetPage],
+          expectedVersion: selectedMushafVersion,
+        });
+      } catch {
+        // Let the mushaf screen show the local-pack error if the selected pack is unavailable.
+      }
+
       void mushafRepository.prefetchPages({
         packId: selectedMushafId,
-        pageNumbers: [targetPage - 1, targetPage, targetPage + 1],
+        pageNumbers: [targetPage - 1, targetPage + 1],
         expectedVersion: selectedMushafVersion,
       });
 
@@ -341,14 +357,25 @@ export default function SurahScreen(): React.JSX.Element {
     if (!verseKey) return;
     const [surah, ayah] = verseKey.split(':');
     if (!surah || !ayah) return;
+    const surahNumber = Number(surah);
     primeVerseDetailsCache({
       verseKey,
       arabicText: activeVerse?.arabicText,
       translationIds,
       translationTexts: activeVerse?.translationTexts,
     });
+    if (Number.isFinite(surahNumber) && surahNumber > 0) {
+      void preloadOfflineTafsirSurah({ surahId: surahNumber, tafsirIds });
+    }
     router.push({ pathname: '/tafsir/[surahId]/[ayahId]', params: { surahId: surah, ayahId: ayah } });
-  }, [activeVerse?.arabicText, activeVerse?.translationTexts, activeVerse?.verseKey, router, translationIds]);
+  }, [
+    activeVerse?.arabicText,
+    activeVerse?.translationTexts,
+    activeVerse?.verseKey,
+    router,
+    tafsirIds,
+    translationIds,
+  ]);
 
   const handleAddToPlan = React.useCallback(() => {
     const verseKey = activeVerse?.verseKey;
@@ -535,12 +562,13 @@ export default function SurahScreen(): React.JSX.Element {
     },
     [selectedMushafId, selectedMushafVersion]
   );
+  const prefetchMushafForVerseRef = React.useRef(prefetchMushafForVerse);
 
   React.useEffect(() => {
-    if (!isSettingsOpen) {
-      return;
-    }
+    prefetchMushafForVerseRef.current = prefetchMushafForVerse;
+  }, [prefetchMushafForVerse]);
 
+  React.useEffect(() => {
     const focusVerseKey =
       visibleVerseKeyRef.current ??
       (typeof normalizedStartVerse === 'number'
@@ -548,7 +576,7 @@ export default function SurahScreen(): React.JSX.Element {
         : getVerseByNumber(1)?.verse_key ?? null);
 
     prefetchMushafForVerse(focusVerseKey);
-  }, [getVerseByNumber, isSettingsOpen, normalizedStartVerse, prefetchMushafForVerse]);
+  }, [getVerseByNumber, normalizedStartVerse, prefetchMushafForVerse]);
 
   const lastReadReportedRef = React.useRef<string | null>(null);
   React.useEffect(() => {
@@ -620,6 +648,7 @@ export default function SurahScreen(): React.JSX.Element {
       if (!bestItem) return;
 
       visibleVerseKeyRef.current = bestItem.verse_key ?? null;
+      prefetchMushafForVerseRef.current(visibleVerseKeyRef.current);
 
       const verseNumber = bestItem.verse_number;
       if (!Number.isFinite(verseNumber) || verseNumber <= 0) return;

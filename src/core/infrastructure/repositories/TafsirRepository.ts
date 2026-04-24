@@ -4,7 +4,7 @@ import { ITafsirRepository } from '@/src/core/domain/repositories/ITafsirReposit
 import { getAppDbAsync } from '@/src/core/infrastructure/db';
 import { logger } from '@/src/core/infrastructure/monitoring/logger';
 
-import { fetchAllResources, fetchTafsirByVerse } from './tafsir.utils';
+import { fetchAllResources } from './tafsir.utils';
 import { fetchResourcesForLanguage } from './tafsirApi';
 import { cacheResources as cacheTafsirResources, getCachedResources as getTafsirCachedResources } from './tafsirCache';
 
@@ -27,7 +27,7 @@ export class TafsirRepository implements ITafsirRepository {
     const normalizedVerseKey = verseKey.trim();
 
     if (!normalizedVerseKey || !Number.isFinite(normalizedTafsirId) || normalizedTafsirId <= 0) {
-      return fetchTafsirByVerse(verseKey, tafsirId);
+      return '';
     }
 
     try {
@@ -47,28 +47,7 @@ export class TafsirRepository implements ITafsirRepository {
       );
     }
 
-    const html = await fetchTafsirByVerse(normalizedVerseKey, normalizedTafsirId);
-
-    try {
-      const db = await getAppDbAsync();
-      await db.runAsync(
-        `
-        INSERT INTO offline_tafsir(tafsir_id, verse_key, html)
-        VALUES (?, ?, ?)
-        ON CONFLICT(tafsir_id, verse_key) DO UPDATE SET
-          html = excluded.html;
-        `,
-        [normalizedTafsirId, normalizedVerseKey, html]
-      );
-    } catch (error) {
-      logger.warn(
-        'Failed to write offline tafsir cache',
-        { tafsirId: normalizedTafsirId, verseKey: normalizedVerseKey },
-        error as Error
-      );
-    }
-
-    return html;
+    return '';
   }
 
   async search(searchTerm: string): Promise<Tafsir[]> {

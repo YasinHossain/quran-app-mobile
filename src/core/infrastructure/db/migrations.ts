@@ -97,6 +97,11 @@ async function getUserVersionAsync(db: SQLiteDatabase): Promise<number> {
   return row?.user_version ?? 0;
 }
 
+function getUserVersionSync(db: SQLiteDatabase): number {
+  const row = db.getFirstSync<{ user_version: number }>('PRAGMA user_version;');
+  return row?.user_version ?? 0;
+}
+
 export async function migrateAppDbAsync(db: SQLiteDatabase): Promise<void> {
   await db.execAsync('PRAGMA foreign_keys = ON;');
 
@@ -122,6 +127,35 @@ export async function migrateAppDbAsync(db: SQLiteDatabase): Promise<void> {
         await db.execAsync(statement);
       }
       await db.execAsync(`PRAGMA user_version = ${migration.version};`);
+    }
+  });
+}
+
+export function migrateAppDbSync(db: SQLiteDatabase): void {
+  db.execSync('PRAGMA foreign_keys = ON;');
+
+  const startingVersion = getUserVersionSync(db);
+  if (startingVersion >= APP_DB_LATEST_SCHEMA_VERSION) {
+    return;
+  }
+
+  if (startingVersion > APP_DB_LATEST_SCHEMA_VERSION) {
+    logger.warn('App DB schema version is newer than supported by this app build', {
+      startingVersion,
+      latestVersion: APP_DB_LATEST_SCHEMA_VERSION,
+    });
+    return;
+  }
+
+  const migrationsToRun = APP_DB_MIGRATIONS.filter((migration) => migration.version > startingVersion);
+  if (migrationsToRun.length === 0) return;
+
+  db.withTransactionSync(() => {
+    for (const migration of migrationsToRun) {
+      for (const statement of migration.statements) {
+        db.execSync(statement);
+      }
+      db.execSync(`PRAGMA user_version = ${migration.version};`);
     }
   });
 }

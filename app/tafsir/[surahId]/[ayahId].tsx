@@ -32,9 +32,14 @@ import { useTranslationResources } from '@/hooks/useTranslationResources';
 import {
   getOfflineTafsirBatchCached,
   getOfflineTafsirCached,
+  getOfflineTafsirSnapshot,
   getOfflineTafsirSurahCached,
 } from '@/lib/tafsir/tafsirCache';
-import { getVerseDetailsCached, peekVersePreview } from '@/lib/verse/verseDetailsCache';
+import {
+  getVerseDetailsCached,
+  getVerseDetailsSnapshot,
+  peekVersePreview,
+} from '@/lib/verse/verseDetailsCache';
 import { useAudioPlayer } from '@/providers/AudioPlayerContext';
 import { useBookmarks } from '@/providers/BookmarkContext';
 import { useSettings } from '@/providers/SettingsContext';
@@ -65,16 +70,7 @@ type PageState = {
 
 type TranslationItem = { resourceId: number; resourceName?: string; text: string };
 
-const EMPTY_PAGE_STATE: PageState = {
-  signature: '',
-  chapter: null,
-  verse: null,
-  isLoading: true,
-  errorMessage: null,
-  tafsirById: {},
-};
-
-const OFFLINE_TAFSIR_UNAVAILABLE_MESSAGE = 'This tafsir is not downloaded for offline reading.';
+const NO_TAFSIR_AVAILABLE_MESSAGE = 'No tafsir is available for this verse.';
 const OFFLINE_TAFSIR_PREFETCH_RADIUS = 10;
 
 let globalLastActiveTafsirTabId: number | undefined;
@@ -269,6 +265,26 @@ function hasLoadedTafsirState(state: TafsirTabContentState | undefined): boolean
   return !state.isLoading && (state.html.trim().length > 0 || state.error !== null);
 }
 
+function buildTafsirStateFromHtml(html: string | null): TafsirTabContentState {
+  if (html === null) {
+    return {
+      html: '',
+      isLoading: false,
+      error: NO_TAFSIR_AVAILABLE_MESSAGE,
+    };
+  }
+
+  if (!html.trim()) {
+    return {
+      html: '',
+      isLoading: false,
+      error: NO_TAFSIR_AVAILABLE_MESSAGE,
+    };
+  }
+
+  return { html, isLoading: false, error: null };
+}
+
 function buildPendingTafsirStates(
   tafsirIds: number[],
   existing: Partial<Record<number, TafsirTabContentState>>,
@@ -300,6 +316,53 @@ function buildPendingTafsirStates(
   }
 
   return nextState;
+}
+
+function buildOfflineTafsirStates(
+  verseKey: string,
+  tafsirIds: number[],
+  existing: Partial<Record<number, TafsirTabContentState>> = {}
+): Partial<Record<number, TafsirTabContentState>> {
+  const nextState: Partial<Record<number, TafsirTabContentState>> = { ...existing };
+
+  for (const tafsirId of tafsirIds) {
+    if (hasLoadedTafsirState(nextState[tafsirId])) continue;
+
+    const html = getOfflineTafsirSnapshot(verseKey, tafsirId);
+    nextState[tafsirId] = buildTafsirStateFromHtml(html);
+  }
+
+  return nextState;
+}
+
+function buildOfflineFirstPageState(params: {
+  target: VerseTarget;
+  chapters: SurahHeaderChapter[];
+  pageSignature: string;
+  translationIds: number[];
+  tafsirIds: number[];
+  existing?: PageState;
+}): PageState {
+  const verseKey = getVerseKey(params.target);
+  const existingMatchesSignature = params.existing?.signature === params.pageSignature;
+  const existingTafsirById =
+    existingMatchesSignature ? params.existing?.tafsirById ?? {} : {};
+  const verse =
+    (existingMatchesSignature ? params.existing?.verse ?? null : null) ??
+    getVerseDetailsSnapshot(verseKey, params.translationIds) ??
+    peekVersePreview(verseKey);
+  const tafsirById = buildOfflineTafsirStates(verseKey, params.tafsirIds, existingTafsirById);
+
+  return {
+    signature: params.pageSignature,
+    chapter:
+      (existingMatchesSignature ? params.existing?.chapter : null) ??
+      getChapterById(params.chapters, params.target.surahId),
+    verse,
+    isLoading: verse == null,
+    errorMessage: existingMatchesSignature ? params.existing?.errorMessage ?? null : null,
+    tafsirById,
+  };
 }
 
 export default function TafsirScreen(): React.JSX.Element {
@@ -469,17 +532,41 @@ export default function TafsirScreen(): React.JSX.Element {
 
     return Array.from({ length: verseCount }, (_value, index) => `${currentSurahId}:${index + 1}`);
   }, [chapters, currentSurahId]);
+  const currentSurahInitialVerseNumber = React.useMemo(
+    () => {
+      // Keep this stable inside a surah so horizontal ayah swipes do not reset verse loading.
+      return currentTarget?.ayahId;
+    },
+    [currentSurahId]
+  );
   const {
     getVerseByNumber: getCurrentSurahVerseByNumber,
+    verseCount: currentSurahVerseCount,
+    ensureVerseRangeLoaded: ensureCurrentSurahVerseRangeLoaded,
     pagesSignature: currentSurahPagesSignature,
     isLoading: isCurrentSurahVersesLoading,
     errorMessage: currentSurahVerseErrorMessage,
   } = useSurahVerses({
     chapterNumber: currentSurahId ?? Number.NaN,
     translationIds,
-    initialVerseNumber: currentTarget?.ayahId,
+    initialVerseNumber: currentSurahInitialVerseNumber,
     enabled: Boolean(currentSurahId),
   });
+
+  React.useEffect(() => {
+    if (!currentTarget || currentTarget.surahId !== currentSurahId) return;
+
+    const startVerse = Math.max(1, currentTarget.ayahId - OFFLINE_TAFSIR_PREFETCH_RADIUS);
+    const endBoundary =
+      currentSurahVerseCount > 0 ? currentSurahVerseCount : currentTarget.ayahId + OFFLINE_TAFSIR_PREFETCH_RADIUS;
+    const endVerse = Math.min(endBoundary, currentTarget.ayahId + OFFLINE_TAFSIR_PREFETCH_RADIUS);
+    ensureCurrentSurahVerseRangeLoaded(startVerse, endVerse, 1);
+  }, [
+    currentSurahId,
+    currentSurahVerseCount,
+    currentTarget,
+    ensureCurrentSurahVerseRangeLoaded,
+  ]);
 
   const headerTitle = React.useMemo(() => {
     if (currentNavigation.chapter?.name_simple) return currentNavigation.chapter.name_simple;
@@ -566,7 +653,19 @@ export default function TafsirScreen(): React.JSX.Element {
     return metadata;
   }, [activeVerse]);
 
-  const [pageStateByKey, setPageStateByKey] = React.useState<Record<string, PageState>>({});
+  const [pageStateByKey, setPageStateByKey] = React.useState<Record<string, PageState>>(() => {
+    if (!currentTarget) return {};
+
+    return {
+      [getVerseKey(currentTarget)]: buildOfflineFirstPageState({
+        target: currentTarget,
+        chapters,
+        pageSignature,
+        translationIds,
+        tafsirIds,
+      }),
+    };
+  });
   const pageStateByKeyRef = React.useRef(pageStateByKey);
   const inflightRequestsRef = React.useRef<Set<string>>(new Set());
   const generationRef = React.useRef(0);
@@ -578,7 +677,19 @@ export default function TafsirScreen(): React.JSX.Element {
   React.useEffect(() => {
     generationRef.current += 1;
     inflightRequestsRef.current.clear();
-    setPageStateByKey({});
+    setPageStateByKey(() => {
+      if (!currentTarget) return {};
+
+      return {
+        [getVerseKey(currentTarget)]: buildOfflineFirstPageState({
+          target: currentTarget,
+          chapters,
+          pageSignature,
+          translationIds,
+          tafsirIds,
+        }),
+      };
+    });
     setVerseRenderSignal((value) => value + 1);
   }, [pageSignature]);
 
@@ -619,13 +730,7 @@ export default function TafsirScreen(): React.JSX.Element {
             const html = await getOfflineTafsirCached(verseKey, tafsirId);
             return {
               tafsirId,
-              state: html?.trim()
-                ? ({ html, isLoading: false, error: null } satisfies TafsirTabContentState)
-                : ({
-                    html: '',
-                    isLoading: false,
-                    error: OFFLINE_TAFSIR_UNAVAILABLE_MESSAGE,
-                  } satisfies TafsirTabContentState),
+              state: buildTafsirStateFromHtml(html),
             };
           } catch {
             return {
@@ -753,12 +858,24 @@ export default function TafsirScreen(): React.JSX.Element {
       return currentTarget ? [currentTarget] : [];
     }
 
-    const startIndex = Math.max(0, currentTargetIndex - OFFLINE_TAFSIR_PREFETCH_RADIUS);
-    const endIndexExclusive = Math.min(
-      pagerTargets.length,
-      currentTargetIndex + OFFLINE_TAFSIR_PREFETCH_RADIUS + 1
-    );
-    return pagerTargets.slice(startIndex, endIndexExclusive);
+    const targets: VerseTarget[] = [];
+    for (let offset = 0; offset <= OFFLINE_TAFSIR_PREFETCH_RADIUS; offset += 1) {
+      const nextIndex = currentTargetIndex + offset;
+      if (nextIndex < pagerTargets.length) {
+        const target = pagerTargets[nextIndex];
+        if (target) targets.push(target);
+      }
+
+      if (offset === 0) continue;
+
+      const previousIndex = currentTargetIndex - offset;
+      if (previousIndex >= 0) {
+        const target = pagerTargets[previousIndex];
+        if (target) targets.push(target);
+      }
+    }
+
+    return targets;
   }, [currentTarget, currentTargetIndex, pagerTargets]);
 
   React.useEffect(() => {
@@ -791,13 +908,7 @@ export default function TafsirScreen(): React.JSX.Element {
             const existing = previous[verseKey];
             const existingMatchesSignature = existing?.signature === pageSignature;
             const html = tafsirByVerseKey.get(verseKey) ?? null;
-            const activeTafsirState = html?.trim()
-              ? ({ html, isLoading: false, error: null } satisfies TafsirTabContentState)
-              : ({
-                  html: '',
-                  isLoading: false,
-                  error: OFFLINE_TAFSIR_UNAVAILABLE_MESSAGE,
-                } satisfies TafsirTabContentState);
+            const activeTafsirState = buildTafsirStateFromHtml(html);
             const nextTafsirById: Partial<Record<number, TafsirTabContentState>> = {
               ...(existingMatchesSignature ? existing?.tafsirById : {}),
               [activeTafsirId]: activeTafsirState,
@@ -872,13 +983,7 @@ export default function TafsirScreen(): React.JSX.Element {
               if (hasLoadedTafsirState(currentTafsirState)) continue;
 
               const html = prefetched.htmlByVerseKey.get(verseKey) ?? null;
-              const nextTafsirState = html?.trim()
-                ? ({ html, isLoading: false, error: null } satisfies TafsirTabContentState)
-                : ({
-                    html: '',
-                    isLoading: false,
-                    error: OFFLINE_TAFSIR_UNAVAILABLE_MESSAGE,
-                  } satisfies TafsirTabContentState);
+              const nextTafsirState = buildTafsirStateFromHtml(html);
 
               if (
                 currentTafsirState?.html === nextTafsirState.html &&
@@ -930,13 +1035,36 @@ export default function TafsirScreen(): React.JSX.Element {
     (target: VerseTarget) => {
       const nextTarget: VerseTarget = { surahId: target.surahId, ayahId: target.ayahId };
       if (currentTarget && areSameTarget(currentTarget, nextTarget)) return;
+      const verseKey = getVerseKey(nextTarget);
+      setPageStateByKey((previous) => {
+        const existing = previous[verseKey];
+        if (
+          existing?.signature === pageSignature &&
+          !existing.isLoading &&
+          tafsirIds.every((tafsirId) => hasLoadedTafsirState(existing.tafsirById[tafsirId]))
+        ) {
+          return previous;
+        }
+
+        return {
+          ...previous,
+          [verseKey]: buildOfflineFirstPageState({
+            target: nextTarget,
+            chapters,
+            pageSignature,
+            translationIds,
+            tafsirIds,
+            existing,
+          }),
+        };
+      });
       setCurrentTarget(nextTarget);
       router.setParams({
         surahId: String(nextTarget.surahId),
         ayahId: String(nextTarget.ayahId),
       });
     },
-    [currentTarget, router]
+    [chapters, currentTarget, pageSignature, router, tafsirIds, translationIds]
   );
 
   React.useLayoutEffect(() => {
@@ -991,7 +1119,18 @@ export default function TafsirScreen(): React.JSX.Element {
   const renderPagerItem = React.useCallback(
     ({ item }: { item: VerseTarget }) => {
       const verseKey = getVerseKey(item);
-      const pageState = pageStateByKey[verseKey] ?? EMPTY_PAGE_STATE;
+      const storedPageState = pageStateByKey[verseKey];
+      const pageState =
+        storedPageState?.signature === pageSignature
+          ? storedPageState
+          : {
+              signature: pageSignature,
+              chapter: getChapterById(chapters, item.surahId),
+              verse: peekVersePreview(verseKey),
+              isLoading: true,
+              errorMessage: null,
+              tafsirById: {},
+            };
       const pageTitle = pageState.chapter?.name_simple ?? `Surah ${item.surahId}`;
       const linkedSurahVerse =
         item.surahId === currentSurahId ? getCurrentSurahVerseByNumber(item.ayahId) : undefined;
@@ -1048,12 +1187,6 @@ export default function TafsirScreen(): React.JSX.Element {
             stickyHeaderIndices={isMultiTafsir ? [2] : undefined}
             onScroll={(event) => {
               pageScrollOffsetsRef.current[verseKey] = event.nativeEvent.contentOffset.y;
-            }}
-            onContentSizeChange={() => {
-              if ((pageScrollOffsetsRef.current[verseKey] ?? 0) > 8) return;
-              requestAnimationFrame(() => {
-                pageScrollRefsRef.current[verseKey]?.scrollTo({ x: 0, y: 0, animated: false });
-              });
             }}
             scrollEventThrottle={16}
           >
@@ -1146,7 +1279,9 @@ export default function TafsirScreen(): React.JSX.Element {
                 </View>
 
                 {currentTafsirState?.error ? (
-                  <Text className="text-sm text-error dark:text-error-dark">{currentTafsirState.error}</Text>
+                  <Text className="text-sm text-muted dark:text-muted-dark">
+                    {currentTafsirState.error}
+                  </Text>
                 ) : (currentTafsirState?.isLoading ?? true) ? (
                   <TafsirLoadingSkeleton minHeight={tafsirSkeletonMinHeight} />
                 ) : (
@@ -1172,6 +1307,7 @@ export default function TafsirScreen(): React.JSX.Element {
     [
       activeTafsirId,
       activeTafsirName,
+      chapters,
       currentSurahId,
       currentSurahVerseErrorMessage,
       getCurrentSurahVerseByNumber,
@@ -1294,6 +1430,7 @@ export default function TafsirScreen(): React.JSX.Element {
           initialScrollIndex={currentTargetIndex >= 0 ? currentTargetIndex : undefined}
           initialNumToRender={3}
           maxToRenderPerBatch={3}
+          updateCellsBatchingPeriod={50}
           windowSize={5}
           removeClippedSubviews={false}
           scrollEventThrottle={16}

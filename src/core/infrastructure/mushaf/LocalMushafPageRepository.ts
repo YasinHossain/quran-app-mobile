@@ -36,7 +36,7 @@ type ResolvedPackData = {
 };
 
 const ENABLE_MUSHAF_QCF_DEV_LOGS = __DEV__;
-const RESOLVED_PAGE_DATA_CACHE_MAX_ENTRIES = 16;
+const RESOLVED_PAGE_DATA_CACHE_MAX_ENTRIES = 96;
 const resolvedPackCache = new Map<string, Promise<ResolvedPackData>>();
 const payloadCache = new Map<string, Promise<MushafPackPayload>>();
 const lookupCache = new Map<string, Promise<MushafPackPageLookupPayload>>();

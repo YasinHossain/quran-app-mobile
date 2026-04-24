@@ -33,7 +33,7 @@ const DEFAULT_ARABIC_FONT =
 export const defaultSettings: Settings = {
   translationId: 20,
   translationIds: [20],
-  tafsirIds: [169],
+  tafsirIds: [],
   arabicFontSize: 34,
   translationFontSize: 18,
   tafsirFontSize: 18,

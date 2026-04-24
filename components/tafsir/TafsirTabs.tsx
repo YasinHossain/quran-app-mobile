@@ -342,11 +342,13 @@ export function TafsirTabPanels({
   tafsirIds,
   activeTafsirId,
   contentByTafsirId,
+  renderErrorState,
 }: {
   verseKey: string;
   tafsirIds: number[];
   activeTafsirId?: number;
   contentByTafsirId: Partial<Record<number, TafsirTabContentState>>;
+  renderErrorState?: (params: { tafsirId: number; error: string }) => React.ReactNode;
 }): React.JSX.Element {
   const { height: viewportHeight } = useWindowDimensions();
   const skeletonMinHeight = React.useMemo(
@@ -454,7 +456,11 @@ export function TafsirTabPanels({
           style={panelWidth > 0 ? { width: panelWidth } : undefined}
         >
           {error ? (
-            <Text className="text-sm text-error dark:text-error-dark">{error}</Text>
+            renderErrorState ? (
+              renderErrorState({ tafsirId, error })
+            ) : (
+              <Text className="text-sm text-error dark:text-error-dark">{error}</Text>
+            )
           ) : isLoading ? (
             <TafsirLoadingSkeleton minHeight={Math.max(skeletonMinHeight, lastStableHeight)} />
           ) : (
@@ -467,7 +473,16 @@ export function TafsirTabPanels({
         </View>
       );
     },
-    [contentByTafsirId, handlePanelLayout, lastStableHeight, panelWidth, settings.tafsirFontSize, skeletonMinHeight, verseKey]
+    [
+      contentByTafsirId,
+      handlePanelLayout,
+      lastStableHeight,
+      panelWidth,
+      renderErrorState,
+      settings.tafsirFontSize,
+      skeletonMinHeight,
+      verseKey,
+    ]
   );
 
   if (resolvedTafsirIds.length === 0 || typeof resolvedActiveTafsirId !== 'number') {

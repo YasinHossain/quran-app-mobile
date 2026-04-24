@@ -465,10 +465,15 @@ function buildShellDocumentHtml({
 
           heightRafId = requestAnimationFrame(function () {
             var height = Math.ceil(pageRoot.getBoundingClientRect().height);
+            var renderedWordCount = pageContent.querySelectorAll('[data-mushaf-word="true"]').length;
+            var contentReady = Boolean(currentPayload && currentPayload.data && renderedWordCount > 0);
+
             emit({
               type: 'content-height',
               payload: {
+                contentReady: contentReady,
                 height: height,
+                renderedWordCount: renderedWordCount,
               },
             });
 

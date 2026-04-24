@@ -19,7 +19,11 @@ import {
   type MushafSelectionPayload,
   type MushafWordPressPayload,
 } from '@/components/mushaf/mushafWordPayload';
-import { MushafWebViewPage, MushafWebViewPagePlaceholder } from '@/components/mushaf/MushafWebViewPage';
+import {
+  estimateMushafWebViewPageHeight,
+  MushafWebViewPage,
+  MushafWebViewPagePlaceholder,
+} from '@/components/mushaf/MushafWebViewPage';
 import { SettingsSidebar } from '@/components/reader/settings/SettingsSidebar';
 import { VerseActionsSheet } from '@/components/surah/VerseActionsSheet';
 import { AddToPlannerModal, type VerseSummaryDetails } from '@/components/verse-planner-modal';
@@ -27,6 +31,7 @@ import Colors from '@/constants/Colors';
 import { DEFAULT_MUSHAF_ID, findMushafOption } from '@/data/mushaf/options';
 import { useChapters } from '@/hooks/useChapters';
 import { useMushafPageData } from '@/hooks/useMushafPageData';
+import { preloadOfflineTafsirSurah } from '@/lib/tafsir/tafsirCache';
 import { primeVerseDetailsCache } from '@/lib/verse/verseDetailsCache';
 import { useAudioPlayer } from '@/providers/AudioPlayerContext';
 import { useBookmarks } from '@/providers/BookmarkContext';
@@ -517,10 +522,13 @@ export default function PageScreen(): React.JSX.Element {
       : [settings.translationId ?? 20];
     return ids.filter((id) => Number.isFinite(id) && id > 0);
   }, [settings.translationId, settings.translationIds]);
+  const tafsirIds = React.useMemo(() => {
+    const ids = Array.isArray(settings.tafsirIds) ? settings.tafsirIds : [];
+    return ids.filter((id) => Number.isFinite(id) && id > 0);
+  }, [settings.tafsirIds]);
 
   const selectedMushafId = settings.mushafId ?? DEFAULT_MUSHAF_ID;
   const selectedMushafOption = findMushafOption(selectedMushafId);
-  const isExactRenderer = selectedMushafOption?.renderer === 'webview';
   const selectedMushafVersion = selectedMushafOption?.version ?? 'unknown';
   const exactViewportSignature = React.useMemo(
     () => getMushafWebViewViewportSignature(width, height),
@@ -539,6 +547,9 @@ export default function PageScreen(): React.JSX.Element {
     expectedVersion: selectedMushafVersion,
     enabled: isHydrated,
   });
+  const resolvedMushafRenderer =
+    initialPageProbe.data?.pack.renderer ?? selectedMushafOption?.renderer ?? 'text';
+  const isExactRenderer = resolvedMushafRenderer === 'webview';
   const activeMushafVersion = initialPageProbe.data?.pack.version ?? selectedMushafVersion;
 
   React.useEffect(() => {
@@ -636,7 +647,7 @@ export default function PageScreen(): React.JSX.Element {
     [height]
   );
   const estimatedItemSize = React.useMemo(() => {
-    if (initialPageProbe.data?.pack.renderer === 'text') {
+    if (!isExactRenderer && initialPageProbe.data?.pack.renderer === 'text') {
       const fontSize = mushafScaleStepToFontSize(settings.mushafScaleStep);
       return Math.round(fontSize * 1.72 * initialPageProbe.data.pack.lines + fontSize * 2);
     }
@@ -645,8 +656,27 @@ export default function PageScreen(): React.JSX.Element {
       return initialExactCachedHeight;
     }
 
+    if (isExactRenderer) {
+      return estimateMushafWebViewPageHeight({
+        packId: selectedMushafId,
+        lines: initialPageProbe.data?.pack.lines ?? selectedMushafOption?.lines ?? 15,
+        mushafScaleStep: settings.mushafScaleStep,
+        viewportHeight: height,
+        viewportWidth: width,
+      });
+    }
+
     return Math.round(Math.max(height * 0.9, 620));
-  }, [height, initialExactCachedHeight, initialPageProbe.data, settings.mushafScaleStep]);
+  }, [
+    height,
+    initialExactCachedHeight,
+    initialPageProbe.data,
+    isExactRenderer,
+    selectedMushafId,
+    selectedMushafOption?.lines,
+    settings.mushafScaleStep,
+    width,
+  ]);
   const listContentContainerStyle = React.useMemo(
     () => ({ paddingTop: 12, paddingBottom: 24 + audioPlayerBarHeight }),
     [audioPlayerBarHeight]
@@ -969,6 +999,8 @@ export default function PageScreen(): React.JSX.Element {
       translationTexts: activeVerse?.translationTexts,
     });
 
+    void preloadOfflineTafsirSurah({ surahId: parsed.surahId, tafsirIds });
+
     router.push({
       pathname: '/tafsir/[surahId]/[ayahId]',
       params: {
@@ -976,7 +1008,14 @@ export default function PageScreen(): React.JSX.Element {
         ayahId: String(parsed.verseNumber),
       },
     });
-  }, [activeVerse?.arabicText, activeVerse?.translationTexts, activeVerse?.verseKey, router, translationIds]);
+  }, [
+    activeVerse?.arabicText,
+    activeVerse?.translationTexts,
+    activeVerse?.verseKey,
+    router,
+    tafsirIds,
+    translationIds,
+  ]);
 
   const handleAddToPlan = React.useCallback(() => {
     const verseKey = activeVerse?.verseKey;

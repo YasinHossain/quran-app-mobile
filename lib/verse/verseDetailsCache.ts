@@ -1,4 +1,5 @@
 import { container } from '@/src/core/infrastructure/di/container';
+import { getAppDbSync } from '@/src/core/infrastructure/db';
 
 export type CachedVerseTranslation = {
   resource_id: number;
@@ -155,6 +156,96 @@ async function loadOfflineVerse(
   };
 }
 
+function loadOfflineVerseSync(
+  verseKey: string,
+  translationIds: number[]
+): CachedVerse | null {
+  const normalizedVerseKey = verseKey.trim();
+  const normalizedTranslationIds = normalizeTranslationIds(translationIds);
+
+  if (!normalizedVerseKey) return null;
+
+  try {
+    const db = getAppDbSync();
+
+    if (normalizedTranslationIds.length === 0) {
+      const row = db.getFirstSync<{
+        verse_key: string;
+        arabic_uthmani: string;
+      }>(
+        `
+        SELECT verse_key, arabic_uthmani
+        FROM offline_verses
+        WHERE verse_key = ?
+        LIMIT 1;
+        `,
+        [normalizedVerseKey]
+      );
+
+      if (!row) return null;
+
+      return {
+        verse_key: row.verse_key,
+        text_uthmani: row.arabic_uthmani,
+        translations: [],
+      };
+    }
+
+    const placeholders = normalizedTranslationIds.map(() => '?').join(', ');
+    const rows = db.getAllSync<{
+      verse_key: string;
+      arabic_uthmani: string;
+      translation_id: number | null;
+      translation_text: string | null;
+    }>(
+      `
+      SELECT
+        v.verse_key AS verse_key,
+        v.arabic_uthmani AS arabic_uthmani,
+        t.translation_id AS translation_id,
+        t.text AS translation_text
+      FROM offline_verses v
+      LEFT JOIN offline_translations t
+        ON t.verse_key = v.verse_key
+        AND t.translation_id IN (${placeholders})
+      WHERE v.verse_key = ?
+      ORDER BY t.translation_id ASC;
+      `,
+      [...normalizedTranslationIds, normalizedVerseKey]
+    );
+
+    if (rows.length === 0) return null;
+
+    const firstRow = rows[0]!;
+    const translationsById = new Map<number, string>();
+    for (const row of rows) {
+      if (row.translation_id !== null && row.translation_text !== null) {
+        translationsById.set(row.translation_id, row.translation_text);
+      }
+    }
+
+    const translations = normalizedTranslationIds
+      .map((translationId) => {
+        const text = translationsById.get(translationId);
+        if (!text) return null;
+        return { resource_id: translationId, text };
+      })
+      .filter((translation): translation is CachedVerseTranslation => translation !== null);
+
+    if (translations.length < normalizedTranslationIds.length) {
+      return null;
+    }
+
+    return {
+      verse_key: firstRow.verse_key,
+      text_uthmani: firstRow.arabic_uthmani,
+      translations,
+    };
+  } catch {
+    return null;
+  }
+}
+
 function seedExactVerseCache(
   verse: CachedVerse,
   translationIds: number[]
@@ -237,6 +328,34 @@ export function peekVersePreview(verseKey: string): CachedVerse | null {
   previewCache.delete(normalizedVerseKey);
   previewCache.set(normalizedVerseKey, cached);
   return cached;
+}
+
+export function getVerseDetailsSnapshot(
+  verseKey: string,
+  translationIds: number[]
+): CachedVerse | null {
+  const normalizedVerseKey = verseKey.trim();
+  const normalizedTranslationIds = normalizeTranslationIds(translationIds);
+  const key = getCacheKey(normalizedVerseKey, normalizedTranslationIds);
+  const now = Date.now();
+
+  const cached = exactCache.get(key);
+  if (cached && now - cached.timestamp < CACHE_TTL_MS && cached.snapshot) {
+    exactCache.delete(key);
+    exactCache.set(key, { ...cached, timestamp: now });
+    return cached.snapshot;
+  }
+
+  if (cached && now - cached.timestamp >= CACHE_TTL_MS) {
+    exactCache.delete(key);
+  }
+
+  const offlineVerse = loadOfflineVerseSync(normalizedVerseKey, normalizedTranslationIds);
+  if (!offlineVerse) return null;
+
+  touchPreviewCache(offlineVerse);
+  seedExactVerseCache(offlineVerse, normalizedTranslationIds);
+  return offlineVerse;
 }
 
 export function getVerseDetailsCached(

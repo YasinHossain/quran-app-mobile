@@ -1,7 +1,9 @@
 import React, { createContext, useContext, useEffect, useMemo } from 'react';
 
+import { useDownloadIndexItems } from '@/hooks/useDownloadIndexItems';
 import { usePersistentSettings } from '@/providers/hooks/usePersistentSettings';
 import { ARABIC_FONTS } from '@/providers/settingsStorage';
+import { getDownloadKey } from '@/src/core/domain/entities/DownloadIndexItem';
 import { loadArabicSupportFontsAsync } from '@/src/core/infrastructure/fonts/arabicFonts';
 
 import type { MushafPackId, MushafScaleStep, Settings } from '@/types';
@@ -74,10 +76,44 @@ const SettingsContext = createContext<SettingsContextType | undefined>(undefined
 export const SettingsProvider = ({ children }: { children: React.ReactNode }): React.JSX.Element => {
   const { settings, dispatch, isHydrated } = usePersistentSettings();
   const setters = useMemo(() => createSetters(dispatch), [dispatch]);
+  const selectedTafsirIds = settings.tafsirIds ?? [];
+  const {
+    itemsByKey: downloadItemsByKey,
+    isLoading: isDownloadIndexLoading,
+    errorMessage: downloadIndexErrorMessage,
+  } = useDownloadIndexItems({
+    enabled: isHydrated && selectedTafsirIds.length > 0,
+    pollIntervalMs: 0,
+  });
 
   useEffect(() => {
     void loadArabicSupportFontsAsync(settings.arabicFontFace);
   }, [settings.arabicFontFace]);
+
+  useEffect(() => {
+    if (!isHydrated) return;
+    if (selectedTafsirIds.length === 0) return;
+    if (isDownloadIndexLoading || downloadIndexErrorMessage) return;
+
+    const installedTafsirIds = selectedTafsirIds.filter((tafsirId) => {
+      const item = downloadItemsByKey.get(getDownloadKey({ kind: 'tafsir', tafsirId }));
+      return item?.status === 'installed';
+    });
+
+    const unchanged =
+      installedTafsirIds.length === selectedTafsirIds.length &&
+      installedTafsirIds.every((id, index) => id === selectedTafsirIds[index]);
+
+    if (unchanged) return;
+    dispatch({ type: 'SET_TAFSIR_IDS', value: installedTafsirIds });
+  }, [
+    dispatch,
+    downloadIndexErrorMessage,
+    downloadItemsByKey,
+    isDownloadIndexLoading,
+    isHydrated,
+    selectedTafsirIds,
+  ]);
 
   const contextValue = useMemo<SettingsContextType>(
     () => ({

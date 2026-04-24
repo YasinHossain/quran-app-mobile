@@ -244,10 +244,59 @@ export function ManageTafsirsPanel({
   const [estimatingTafsirIds, setEstimatingTafsirIds] = React.useState<Set<number>>(() => new Set());
 
   const selectedIds = React.useMemo(() => new Set<number>(orderedSelection ?? []), [orderedSelection]);
-  const { itemsByKey, refresh: refreshIndex } = useDownloadIndexItems({
+  const {
+    itemsByKey,
+    isLoading: isDownloadIndexLoading,
+    errorMessage: downloadIndexErrorMessage,
+    refresh: refreshIndex,
+  } = useDownloadIndexItems({
     enabled: isActive,
     pollIntervalMs: 800,
   });
+
+  const getTafsirDownloadItem = React.useCallback(
+    (tafsirId: number) => itemsByKey.get(getDownloadKey({ kind: 'tafsir', tafsirId })),
+    [itemsByKey]
+  );
+
+  const isTafsirDownloaded = React.useCallback(
+    (tafsirId: number): boolean => getTafsirDownloadItem(tafsirId)?.status === 'installed',
+    [getTafsirDownloadItem]
+  );
+
+  const promptDownloadRequired = React.useCallback((tafsir: ResourceRecord) => {
+    Alert.alert(
+      'Download tafsir first',
+      `${tafsir.name} must be downloaded before it can be selected for reading.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Download',
+          onPress: () => setDownloadTarget(tafsir),
+        },
+      ]
+    );
+  }, []);
+
+  React.useEffect(() => {
+    if (!isActive || isDownloadIndexLoading) return;
+    if (downloadIndexErrorMessage) return;
+    const current = orderedSelection ?? [];
+    if (current.length === 0) return;
+
+    const installedSelection = current.filter(isTafsirDownloaded);
+    if (installedSelection.length === current.length) return;
+
+    onChangeSelection(installedSelection);
+    setShowLimitWarning(false);
+  }, [
+    isActive,
+    downloadIndexErrorMessage,
+    isDownloadIndexLoading,
+    isTafsirDownloaded,
+    onChangeSelection,
+    orderedSelection,
+  ]);
 
   const languages = React.useMemo(
     () => buildLanguages(tafsirs, languageSort),
@@ -423,6 +472,35 @@ export function ManageTafsirsPanel({
         return true;
       }
 
+      const tafsir = tafsirs.find((item) => item.id === id);
+      if (isDownloadIndexLoading) {
+        Alert.alert(
+          'Checking downloads',
+          'Please try again in a moment while offline downloads are loaded.'
+        );
+        setShowLimitWarning(false);
+        return false;
+      }
+
+      if (downloadIndexErrorMessage) {
+        Alert.alert('Offline downloads unavailable', downloadIndexErrorMessage);
+        setShowLimitWarning(false);
+        return false;
+      }
+
+      if (!isTafsirDownloaded(id)) {
+        if (tafsir) {
+          promptDownloadRequired(tafsir);
+        } else {
+          Alert.alert(
+            'Download tafsir first',
+            'This tafsir must be downloaded before it can be selected for reading.'
+          );
+        }
+        setShowLimitWarning(false);
+        return false;
+      }
+
       if (current.length >= MAX_TAFSIR_SELECTIONS) {
         setShowLimitWarning(true);
         return false;
@@ -432,15 +510,50 @@ export function ManageTafsirsPanel({
       setShowLimitWarning(false);
       return true;
     },
-    [onChangeSelection, orderedSelection]
+    [
+      downloadIndexErrorMessage,
+      isDownloadIndexLoading,
+      isTafsirDownloaded,
+      onChangeSelection,
+      orderedSelection,
+      promptDownloadRequired,
+      tafsirs,
+    ]
   );
 
   const handleReset = React.useCallback(() => {
     const englishId = findEnglishTafsirId(tafsirs);
-    if (englishId === undefined) return;
-    onChangeSelection([englishId]);
+    const englishTafsir = tafsirs.find((tafsir) => tafsir.id === englishId);
+    if (!englishTafsir) return;
+
+    if (isDownloadIndexLoading) {
+      Alert.alert(
+        'Checking downloads',
+        'Please try again in a moment while offline downloads are loaded.'
+      );
+      return;
+    }
+
+    if (downloadIndexErrorMessage) {
+      Alert.alert('Offline downloads unavailable', downloadIndexErrorMessage);
+      return;
+    }
+
+    if (!isTafsirDownloaded(englishTafsir.id)) {
+      promptDownloadRequired(englishTafsir);
+      return;
+    }
+
+    onChangeSelection([englishTafsir.id]);
     setShowLimitWarning(false);
-  }, [onChangeSelection, tafsirs]);
+  }, [
+    downloadIndexErrorMessage,
+    isDownloadIndexLoading,
+    isTafsirDownloaded,
+    onChangeSelection,
+    promptDownloadRequired,
+    tafsirs,
+  ]);
 
   const rows = React.useMemo<Row[]>(() => {
     const base: Row[] = [{ type: 'tabs' }];
@@ -562,8 +675,7 @@ export function ManageTafsirsPanel({
       }
 
       const tafsir = item.item;
-      const key = getDownloadKey({ kind: 'tafsir', tafsirId: tafsir.id });
-      const downloadItem = itemsByKey.get(key);
+      const downloadItem = getTafsirDownloadItem(tafsir.id);
 
       return (
         <TafsirResourceRow
@@ -587,8 +699,8 @@ export function ManageTafsirsPanel({
       handlePressDelete,
       handlePressDownload,
       handleToggle,
+      getTafsirDownloadItem,
       isDark,
-      itemsByKey,
       languages,
       palette.tint,
       selectedIds,

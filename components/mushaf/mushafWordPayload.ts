@@ -52,7 +52,9 @@ export type MushafWebViewMessage =
   | {
       type: 'content-height';
       payload: {
+        contentReady?: boolean;
         height: number;
+        renderedWordCount?: number;
       };
     }
   | {
