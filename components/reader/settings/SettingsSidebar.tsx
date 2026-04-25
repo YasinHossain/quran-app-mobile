@@ -2,6 +2,7 @@ import React from 'react';
 import { Animated, Easing, Modal, Platform, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import Colors from '@/constants/Colors';
 import { useAppTheme } from '@/providers/ThemeContext';
 
 import { SettingsSidebarContent } from './SettingsSidebarContent';
@@ -11,6 +12,7 @@ import type { SettingsTab } from './SettingsTabToggle';
 export function SettingsSidebar({
   isOpen,
   onClose,
+  onAfterClose,
   showTafsirSetting = false,
   pageType,
   activeTab,
@@ -18,6 +20,7 @@ export function SettingsSidebar({
 }: {
   isOpen: boolean;
   onClose: () => void;
+  onAfterClose?: () => void;
   showTafsirSetting?: boolean;
   pageType?: 'verse' | 'tafsir' | 'bookmarks';
   activeTab?: SettingsTab;
@@ -25,14 +28,26 @@ export function SettingsSidebar({
 }): React.JSX.Element {
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  const { isDark } = useAppTheme();
+  const { isDark, resolvedTheme } = useAppTheme();
+  const palette = Colors[resolvedTheme];
   const sheetWidth = Math.min(390, Math.round(width * 0.92));
+  const hiddenTranslateX = sheetWidth + 12;
 
-  const translateX = React.useRef(new Animated.Value(sheetWidth)).current;
-  const overlayOpacity = React.useRef(new Animated.Value(0)).current;
+  const translateX = React.useRef(new Animated.Value(isOpen ? 0 : sheetWidth)).current;
+  const overlayOpacity = React.useRef(new Animated.Value(isOpen ? 1 : 0)).current;
   const animationTokenRef = React.useRef(0);
   const pendingOpenRef = React.useRef(false);
+  const afterCloseFrameRef = React.useRef<number | null>(null);
   const [visible, setVisible] = React.useState(isOpen);
+
+  React.useEffect(() => {
+    return () => {
+      if (afterCloseFrameRef.current !== null) {
+        cancelAnimationFrame(afterCloseFrameRef.current);
+        afterCloseFrameRef.current = null;
+      }
+    };
+  }, []);
 
   const startOpenAnimation = React.useCallback(() => {
     if (!isOpen) return;
@@ -41,9 +56,13 @@ export function SettingsSidebar({
     pendingOpenRef.current = false;
 
     const token = ++animationTokenRef.current;
+    if (afterCloseFrameRef.current !== null) {
+      cancelAnimationFrame(afterCloseFrameRef.current);
+      afterCloseFrameRef.current = null;
+    }
     translateX.stopAnimation();
     overlayOpacity.stopAnimation();
-    translateX.setValue(sheetWidth);
+    translateX.setValue(hiddenTranslateX);
     overlayOpacity.setValue(0);
 
     Animated.parallel([
@@ -65,16 +84,16 @@ export function SettingsSidebar({
       if (!finished) return;
       if (animationTokenRef.current !== token) return;
     });
-  }, [isOpen, overlayOpacity, sheetWidth, translateX, visible]);
+  }, [hiddenTranslateX, isOpen, overlayOpacity, translateX, visible]);
 
   React.useEffect(() => {
     if (isOpen) return;
     if (visible) return;
     translateX.stopAnimation();
     overlayOpacity.stopAnimation();
-    translateX.setValue(sheetWidth);
+    translateX.setValue(hiddenTranslateX);
     overlayOpacity.setValue(0);
-  }, [isOpen, overlayOpacity, sheetWidth, translateX, visible]);
+  }, [hiddenTranslateX, isOpen, overlayOpacity, translateX, visible]);
 
   React.useEffect(() => {
     if (isOpen) {
@@ -83,7 +102,7 @@ export function SettingsSidebar({
       pendingOpenRef.current = true;
       translateX.stopAnimation();
       overlayOpacity.stopAnimation();
-      translateX.setValue(sheetWidth);
+      translateX.setValue(hiddenTranslateX);
       overlayOpacity.setValue(0);
       setVisible(true);
       if (animationTokenRef.current !== token) return;
@@ -98,16 +117,16 @@ export function SettingsSidebar({
 
     Animated.parallel([
       Animated.timing(translateX, {
-        toValue: sheetWidth,
-        duration: 200,
-        easing: Easing.in(Easing.cubic),
+        toValue: hiddenTranslateX,
+        duration: 190,
+        easing: Easing.out(Easing.cubic),
         isInteraction: false,
         useNativeDriver: true,
       }),
       Animated.timing(overlayOpacity, {
         toValue: 0,
-        duration: 200,
-        easing: Easing.in(Easing.cubic),
+        duration: 190,
+        easing: Easing.out(Easing.cubic),
         isInteraction: false,
         useNativeDriver: true,
       }),
@@ -115,8 +134,12 @@ export function SettingsSidebar({
       if (!finished) return;
       if (animationTokenRef.current !== token) return;
       setVisible(false);
+      afterCloseFrameRef.current = requestAnimationFrame(() => {
+        afterCloseFrameRef.current = null;
+        onAfterClose?.();
+      });
     });
-  }, [isOpen, overlayOpacity, sheetWidth, translateX, visible]);
+  }, [hiddenTranslateX, isOpen, onAfterClose, overlayOpacity, translateX, visible]);
 
   React.useLayoutEffect(() => {
     startOpenAnimation();
@@ -142,6 +165,7 @@ export function SettingsSidebar({
           style={[
             styles.sheet,
             {
+              backgroundColor: palette.surface,
               width: sheetWidth,
               transform: [{ translateX }],
             },
@@ -175,6 +199,8 @@ export function SettingsSidebar({
 const styles = StyleSheet.create({
   root: {
     flex: 1,
+    backgroundColor: 'transparent',
+    overflow: 'hidden',
   },
   overlay: {
     flex: 1,

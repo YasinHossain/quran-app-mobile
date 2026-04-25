@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, View, useWindowDimensions } from 'react-native';
+import { Animated, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { WebView } from 'react-native-webview';
 
 import {
@@ -10,6 +10,8 @@ import {
 import {
   buildMushafReaderWebViewPagesScript,
   buildMushafReaderWebViewShellDocument,
+  type MushafReaderSurahNavigation,
+  type MushafReaderSurahIntro,
 } from '@/components/mushaf/webview/buildMushafReaderWebViewDocument';
 import { estimateMushafWebViewPageHeight } from '@/components/mushaf/MushafWebViewPage';
 import { useAppTheme } from '@/providers/ThemeContext';
@@ -30,15 +32,21 @@ export type MushafSingleDocumentVersePress = {
 type MushafSingleDocumentReaderProps = {
   backgroundPageNumbers: number[];
   chapterNamesById: Map<number, string>;
+  compactPageLines?: boolean;
   expectedVersion: string;
+  filterChapterId?: number;
   focusTopInsetPx: number;
   highlightVerseKey?: string | null;
   initialPageData?: MushafPageData | null;
   initialPageNumber: number;
   mushafScaleStep: MushafScaleStep;
   onSelectionChange: (payload: MushafSelectionPayload) => void;
+  onSurahNavigation?: (direction: 'next' | 'previous') => void;
   onVersePress: (verse: MushafSingleDocumentVersePress) => void;
+  pageNumbers?: number[];
   packId: MushafPackId;
+  surahIntro?: MushafReaderSurahIntro;
+  surahNavigation?: MushafReaderSurahNavigation;
   totalPages: number;
 };
 
@@ -46,6 +54,10 @@ type ReaderMessage =
   | {
       type: 'renderer-ready';
       payload?: { ready?: boolean };
+    }
+  | {
+      type: 'reader-page-rendered';
+      payload?: { pageNumber?: number };
     }
   | {
       type: 'page-window-request';
@@ -58,6 +70,10 @@ type ReaderMessage =
   | {
       type: 'word-press';
       payload: MushafWordPressPayload;
+    }
+  | {
+      type: 'surah-navigation';
+      payload?: { direction?: 'next' | 'previous' };
     }
   | {
       type: string;
@@ -113,6 +129,55 @@ function normalizePageNumbers(pageNumbers: number[], totalPages: number): number
   );
 }
 
+function normalizeAllowedPageNumbers(
+  pageNumbers: number[] | undefined,
+  totalPages: number
+): Set<number> | null {
+  if (!Array.isArray(pageNumbers) || pageNumbers.length === 0) {
+    return null;
+  }
+
+  const normalized = normalizePageNumbers(pageNumbers, totalPages);
+  return normalized.length ? new Set(normalized) : null;
+}
+
+function filterPageDataForChapter(
+  pageData: MushafPageData,
+  filterChapterId?: number
+): MushafPageData {
+  if (typeof filterChapterId !== 'number' || !Number.isFinite(filterChapterId) || filterChapterId <= 0) {
+    return pageData;
+  }
+
+  const normalizedChapterId = Math.trunc(filterChapterId);
+  const versePrefix = `${normalizedChapterId}:`;
+  const verses = pageData.verses.filter((verse) => {
+    if (Number(verse.chapterId) === normalizedChapterId) {
+      return true;
+    }
+
+    return typeof verse.verseKey === 'string' && verse.verseKey.startsWith(versePrefix);
+  });
+  const verseKeys = new Set(verses.map((verse) => verse.verseKey));
+
+  return {
+    ...pageData,
+    verses,
+    pageLines: {
+      ...pageData.pageLines,
+      lines: pageData.pageLines.lines
+        .map((line) => ({
+          ...line,
+          words: line.words.filter((word) => {
+            const verseKey = resolveMushafVerseKey(word);
+            return Boolean(verseKey && verseKeys.has(verseKey));
+          }),
+        }))
+        .filter((line) => line.words.length > 0),
+    },
+  };
+}
+
 function isReaderMessage(value: unknown): value is ReaderMessage {
   return Boolean(value && typeof value === 'object' && typeof (value as ReaderMessage).type === 'string');
 }
@@ -120,26 +185,40 @@ function isReaderMessage(value: unknown): value is ReaderMessage {
 export function MushafSingleDocumentReader({
   backgroundPageNumbers,
   chapterNamesById,
+  compactPageLines = false,
   expectedVersion,
+  filterChapterId,
   focusTopInsetPx,
   highlightVerseKey,
   initialPageData,
   initialPageNumber,
   mushafScaleStep,
   onSelectionChange,
+  onSurahNavigation,
   onVersePress,
+  pageNumbers,
   packId,
+  surahIntro,
+  surahNavigation,
   totalPages,
 }: MushafSingleDocumentReaderProps): React.JSX.Element {
   const { width, height } = useWindowDimensions();
   const { resolvedTheme } = useAppTheme();
+  const readerBackgroundColor = resolvedTheme === 'dark' ? '#102033' : '#F7F9F9';
   const webViewRef = React.useRef<WebView>(null);
   const isReaderReadyRef = React.useRef(false);
+  const hasInitialPaintRef = React.useRef(false);
+  const readerOpacity = React.useRef(new Animated.Value(0)).current;
+  const readerSessionRef = React.useRef(0);
   const pageDataByNumberRef = React.useRef(new Map<number, MushafPageData>());
   const requestedPageNumbersRef = React.useRef(new Set<number>());
   const loadingPageNumbersRef = React.useRef(new Set<number>());
   const firstPackDirectoryUriRef = React.useRef<string | null>(
     initialPageData?.rendererAssets?.packDirectoryUri ?? null
+  );
+  const allowedPageNumbers = React.useMemo(
+    () => normalizeAllowedPageNumbers(pageNumbers, totalPages),
+    [pageNumbers, totalPages]
   );
 
   const estimatedPageHeight = React.useMemo(
@@ -156,12 +235,16 @@ export function MushafSingleDocumentReader({
   const shellDocument = React.useMemo(
     () =>
       buildMushafReaderWebViewShellDocument({
+        compactPageLines,
         estimatedPageHeight,
         focusTopInsetPx,
         highlightVerseKey,
         initialPageNumber,
         mushafScaleStep,
+        pageNumbers,
         packId,
+        surahIntro,
+        surahNavigation,
         theme: resolvedTheme,
         totalPages,
         viewportHeight: height,
@@ -173,8 +256,12 @@ export function MushafSingleDocumentReader({
       highlightVerseKey,
       initialPageNumber,
       mushafScaleStep,
+      pageNumbers,
       packId,
       resolvedTheme,
+      compactPageLines,
+      surahIntro,
+      surahNavigation,
       totalPages,
     ]
   );
@@ -210,6 +297,7 @@ export function MushafSingleDocumentReader({
     (pageNumbers: number[], reason: string) => {
       const normalizedPageNumbers = normalizePageNumbers(pageNumbers, totalPages).filter(
         (pageNumber) =>
+          (allowedPageNumbers === null || allowedPageNumbers.has(pageNumber)) &&
           !pageDataByNumberRef.current.has(pageNumber) &&
           !loadingPageNumbersRef.current.has(pageNumber)
       );
@@ -236,8 +324,13 @@ export function MushafSingleDocumentReader({
               return;
             }
 
-            rememberPageData(pageData);
-            injectPages([pageData]);
+            const filteredPageData = filterPageDataForChapter(pageData, filterChapterId);
+            if (filteredPageData.verses.length === 0) {
+              return;
+            }
+
+            rememberPageData(filteredPageData);
+            injectPages([filteredPageData]);
           })
           .catch((error) => {
             logMushafQcfDev('page-load-error', {
@@ -251,11 +344,14 @@ export function MushafSingleDocumentReader({
           });
       });
     },
-    [expectedVersion, injectPages, packId, rememberPageData, totalPages]
+    [allowedPageNumbers, expectedVersion, filterChapterId, injectPages, packId, rememberPageData, totalPages]
   );
 
   React.useEffect(() => {
+    readerSessionRef.current += 1;
     isReaderReadyRef.current = false;
+    hasInitialPaintRef.current = false;
+    readerOpacity.setValue(0);
     pageDataByNumberRef.current = new Map();
     requestedPageNumbersRef.current = new Set();
     loadingPageNumbersRef.current = new Set();
@@ -265,10 +361,11 @@ export function MushafSingleDocumentReader({
       initialPageData?.pack.packId === packId &&
       initialPageData.pack.version.trim() === expectedVersion.trim()
     ) {
-      rememberPageData(initialPageData);
+      rememberPageData(filterPageDataForChapter(initialPageData, filterChapterId));
     }
   }, [
     expectedVersion,
+    filterChapterId,
     initialPageNumber,
     mushafScaleStep,
     packId,
@@ -277,31 +374,57 @@ export function MushafSingleDocumentReader({
     totalPages,
   ]);
 
+  const revealReader = React.useCallback(() => {
+    if (hasInitialPaintRef.current) {
+      return;
+    }
+
+    hasInitialPaintRef.current = true;
+    Animated.timing(readerOpacity, {
+      toValue: 1,
+      duration: 150,
+      useNativeDriver: true,
+    }).start();
+  }, [readerOpacity]);
+
   React.useEffect(() => {
     if (
       initialPageData?.pack.packId === packId &&
       initialPageData.pack.version.trim() === expectedVersion.trim()
     ) {
-      rememberPageData(initialPageData);
-      injectPages([initialPageData]);
+      const filteredPageData = filterPageDataForChapter(initialPageData, filterChapterId);
+      if (filteredPageData.verses.length > 0) {
+        rememberPageData(filteredPageData);
+        injectPages([filteredPageData]);
+      }
     }
-  }, [expectedVersion, initialPageData, injectPages, packId, rememberPageData]);
+  }, [expectedVersion, filterChapterId, initialPageData, injectPages, packId, rememberPageData]);
 
   React.useEffect(() => {
-    const initialBatch = [
-      initialPageNumber,
-      initialPageNumber - 1,
-      initialPageNumber + 1,
-      initialPageNumber - 2,
-      initialPageNumber + 2,
-    ];
-    loadPages(initialBatch, 'initial-window');
+    const session = readerSessionRef.current;
+    loadPages([initialPageNumber], 'initial-page');
+
+    const nearWindowTimeout = setTimeout(() => {
+      if (readerSessionRef.current !== session) return;
+      if (!isReaderReadyRef.current) return;
+      loadPages([initialPageNumber - 1, initialPageNumber + 1], 'near-window');
+    }, 90);
 
     const backgroundTimeout = setTimeout(() => {
-      loadPages(backgroundPageNumbers, 'background-range');
-    }, 120);
+      if (readerSessionRef.current !== session) return;
+      if (!isReaderReadyRef.current) return;
+      loadPages(
+        [
+          initialPageNumber - 2,
+          initialPageNumber + 2,
+          ...backgroundPageNumbers,
+        ],
+        'background-range'
+      );
+    }, 360);
 
     return () => {
+      clearTimeout(nearWindowTimeout);
       clearTimeout(backgroundTimeout);
     };
   }, [backgroundPageNumbers, initialPageNumber, loadPages]);
@@ -359,10 +482,15 @@ export function MushafSingleDocumentReader({
           isReaderReadyRef.current = true;
           const loadedPages = Array.from(pageDataByNumberRef.current.values());
           injectPages(loadedPages);
-          loadPages(
-            [initialPageNumber, initialPageNumber - 1, initialPageNumber + 1],
-            'renderer-ready'
-          );
+          loadPages([initialPageNumber], 'renderer-ready');
+          const session = readerSessionRef.current;
+          setTimeout(() => {
+            if (readerSessionRef.current !== session || !isReaderReadyRef.current) return;
+            loadPages(
+              [initialPageNumber - 1, initialPageNumber + 1],
+              'renderer-ready-near-window'
+            );
+          }, 90);
           return;
         }
         case 'page-window-request': {
@@ -375,50 +503,81 @@ export function MushafSingleDocumentReader({
           loadPages(requestedPageNumbers, 'webview-window-request');
           return;
         }
+        case 'reader-page-rendered': {
+          const payload = parsed.payload as { pageNumber?: unknown } | undefined;
+          const pageNumber =
+            typeof payload?.pageNumber === 'number' && Number.isFinite(payload.pageNumber)
+              ? Math.trunc(payload.pageNumber)
+              : null;
+          if (pageNumber === initialPageNumber || pageNumber === null) {
+            revealReader();
+          }
+          return;
+        }
         case 'selection-change':
           onSelectionChange(parsed.payload as MushafSelectionPayload);
           return;
         case 'word-press':
           handleWordPress(parsed.payload as MushafWordPressPayload);
           return;
+        case 'surah-navigation': {
+          const payload = parsed.payload as { direction?: unknown } | undefined;
+          const direction = payload?.direction;
+          if (direction === 'next' || direction === 'previous') {
+            onSurahNavigation?.(direction);
+          }
+          return;
+        }
         default:
           return;
       }
     },
-    [handleWordPress, initialPageNumber, injectPages, loadPages, onSelectionChange]
+    [
+      handleWordPress,
+      initialPageNumber,
+      injectPages,
+      loadPages,
+      onSelectionChange,
+      onSurahNavigation,
+      revealReader,
+    ]
   );
 
   const packDirectoryUri = firstPackDirectoryUriRef.current ?? undefined;
 
   return (
-    <View style={styles.container}>
-      <WebView
-        key={`mushaf-reader:${packId}:${expectedVersion}:${mushafScaleStep}:${resolvedTheme}:${initialPageNumber}:${totalPages}:${Math.round(width)}:${Math.round(height)}:${Math.round(focusTopInsetPx)}:${highlightVerseKey ?? ''}`}
-        ref={webViewRef}
-        originWhitelist={['*']}
-        source={{
-          html: shellDocument.html,
-          ...(packDirectoryUri ? { baseUrl: packDirectoryUri } : {}),
-        }}
-        scrollEnabled
-        nestedScrollEnabled
-        javaScriptEnabled
-        domStorageEnabled
-        setSupportMultipleWindows={false}
-        allowFileAccess
-        allowFileAccessFromFileURLs
-        allowUniversalAccessFromFileURLs
-        {...(packDirectoryUri ? { allowingReadAccessToURL: packDirectoryUri } : {})}
-        showsHorizontalScrollIndicator={false}
-        showsVerticalScrollIndicator={false}
-        bounces={false}
-        automaticallyAdjustContentInsets={false}
-        onLoadStart={() => {
-          isReaderReadyRef.current = false;
-        }}
-        onMessage={(event) => handleMessage(event.nativeEvent.data)}
-        style={styles.webView}
-      />
+    <View style={[styles.container, { backgroundColor: readerBackgroundColor }]}>
+      <Animated.View style={[styles.webViewShell, { opacity: readerOpacity }]}>
+        <WebView
+          key={`mushaf-reader:${packId}:${expectedVersion}:${mushafScaleStep}:${resolvedTheme}:${filterChapterId ?? ''}:${initialPageNumber}:${totalPages}:${Math.round(width)}:${Math.round(height)}:${Math.round(focusTopInsetPx)}:${surahNavigation?.previousSurahName ?? ''}:${surahNavigation?.nextSurahName ?? ''}:${highlightVerseKey ?? ''}`}
+          ref={webViewRef}
+          originWhitelist={['*']}
+          source={{
+            html: shellDocument.html,
+            ...(packDirectoryUri ? { baseUrl: packDirectoryUri } : {}),
+          }}
+          scrollEnabled
+          nestedScrollEnabled
+          javaScriptEnabled
+          domStorageEnabled
+          setSupportMultipleWindows={false}
+          allowFileAccess
+          allowFileAccessFromFileURLs
+          allowUniversalAccessFromFileURLs
+          {...(packDirectoryUri ? { allowingReadAccessToURL: packDirectoryUri } : {})}
+          showsHorizontalScrollIndicator={false}
+          showsVerticalScrollIndicator={false}
+          bounces={false}
+          automaticallyAdjustContentInsets={false}
+          onLoadStart={() => {
+            isReaderReadyRef.current = false;
+            hasInitialPaintRef.current = false;
+            readerOpacity.setValue(0);
+          }}
+          onMessage={(event) => handleMessage(event.nativeEvent.data)}
+          style={[styles.webView, { backgroundColor: readerBackgroundColor }]}
+        />
+      </Animated.View>
     </View>
   );
 }
@@ -427,8 +586,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+  webViewShell: {
+    flex: 1,
+  },
   webView: {
-    backgroundColor: 'transparent',
     flex: 1,
   },
 });

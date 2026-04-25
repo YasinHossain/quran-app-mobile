@@ -74,4 +74,10 @@ export type MushafWebViewMessage =
   | {
       type: 'word-long-press' | 'word-press';
       payload: MushafWordPressPayload;
+    }
+  | {
+      type: 'surah-navigation';
+      payload: {
+        direction: 'next' | 'previous';
+      };
     };

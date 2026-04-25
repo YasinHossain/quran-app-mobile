@@ -15,6 +15,18 @@ type MushafReaderWebViewLayoutPayload = {
 const REFLOW_HYSTERESIS_PX = 20;
 const shellDocumentCache = new Map<string, { html: string; layout: MushafReaderWebViewLayoutPayload }>();
 
+export type MushafReaderSurahIntro = {
+  revelationPlace?: string | undefined;
+  showBismillah: boolean;
+  surahName: string;
+  versesCount: number;
+};
+
+export type MushafReaderSurahNavigation = {
+  nextSurahName?: string | undefined;
+  previousSurahName?: string | undefined;
+};
+
 function escapeHtml(value: string): string {
   return value
     .replace(/&/g, '&amp;')
@@ -33,14 +45,35 @@ function serializeJson(value: unknown): string {
     .replace(/\u2029/g, '\\u2029');
 }
 
-function buildPageShells(totalPages: number, estimatedPageHeight: number): string {
+function normalizeShellPageNumbers(pageNumbers: number[] | undefined, totalPages: number): number[] {
+  const normalizedTotalPages = Math.max(1, Math.trunc(totalPages));
+  const normalized = Array.from(
+    new Set(
+      (Array.isArray(pageNumbers) && pageNumbers.length > 0
+        ? pageNumbers
+        : Array.from({ length: normalizedTotalPages }, (_value, index) => index + 1)
+      )
+        .filter((pageNumber) => Number.isFinite(pageNumber))
+        .map((pageNumber) => Math.trunc(pageNumber))
+        .filter((pageNumber) => pageNumber >= 1 && pageNumber <= normalizedTotalPages)
+    )
+  ).sort((left, right) => left - right);
+
+  return normalized.length ? normalized : [1];
+}
+
+function buildPageShells(
+  pageNumbers: number[],
+  estimatedPageHeight: number,
+  compactPageLines: boolean
+): string {
   const pageMinHeight = Math.max(280, Math.round(estimatedPageHeight));
   const pageShells: string[] = [];
 
-  for (let pageNumber = 1; pageNumber <= totalPages; pageNumber += 1) {
+  for (const pageNumber of pageNumbers) {
     pageShells.push(`
       <article class="reader-page loading" data-page-number="${pageNumber}">
-        <div class="page-content" style="min-height: ${pageMinHeight}px;">
+        <div class="page-content"${compactPageLines ? '' : ` style="min-height: ${pageMinHeight}px;"`}>
           <div class="standard-view"></div>
           <div class="reflow-view"></div>
         </div>
@@ -54,20 +87,81 @@ function buildPageShells(totalPages: number, estimatedPageHeight: number): strin
   return pageShells.join('\n');
 }
 
+function buildSurahIntroHtml(surahIntro?: MushafReaderSurahIntro): string {
+  if (!surahIntro) {
+    return '';
+  }
+
+  const revelationLabel = surahIntro.revelationPlace === 'makkah' ? 'مكية' : 'مدنية';
+  const versesLabel = `${surahIntro.versesCount} Verses`;
+
+  return `
+      <section class="surah-intro" aria-label="${escapeHtml(surahIntro.surahName)}">
+        <div class="surah-intro-row">
+          <div class="surah-intro-revelation" dir="rtl">${escapeHtml(revelationLabel)}</div>
+          <div class="surah-intro-bismillah" dir="rtl">${surahIntro.showBismillah ? '﷽' : ''}</div>
+          <div class="surah-intro-title">
+            <h1>${escapeHtml(surahIntro.surahName)}</h1>
+            <p>${escapeHtml(versesLabel)}</p>
+          </div>
+        </div>
+      </section>
+  `;
+}
+
+function buildSurahNavigationHtml(surahNavigation?: MushafReaderSurahNavigation): string {
+  const hasPrevious = Boolean(surahNavigation?.previousSurahName);
+  const hasNext = Boolean(surahNavigation?.nextSurahName);
+  if (!hasPrevious && !hasNext) {
+    return '';
+  }
+
+  return `
+      <nav class="surah-navigation" aria-label="Surah navigation">
+        <button
+          class="surah-navigation-button"
+          data-surah-navigation="previous"
+          type="button"
+          ${hasPrevious ? '' : 'disabled'}
+        >
+          <span class="surah-navigation-kicker">Previous</span>
+          <span>${hasPrevious ? escapeHtml(surahNavigation?.previousSurahName ?? '') : 'Start'}</span>
+        </button>
+        <button
+          class="surah-navigation-button"
+          data-surah-navigation="next"
+          type="button"
+          ${hasNext ? '' : 'disabled'}
+        >
+          <span class="surah-navigation-kicker">Next</span>
+          <span>${hasNext ? escapeHtml(surahNavigation?.nextSurahName ?? '') : 'End'}</span>
+        </button>
+      </nav>
+  `;
+}
+
 function buildShellDocumentHtml({
+  compactPageLines,
   estimatedPageHeight,
   focusTopInsetPx,
   highlightVerseKey,
   initialPageNumber,
   layout,
+  pageNumbers,
+  surahIntro,
+  surahNavigation,
   theme,
   totalPages,
 }: {
+  compactPageLines: boolean;
   estimatedPageHeight: number;
   focusTopInsetPx: number;
   highlightVerseKey?: string | null;
   initialPageNumber: number;
   layout: MushafReaderWebViewLayoutPayload;
+  pageNumbers?: number[] | undefined;
+  surahIntro?: MushafReaderSurahIntro | undefined;
+  surahNavigation?: MushafReaderSurahNavigation | undefined;
   theme: MushafReaderWebViewTheme;
   totalPages: number;
 }): string {
@@ -89,10 +183,15 @@ function buildShellDocumentHtml({
         };
 
   const normalizedTotalPages = Math.max(1, Math.trunc(totalPages));
-  const normalizedInitialPageNumber = Math.min(
+  const normalizedPageNumbers = normalizeShellPageNumbers(pageNumbers, normalizedTotalPages);
+  const firstShellPageNumber = normalizedPageNumbers[0] ?? 1;
+  const rawInitialPageNumber = Math.min(
     Math.max(1, Math.trunc(initialPageNumber)),
     normalizedTotalPages
   );
+  const normalizedInitialPageNumber = normalizedPageNumbers.includes(rawInitialPageNumber)
+    ? rawInitialPageNumber
+    : firstShellPageNumber;
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -118,6 +217,7 @@ function buildShellDocumentHtml({
         --reflow-line-height: calc(var(--font-size) * var(--reflow-line-height-multiplier));
         --exact-line-width: ${layout.lineWidthCss};
         --line-gap: 4px;
+        --loading-page-min-height: ${Math.max(280, Math.round(estimatedPageHeight))}px;
       }
 
       * {
@@ -145,6 +245,68 @@ function buildShellDocumentHtml({
         padding: 12px 0 24px;
       }
 
+      .surah-intro {
+        margin: 0 auto 18px;
+        padding: 0 16px 20px;
+        border-bottom: 1px solid var(--border);
+        width: 100%;
+      }
+
+      .surah-intro-row {
+        align-items: center;
+        display: grid;
+        gap: 12px;
+        grid-template-columns: 1fr;
+        text-align: center;
+      }
+
+      .surah-intro-revelation,
+      .surah-intro-bismillah {
+        direction: rtl;
+        font-family: 'UthmanicHafs1Ver18', serif;
+        line-height: 1.35;
+      }
+
+      .surah-intro-revelation {
+        font-size: 22px;
+      }
+
+      .surah-intro-bismillah {
+        font-size: 34px;
+        min-height: 1em;
+      }
+
+      .surah-intro-title h1 {
+        font-size: 19px;
+        font-weight: 700;
+        line-height: 1.25;
+        margin: 0;
+      }
+
+      .surah-intro-title p {
+        color: var(--muted);
+        font-size: 12px;
+        margin: 4px 0 0;
+      }
+
+      @media (min-width: 640px) {
+        .surah-intro-row {
+          grid-template-columns: minmax(6rem, 1fr) 2fr minmax(6rem, 1fr);
+        }
+
+        .surah-intro-revelation {
+          order: 1;
+        }
+
+        .surah-intro-bismillah {
+          order: 2;
+        }
+
+        .surah-intro-title {
+          order: 3;
+        }
+      }
+
       .reader-page {
         width: 100%;
         overflow: hidden;
@@ -155,7 +317,14 @@ function buildShellDocumentHtml({
       }
 
       .page-content {
+        opacity: 1;
+        transition: opacity 120ms ease;
         width: 100%;
+      }
+
+      .reader-page.loading .page-content {
+        min-height: var(--loading-page-min-height);
+        opacity: 0;
       }
 
       .standard-view {
@@ -260,11 +429,62 @@ function buildShellDocumentHtml({
       .page-footer b {
         font: inherit;
       }
+
+      .surah-navigation {
+        display: grid;
+        gap: 10px;
+        grid-template-columns: 1fr 1fr;
+        margin: 22px auto 0;
+        padding: 4px 12px 12px;
+        width: 100%;
+      }
+
+      .surah-navigation-button {
+        appearance: none;
+        -webkit-appearance: none;
+        background: transparent;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        color: var(--text);
+        display: flex;
+        flex-direction: column;
+        font: inherit;
+        gap: 2px;
+        min-height: 50px;
+        min-width: 0;
+        padding: 8px 14px;
+        text-align: center;
+      }
+
+      .surah-navigation-button:active:not(:disabled) {
+        opacity: 0.7;
+        transform: scale(0.98);
+      }
+
+      .surah-navigation-button:disabled {
+        color: var(--muted);
+        opacity: 0.45;
+      }
+
+      .surah-navigation-button span {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .surah-navigation-kicker {
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+      }
     </style>
   </head>
   <body>
     <main id="app" aria-label="Mushaf pages">
-      ${buildPageShells(normalizedTotalPages, estimatedPageHeight)}
+      ${buildSurahIntroHtml(surahIntro)}
+      ${buildPageShells(normalizedPageNumbers, estimatedPageHeight, compactPageLines)}
+      ${buildSurahNavigationHtml(surahNavigation)}
     </main>
     <script>
       (function () {
@@ -276,6 +496,13 @@ function buildShellDocumentHtml({
         var INITIAL_PAGE_NUMBER = ${normalizedInitialPageNumber};
         var HIGHLIGHT_VERSE_KEY = ${serializeJson(highlightVerseKey ?? '')};
         var FOCUS_TOP_INSET_PX = ${Math.max(0, Math.round(focusTopInsetPx))};
+        var FIRST_SHELL_PAGE_NUMBER = ${firstShellPageNumber};
+        var COMPACT_PAGE_LINES = ${compactPageLines ? 'true' : 'false'};
+        var PAGE_NUMBERS = ${serializeJson(normalizedPageNumbers)};
+        var PAGE_NUMBER_LOOKUP = PAGE_NUMBERS.reduce(function (lookup, pageNumber) {
+          lookup[pageNumber] = true;
+          return lookup;
+        }, Object.create(null));
         var REFLOW_HYSTERESIS_PX = ${REFLOW_HYSTERESIS_PX};
         var pageStates = new Map();
         var loadedPageNumbers = new Set();
@@ -380,6 +607,10 @@ function buildShellDocumentHtml({
             data: null,
             lastContainerWidth: 0,
             pageNumber: normalizedPageNumber,
+            qcfFontFamily: null,
+            renderedReflow: false,
+            renderedStandard: false,
+            renderKey: null,
             reflowState: null,
             root: root,
             content: root.querySelector('.page-content'),
@@ -410,16 +641,17 @@ function buildShellDocumentHtml({
           return true;
         }
 
-        function toWordPayload(state, word) {
-          return {
-            charType: word.charType,
-            lineNumber: word.lineNumber,
-            location: word.location,
-            pageNumber: state.pageNumber,
-            text: state.data ? resolveWordText(state.data, word) : '',
-            verseKey: resolveVerseKey(word),
-            wordPosition: word.position,
-          };
+        function getPageRenderKey(pageData) {
+          if (!pageData || !pageData.pack) {
+            return '';
+          }
+
+          return [
+            pageData.pack.packId || '',
+            pageData.pack.version || '',
+            pageData.pageNumber || '',
+            HIGHLIGHT_VERSE_KEY || '',
+          ].join(':');
         }
 
         async function loadQcfPageFontIfNeeded(rendererAssets) {
@@ -512,9 +744,10 @@ function buildShellDocumentHtml({
           wordNode.className = className;
           wordNode.dataset.mushafWord = 'true';
           wordNode.dataset.interactive = 'true';
-          wordNode.dataset.payload = JSON.stringify(toWordPayload(state, word));
           wordNode.dataset.copyText = normalizeCopyText(wordText);
           wordNode.dataset.charType = String(word.charType || '');
+          wordNode.dataset.lineNumber = String(word.lineNumber || '');
+          wordNode.dataset.location = String(word.location || '');
           wordNode.dataset.pageNumber = String(state.pageNumber);
           if (verseKey) {
             wordNode.dataset.verseKey = verseKey;
@@ -542,6 +775,9 @@ function buildShellDocumentHtml({
 
           state.standardView.innerHTML = '';
           state.reflowView.innerHTML = '';
+          state.qcfFontFamily = null;
+          state.renderedReflow = false;
+          state.renderedStandard = false;
           state.root.classList.remove('reflow');
           state.reflowState = null;
           state.lastContainerWidth = 0;
@@ -551,15 +787,35 @@ function buildShellDocumentHtml({
           if (!state.data || !state.standardView) {
             return;
           }
+          if (state.renderedStandard) {
+            return;
+          }
 
-          var linesByNumber = new Map(
-            (state.data.pageLines.lines || []).map(function (line) {
-              return [line.lineNumber, line];
-            })
-          );
+          var pageLines = Array.isArray(state.data.pageLines.lines)
+            ? state.data.pageLines.lines
+            : [];
+          var lineEntries = [];
 
-          for (var lineNumber = 1; lineNumber <= state.data.pack.lines; lineNumber += 1) {
-            var line = linesByNumber.get(lineNumber) || null;
+          if (COMPACT_PAGE_LINES) {
+            lineEntries = pageLines.filter(function (line) {
+              return line && Array.isArray(line.words) && line.words.length > 0;
+            });
+          } else {
+            var linesByNumber = new Map(
+              pageLines.map(function (line) {
+                return [line.lineNumber, line];
+              })
+            );
+
+            for (var lineNumber = 1; lineNumber <= state.data.pack.lines; lineNumber += 1) {
+              lineEntries.push(linesByNumber.get(lineNumber) || null);
+            }
+          }
+
+          var fragment = document.createDocumentFragment();
+
+          for (var lineIndex = 0; lineIndex < lineEntries.length; lineIndex += 1) {
+            var line = lineEntries[lineIndex];
             var lineShell = document.createElement('div');
             lineShell.className = 'line-shell';
             lineShell.setAttribute('dir', 'rtl');
@@ -572,7 +828,7 @@ function buildShellDocumentHtml({
             if (!line || !Array.isArray(line.words) || line.words.length === 0) {
               lineShell.classList.add('blank');
               lineContent.textContent = '\\u00A0';
-              state.standardView.appendChild(lineShell);
+              fragment.appendChild(lineShell);
               continue;
             }
 
@@ -583,12 +839,18 @@ function buildShellDocumentHtml({
               }
             }
 
-            state.standardView.appendChild(lineShell);
+            fragment.appendChild(lineShell);
           }
+
+          state.standardView.appendChild(fragment);
+          state.renderedStandard = true;
         }
 
         function renderReflowContent(state, qcfFontFamily) {
           if (!state.data || !state.reflowView) {
+            return;
+          }
+          if (state.renderedReflow) {
             return;
           }
 
@@ -630,6 +892,19 @@ function buildShellDocumentHtml({
           }
 
           state.reflowView.appendChild(reflowCopy);
+          state.renderedReflow = true;
+        }
+
+        function ensureActiveLayoutRendered(state) {
+          if (!state || !state.data) {
+            return;
+          }
+
+          if (state.reflowState) {
+            renderReflowContent(state, state.qcfFontFamily);
+          } else {
+            renderStandardLines(state, state.qcfFontFamily);
+          }
         }
 
         function emitPageRendered(state) {
@@ -716,9 +991,16 @@ function buildShellDocumentHtml({
           }
 
           var pageNumber = state.pageNumber;
+          var renderKey = getPageRenderKey(pageData);
+          if (state.renderKey === renderKey && loadedPageNumbers.has(pageNumber)) {
+            scrollToHighlightedVerseIfReady(state);
+            return;
+          }
+
           var renderToken = (activeRenderTokens[pageNumber] || 0) + 1;
           activeRenderTokens[pageNumber] = renderToken;
           state.data = pageData;
+          state.renderKey = renderKey;
 
           clearPage(state);
           var qcfFontFamily = await loadQcfPageFontIfNeeded(pageData.rendererAssets || {});
@@ -726,15 +1008,16 @@ function buildShellDocumentHtml({
             return;
           }
 
-          renderStandardLines(state, qcfFontFamily);
-          renderReflowContent(state, qcfFontFamily);
+          state.qcfFontFamily = qcfFontFamily;
           applyLayoutMode(state, layout);
+          ensureActiveLayoutRendered(state);
           state.root.classList.remove('loading');
           loadedPageNumbers.add(pageNumber);
           emitPageRendered(state);
           scrollToHighlightedVerseIfReady(state);
           setTimeout(function () {
             applyLayoutMode(state, layout);
+            ensureActiveLayoutRendered(state);
             emitPageRendered(state);
             scrollToHighlightedVerseIfReady(state);
           }, 0);
@@ -745,15 +1028,27 @@ function buildShellDocumentHtml({
         }
 
         function parseWordPayload(node) {
-          if (!node || !node.dataset || !node.dataset.payload) {
+          if (!node || !node.dataset) {
             return null;
           }
 
-          try {
-            return JSON.parse(node.dataset.payload);
-          } catch (error) {
+          var pageNumber = parseInt(node.dataset.pageNumber || '', 10);
+          var lineNumber = parseInt(node.dataset.lineNumber || '', 10);
+          var wordPosition = parseInt(node.dataset.wordPosition || '', 10);
+
+          if (!Number.isFinite(wordPosition)) {
             return null;
           }
+
+          return {
+            charType: node.dataset.charType || undefined,
+            lineNumber: Number.isFinite(lineNumber) ? lineNumber : undefined,
+            location: node.dataset.location || undefined,
+            pageNumber: Number.isFinite(pageNumber) ? pageNumber : undefined,
+            text: node.dataset.copyText || '',
+            verseKey: node.dataset.verseKey || undefined,
+            wordPosition: wordPosition,
+          };
         }
 
         function getSelectionWordNodes(range) {
@@ -876,7 +1171,7 @@ function buildShellDocumentHtml({
 
           var unique = Array.from(new Set(requested))
             .filter(function (pageNumber) {
-              return pageNumber >= 1 && pageNumber <= ${normalizedTotalPages};
+              return Boolean(PAGE_NUMBER_LOOKUP[pageNumber]);
             })
             .sort(function (left, right) {
               return left - right;
@@ -950,10 +1245,33 @@ function buildShellDocumentHtml({
           event.clipboardData.setData('text/plain', normalized);
         });
 
+        document.addEventListener('click', function (event) {
+          var navigationTarget =
+            event.target instanceof Element
+              ? event.target.closest('[data-surah-navigation]')
+              : null;
+          if (!(navigationTarget instanceof HTMLButtonElement) || navigationTarget.disabled) {
+            return;
+          }
+
+          var direction = navigationTarget.dataset.surahNavigation;
+          if (direction !== 'next' && direction !== 'previous') {
+            return;
+          }
+
+          emit({
+            type: 'surah-navigation',
+            payload: {
+              direction: direction,
+            },
+          });
+        });
+
         window.addEventListener('resize', function () {
           pageStates.forEach(function (state) {
             if (state.data && state.lastLayout) {
               applyLayoutMode(state, state.lastLayout);
+              ensureActiveLayoutRendered(state);
               emitPageRendered(state);
               scrollToHighlightedVerseIfReady(state);
             }
@@ -964,7 +1282,11 @@ function buildShellDocumentHtml({
         window.addEventListener('scroll', scheduleNearPageRequest, { passive: true });
 
         initPageStates();
-        scrollToPage(INITIAL_PAGE_NUMBER);
+        if (INITIAL_PAGE_NUMBER === FIRST_SHELL_PAGE_NUMBER && HIGHLIGHT_VERSE_KEY === '') {
+          window.scrollTo(0, 0);
+        } else {
+          scrollToPage(INITIAL_PAGE_NUMBER);
+        }
         didScrollToInitialPage = true;
 
         window.__MUSHAF_READER__ = {
@@ -1019,22 +1341,30 @@ function buildShellDocumentHtml({
 }
 
 export function buildMushafReaderWebViewShellDocument({
+  compactPageLines = false,
   estimatedPageHeight,
   focusTopInsetPx,
   highlightVerseKey,
   initialPageNumber,
   mushafScaleStep,
+  pageNumbers,
   packId,
+  surahIntro,
+  surahNavigation,
   theme,
   totalPages,
   viewportHeight,
 }: {
+  compactPageLines?: boolean | undefined;
   estimatedPageHeight: number;
   focusTopInsetPx: number;
   highlightVerseKey?: string | null;
   initialPageNumber: number;
   mushafScaleStep: MushafScaleStep;
+  pageNumbers?: number[] | undefined;
   packId: MushafPackId;
+  surahIntro?: MushafReaderSurahIntro | undefined;
+  surahNavigation?: MushafReaderSurahNavigation | undefined;
   theme: MushafReaderWebViewTheme;
   totalPages: number;
   viewportHeight: number;
@@ -1056,6 +1386,19 @@ export function buildMushafReaderWebViewShellDocument({
     Math.round(focusTopInsetPx),
     totalPages,
     initialPageNumber,
+    compactPageLines ? 'compact' : 'full',
+    pageNumbers?.join(',') ?? 'all',
+    surahIntro
+      ? [
+          surahIntro.revelationPlace ?? '',
+          surahIntro.showBismillah ? 'bismillah' : 'no-bismillah',
+          surahIntro.surahName,
+          surahIntro.versesCount,
+        ].join('|')
+      : 'no-intro',
+    surahNavigation
+      ? [surahNavigation.previousSurahName ?? '', surahNavigation.nextSurahName ?? ''].join('|')
+      : 'no-navigation',
     highlightVerseKey ?? '',
   ].join(':');
   const cached = shellDocumentCache.get(cacheKey);
@@ -1065,11 +1408,15 @@ export function buildMushafReaderWebViewShellDocument({
 
   const shellDocument = {
     html: buildShellDocumentHtml({
+      compactPageLines,
       estimatedPageHeight,
       focusTopInsetPx,
       highlightVerseKey,
       initialPageNumber,
       layout,
+      pageNumbers,
+      surahIntro,
+      surahNavigation,
       theme,
       totalPages,
     }),
