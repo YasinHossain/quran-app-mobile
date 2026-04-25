@@ -40,7 +40,7 @@ import { useSettings } from '@/providers/SettingsContext';
 import { useAppTheme } from '@/providers/ThemeContext';
 import { container } from '@/src/core/infrastructure/di/container';
 
-import type { Bookmark } from '@/types';
+import type { Bookmark, MushafPackId } from '@/types';
 
 function parseVerseKeyNumbers(
   verseKey: string | null
@@ -54,6 +54,21 @@ function parseVerseKeyNumbers(
   const normalizedVerse = Math.trunc(verseNumber);
   if (normalizedSurah <= 0 || normalizedVerse <= 0) return null;
   return { surahId: normalizedSurah, verseNumber: normalizedVerse };
+}
+
+async function resolveActiveMushafVersion(
+  packId: MushafPackId,
+  fallbackVersion: string
+): Promise<string> {
+  try {
+    const activeInstall = await container
+      .getMushafPackInstallRegistry()
+      .getActive(packId);
+
+    return activeInstall?.version?.trim() || fallbackVersion;
+  } catch {
+    return fallbackVersion;
+  }
 }
 
 function VerseCardPlaceholder({ verseKey }: { verseKey: string }): React.JSX.Element {
@@ -243,6 +258,10 @@ export default function SurahScreen(): React.JSX.Element {
       if (nextTab !== 'mushaf') return;
 
       const mushafRepository = container.getMushafPageRepository();
+      const activePackVersion = await resolveActiveMushafVersion(
+        selectedMushafId,
+        selectedMushafVersion
+      );
       const currentChapter = chapters.find((item) => item.id === chapterNumber);
       const startPage =
         Array.isArray(currentChapter?.pages) &&
@@ -276,14 +295,14 @@ export default function SurahScreen(): React.JSX.Element {
 
       mushafRepository.setActivePageCacheIdentity({
         packId: selectedMushafId,
-        version: selectedMushafVersion,
+        version: activePackVersion,
       });
 
       try {
         await mushafRepository.prefetchPages({
           packId: selectedMushafId,
           pageNumbers: [targetPage],
-          expectedVersion: selectedMushafVersion,
+          expectedVersion: activePackVersion,
         });
       } catch {
         // Let the mushaf screen show the local-pack error if the selected pack is unavailable.
@@ -292,7 +311,7 @@ export default function SurahScreen(): React.JSX.Element {
       void mushafRepository.prefetchPages({
         packId: selectedMushafId,
         pageNumbers: [targetPage - 1, targetPage + 1],
-        expectedVersion: selectedMushafVersion,
+        expectedVersion: activePackVersion,
       });
 
       router.push({
@@ -530,13 +549,18 @@ export default function SurahScreen(): React.JSX.Element {
       lastPrefetchedMushafVerseRef.current = prefetchKey;
       const requestId = ++mushafPrefetchRequestIdRef.current;
       const mushafRepository = container.getMushafPageRepository();
-      mushafRepository.setActivePageCacheIdentity({
-        packId: selectedMushafId,
-        version: selectedMushafVersion,
-      });
 
       void (async () => {
         try {
+          const activePackVersion = await resolveActiveMushafVersion(
+            selectedMushafId,
+            selectedMushafVersion
+          );
+          mushafRepository.setActivePageCacheIdentity({
+            packId: selectedMushafId,
+            version: activePackVersion,
+          });
+
           const resolvedPage = await mushafRepository.findPageForVerse({
             packId: selectedMushafId,
             verseKey: normalizedVerseKey,
@@ -553,7 +577,7 @@ export default function SurahScreen(): React.JSX.Element {
           await mushafRepository.prefetchPages({
             packId: selectedMushafId,
             pageNumbers: [resolvedPage - 1, resolvedPage, resolvedPage + 1],
-            expectedVersion: selectedMushafVersion,
+            expectedVersion: activePackVersion,
           });
         } catch {
           // Ignore background mushaf prefetch failures on the translation screen.

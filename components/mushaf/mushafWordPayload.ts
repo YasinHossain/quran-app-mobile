@@ -50,6 +50,12 @@ export function resolveMushafVerseKey(value: {
 
 export type MushafWebViewMessage =
   | {
+      type: 'renderer-ready';
+      payload: {
+        ready: true;
+      };
+    }
+  | {
       type: 'content-height';
       payload: {
         contentReady?: boolean;

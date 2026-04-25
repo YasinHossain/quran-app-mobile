@@ -24,6 +24,7 @@ import {
   MushafWebViewPage,
   MushafWebViewPagePlaceholder,
 } from '@/components/mushaf/MushafWebViewPage';
+import { SharedExactMushafReader } from '@/components/mushaf/SharedExactMushafReader';
 import { SettingsSidebar } from '@/components/reader/settings/SettingsSidebar';
 import { VerseActionsSheet } from '@/components/surah/VerseActionsSheet';
 import { AddToPlannerModal, type VerseSummaryDetails } from '@/components/verse-planner-modal';
@@ -418,9 +419,7 @@ function MushafFeedPageRow({
     content = isExactRenderer ? (
       <MushafWebViewPagePlaceholder
         estimatedHeight={resolvedExactHeight}
-        showLoadingIndicator={
-          isInExactRenderWindow && cachedExactHeight === null && highlightVerseKey == null
-        }
+        showLoadingIndicator={false}
       />
     ) : (
       <MushafFeedPlaceholder color={loadingColor} height={estimatedHeight} />
@@ -551,8 +550,14 @@ export default function PageScreen(): React.JSX.Element {
     initialPageProbe.data?.pack.renderer ?? selectedMushafOption?.renderer ?? 'text';
   const isExactRenderer = resolvedMushafRenderer === 'webview';
   const activeMushafVersion = initialPageProbe.data?.pack.version ?? selectedMushafVersion;
+  const canSyncActivePageCacheIdentity =
+    initialPageProbe.data !== null || selectedMushafOption?.channel === 'bundled';
 
   React.useEffect(() => {
+    if (!canSyncActivePageCacheIdentity) {
+      return;
+    }
+
     container.getMushafPageRepository().setActivePageCacheIdentity({
       packId: selectedMushafId,
       version: activeMushafVersion,
@@ -571,7 +576,7 @@ export default function PageScreen(): React.JSX.Element {
       packId: selectedMushafId,
       version: activeMushafVersion,
     });
-  }, [activeMushafVersion, selectedMushafId]);
+  }, [activeMushafVersion, canSyncActivePageCacheIdentity, selectedMushafId]);
 
   const chapterNamesById = React.useMemo(
     () => new Map(chapters.map((chapter) => [chapter.id, chapter.name_simple] as const)),
@@ -865,7 +870,7 @@ export default function PageScreen(): React.JSX.Element {
   }, []);
 
   React.useEffect(() => {
-    if (!isHydrated) return;
+    if (!isHydrated || isExactRenderer) return;
 
     const scrollSignature = `${initialPageIndex}:${initialPageViewOffset}`;
     if (
@@ -913,6 +918,7 @@ export default function PageScreen(): React.JSX.Element {
     initialPageViewOffset,
     initialPageScrollTick,
     initialPageNumber,
+    isExactRenderer,
     isHydrated,
     selectedMushafId,
   ]);
@@ -1181,6 +1187,32 @@ export default function PageScreen(): React.JSX.Element {
         <LoadingState label="Loading local mushaf settings…" color={palette.text} />
       ) : initialPageProbe.errorMessage ? (
         <ErrorState message={initialPageProbe.errorMessage} />
+      ) : isExactRenderer ? (
+        <SharedExactMushafReader
+          pageNumbers={pageNumbers}
+          initialPageIndex={initialPageIndex}
+          initialPageNumber={initialPageNumber}
+          packId={selectedMushafId}
+          expectedVersion={activeMushafVersion}
+          mushafScaleStep={settings.mushafScaleStep}
+          estimatedHeight={estimatedItemSize}
+          initialHighlightVerseKey={arrivalHighlightVerseKey}
+          initialPageViewOffset={initialPageViewOffset}
+          chapterNamesById={chapterNamesById}
+          contentContainerStyle={listContentContainerStyle}
+          cacheVersion={exactHeightCacheVersion}
+          getCachedHeight={(pageNumber) =>
+            readExactPageHeightCache(getExactHeightCacheKeyForPage(pageNumber))
+          }
+          getHeightCacheKey={getExactHeightCacheKeyForPage}
+          onHeightResolved={handleExactHeightResolved}
+          onInitialHighlightAnchorResolved={
+            arrivalHighlightVerseKey ? handleInitialHighlightAnchorResolved : undefined
+          }
+          onInitialPageFirstHeight={handleExactPageFirstHeight}
+          onSelectionChange={handleMushafSelectionChange}
+          onVersePress={handleVersePress}
+        />
       ) : (
         <FlashList
           ref={feedListRef}

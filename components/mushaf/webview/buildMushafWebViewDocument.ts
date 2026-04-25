@@ -776,11 +776,12 @@ function buildShellDocumentHtml({
           applyCssVariables(nextPayload.layout);
           clearRenderedPage();
 
-          currentPayload.qcfFontLoaded = await loadQcfPageFontIfNeeded(currentPayload.rendererAssets);
+          var fontLoaded = await loadQcfPageFontIfNeeded(currentPayload.rendererAssets);
           if (renderToken !== activeRenderToken) {
             return;
           }
 
+          currentPayload.qcfFontLoaded = Boolean(fontLoaded);
           renderStandardLines();
           renderReflowContent();
           applyLayoutMode();
@@ -872,6 +873,13 @@ function buildShellDocumentHtml({
               });
           },
         };
+
+        emit({
+          type: 'renderer-ready',
+          payload: {
+            ready: true,
+          },
+        });
       })();
     </script>
   </body>

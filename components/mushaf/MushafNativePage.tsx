@@ -1,6 +1,7 @@
 import React from 'react';
 import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 
+import Colors from '@/constants/Colors';
 import { useAppTheme } from '@/providers/ThemeContext';
 import { DEFAULT_ARABIC_FONT_FAMILY } from '@/src/core/infrastructure/fonts/arabicFonts';
 
@@ -27,7 +28,7 @@ function resolveWordText(word: MushafWord, page: MushafPageData): string {
     return word.textIndopak ?? word.textUthmani ?? '';
   }
 
-  return word.textUthmani ?? word.textIndopak ?? '';
+  return word.textUthmani ?? word.textIndopak ?? word.textQpcHafs ?? '';
 }
 
 function buildWordPayload(word: MushafWord, page: MushafPageData): MushafWordPressPayload {
@@ -51,6 +52,7 @@ function MushafLineText({
   line,
   fontSize,
   lineHeight,
+  textColor,
   highlightVerseKey,
   highlightBackgroundColor,
   onWordLongPress,
@@ -60,6 +62,7 @@ function MushafLineText({
   line: MushafLineGroup | null;
   fontSize: number;
   lineHeight: number;
+  textColor: string;
   highlightVerseKey?: string;
   highlightBackgroundColor: string;
   onWordLongPress?: (payload: MushafWordPressPayload) => void;
@@ -72,9 +75,10 @@ function MushafLineText({
         fontFamily: DEFAULT_ARABIC_FONT_FAMILY,
         fontSize,
         lineHeight,
+        color: textColor,
       },
     ],
-    [fontSize, lineHeight]
+    [fontSize, lineHeight, textColor]
   );
 
   if (!line) {
@@ -126,6 +130,7 @@ export function MushafNativePage({
 }: MushafNativePageProps): React.JSX.Element {
   const { width } = useWindowDimensions();
   const { resolvedTheme } = useAppTheme();
+  const palette = Colors[resolvedTheme];
   const pageWidth = Math.min(Math.max(width - 8, 280), PAGE_MAX_WIDTH);
   const fontSize = mushafScaleStepToFontSize(mushafScaleStep);
   const lineHeight = Math.round(fontSize * 1.72);
@@ -158,6 +163,7 @@ export function MushafNativePage({
               line={line}
               fontSize={fontSize}
               lineHeight={lineHeight}
+              textColor={palette.text}
               highlightVerseKey={normalizedHighlightVerseKey}
               highlightBackgroundColor={highlightBackgroundColor}
               onWordLongPress={onWordLongPress}

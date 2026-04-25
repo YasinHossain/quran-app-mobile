@@ -1,29 +1,27 @@
-import { FlashList, type ViewToken } from '@shopify/flash-list';
+import { FlashList, type FlashListRef, type ViewToken } from '@shopify/flash-list';
 import React from 'react';
 import {
-  Animated,
   StyleSheet,
   Text,
   View,
   type LayoutChangeEvent,
-  type NativeScrollEvent,
-  type NativeSyntheticEvent,
   type ViewStyle,
 } from 'react-native';
 
-import { resolveMushafVerseKey, type MushafSelectionPayload } from '@/components/mushaf/mushafWordPayload';
+import {
+  resolveMushafVerseKey,
+  type MushafHighlightAnchorPayload,
+  type MushafSelectionPayload,
+} from '@/components/mushaf/mushafWordPayload';
 import { MushafWebViewPage, MushafWebViewPagePlaceholder } from '@/components/mushaf/MushafWebViewPage';
 import { useMushafPageData } from '@/hooks/useMushafPageData';
 import { container } from '@/src/core/infrastructure/di/container';
 
-import type { MushafPackId, MushafScaleStep, MushafVerse } from '@/types';
+import type { MushafPackId, MushafPageData, MushafScaleStep, MushafVerse } from '@/types';
 
-const EXACT_PAGE_LAYOUT_EPSILON_PX = 1;
 const EXACT_PAGE_MIN_HEIGHT = 280;
 const VISIBLE_PAGE_THRESHOLD_PERCENT = 20;
-const DOMINANT_PAGE_THRESHOLD_PERCENT = 65;
 const VISIBLE_PAGE_MINIMUM_VIEW_TIME_MS = 32;
-const DOMINANT_PAGE_MINIMUM_VIEW_TIME_MS = 120;
 const ENABLE_MUSHAF_QCF_DEV_LOGS = __DEV__;
 
 export type SharedExactMushafVersePress = {
@@ -44,12 +42,15 @@ type SharedExactMushafReaderProps = {
   expectedVersion: string;
   mushafScaleStep: MushafScaleStep;
   estimatedHeight: number;
+  initialHighlightVerseKey?: string | null;
+  initialPageViewOffset?: number;
   chapterNamesById: Map<number, string>;
   contentContainerStyle: ViewStyle;
   cacheVersion: number;
   getCachedHeight: (pageNumber: number) => number | null;
   getHeightCacheKey: (pageNumber: number) => string;
   onHeightResolved: (payload: { cacheKey: string; height: number; pageNumber: number }) => void;
+  onInitialHighlightAnchorResolved?: (payload: MushafHighlightAnchorPayload) => void;
   onInitialPageFirstHeight: (payload: { pageNumber: number; height: number; durationMs: number }) => void;
   onSelectionChange: (payload: MushafSelectionPayload) => void;
   onVersePress: (verse: SharedExactMushafVersePress) => void;
@@ -57,7 +58,6 @@ type SharedExactMushafReaderProps = {
 
 type ActivePageSelectionSource =
   | 'visible-range-change'
-  | 'dominant-visible-change'
   | 'pending-page-ready';
 
 function createCollapsedSelectionPayload(pageNumber: number): MushafSelectionPayload {
@@ -229,12 +229,15 @@ export function SharedExactMushafReader({
   expectedVersion,
   mushafScaleStep,
   estimatedHeight,
+  initialHighlightVerseKey,
+  initialPageViewOffset = 0,
   chapterNamesById,
   contentContainerStyle,
   cacheVersion,
   getCachedHeight,
   getHeightCacheKey,
   onHeightResolved,
+  onInitialHighlightAnchorResolved,
   onInitialPageFirstHeight,
   onSelectionChange,
   onVersePress,
@@ -245,7 +248,6 @@ export function SharedExactMushafReader({
   const pendingPageNumberRef = React.useRef<number | null>(null);
   const rowYByPageNumberRef = React.useRef(new Map<number, number>());
   const visiblePageNumbersRef = React.useRef<number[]>([initialPageNumber]);
-  const dominantVisiblePageNumbersRef = React.useRef<number[]>([]);
   const reconcileActivePageSelectionRef =
     React.useRef<(source: ActivePageSelectionSource) => void>(() => {});
   const scrollOffsetYRef = React.useRef(0);
@@ -254,60 +256,87 @@ export function SharedExactMushafReader({
     itemVisiblePercentThreshold: VISIBLE_PAGE_THRESHOLD_PERCENT,
     minimumViewTime: VISIBLE_PAGE_MINIMUM_VIEW_TIME_MS,
   }).current;
-  const dominantViewabilityConfig = React.useRef({
-    itemVisiblePercentThreshold: DOMINANT_PAGE_THRESHOLD_PERCENT,
-    minimumViewTime: DOMINANT_PAGE_MINIMUM_VIEW_TIME_MS,
-  }).current;
-  const hostAnchorY = React.useRef(new Animated.Value(0)).current;
-  const scrollY = React.useRef(new Animated.Value(0)).current;
+  const listRef = React.useRef<FlashListRef<number> | null>(null);
+  const initialPageScrollTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hasAppliedInitialPageScrollRef = React.useRef(false);
+  const initialAnchorScrollTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hasAppliedInitialAnchorScrollRef = React.useRef(false);
   const maxPageNumber = pageNumbers[pageNumbers.length - 1] ?? initialPageNumber;
   const pageRepositoryRef = React.useRef(container.getMushafPageRepository());
+  const [residentPageDataByNumber, setResidentPageDataByNumber] = React.useState<
+    Map<number, MushafPageData>
+  >(() => new Map());
+  const residentPageDataByNumberRef = React.useRef(residentPageDataByNumber);
 
   const resolvePageHeight = React.useCallback(
     (pageNumber: number): number => getCachedHeight(pageNumber) ?? estimatedHeight,
     [estimatedHeight, getCachedHeight]
   );
 
-  const syncHostAnchor = React.useCallback(
-    (pageNumber: number) => {
-      const rowY = rowYByPageNumberRef.current.get(pageNumber);
-      if (rowY === undefined) {
-        hostAnchorY.setValue(0);
-        return;
-      }
-
-      hostAnchorY.setValue(rowY);
-    },
-    [hostAnchorY]
-  );
-
   React.useEffect(() => {
     activePageNumberRef.current = activePageNumber;
-    syncHostAnchor(activePageNumber);
     onSelectionChange(createCollapsedSelectionPayload(activePageNumber));
 
     logSharedExactReaderDev('active-page-selection-reset', {
       activePageNumber,
     });
-  }, [activePageNumber, onSelectionChange, syncHostAnchor]);
+  }, [activePageNumber, onSelectionChange]);
 
   React.useEffect(() => {
     activePageNumberRef.current = initialPageNumber;
     pendingPageNumberRef.current = null;
+    rowYByPageNumberRef.current.clear();
     visiblePageNumbersRef.current = [initialPageNumber];
-    dominantVisiblePageNumbersRef.current = [];
+    hasAppliedInitialPageScrollRef.current = false;
+    hasAppliedInitialAnchorScrollRef.current = false;
+    if (initialPageScrollTimeoutRef.current) {
+      clearTimeout(initialPageScrollTimeoutRef.current);
+      initialPageScrollTimeoutRef.current = null;
+    }
+    if (initialAnchorScrollTimeoutRef.current) {
+      clearTimeout(initialAnchorScrollTimeoutRef.current);
+      initialAnchorScrollTimeoutRef.current = null;
+    }
     setPendingPageNumber(null);
     setActivePageNumber(initialPageNumber);
   }, [initialPageNumber]);
 
+  React.useEffect(() => {
+    residentPageDataByNumberRef.current = residentPageDataByNumber;
+  }, [residentPageDataByNumber]);
+
+  React.useEffect(() => {
+    residentPageDataByNumberRef.current = new Map();
+    setResidentPageDataByNumber(new Map());
+  }, [expectedVersion, packId]);
+
+  React.useEffect(() => {
+    return () => {
+      if (initialPageScrollTimeoutRef.current) {
+        clearTimeout(initialPageScrollTimeoutRef.current);
+      }
+      if (initialAnchorScrollTimeoutRef.current) {
+        clearTimeout(initialAnchorScrollTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const beforePreviousPageNumber = activePageNumber > 2 ? activePageNumber - 2 : null;
   const previousPageNumber = activePageNumber > 1 ? activePageNumber - 1 : null;
   const nextPageNumber = activePageNumber < maxPageNumber ? activePageNumber + 1 : null;
+  const afterNextPageNumber = activePageNumber < maxPageNumber - 1 ? activePageNumber + 2 : null;
 
   const activePage = useMushafPageData({
     packId,
     pageNumber: activePageNumber,
     expectedVersion,
     enabled: true,
+  });
+  const beforePreviousPage = useMushafPageData({
+    packId,
+    pageNumber: beforePreviousPageNumber,
+    expectedVersion,
+    enabled: beforePreviousPageNumber !== null,
   });
   const previousPage = useMushafPageData({
     packId,
@@ -321,11 +350,19 @@ export function SharedExactMushafReader({
     expectedVersion,
     enabled: nextPageNumber !== null,
   });
+  const afterNextPage = useMushafPageData({
+    packId,
+    pageNumber: afterNextPageNumber,
+    expectedVersion,
+    enabled: afterNextPageNumber !== null,
+  });
   const shouldLoadPendingPage =
     pendingPageNumber !== null &&
     pendingPageNumber !== activePageNumber &&
+    pendingPageNumber !== beforePreviousPageNumber &&
     pendingPageNumber !== previousPageNumber &&
-    pendingPageNumber !== nextPageNumber;
+    pendingPageNumber !== nextPageNumber &&
+    pendingPageNumber !== afterNextPageNumber;
   const pendingPage = useMushafPageData({
     packId,
     pageNumber: pendingPageNumber,
@@ -335,13 +372,87 @@ export function SharedExactMushafReader({
 
   const activePageData =
     activePage.data && activePage.data.pageNumber === activePageNumber ? activePage.data : null;
+  const beforePreviousPageData =
+    beforePreviousPageNumber !== null &&
+    beforePreviousPage.data?.pageNumber === beforePreviousPageNumber
+      ? beforePreviousPage.data
+      : null;
+  const previousPageData =
+    previousPageNumber !== null && previousPage.data?.pageNumber === previousPageNumber
+      ? previousPage.data
+      : null;
+  const nextPageData =
+    nextPageNumber !== null && nextPage.data?.pageNumber === nextPageNumber
+      ? nextPage.data
+      : null;
+  const afterNextPageData =
+    afterNextPageNumber !== null && afterNextPage.data?.pageNumber === afterNextPageNumber
+      ? afterNextPage.data
+      : null;
+  const pendingPageData =
+    pendingPageNumber !== null && pendingPage.data?.pageNumber === pendingPageNumber
+      ? pendingPage.data
+      : null;
   const activePageError = activePage.errorMessage;
-  const activePageIsLoading = activePage.isLoading || (!activePageData && !activePageError);
 
-  const activeVersesByKey = React.useMemo(
-    () => new Map((activePageData?.verses ?? []).map((verse) => [verse.verseKey, verse] as const)),
-    [activePageData?.verses]
+  const freshLoadedPageData = React.useMemo(
+    () =>
+      [
+        beforePreviousPageData,
+        previousPageData,
+        activePageData,
+        nextPageData,
+        afterNextPageData,
+        pendingPageData,
+      ].filter((pageData): pageData is MushafPageData => pageData !== null),
+    [
+      activePageData,
+      afterNextPageData,
+      beforePreviousPageData,
+      nextPageData,
+      pendingPageData,
+      previousPageData,
+    ]
   );
+
+  const loadedPageDataByNumber = React.useMemo(() => {
+    const pageDataByNumber = new Map(residentPageDataByNumber);
+    for (const pageData of freshLoadedPageData) {
+      pageDataByNumber.set(pageData.pageNumber, pageData);
+    }
+    return pageDataByNumber;
+  }, [freshLoadedPageData, residentPageDataByNumber]);
+
+  React.useEffect(() => {
+    if (freshLoadedPageData.length === 0) {
+      return;
+    }
+
+    setResidentPageDataByNumber((current) => {
+      let didChange = false;
+      const next = new Map(current);
+
+      for (const pageData of freshLoadedPageData) {
+        const existing = next.get(pageData.pageNumber);
+        if (
+          existing?.pack.packId === pageData.pack.packId &&
+          existing.pack.version === pageData.pack.version
+        ) {
+          continue;
+        }
+
+        next.set(pageData.pageNumber, pageData);
+        didChange = true;
+      }
+
+      if (!didChange) {
+        return current;
+      }
+
+      residentPageDataByNumberRef.current = next;
+      return next;
+    });
+  }, [freshLoadedPageData]);
 
   const isPageReady = React.useCallback(
     (pageNumber: number): boolean => {
@@ -349,15 +460,27 @@ export function SharedExactMushafReader({
         return true;
       }
 
-      if (previousPage.data?.pageNumber === pageNumber) {
+      if (beforePreviousPageData?.pageNumber === pageNumber) {
         return true;
       }
 
-      if (nextPage.data?.pageNumber === pageNumber) {
+      if (previousPageData?.pageNumber === pageNumber) {
         return true;
       }
 
-      if (pendingPage.data?.pageNumber === pageNumber) {
+      if (nextPageData?.pageNumber === pageNumber) {
+        return true;
+      }
+
+      if (afterNextPageData?.pageNumber === pageNumber) {
+        return true;
+      }
+
+      if (pendingPageData?.pageNumber === pageNumber) {
+        return true;
+      }
+
+      if (residentPageDataByNumberRef.current.has(pageNumber)) {
         return true;
       }
 
@@ -371,11 +494,13 @@ export function SharedExactMushafReader({
     },
     [
       activePageData?.pageNumber,
+      afterNextPageData?.pageNumber,
+      beforePreviousPageData?.pageNumber,
       expectedVersion,
-      nextPage.data?.pageNumber,
+      nextPageData?.pageNumber,
       packId,
-      pendingPage.data?.pageNumber,
-      previousPage.data?.pageNumber,
+      pendingPageData?.pageNumber,
+      previousPageData?.pageNumber,
     ]
   );
 
@@ -385,12 +510,20 @@ export function SharedExactMushafReader({
         return activePageError;
       }
 
+      if (pageNumber === beforePreviousPageNumber && beforePreviousPage.errorMessage) {
+        return beforePreviousPage.errorMessage;
+      }
+
       if (pageNumber === previousPageNumber && previousPage.errorMessage) {
         return previousPage.errorMessage;
       }
 
       if (pageNumber === nextPageNumber && nextPage.errorMessage) {
         return nextPage.errorMessage;
+      }
+
+      if (pageNumber === afterNextPageNumber && afterNextPage.errorMessage) {
+        return afterNextPage.errorMessage;
       }
 
       if (pageNumber === pendingPageNumber && pendingPage.errorMessage) {
@@ -402,6 +535,10 @@ export function SharedExactMushafReader({
     [
       activePageError,
       activePageNumber,
+      afterNextPage.errorMessage,
+      afterNextPageNumber,
+      beforePreviousPage.errorMessage,
+      beforePreviousPageNumber,
       nextPage.errorMessage,
       nextPageNumber,
       pendingPage.errorMessage,
@@ -411,58 +548,12 @@ export function SharedExactMushafReader({
     ]
   );
 
-  const isPageLoading = React.useCallback(
-    (pageNumber: number): boolean => {
-      if (pageNumber === activePageNumber) {
-        return activePageIsLoading;
-      }
-
-      if (pageNumber === previousPageNumber) {
-        return previousPage.isLoading;
-      }
-
-      if (pageNumber === nextPageNumber) {
-        return nextPage.isLoading;
-      }
-
-      if (pageNumber === pendingPageNumber) {
-        return pendingPage.isLoading;
-      }
-
-      return false;
-    },
-    [
-      activePageIsLoading,
-      activePageNumber,
-      nextPage.isLoading,
-      nextPageNumber,
-      pendingPage.isLoading,
-      pendingPageNumber,
-      previousPage.isLoading,
-      previousPageNumber,
-    ]
-  );
-
   const chooseDesiredActivePageNumber = React.useCallback((): number => {
     const currentPageNumber = activePageNumberRef.current;
     const visiblePageNumbers = visiblePageNumbersRef.current;
-    const dominantPageNumbers = dominantVisiblePageNumbersRef.current;
 
     if (visiblePageNumbers.length === 0) {
       return currentPageNumber;
-    }
-
-    if (dominantPageNumbers.includes(currentPageNumber)) {
-      return currentPageNumber;
-    }
-
-    const dominantCandidate = chooseCandidatePageNumber(
-      dominantPageNumbers,
-      currentPageNumber,
-      scrollDirectionRef.current
-    );
-    if (dominantCandidate !== null && dominantCandidate !== currentPageNumber) {
-      return dominantCandidate;
     }
 
     if (visiblePageNumbers.includes(currentPageNumber)) {
@@ -548,20 +639,13 @@ export function SharedExactMushafReader({
     (pageNumber: number, event: LayoutChangeEvent) => {
       const nextY = event.nativeEvent.layout.y;
       const currentY = rowYByPageNumberRef.current.get(pageNumber);
-      if (
-        currentY !== undefined &&
-        Math.abs(currentY - nextY) <= EXACT_PAGE_LAYOUT_EPSILON_PX
-      ) {
+      if (currentY !== undefined && Math.abs(currentY - nextY) <= 1) {
         return;
       }
 
       rowYByPageNumberRef.current.set(pageNumber, nextY);
-
-      if (pageNumber === activePageNumberRef.current) {
-        syncHostAnchor(pageNumber);
-      }
     },
-    [syncHostAnchor]
+    []
   );
 
   React.useEffect(() => {
@@ -575,9 +659,11 @@ export function SharedExactMushafReader({
 
     reconcileActivePageSelection('pending-page-ready');
   }, [
-    nextPage.data?.pageNumber,
-    pendingPage.data?.pageNumber,
-    previousPage.data?.pageNumber,
+    afterNextPageData?.pageNumber,
+    beforePreviousPageData?.pageNumber,
+    nextPageData?.pageNumber,
+    pendingPageData?.pageNumber,
+    previousPageData?.pageNumber,
     reconcileActivePageSelection,
   ]);
 
@@ -597,39 +683,19 @@ export function SharedExactMushafReader({
     }
   ).current;
 
-  const dominantVisibleChanged = React.useRef(
-    ({ viewableItems }: { viewableItems: Array<ViewToken<number>> }) => {
-      const nextDominantPageNumbers = normalizeVisiblePageNumbers(viewableItems);
-      if (arePageListsEqual(dominantVisiblePageNumbersRef.current, nextDominantPageNumbers)) {
-        return;
-      }
-
-      dominantVisiblePageNumbersRef.current = nextDominantPageNumbers;
-      reconcileActivePageSelectionRef.current('dominant-visible-change');
-    }
-  ).current;
-
-  const viewabilityConfigCallbackPairs = React.useRef([
-    {
-      viewabilityConfig: visibleRangeViewabilityConfig,
-      onViewableItemsChanged: visibleRangeChanged,
-    },
-    {
-      viewabilityConfig: dominantViewabilityConfig,
-      onViewableItemsChanged: dominantVisibleChanged,
-    },
-  ]).current;
-
   const handleWordPress = React.useCallback(
-    (payload: {
-      verseKey?: string;
-      location?: string;
-      wordPosition: number;
-    }) => {
+    (
+      pageData: NonNullable<typeof activePageData>,
+      payload: {
+        verseKey?: string;
+        location?: string;
+        wordPosition: number;
+      }
+    ) => {
       const verseKey = resolveMushafVerseKey(payload);
       if (!verseKey) return;
 
-      const verse = activeVersesByKey.get(verseKey);
+      const verse = pageData.verses.find((candidate) => candidate.verseKey === verseKey);
       if (!verse) return;
 
       const parsed = parseVerseKeyNumbers(verseKey);
@@ -650,37 +716,157 @@ export function SharedExactMushafReader({
             : 0,
       });
     },
-    [activeVersesByKey, chapterNamesById, onVersePress]
+    [chapterNamesById, onVersePress]
   );
 
-  const hostTranslateY = React.useMemo(
-    () => Animated.subtract(hostAnchorY, scrollY),
-    [hostAnchorY, scrollY]
-  );
+  React.useEffect(() => {
+    if (hasAppliedInitialPageScrollRef.current) {
+      return;
+    }
+
+    if (initialPageScrollTimeoutRef.current) {
+      clearTimeout(initialPageScrollTimeoutRef.current);
+      initialPageScrollTimeoutRef.current = null;
+    }
+
+    const scrollToInitialPage = (attempt: number) => {
+      const list = listRef.current;
+      if (!list) {
+        if (attempt >= 5) {
+          return;
+        }
+        initialPageScrollTimeoutRef.current = setTimeout(
+          () => scrollToInitialPage(attempt + 1),
+          80
+        );
+        return;
+      }
+
+      list
+        .scrollToIndex({
+          animated: false,
+          index: initialPageIndex,
+          viewOffset: 0,
+          viewPosition: 0,
+        })
+        .then(() => {
+          hasAppliedInitialPageScrollRef.current = true;
+        })
+        .catch(() => {
+          if (attempt >= 5) {
+            return;
+          }
+          initialPageScrollTimeoutRef.current = setTimeout(
+            () => scrollToInitialPage(attempt + 1),
+            80
+          );
+        });
+    };
+
+    initialPageScrollTimeoutRef.current = setTimeout(() => scrollToInitialPage(0), 0);
+  }, [initialPageIndex]);
+
+  React.useEffect(() => {
+    if (!initialHighlightVerseKey) {
+      return;
+    }
+
+    if (hasAppliedInitialAnchorScrollRef.current) {
+      return;
+    }
+
+    const normalizedOffset = Math.max(0, Math.round(initialPageViewOffset));
+    if (normalizedOffset <= 0) {
+      return;
+    }
+
+    if (initialAnchorScrollTimeoutRef.current) {
+      clearTimeout(initialAnchorScrollTimeoutRef.current);
+      initialAnchorScrollTimeoutRef.current = null;
+    }
+
+    const scrollToInitialAnchor = (attempt: number) => {
+      const list = listRef.current;
+      const rowY = rowYByPageNumberRef.current.get(initialPageNumber);
+      if (!list || rowY === undefined) {
+        if (attempt >= 3) {
+          return;
+        }
+        initialAnchorScrollTimeoutRef.current = setTimeout(
+          () => scrollToInitialAnchor(attempt + 1),
+          90
+        );
+        return;
+      }
+
+      list
+        .scrollToOffset({
+          animated: false,
+          offset: Math.max(0, rowY + normalizedOffset),
+        });
+      hasAppliedInitialAnchorScrollRef.current = true;
+    };
+
+    initialAnchorScrollTimeoutRef.current = setTimeout(() => scrollToInitialAnchor(0), 0);
+  }, [initialHighlightVerseKey, initialPageNumber, initialPageViewOffset]);
 
   return (
     <View style={styles.container}>
       <FlashList
+        ref={listRef}
         data={pageNumbers}
         keyExtractor={(item) => `mushaf-page:${packId}:${item}`}
         renderItem={({ item }) => {
-          const isActivePage = item === activePageNumber;
-          const renderAnchorOnly =
-            isActivePage && activePageData !== null && activePageData.pageNumber === item;
-          const pageErrorMessage = renderAnchorOnly ? null : getPageErrorMessage(item);
+          const rowPageData = loadedPageDataByNumber.get(item) ?? null;
+          const pageErrorMessage = rowPageData ? null : getPageErrorMessage(item);
+
+          if (rowPageData) {
+            const rowHighlightVerseKey =
+              item === initialPageNumber && initialHighlightVerseKey
+                ? initialHighlightVerseKey
+                : undefined;
+            return (
+              <View onLayout={(event) => handleRowLayout(item, event)}>
+                <MushafWebViewPage
+                  data={rowPageData}
+                  mushafScaleStep={mushafScaleStep}
+                  highlightVerseKey={rowHighlightVerseKey}
+                  initialHeightOverride={getCachedHeight(item) ?? undefined}
+                  onHighlightAnchorResolved={
+                    rowHighlightVerseKey ? onInitialHighlightAnchorResolved : undefined
+                  }
+                  onFirstContentHeight={
+                    item === initialPageNumber
+                      ? ({ height, durationMs }) =>
+                          onInitialPageFirstHeight({
+                            durationMs,
+                            height,
+                            pageNumber: item,
+                          })
+                      : undefined
+                  }
+                  onHeightResolved={({ height }) =>
+                    onHeightResolved({
+                      cacheKey: getHeightCacheKey(item),
+                      height,
+                      pageNumber: item,
+                    })
+                  }
+                  onSelectionChange={onSelectionChange}
+                  onWordPress={(payload) => handleWordPress(rowPageData, payload)}
+                />
+                <ExactPageFooter pageNumber={item} />
+              </View>
+            );
+          }
 
           return (
             <ExactPlaceholderRow
               pageNumber={item}
               anchorHeight={resolvePageHeight(item)}
               errorMessage={pageErrorMessage}
-              renderAnchorOnly={renderAnchorOnly}
-              showLoadingIndicator={
-                !renderAnchorOnly &&
-                !pageErrorMessage &&
-                ((isActivePage && activePageIsLoading) ||
-                  (item === pendingPageNumber && isPageLoading(item) && !isPageReady(item)))
-              }
+              renderAnchorOnly={false}
+              showLoadingIndicator={false}
               onLayout={(event) => handleRowLayout(item, event)}
             />
           );
@@ -689,68 +875,31 @@ export function SharedExactMushafReader({
           activePageNumber,
           cacheVersion,
           mushafScaleStep,
+          loadedPageNumbers: Array.from(loadedPageDataByNumber.keys()).join(','),
           pendingPageNumber,
           packId,
         }}
         initialScrollIndex={initialPageIndex}
-        drawDistance={Math.max(estimatedHeight * 2, 1200)}
+        drawDistance={Math.max(estimatedHeight * 5, 3600)}
         ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
         contentContainerStyle={contentContainerStyle}
-        viewabilityConfigCallbackPairs={viewabilityConfigCallbackPairs}
-        onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
-          listener: (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-            const nextOffsetY = event.nativeEvent.contentOffset.y;
-            if (nextOffsetY > scrollOffsetYRef.current) {
-              scrollDirectionRef.current = 1;
-            } else if (nextOffsetY < scrollOffsetYRef.current) {
-              scrollDirectionRef.current = -1;
-            }
+        maintainVisibleContentPosition={{ disabled: true }}
+        viewabilityConfig={visibleRangeViewabilityConfig}
+        onViewableItemsChanged={visibleRangeChanged}
+        removeClippedSubviews={false}
+        onScroll={(event) => {
+          const nextOffsetY = event.nativeEvent.contentOffset.y;
+          if (nextOffsetY > scrollOffsetYRef.current) {
+            scrollDirectionRef.current = 1;
+          } else if (nextOffsetY < scrollOffsetYRef.current) {
+            scrollDirectionRef.current = -1;
+          }
 
-            scrollOffsetYRef.current = nextOffsetY;
-          },
-          useNativeDriver: false,
-        })}
+          scrollOffsetYRef.current = nextOffsetY;
+        }}
         scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}
       />
-
-      {activePageData ? (
-        <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
-          <Animated.View
-            style={[
-              styles.hostContainer,
-              {
-                transform: [{ translateY: hostTranslateY }],
-              },
-            ]}
-          >
-            <MushafWebViewPage
-              data={activePageData}
-              mushafScaleStep={mushafScaleStep}
-              initialHeightOverride={getCachedHeight(activePageNumber) ?? undefined}
-              onFirstContentHeight={
-                activePageNumber === initialPageNumber
-                  ? ({ height, durationMs }) =>
-                      onInitialPageFirstHeight({
-                        durationMs,
-                        height,
-                        pageNumber: activePageNumber,
-                      })
-                  : undefined
-              }
-              onHeightResolved={({ height }) =>
-                onHeightResolved({
-                  cacheKey: getHeightCacheKey(activePageNumber),
-                  height,
-                  pageNumber: activePageNumber,
-                })
-              }
-              onSelectionChange={onSelectionChange}
-              onWordPress={handleWordPress}
-            />
-          </Animated.View>
-        </View>
-      ) : null}
     </View>
   );
 }
@@ -759,12 +908,5 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     overflow: 'hidden',
-  },
-  hostContainer: {
-    left: 0,
-    position: 'absolute',
-    right: 0,
-    top: 0,
-    zIndex: 1,
   },
 });
