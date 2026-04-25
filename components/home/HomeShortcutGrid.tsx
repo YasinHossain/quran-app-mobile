@@ -3,7 +3,6 @@ import { Platform, Pressable, Text, View, useWindowDimensions } from 'react-nati
 import { Bookmark, Calendar, Clock3, Pin } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 
-import Colors from '@/constants/Colors';
 import { useAppTheme } from '@/providers/ThemeContext';
 
 const SHORTCUTS = [
@@ -18,23 +17,27 @@ const tileShadow =
     ? { elevation: 2 }
     : {
         shadowColor: '#000',
-        shadowOpacity: 0.08,
-        shadowRadius: 6,
-        shadowOffset: { width: 0, height: 3 },
+        shadowOpacity: 0.1,
+        shadowRadius: 10,
+        shadowOffset: { width: 0, height: 5 },
       };
 
 export function HomeShortcutGrid(): React.JSX.Element {
   const router = useRouter();
-  const { resolvedTheme } = useAppTheme();
-  const palette = Colors[resolvedTheme];
+  const { isDark } = useAppTheme();
   const { width } = useWindowDimensions();
   const numColumns = 4;
-  const gap = 10;
+  const gap = 12;
   const horizontalPadding = 32;
   const tileWidth = React.useMemo(
     () => (width - horizontalPadding - gap * (numColumns - 1)) / numColumns,
     [gap, numColumns, width]
   );
+  const iconBoxSize = React.useMemo(() => Math.min(66, Math.max(58, tileWidth - 10)), [tileWidth]);
+  const tileBackground = isDark ? '#202124' : '#F1F3F5';
+  const tileBorder = isDark ? 'rgba(255,255,255,0.035)' : 'rgba(17,24,39,0.045)';
+  const iconColor = isDark ? '#D7D7D7' : '#394150';
+  const labelColor = isDark ? '#E5E5E5' : '#2F3744';
 
   return (
     <View className="flex-row flex-wrap">
@@ -58,26 +61,28 @@ export function HomeShortcutGrid(): React.JSX.Element {
               onPress={handlePress}
               accessibilityRole="button"
               accessibilityLabel={label}
-              className={[
-                'h-[78px] w-full items-center justify-center rounded-[20px] border border-border/15',
-                'bg-surface-navigation dark:border-border-dark/15 dark:bg-surface-navigation-dark',
-              ].join(' ')}
+              className="items-center justify-center rounded-[18px] border"
               style={({ pressed }) => [
                 tileShadow,
                 {
+                  width: iconBoxSize,
+                  height: iconBoxSize,
+                  backgroundColor: tileBackground,
+                  borderColor: tileBorder,
                   opacity: pressed ? 0.88 : 1,
                   transform: [{ scale: pressed ? 0.97 : 1 }],
                 },
               ]}
             >
-              <Icon size={24} strokeWidth={2.15} color={palette.text} />
+              <Icon size={27} strokeWidth={2.15} color={iconColor} />
             </Pressable>
 
             <Text
               numberOfLines={1}
               adjustsFontSizeToFit
               minimumFontScale={0.82}
-              className="mt-2 text-center text-[12px] font-semibold text-content-primary dark:text-content-primary-dark"
+              className="mt-2 text-center text-[13px] font-bold"
+              style={{ color: labelColor }}
             >
               {label}
             </Text>

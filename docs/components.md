@@ -17,7 +17,7 @@ This document lists reusable UI components currently available in the codebase s
 | --- | --- | --- |
 | `HomeVersePlaceholder` | Centered verse-preview placeholder used as the temporary hero area on the redesigned home screen. | `components/home/HomeVersePlaceholder.tsx` |
 | `HomeShortcutGrid` | Four home shortcut tiles wired to `Recent`, `Bookmarks`, `Planner`, and `Pinned`. | `components/home/HomeShortcutGrid.tsx` |
-| `HomeRecentCard` | Compact recent section with a pill-style continue chip that opens the latest last-read entry. | `components/home/HomeRecentCard.tsx` |
+| `HomeRecentCard` | Compact recent section that shows up to five last-read quick-access chips and opens the selected verse. | `components/home/HomeRecentCard.tsx` |
 | `HomeTabToggle` | Three-state segmented control for switching between `Surah`, `Juz`, and `Page`. | `components/home/HomeTabToggle.tsx` |
 | `JuzCard` | Pressable card that links to a Juz detail screen and shows Juz number/range. | `components/home/JuzCard.tsx` |
 | `JuzGrid` | Responsive grid list layout for rendering multiple Juz cards. | `components/home/JuzGrid.tsx` |

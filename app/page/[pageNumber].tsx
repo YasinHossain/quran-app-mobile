@@ -24,7 +24,7 @@ import {
   MushafWebViewPage,
   MushafWebViewPagePlaceholder,
 } from '@/components/mushaf/MushafWebViewPage';
-import { SharedExactMushafReader } from '@/components/mushaf/SharedExactMushafReader';
+import { MushafSingleDocumentReader } from '@/components/mushaf/MushafSingleDocumentReader';
 import { SettingsSidebar } from '@/components/reader/settings/SettingsSidebar';
 import { VerseActionsSheet } from '@/components/surah/VerseActionsSheet';
 import { AddToPlannerModal, type VerseSummaryDetails } from '@/components/verse-planner-modal';
@@ -588,6 +588,44 @@ export default function PageScreen(): React.JSX.Element {
     () => Array.from({ length: totalPages }, (_value, index) => index + 1),
     [totalPages]
   );
+  const exactReaderBackgroundPageNumbers = React.useMemo(() => {
+    const pageSet = new Set<number>();
+    for (let pageNumber = initialPageNumber - 2; pageNumber <= initialPageNumber + 2; pageNumber += 1) {
+      if (pageNumber >= 1 && pageNumber <= totalPages) {
+        pageSet.add(pageNumber);
+      }
+    }
+
+    const parsedHighlight = parseVerseKeyNumbers(arrivalHighlightVerseKey);
+    const chapterPages =
+      parsedHighlight === null
+        ? null
+        : chapters.find((chapter) => chapter.id === parsedHighlight.surahId)?.pages ?? null;
+
+    if (chapterPages) {
+      const [firstPage, lastPage] = chapterPages;
+      for (let pageNumber = firstPage; pageNumber <= lastPage; pageNumber += 1) {
+        if (pageNumber >= 1 && pageNumber <= totalPages) {
+          pageSet.add(pageNumber);
+        }
+      }
+    } else {
+      for (let pageNumber = initialPageNumber - 6; pageNumber <= initialPageNumber + 6; pageNumber += 1) {
+        if (pageNumber >= 1 && pageNumber <= totalPages) {
+          pageSet.add(pageNumber);
+        }
+      }
+    }
+
+    return Array.from(pageSet).sort((left, right) => {
+      const leftDistance = Math.abs(left - initialPageNumber);
+      const rightDistance = Math.abs(right - initialPageNumber);
+      if (leftDistance !== rightDistance) {
+        return leftDistance - rightDistance;
+      }
+      return left - right;
+    });
+  }, [arrivalHighlightVerseKey, chapters, initialPageNumber, totalPages]);
   const shouldLockInitialExactWindow = Boolean(isExactRenderer && arrivalHighlightVerseKey);
   const initialExactPageWindow = React.useMemo(
     () =>
@@ -1188,30 +1226,19 @@ export default function PageScreen(): React.JSX.Element {
       ) : initialPageProbe.errorMessage ? (
         <ErrorState message={initialPageProbe.errorMessage} />
       ) : isExactRenderer ? (
-        <SharedExactMushafReader
-          pageNumbers={pageNumbers}
-          initialPageIndex={initialPageIndex}
-          initialPageNumber={initialPageNumber}
-          packId={selectedMushafId}
-          expectedVersion={activeMushafVersion}
-          mushafScaleStep={settings.mushafScaleStep}
-          estimatedHeight={estimatedItemSize}
-          initialHighlightVerseKey={arrivalHighlightVerseKey}
-          initialPageViewOffset={initialPageViewOffset}
+        <MushafSingleDocumentReader
+          backgroundPageNumbers={exactReaderBackgroundPageNumbers}
           chapterNamesById={chapterNamesById}
-          contentContainerStyle={listContentContainerStyle}
-          cacheVersion={exactHeightCacheVersion}
-          getCachedHeight={(pageNumber) =>
-            readExactPageHeightCache(getExactHeightCacheKeyForPage(pageNumber))
-          }
-          getHeightCacheKey={getExactHeightCacheKeyForPage}
-          onHeightResolved={handleExactHeightResolved}
-          onInitialHighlightAnchorResolved={
-            arrivalHighlightVerseKey ? handleInitialHighlightAnchorResolved : undefined
-          }
-          onInitialPageFirstHeight={handleExactPageFirstHeight}
+          expectedVersion={activeMushafVersion}
+          focusTopInsetPx={arrivalFocusTopInset}
+          highlightVerseKey={arrivalHighlightVerseKey}
+          initialPageData={initialPageProbe.data}
+          initialPageNumber={initialPageNumber}
+          mushafScaleStep={settings.mushafScaleStep}
           onSelectionChange={handleMushafSelectionChange}
           onVersePress={handleVersePress}
+          packId={selectedMushafId}
+          totalPages={totalPages}
         />
       ) : (
         <FlashList
