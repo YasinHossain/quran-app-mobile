@@ -3,7 +3,9 @@ import { useRouter } from 'expo-router';
 import React from 'react';
 import { Platform, Pressable, ScrollView, Text, View } from 'react-native';
 
+import { CircularProgress } from '@/components/bookmarks/last-read/CircularProgress';
 import { buildNormalizedLastReadEntries } from '@/components/bookmarks/last-read/lastReadEntries';
+import Colors from '@/constants/Colors';
 import { useChapters } from '@/hooks/useChapters';
 import { preloadOfflineSurahNavigationPage } from '@/lib/surah/offlineSurahPageCache';
 import { useBookmarks } from '@/providers/BookmarkContext';
@@ -12,12 +14,12 @@ import { useAppTheme } from '@/providers/ThemeContext';
 
 const cardShadow =
   Platform.OS === 'android'
-    ? { elevation: 2 }
+    ? { elevation: 1 }
     : {
         shadowColor: '#000',
-        shadowOpacity: 0.08,
-        shadowRadius: 8,
-        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.07,
+        shadowRadius: 5,
+        shadowOffset: { width: 0, height: 2 },
       };
 
 export function HomeRecentCard(): React.JSX.Element {
@@ -25,7 +27,8 @@ export function HomeRecentCard(): React.JSX.Element {
   const { lastRead } = useBookmarks();
   const { chapters, isLoading } = useChapters();
   const { settings } = useSettings();
-  const { isDark } = useAppTheme();
+  const { isDark, resolvedTheme } = useAppTheme();
+  const palette = Colors[resolvedTheme];
 
   const recentEntries = React.useMemo(
     () => buildNormalizedLastReadEntries(lastRead, chapters, 5),
@@ -36,11 +39,14 @@ export function HomeRecentCard(): React.JSX.Element {
     isLoading && Object.keys(lastRead).length > 0
       ? 'Loading recent verses...'
       : 'Your recent verses will appear here';
-  const chipBackground = isDark ? '#1E293B' : '#FFFFFF';
-  const chipBorder = isDark ? 'rgba(148,163,184,0.24)' : 'rgba(17,24,39,0.12)';
-  const iconColor = isDark ? '#D7D7D7' : '#394150';
-  const textColor = isDark ? '#F0F0F0' : '#283241';
-  const mutedTextColor = isDark ? '#A9A9A9' : '#667085';
+  const chipBackground = isDark ? '#182333' : palette.surface;
+  const chipBorder = isDark ? 'rgba(148,163,184,0.24)' : palette.border;
+  const iconBackground = isDark ? '#F8FAFC' : '#FFFFFF';
+  const iconColor = palette.muted;
+  const textColor = palette.text;
+  const mutedTextColor = palette.muted;
+  const progressTrack = isDark ? 'rgba(148,163,184,0.22)' : '#E9EDF2';
+  const progressColor = isDark ? '#94A3B8' : '#A7B0BD';
 
   const handlePress = React.useCallback(
     async (entry: (typeof recentEntries)[number]) => {
@@ -78,6 +84,13 @@ export function HomeRecentCard(): React.JSX.Element {
           {recentEntries.map((entry, index) => {
             const verseRef = `${entry.surahId}:${entry.verseNumber}`;
             const isLast = index === recentEntries.length - 1;
+            const progressPercent =
+              entry.chapter.verses_count > 0
+                ? Math.min(
+                    100,
+                    Math.max(0, Math.round((entry.verseNumber / entry.chapter.verses_count) * 100))
+                  )
+                : 0;
 
             return (
               <Pressable
@@ -85,13 +98,16 @@ export function HomeRecentCard(): React.JSX.Element {
                 onPress={() => handlePress(entry)}
                 accessibilityRole="button"
                 accessibilityLabel={`Open recent verse in ${entry.chapter.name_simple}`}
-                className="h-[58px] flex-row items-center rounded-full border px-5"
+                className="flex-row items-center rounded-full"
                 style={({ pressed }) => [
                   cardShadow,
                   {
-                    minWidth: 156,
+                    height: 48,
+                    minWidth: 158,
                     maxWidth: 220,
                     marginRight: isLast ? 0 : 12,
+                    paddingLeft: 9,
+                    paddingRight: 16,
                     backgroundColor: chipBackground,
                     borderColor: chipBorder,
                     borderWidth: 1,
@@ -100,18 +116,31 @@ export function HomeRecentCard(): React.JSX.Element {
                   },
                 ]}
               >
-                <Clock3 size={18} strokeWidth={2.3} color={iconColor} />
-                <View className="ml-3 min-w-0 flex-1">
+                <View
+                  className="h-8 w-8 items-center justify-center rounded-full"
+                  style={{ backgroundColor: iconBackground }}
+                >
+                  <CircularProgress
+                    percentage={progressPercent}
+                    size={28}
+                    strokeWidth={2.5}
+                    showLabel={false}
+                    trackColor={progressTrack}
+                    progressColor={progressColor}
+                    center={<Clock3 size={13} strokeWidth={2.5} color={iconColor} />}
+                  />
+                </View>
+                <View className="ml-2.5 min-w-0 flex-1 flex-row items-baseline">
                   <Text
                     numberOfLines={1}
-                    className="text-[15px] font-bold"
-                    style={{ color: textColor }}
+                    className="min-w-0 shrink text-[14px] font-bold"
+                    style={{ color: textColor, maxWidth: 132 }}
                   >
                     {entry.chapter.name_simple}
                   </Text>
                   <Text
                     numberOfLines={1}
-                    className="mt-0.5 text-[11px] font-semibold"
+                    className="ml-2 text-[12px] font-semibold"
                     style={{ color: mutedTextColor }}
                   >
                     {verseRef}
@@ -123,16 +152,36 @@ export function HomeRecentCard(): React.JSX.Element {
         </ScrollView>
       ) : (
         <View
-          className="h-[58px] flex-row items-center rounded-full border px-5"
+          className="flex-row items-center rounded-full"
           style={[
             cardShadow,
-            { backgroundColor: chipBackground, borderColor: chipBorder, borderWidth: 1 },
+            {
+              height: 48,
+              paddingLeft: 9,
+              paddingRight: 16,
+              backgroundColor: chipBackground,
+              borderColor: chipBorder,
+              borderWidth: 1,
+            },
           ]}
         >
-          <Clock3 size={18} strokeWidth={2.3} color={iconColor} />
+          <View
+            className="h-8 w-8 items-center justify-center rounded-full"
+            style={{ backgroundColor: iconBackground }}
+          >
+            <CircularProgress
+              percentage={0}
+              size={28}
+              strokeWidth={2.5}
+              showLabel={false}
+              trackColor={progressTrack}
+              progressColor={progressColor}
+              center={<Clock3 size={13} strokeWidth={2.5} color={iconColor} />}
+            />
+          </View>
           <Text
             numberOfLines={1}
-            className="ml-3 flex-1 text-[14px] font-semibold"
+            className="ml-2.5 flex-1 text-[13px] font-semibold"
             style={{ color: mutedTextColor }}
           >
             {emptyLabel}

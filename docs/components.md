@@ -18,6 +18,7 @@ This document lists reusable UI components currently available in the codebase s
 | `HomeVersePlaceholder` | Centered verse-preview placeholder used as the temporary hero area on the redesigned home screen. | `components/home/HomeVersePlaceholder.tsx` |
 | `HomeShortcutGrid` | Four home shortcut tiles wired to `Recent`, `Bookmarks`, `Pinned`, and `Planner`. | `components/home/HomeShortcutGrid.tsx` |
 | `HomeRecentCard` | Compact recent section that shows up to five last-read quick-access chips and opens the selected verse. | `components/home/HomeRecentCard.tsx` |
+| `HomeQuickLinksCard` | Persisted home quick-link pills for up to five selected surah/verse targets, with an add modal that reuses the shared Go To selectors. | `components/home/HomeQuickLinksCard.tsx` |
 | `HomeTabToggle` | Three-state segmented control for switching between `Surah`, `Juz`, and `Page`; used as the single sticky tab item in the home list. | `components/home/HomeTabToggle.tsx` |
 | `JuzCard` | Pressable card that links to a Juz detail screen and shows Juz number/range. | `components/home/JuzCard.tsx` |
 | `JuzGrid` | Responsive virtualized grid list for rendering Juz cards without mounting the full tab at once. | `components/home/JuzGrid.tsx` |
@@ -118,4 +119,5 @@ This document lists reusable UI components currently available in the codebase s
 | `CreatePlannerModal` | Modal + form for creating planner plans (start/end surah + verse + estimated days). | `components/bookmarks/planner/CreatePlannerModal.tsx` |
 | `LastReadSection` | “Recent / Last visited” section (header + grid + empty state) used in Bookmarks → Recent. | `components/bookmarks/last-read/LastReadSection.tsx` |
 | `LastReadCard` | Recent card showing a surah progress ring + verse position + remove action. | `components/bookmarks/last-read/LastReadCard.tsx` |
+| `CircularProgress` | Shared circular progress ring used by Recent cards and compact home recent pills. | `components/bookmarks/last-read/CircularProgress.tsx` |
 | `buildNormalizedLastReadEntries` | Shared helper that normalizes stored last-read entries for both the bookmarks recent section and the home recent card. | `components/bookmarks/last-read/lastReadEntries.ts` |

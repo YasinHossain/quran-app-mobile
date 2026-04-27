@@ -1,19 +1,23 @@
 import { Stack, useRouter } from 'expo-router';
 import React from 'react';
 import {
+  Animated,
   Keyboard,
   Platform,
+  ScrollView,
   Text,
   TextInput,
   View,
   useWindowDimensions,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
+  type ScrollViewProps,
 } from 'react-native';
 import { FlashList, type FlashListRef, type ListRenderItemInfo } from '@shopify/flash-list';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { HomeRecentCard } from '@/components/home/HomeRecentCard';
+import { HomeQuickLinksCard } from '@/components/home/HomeQuickLinksCard';
 import { HomeShortcutGrid } from '@/components/home/HomeShortcutGrid';
 import { RevelationType, Surah } from '@/src/core/domain/entities/Surah';
 import { HomeTabToggle, type HomeTab } from '@/components/home/HomeTabToggle';
@@ -30,10 +34,10 @@ import juzData from '../../src/data/juz.json';
 
 import type { Chapter } from '@/types';
 
-const STICKY_HEADER_INDICES = [0];
 const PINNED_TAB_OFFSET_TOLERANCE = 2;
 const LIST_HORIZONTAL_PADDING = 12;
 const TABS_BAR_HORIZONTAL_PADDING = 12;
+const TAB_TOGGLE_OUTER_HEIGHT = 48;
 
 const mapChapterToSurah = (chapter: Chapter): Surah =>
   new Surah({
@@ -112,6 +116,9 @@ function HomeIntro({
       <View className="mt-3">
         <HomeRecentCard />
       </View>
+      <View className="mt-3">
+        <HomeQuickLinksCard />
+      </View>
     </View>
   );
 }
@@ -119,24 +126,31 @@ function HomeIntro({
 function HomeTabsBar({
   activeTab,
   containerWidth,
-  isSticky,
   onTabChange,
 }: {
   activeTab: HomeTab;
   containerWidth: number;
-  isSticky: boolean;
   onTabChange: (tab: HomeTab) => void;
 }): React.JSX.Element {
   const tabsBarWidth = Math.max(0, containerWidth - LIST_HORIZONTAL_PADDING * 2);
   const toggleWidth = Math.max(0, tabsBarWidth - TABS_BAR_HORIZONTAL_PADDING * 2);
 
   return (
-    <View
-      className="bg-background dark:bg-background-dark"
-      style={isSticky ? { zIndex: 10, elevation: 8 } : undefined}
-    >
+    <View className="bg-background dark:bg-background-dark">
       <View className="px-3 pb-3 pt-1" style={{ width: tabsBarWidth, alignSelf: 'center' }}>
         <HomeTabToggle activeTab={activeTab} width={toggleWidth} onTabChange={onTabChange} />
+      </View>
+    </View>
+  );
+}
+
+function HomeTabsSpacer({ containerWidth }: { containerWidth: number }): React.JSX.Element {
+  const tabsBarWidth = Math.max(0, containerWidth - LIST_HORIZONTAL_PADDING * 2);
+
+  return (
+    <View className="bg-background dark:bg-background-dark">
+      <View className="px-3 pb-3 pt-1" style={{ width: tabsBarWidth, alignSelf: 'center' }}>
+        <View style={{ height: TAB_TOGGLE_OUTER_HEIGHT }} />
       </View>
     </View>
   );
@@ -225,9 +239,10 @@ export default function ReadScreen(): React.JSX.Element {
   const headerSearchInputRef = React.useRef<TextInput | null>(null);
   const listRef = React.useRef<FlashListRef<HomeListItem> | null>(null);
   const introHeightRef = React.useRef(0);
+  const tabOverlayScrollY = React.useRef(new Animated.Value(0)).current;
   const scrollOffsetRef = React.useRef(0);
-  const pendingPinnedTabRef = React.useRef<HomeTab | null>(null);
-  const pendingPinnedCommitFrameRef = React.useRef<number | null>(null);
+  const pendingPinnedScrollOffsetRef = React.useRef<number | null>(null);
+  const [introHeight, setIntroHeight] = React.useState(0);
   const { chapters, isLoading, errorMessage } = useChapters();
   const { settings } = useSettings();
   const surahs = React.useMemo(() => chapters.map(mapChapterToSurah), [chapters]);
@@ -294,58 +309,67 @@ export default function ReadScreen(): React.JSX.Element {
   );
 
   const handleIntroLayout = React.useCallback((height: number) => {
-    introHeightRef.current = Math.max(0, height);
+    const nextHeight = Math.max(0, height);
+    introHeightRef.current = nextHeight;
+    setIntroHeight((currentHeight) => (currentHeight === nextHeight ? currentHeight : nextHeight));
   }, []);
-
-  const cancelPendingPinnedCommitFrame = React.useCallback(() => {
-    if (pendingPinnedCommitFrameRef.current !== null) {
-      cancelAnimationFrame(pendingPinnedCommitFrameRef.current);
-      pendingPinnedCommitFrameRef.current = null;
-    }
-  }, []);
-
-  const commitPendingPinnedTab = React.useCallback(() => {
-    const pendingTab = pendingPinnedTabRef.current;
-    if (pendingTab === null) return;
-
-    pendingPinnedTabRef.current = null;
-    setActiveTab((currentTab) => (currentTab === pendingTab ? currentTab : pendingTab));
-  }, []);
-
-  const schedulePendingPinnedCommit = React.useCallback(() => {
-    cancelPendingPinnedCommitFrame();
-
-    pendingPinnedCommitFrameRef.current = requestAnimationFrame(() => {
-      pendingPinnedCommitFrameRef.current = requestAnimationFrame(() => {
-        pendingPinnedCommitFrameRef.current = null;
-        commitPendingPinnedTab();
-      });
-    });
-  }, [cancelPendingPinnedCommitFrame, commitPendingPinnedTab]);
-
-  React.useEffect(() => cancelPendingPinnedCommitFrame, [cancelPendingPinnedCommitFrame]);
 
   const handleListScroll = React.useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
       const nextOffset = event.nativeEvent.contentOffset.y;
       scrollOffsetRef.current = nextOffset;
-
-      if (
-        pendingPinnedTabRef.current !== null &&
-        nextOffset <= introHeightRef.current + PINNED_TAB_OFFSET_TOLERANCE
-      ) {
-        cancelPendingPinnedCommitFrame();
-        commitPendingPinnedTab();
-      }
     },
-    [cancelPendingPinnedCommitFrame, commitPendingPinnedTab]
+    []
   );
+
+  const tabOverlayTranslateY = React.useMemo(() => {
+    const measuredIntroHeight = Math.max(1, introHeight);
+
+    return tabOverlayScrollY.interpolate({
+      inputRange: [0, measuredIntroHeight],
+      outputRange: [introHeight, 0],
+      extrapolate: 'clamp',
+    });
+  }, [introHeight, tabOverlayScrollY]);
+
+  const renderHomeScrollComponent = React.useCallback(
+    (scrollProps: ScrollViewProps) => {
+      const {
+        onScroll,
+        ref: scrollRef,
+        ...restScrollProps
+      } = scrollProps as ScrollViewProps & { ref?: React.Ref<ScrollView> };
+      const composedOnScroll = Animated.event(
+        [{ nativeEvent: { contentOffset: { y: tabOverlayScrollY } } }],
+        {
+          useNativeDriver: true,
+          listener: onScroll,
+        }
+      );
+
+      return (
+        <Animated.ScrollView
+          {...restScrollProps}
+          ref={scrollRef}
+          onScroll={composedOnScroll}
+        />
+      );
+    },
+    [tabOverlayScrollY]
+  );
+
+  React.useLayoutEffect(() => {
+    const pendingOffset = pendingPinnedScrollOffsetRef.current;
+    if (pendingOffset === null) return;
+
+    pendingPinnedScrollOffsetRef.current = null;
+    scrollOffsetRef.current = pendingOffset;
+    tabOverlayScrollY.setValue(pendingOffset);
+    listRef.current?.scrollToOffset({ offset: pendingOffset, animated: false });
+  }, [activeTab, tabOverlayScrollY]);
 
   const handleTabChange = React.useCallback(
     (tab: HomeTab) => {
-      cancelPendingPinnedCommitFrame();
-      pendingPinnedTabRef.current = null;
-
       if (tab === activeTab) return;
 
       const pinnedOffset = introHeightRef.current;
@@ -353,15 +377,16 @@ export default function ReadScreen(): React.JSX.Element {
         pinnedOffset > 0 && scrollOffsetRef.current >= pinnedOffset - PINNED_TAB_OFFSET_TOLERANCE;
 
       if (isPastIntro) {
-        pendingPinnedTabRef.current = tab;
-        listRef.current?.scrollToOffset({ offset: pinnedOffset, animated: false });
-        schedulePendingPinnedCommit();
+        pendingPinnedScrollOffsetRef.current = pinnedOffset;
+        scrollOffsetRef.current = pinnedOffset;
+        tabOverlayScrollY.setValue(pinnedOffset);
+        setActiveTab(tab);
         return;
       }
 
       setActiveTab(tab);
     },
-    [activeTab, cancelPendingPinnedCommitFrame, schedulePendingPinnedCommit]
+    [activeTab, tabOverlayScrollY]
   );
 
   const listHeader = React.useMemo(
@@ -370,16 +395,9 @@ export default function ReadScreen(): React.JSX.Element {
   );
 
   const renderItem = React.useCallback(
-    ({ item, target }: ListRenderItemInfo<HomeListItem>) => {
+    ({ item }: ListRenderItemInfo<HomeListItem>) => {
       if (item.type === 'tabs') {
-        return (
-          <HomeTabsBar
-            activeTab={activeTab}
-            containerWidth={width}
-            isSticky={target === 'StickyHeader'}
-            onTabChange={handleTabChange}
-          />
-        );
+        return <HomeTabsSpacer containerWidth={width} />;
       }
 
       if (item.type === 'message') {
@@ -444,10 +462,10 @@ export default function ReadScreen(): React.JSX.Element {
           keyExtractor={(item) => item.key}
           renderItem={renderItem}
           numColumns={numColumns}
-          stickyHeaderIndices={STICKY_HEADER_INDICES}
           ListHeaderComponent={listHeader}
           onScroll={handleListScroll}
-          scrollEventThrottle={32}
+          scrollEventThrottle={16}
+          renderScrollComponent={renderHomeScrollComponent}
           drawDistance={Platform.OS === 'android' ? 900 : 650}
           overrideProps={{ initialDrawBatchSize: 12 }}
           getItemType={(item) => item.type}
@@ -461,6 +479,26 @@ export default function ReadScreen(): React.JSX.Element {
           extraData={activeTab}
           style={{ flex: 1 }}
         />
+
+        <Animated.View
+          pointerEvents={introHeight > 0 ? 'auto' : 'none'}
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            zIndex: 20,
+            elevation: 8,
+            opacity: introHeight > 0 ? 1 : 0,
+            transform: [{ translateY: tabOverlayTranslateY }],
+          }}
+        >
+          <HomeTabsBar
+            activeTab={activeTab}
+            containerWidth={width}
+            onTabChange={handleTabChange}
+          />
+        </Animated.View>
       </View>
 
       <ComprehensiveSearchDropdown

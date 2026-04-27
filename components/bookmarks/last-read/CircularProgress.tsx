@@ -10,11 +10,19 @@ export function CircularProgress({
   size = 100,
   strokeWidth = 10,
   label = 'Completed',
+  showLabel = true,
+  trackColor,
+  progressColor,
+  center,
 }: {
   percentage: number;
   size?: number;
   strokeWidth?: number;
   label?: string;
+  showLabel?: boolean;
+  trackColor?: string;
+  progressColor?: string;
+  center?: React.ReactNode;
 }): React.JSX.Element {
   const { resolvedTheme } = useAppTheme();
   const palette = Colors[resolvedTheme];
@@ -32,7 +40,7 @@ export function CircularProgress({
           cx={size / 2}
           cy={size / 2}
           r={radius}
-          stroke={palette.border}
+          stroke={trackColor ?? palette.border}
           strokeWidth={strokeWidth}
           fill="transparent"
           opacity={0.6}
@@ -41,7 +49,7 @@ export function CircularProgress({
           cx={size / 2}
           cy={size / 2}
           r={radius}
-          stroke={palette.tint}
+          stroke={progressColor ?? palette.tint}
           strokeWidth={strokeWidth}
           fill="transparent"
           strokeDasharray={strokeDasharray}
@@ -51,10 +59,15 @@ export function CircularProgress({
       </Svg>
 
       <View className="absolute inset-0 items-center justify-center">
-        <Text className="text-base font-bold text-foreground dark:text-foreground-dark">
-          {Math.round(clamped)}%
-        </Text>
-        <Text className="text-[10px] font-medium text-muted dark:text-muted-dark">{label}</Text>
+        {center ??
+          (showLabel ? (
+            <>
+              <Text className="text-base font-bold text-foreground dark:text-foreground-dark">
+                {Math.round(clamped)}%
+              </Text>
+              <Text className="text-[10px] font-medium text-muted dark:text-muted-dark">{label}</Text>
+            </>
+          ) : null)}
       </View>
     </View>
   );
