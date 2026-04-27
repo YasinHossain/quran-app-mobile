@@ -16,15 +16,15 @@ This document lists reusable UI components currently available in the codebase s
 | Component | Description | File Path |
 | --- | --- | --- |
 | `HomeVersePlaceholder` | Centered verse-preview placeholder used as the temporary hero area on the redesigned home screen. | `components/home/HomeVersePlaceholder.tsx` |
-| `HomeShortcutGrid` | Four home shortcut tiles wired to `Recent`, `Bookmarks`, `Planner`, and `Pinned`. | `components/home/HomeShortcutGrid.tsx` |
+| `HomeShortcutGrid` | Four home shortcut tiles wired to `Recent`, `Bookmarks`, `Pinned`, and `Planner`. | `components/home/HomeShortcutGrid.tsx` |
 | `HomeRecentCard` | Compact recent section that shows up to five last-read quick-access chips and opens the selected verse. | `components/home/HomeRecentCard.tsx` |
-| `HomeTabToggle` | Three-state segmented control for switching between `Surah`, `Juz`, and `Page`. | `components/home/HomeTabToggle.tsx` |
+| `HomeTabToggle` | Three-state segmented control for switching between `Surah`, `Juz`, and `Page`; used as the single sticky tab item in the home list. | `components/home/HomeTabToggle.tsx` |
 | `JuzCard` | Pressable card that links to a Juz detail screen and shows Juz number/range. | `components/home/JuzCard.tsx` |
-| `JuzGrid` | Responsive grid list layout for rendering multiple Juz cards. | `components/home/JuzGrid.tsx` |
+| `JuzGrid` | Responsive virtualized grid list for rendering Juz cards without mounting the full tab at once. | `components/home/JuzGrid.tsx` |
 | `PageCard` | Pressable card that links to a mushaf page reader route. | `components/home/PageCard.tsx` |
-| `PageGrid` | Responsive grid list layout for rendering mushaf pages on the home screen. | `components/home/PageGrid.tsx` |
+| `PageGrid` | Responsive virtualized grid list for all 604 mushaf pages on the home screen. | `components/home/PageGrid.tsx` |
 | `SurahCard` | Pressable card that links to a Surah detail screen with metadata. | `components/home/SurahCard.tsx` |
-| `SurahGrid` | Responsive grid list layout for rendering multiple Surah cards. | `components/home/SurahGrid.tsx` |
+| `SurahGrid` | Responsive virtualized grid list for rendering all Surah cards without staged loading. | `components/home/SurahGrid.tsx` |
 
 ## Search Components
 

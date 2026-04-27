@@ -16,7 +16,7 @@ const cardShadow =
         shadowOffset: { width: 0, height: 4 },
       };
 
-export function SurahCard({ surah }: { surah: Surah }): React.JSX.Element {
+function SurahCardComponent({ surah }: { surah: Surah }): React.JSX.Element {
   const router = useRouter();
   const { settings } = useSettings();
 
@@ -29,9 +29,9 @@ export function SurahCard({ surah }: { surah: Surah }): React.JSX.Element {
     <Pressable
       onPress={handlePress}
       className={[
-        'h-20 w-full rounded-xl border border-border/30 dark:border-border-dark/20',
+        'h-[72px] w-full rounded-xl border border-border/30 dark:border-border-dark/20',
         'bg-surface-navigation dark:bg-surface-navigation-dark',
-        'px-4 py-4',
+        'px-4 py-3',
       ].join(' ')}
       style={({ pressed }) => [cardShadow, { opacity: pressed ? 0.92 : 1 }]}
     >
@@ -65,3 +65,5 @@ export function SurahCard({ surah }: { surah: Surah }): React.JSX.Element {
     </Pressable>
   );
 }
+
+export const SurahCard = React.memo(SurahCardComponent);

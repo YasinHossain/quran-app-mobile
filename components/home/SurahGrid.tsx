@@ -1,5 +1,6 @@
 import React from 'react';
-import { FlatList, useWindowDimensions, View } from 'react-native';
+import { Platform, useWindowDimensions, View } from 'react-native';
+import { FlashList } from '@shopify/flash-list';
 
 import type { Surah } from '@/src/core/domain/entities/Surah';
 
@@ -15,32 +16,34 @@ function getNumColumns(width: number): number {
 export function SurahGrid({
   surahs,
   listHeader,
+  scrollEnabled = true,
 }: {
   surahs: Surah[];
   listHeader?: React.ReactElement | null;
+  scrollEnabled?: boolean;
 }): React.JSX.Element {
   const { width } = useWindowDimensions();
   const numColumns = React.useMemo(() => getNumColumns(width), [width]);
 
   return (
-    <FlatList
+    <FlashList
       key={numColumns}
       style={{ flex: 1 }}
       data={surahs}
+      scrollEnabled={scrollEnabled}
       keyExtractor={(item) => String(item.id)}
       numColumns={numColumns}
-      contentContainerStyle={{ paddingBottom: 24 }}
+      drawDistance={Platform.OS === 'android' ? 900 : 650}
+      overrideProps={{ initialDrawBatchSize: 12, scrollEventThrottle: 16 }}
+      contentContainerStyle={{ paddingBottom: 24, paddingHorizontal: 12 }}
       ListHeaderComponent={listHeader}
-      renderItem={({ item, index }) => {
-        const gap = 12;
-        const isLastInRow = numColumns === 1 ? true : (index + 1) % numColumns === 0;
-
+      renderItem={({ item }) => {
         return (
           <View
             style={{
               flex: 1,
-              marginBottom: gap,
-              marginRight: isLastInRow ? 0 : gap,
+              marginBottom: 12,
+              paddingHorizontal: 6,
             }}
           >
             <SurahCard surah={item} />

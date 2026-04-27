@@ -1,4 +1,5 @@
 import { Link } from 'expo-router';
+import React from 'react';
 import { Platform, Pressable, Text, View } from 'react-native';
 
 const cardShadow =
@@ -11,7 +12,7 @@ const cardShadow =
         shadowOffset: { width: 0, height: 4 },
       };
 
-export function PageCard({ pageNumber }: { pageNumber: number }): React.JSX.Element {
+function PageCardComponent({ pageNumber }: { pageNumber: number }): React.JSX.Element {
   return (
     <Link
       href={{ pathname: '/page/[pageNumber]', params: { pageNumber: String(pageNumber) } }}
@@ -19,9 +20,9 @@ export function PageCard({ pageNumber }: { pageNumber: number }): React.JSX.Elem
     >
       <Pressable
         className={[
-          'h-20 w-full rounded-xl border border-border/30 dark:border-border-dark/20',
+          'h-[72px] w-full rounded-xl border border-border/30 dark:border-border-dark/20',
           'bg-surface-navigation dark:bg-surface-navigation-dark',
-          'px-4 py-4',
+          'px-4 py-3',
         ].join(' ')}
         style={({ pressed }) => [cardShadow, { opacity: pressed ? 0.92 : 1 }]}
       >
@@ -51,3 +52,5 @@ export function PageCard({ pageNumber }: { pageNumber: number }): React.JSX.Elem
     </Link>
   );
 }
+
+export const PageCard = React.memo(PageCardComponent);

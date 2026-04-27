@@ -15,9 +15,9 @@ const cardShadow =
     ? { elevation: 2 }
     : {
         shadowColor: '#000',
-        shadowOpacity: 0.1,
-        shadowRadius: 10,
-        shadowOffset: { width: 0, height: 5 },
+        shadowOpacity: 0.08,
+        shadowRadius: 8,
+        shadowOffset: { width: 0, height: 4 },
       };
 
 export function HomeRecentCard(): React.JSX.Element {
@@ -36,8 +36,8 @@ export function HomeRecentCard(): React.JSX.Element {
     isLoading && Object.keys(lastRead).length > 0
       ? 'Loading recent verses...'
       : 'Your recent verses will appear here';
-  const chipBackground = isDark ? '#202124' : '#F1F3F5';
-  const chipBorder = isDark ? 'rgba(255,255,255,0.035)' : 'rgba(17,24,39,0.045)';
+  const chipBackground = isDark ? '#1E293B' : '#FFFFFF';
+  const chipBorder = isDark ? 'rgba(148,163,184,0.24)' : 'rgba(17,24,39,0.12)';
   const iconColor = isDark ? '#D7D7D7' : '#394150';
   const textColor = isDark ? '#F0F0F0' : '#283241';
   const mutedTextColor = isDark ? '#A9A9A9' : '#667085';
@@ -94,6 +94,7 @@ export function HomeRecentCard(): React.JSX.Element {
                     marginRight: isLast ? 0 : 12,
                     backgroundColor: chipBackground,
                     borderColor: chipBorder,
+                    borderWidth: 1,
                     opacity: pressed ? 0.92 : 1,
                     transform: [{ scale: pressed ? 0.985 : 1 }],
                   },
@@ -123,7 +124,10 @@ export function HomeRecentCard(): React.JSX.Element {
       ) : (
         <View
           className="h-[58px] flex-row items-center rounded-full border px-5"
-          style={[cardShadow, { backgroundColor: chipBackground, borderColor: chipBorder }]}
+          style={[
+            cardShadow,
+            { backgroundColor: chipBackground, borderColor: chipBorder, borderWidth: 1 },
+          ]}
         >
           <Clock3 size={18} strokeWidth={2.3} color={iconColor} />
           <Text

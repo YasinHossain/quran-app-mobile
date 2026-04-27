@@ -1,4 +1,5 @@
 import { Link } from 'expo-router';
+import React from 'react';
 import { Platform, Pressable, Text, View } from 'react-native';
 
 export type JuzSummary = {
@@ -16,14 +17,14 @@ const cardShadow =
         shadowOffset: { width: 0, height: 4 },
       };
 
-export function JuzCard({ juz }: { juz: JuzSummary }): React.JSX.Element {
+function JuzCardComponent({ juz }: { juz: JuzSummary }): React.JSX.Element {
   return (
     <Link href={{ pathname: '/juz/[juzNumber]', params: { juzNumber: String(juz.number) } }} asChild>
       <Pressable
         className={[
-          'h-20 w-full rounded-xl border border-border/30 dark:border-border-dark/20',
+          'h-[72px] w-full rounded-xl border border-border/30 dark:border-border-dark/20',
           'bg-surface-navigation dark:bg-surface-navigation-dark',
-          'px-4 py-4',
+          'px-4 py-3',
         ].join(' ')}
         style={({ pressed }) => [cardShadow, { opacity: pressed ? 0.92 : 1 }]}
       >
@@ -53,3 +54,5 @@ export function JuzCard({ juz }: { juz: JuzSummary }): React.JSX.Element {
     </Link>
   );
 }
+
+export const JuzCard = React.memo(JuzCardComponent);

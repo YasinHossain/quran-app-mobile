@@ -8,8 +8,8 @@ import { useAppTheme } from '@/providers/ThemeContext';
 const SHORTCUTS = [
   { label: 'Recent', icon: Clock3, route: { pathname: '/bookmarks', params: { section: 'last-read' } } },
   { label: 'Bookmarks', icon: Bookmark, route: { pathname: '/bookmarks', params: { section: 'bookmarks' } } },
-  { label: 'Planner', icon: Calendar, route: { pathname: '/planner' } },
   { label: 'Pinned', icon: Pin, route: { pathname: '/bookmarks', params: { section: 'pinned' } } },
+  { label: 'Planner', icon: Calendar, route: { pathname: '/planner' } },
 ] as const;
 
 const tileShadow =
@@ -17,9 +17,9 @@ const tileShadow =
     ? { elevation: 2 }
     : {
         shadowColor: '#000',
-        shadowOpacity: 0.1,
-        shadowRadius: 10,
-        shadowOffset: { width: 0, height: 5 },
+        shadowOpacity: 0.08,
+        shadowRadius: 8,
+        shadowOffset: { width: 0, height: 4 },
       };
 
 export function HomeShortcutGrid(): React.JSX.Element {
@@ -27,15 +27,17 @@ export function HomeShortcutGrid(): React.JSX.Element {
   const { isDark } = useAppTheme();
   const { width } = useWindowDimensions();
   const numColumns = 4;
-  const gap = 12;
-  const horizontalPadding = 32;
+  const gap = 10;
+  const horizontalPadding = 24;
+  const gridWidth = width > 0 ? width : 320;
   const tileWidth = React.useMemo(
-    () => (width - horizontalPadding - gap * (numColumns - 1)) / numColumns,
-    [gap, numColumns, width]
+    () => (gridWidth - horizontalPadding - gap * (numColumns - 1)) / numColumns,
+    [gap, gridWidth, numColumns]
   );
-  const iconBoxSize = React.useMemo(() => Math.min(66, Math.max(58, tileWidth - 10)), [tileWidth]);
-  const tileBackground = isDark ? '#202124' : '#F1F3F5';
-  const tileBorder = isDark ? 'rgba(255,255,255,0.035)' : 'rgba(17,24,39,0.045)';
+  const iconBoxSize = React.useMemo(() => Math.min(66, Math.max(54, tileWidth - 8)), [tileWidth]);
+  const iconBorderRadius = React.useMemo(() => Math.round(iconBoxSize * 0.24), [iconBoxSize]);
+  const tileBackground = isDark ? '#1E293B' : '#FFFFFF';
+  const tileBorder = isDark ? 'rgba(148,163,184,0.24)' : 'rgba(17,24,39,0.12)';
   const iconColor = isDark ? '#D7D7D7' : '#394150';
   const labelColor = isDark ? '#E5E5E5' : '#2F3744';
 
@@ -61,7 +63,7 @@ export function HomeShortcutGrid(): React.JSX.Element {
               onPress={handlePress}
               accessibilityRole="button"
               accessibilityLabel={label}
-              className="items-center justify-center rounded-[18px] border"
+              className="items-center justify-center"
               style={({ pressed }) => [
                 tileShadow,
                 {
@@ -69,6 +71,8 @@ export function HomeShortcutGrid(): React.JSX.Element {
                   height: iconBoxSize,
                   backgroundColor: tileBackground,
                   borderColor: tileBorder,
+                  borderRadius: iconBorderRadius,
+                  borderWidth: 1,
                   opacity: pressed ? 0.88 : 1,
                   transform: [{ scale: pressed ? 0.97 : 1 }],
                 },
