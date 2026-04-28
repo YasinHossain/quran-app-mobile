@@ -763,14 +763,14 @@ export function SettingsSidebarContent({
             <SettingsTabToggle activeTab={activeTab} onTabChange={handleActiveTabChange} />
           </View>
 
-          <View className="flex-1 px-3 py-3">
+          <View className="flex-1 py-1">
             {activeTab === 'translations' ? (
               <View className="flex-1">
                 <View className="flex-1">
                   <FlatList
                     data={[{ key: 'content' }]}
                     keyExtractor={(item) => item.key}
-                    contentContainerStyle={{ padding: 8, gap: 14 }}
+                    contentContainerStyle={{ paddingHorizontal: 8, paddingVertical: 12, gap: 14 }}
                     renderItem={() => (
                       <>
                         {pageType === 'tafsir' ? tafsirSection : null}
@@ -856,7 +856,7 @@ export function SettingsSidebarContent({
               </View>
             ) : (
               <View className="flex-1">
-                <View className="gap-4 p-2">
+                <View className="gap-4 px-4 py-3">
                   <SelectionBox label="Mushaf" value={selectedMushafName} onPress={() => openPanel('mushaf')} />
                   <FontSizeSlider
                     label="Mushaf Font Size"

@@ -699,8 +699,18 @@ export function ManageTranslationsPanel({
       if (item.type === 'tabs') {
         return (
           <View
-            className="py-2 border-b bg-background dark:bg-background-dark border-border dark:border-border-dark"
-            style={{ zIndex: 10, elevation: 8 }}
+            className="py-2 bg-background dark:bg-background-dark"
+            style={[
+              { zIndex: 10 },
+              Platform.OS === 'android'
+                ? { shadowColor: isDark ? '#FFFFFF' : '#000000', elevation: isDark ? 2 : 1 }
+                : {
+                    shadowColor: isDark ? '#FFFFFF' : '#000000',
+                    shadowOpacity: isDark ? 0.08 : 0.06,
+                    shadowRadius: 6,
+                    shadowOffset: { width: 0, height: 2 },
+                  },
+            ]}
           >
             <View className="px-4">
               <ResourceTabs
