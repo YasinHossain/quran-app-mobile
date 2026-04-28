@@ -75,12 +75,12 @@ export function MushafPackOptionCard({
         'rounded-2xl border px-4 py-4',
         isSelected
           ? 'border-accent/60 bg-accent/10'
-          : 'border-border/30 bg-interactive dark:border-border-dark/20 dark:bg-interactive-dark',
+          : 'border-border/30 bg-surface dark:border-border-dark/20 dark:bg-surface-dark',
       ].join(' ')}
     >
       <View className="flex-row items-start justify-between gap-3">
         <View className="flex-1">
-          <Text className="text-sm font-semibold text-foreground dark:text-foreground-dark">
+          <Text className="text-sm font-semibold text-foreground dark:text-white">
             {title}
           </Text>
           <Text className="mt-1 text-xs leading-5 text-muted dark:text-muted-dark">

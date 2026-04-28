@@ -35,7 +35,7 @@ export function FontSizeSlider({
         step={1}
         onValueChange={onChange}
         minimumTrackTintColor={palette.tint}
-        maximumTrackTintColor={palette.border}
+        maximumTrackTintColor={resolvedTheme === 'dark' ? 'rgba(255, 255, 255, 0.3)' : 'rgba(0, 0, 0, 0.2)'}
         thumbTintColor={palette.tint}
       />
     </View>

@@ -156,16 +156,25 @@ export function HomeQuickLinksCard(): React.JSX.Element {
     [chapters, router, settings]
   );
 
-  const chipBackground = isDark ? '#182333' : palette.surface;
-  const chipBorder = isDark ? 'rgba(148,163,184,0.24)' : palette.border;
-  const iconBackground = isDark ? '#F8FAFC' : '#FFFFFF';
+  const activeShadow = React.useMemo(
+    () =>
+      Platform.OS === 'android'
+        ? { elevation: 2 }
+        : {
+            shadowColor: '#000',
+            shadowOpacity: 0.1,
+            shadowRadius: 4,
+            shadowOffset: { width: 0, height: 2 },
+          },
+    []
+  );
   const textColor = palette.text;
   const mutedColor = palette.muted;
   const canAdd = quickLinks.length < MAX_QUICK_LINKS;
 
   return (
     <View>
-      <View className="mb-3 flex-row items-center justify-between">
+      <View className="mb-3 flex-row items-center justify-between px-3">
         <Text className="text-lg font-semibold text-content-primary dark:text-content-primary-dark">
           Quick Links
         </Text>
@@ -177,7 +186,7 @@ export function HomeQuickLinksCard(): React.JSX.Element {
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{ paddingRight: 16 }}
+        contentContainerStyle={styles.chipListContent}
       >
         {isHydrated ? (
           <>
@@ -192,65 +201,51 @@ export function HomeQuickLinksCard(): React.JSX.Element {
                   onPress={() => navigateToQuickLink(link)}
                   accessibilityRole="button"
                   accessibilityLabel={`Open quick link ${surahName} ${verseLabel}`}
-                  className="flex-row items-center rounded-full"
+                  className="flex-row items-center rounded-full bg-interactive py-1.5 pl-1.5 pr-2.5 dark:bg-surface-navigation-dark"
                   style={({ pressed }) => [
-                    styles.chipShadow,
                     {
-                      height: 48,
-                      minWidth: 176,
-                      maxWidth: 238,
-                      marginRight: 10,
-                      paddingLeft: 9,
-                      paddingRight: 8,
-                      backgroundColor: chipBackground,
-                      borderColor: chipBorder,
-                      borderWidth: 1,
+                      minHeight: 46,
+                      maxWidth: 242,
                       opacity: pressed ? 0.92 : 1,
                       transform: [{ scale: pressed ? 0.985 : 1 }],
                     },
                   ]}
                 >
-                  <View
-                    className="h-8 w-8 items-center justify-center rounded-full"
-                    style={{ backgroundColor: iconBackground }}
-                  >
-                    <Sparkles size={15} strokeWidth={2.3} color={palette.tint} />
-                  </View>
-                  <View className="ml-2.5 min-w-0 flex-1 flex-row items-baseline">
+                    <View
+                      className="items-center justify-center rounded-full bg-surface-navigation dark:bg-background-dark"
+                      style={[{ width: 34, height: 34 }, activeShadow]}
+                    >
+                      <Sparkles size={16} strokeWidth={2.3} color={palette.tint} />
+                    </View>
                     <Text
                       numberOfLines={1}
-                      className="min-w-0 shrink text-[14px] font-bold"
-                      style={{ color: textColor, maxWidth: 124 }}
+                      className="ml-2.5 min-w-0 shrink text-[15px] font-bold"
+                      style={{ color: textColor }}
                     >
-                      {surahName}
+                      {surahName}{' '}
+                      <Text className="text-[13px] font-semibold" style={{ color: mutedColor }}>
+                        {verseLabel}
+                      </Text>
                     </Text>
-                    <Text
-                      numberOfLines={1}
-                      className="ml-2 text-[12px] font-semibold"
-                      style={{ color: mutedColor }}
+                    <Pressable
+                      onPress={(event) => {
+                        event.stopPropagation();
+                        removeQuickLink(link.id);
+                      }}
+                      hitSlop={8}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Remove quick link ${surahName} ${verseLabel}`}
+                      className="ml-2 h-7 w-7 items-center justify-center rounded-full"
+                      style={({ pressed }) => ({
+                        backgroundColor: pressed
+                          ? isDark
+                            ? 'rgba(148,163,184,0.16)'
+                            : 'rgba(102,112,133,0.10)'
+                          : 'transparent',
+                      })}
                     >
-                      {verseLabel}
-                    </Text>
-                  </View>
-                  <Pressable
-                    onPress={(event) => {
-                      event.stopPropagation();
-                      removeQuickLink(link.id);
-                    }}
-                    hitSlop={8}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Remove quick link ${surahName} ${verseLabel}`}
-                    className="ml-1 h-7 w-7 items-center justify-center rounded-full"
-                    style={({ pressed }) => ({
-                      backgroundColor: pressed
-                        ? isDark
-                          ? 'rgba(148,163,184,0.16)'
-                          : 'rgba(102,112,133,0.10)'
-                        : 'transparent',
-                    })}
-                  >
-                    <X size={14} strokeWidth={2.4} color={mutedColor} />
-                  </Pressable>
+                      <X size={14} strokeWidth={2.4} color={mutedColor} />
+                    </Pressable>
                 </Pressable>
               );
             })}
@@ -260,54 +255,38 @@ export function HomeQuickLinksCard(): React.JSX.Element {
                 onPress={() => setIsAddOpen(true)}
                 accessibilityRole="button"
                 accessibilityLabel="Add quick link"
-                className="flex-row items-center rounded-full"
+                className="flex-row items-center rounded-full bg-interactive py-1.5 pl-1.5 dark:bg-surface-navigation-dark"
                 style={({ pressed }) => [
-                  styles.chipShadow,
                   {
-                    height: 48,
-                    minWidth: quickLinks.length === 0 ? 168 : 52,
-                    marginRight: 0,
-                    paddingLeft: 9,
-                    paddingRight: quickLinks.length === 0 ? 16 : 9,
-                    backgroundColor: chipBackground,
-                    borderColor: chipBorder,
-                    borderWidth: 1,
+                    minHeight: 46,
+                    paddingRight: quickLinks.length === 0 ? 18 : 6,
                     opacity: pressed ? 0.9 : 1,
                     transform: [{ scale: pressed ? 0.985 : 1 }],
                   },
                 ]}
               >
-                <View
-                  className="h-8 w-8 items-center justify-center rounded-full"
-                  style={{ backgroundColor: iconBackground }}
-                >
-                  <Plus size={17} strokeWidth={2.5} color={palette.tint} />
-                </View>
-                {quickLinks.length === 0 ? (
-                  <Text
-                    numberOfLines={1}
-                    className="ml-2.5 text-[13px] font-bold"
-                    style={{ color: textColor }}
+                  <View
+                    className="items-center justify-center rounded-full bg-surface-navigation dark:bg-background-dark"
+                    style={[{ width: 34, height: 34 }, activeShadow]}
                   >
-                    Add quick link
-                  </Text>
-                ) : null}
+                    <Plus size={18} strokeWidth={2.5} color={palette.tint} />
+                  </View>
+                  {quickLinks.length === 0 ? (
+                    <Text
+                      numberOfLines={1}
+                      className="ml-2.5 text-[15px] font-bold"
+                      style={{ color: textColor }}
+                    >
+                      Add quick link
+                    </Text>
+                  ) : null}
               </Pressable>
             ) : null}
           </>
         ) : (
           <View
-            className="flex-row items-center rounded-full"
-            style={[
-              styles.chipShadow,
-              {
-                height: 48,
-                paddingHorizontal: 16,
-                backgroundColor: chipBackground,
-                borderColor: chipBorder,
-                borderWidth: 1,
-              },
-            ]}
+            className="flex-row items-center rounded-full bg-interactive px-5 dark:bg-surface-navigation-dark"
+            style={{ minHeight: 46, alignSelf: 'flex-start' }}
           >
             <ActivityIndicator size="small" color={palette.muted} />
             <Text className="ml-3 text-sm font-semibold" style={{ color: mutedColor }}>
@@ -465,15 +444,32 @@ function AddQuickLinkModal({
 }
 
 const styles = StyleSheet.create({
-  chipShadow:
-    Platform.OS === 'android'
-      ? { elevation: 1 }
-      : {
-          shadowColor: '#000',
-          shadowOpacity: 0.07,
-          shadowRadius: 5,
-          shadowOffset: { width: 0, height: 2 },
-        },
+  chipListContent: {
+    paddingLeft: 12,
+    paddingRight: 16,
+    paddingTop: 4,
+    paddingBottom: 12,
+    gap: 4,
+  },
+  pillPressable: {
+    borderRadius: 999,
+  },
+  pillSurface: {
+    height: 44,
+    borderRadius: 999,
+    paddingLeft: 8,
+    paddingRight: 15,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+  },
+  iconCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   modalRoot: {
     flex: 1,
     justifyContent: 'center',

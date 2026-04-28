@@ -3,6 +3,7 @@ import { Platform, Pressable, Text, View, useWindowDimensions } from 'react-nati
 import { Bookmark, Calendar, Clock3, Pin } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 
+import Colors from '@/constants/Colors';
 import { useAppTheme } from '@/providers/ThemeContext';
 
 const SHORTCUTS = [
@@ -17,32 +18,30 @@ const tileShadow =
     ? { elevation: 2 }
     : {
         shadowColor: '#000',
-        shadowOpacity: 0.08,
-        shadowRadius: 8,
-        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        shadowOffset: { width: 0, height: 2 },
       };
 
 export function HomeShortcutGrid(): React.JSX.Element {
   const router = useRouter();
-  const { isDark } = useAppTheme();
+  const { isDark, resolvedTheme } = useAppTheme();
   const { width } = useWindowDimensions();
   const numColumns = 4;
   const gap = 10;
-  const horizontalPadding = 24;
-  const gridWidth = width > 0 ? width : 320;
-  const tileWidth = React.useMemo(
-    () => (gridWidth - horizontalPadding - gap * (numColumns - 1)) / numColumns,
-    [gap, gridWidth, numColumns]
-  );
-  const iconBoxSize = React.useMemo(() => Math.min(66, Math.max(54, tileWidth - 8)), [tileWidth]);
-  const iconBorderRadius = React.useMemo(() => Math.round(iconBoxSize * 0.24), [iconBoxSize]);
-  const tileBackground = isDark ? '#1E293B' : '#FFFFFF';
-  const tileBorder = isDark ? 'rgba(148,163,184,0.24)' : 'rgba(17,24,39,0.12)';
-  const iconColor = isDark ? '#D7D7D7' : '#394150';
+  const screenWidth = width > 0 ? width : 320;
+  const iconBoxSize = 48; // Smaller iOS app icon size
+  const itemWidth = iconBoxSize; // Match container exactly to icon size for perfect gap calculation
+  const iconBorderRadius = 12; // Squircle
+  const tileBackground = isDark ? '#182333' : '#FFFFFF';
+  const iconColor = Colors[resolvedTheme].tint; // Emerald green
   const labelColor = isDark ? '#E5E5E5' : '#2F3744';
 
   return (
-    <View className="flex-row flex-wrap">
+    <View 
+      className="flex-row justify-evenly w-full"
+      style={{ marginLeft: -12, width: screenWidth }} // Negate the parent's px-3 padding so justify-evenly divides the full screen
+    >
       {SHORTCUTS.map(({ label, icon: Icon, route }, index) => {
         const isLastInRow = (index + 1) % numColumns === 0;
         const handlePress = (): void => {
@@ -57,28 +56,32 @@ export function HomeShortcutGrid(): React.JSX.Element {
           <View
             key={label}
             className="mb-3 items-center"
-            style={{ marginRight: isLastInRow ? 0 : gap, width: tileWidth }}
+            style={{ width: itemWidth }}
           >
             <Pressable
               onPress={handlePress}
               accessibilityRole="button"
               accessibilityLabel={label}
-              className="items-center justify-center"
-              style={({ pressed }) => [
-                tileShadow,
-                {
-                  width: iconBoxSize,
-                  height: iconBoxSize,
-                  backgroundColor: tileBackground,
-                  borderColor: tileBorder,
-                  borderRadius: iconBorderRadius,
-                  borderWidth: 1,
-                  opacity: pressed ? 0.88 : 1,
-                  transform: [{ scale: pressed ? 0.97 : 1 }],
-                },
-              ]}
+              style={({ pressed }) => ({
+                opacity: pressed ? 0.88 : 1,
+                transform: [{ scale: pressed ? 0.96 : 1 }],
+              })}
             >
-              <Icon size={27} strokeWidth={2.15} color={iconColor} />
+              <View
+                className="items-center justify-center"
+                style={[
+                  Platform.OS === 'android' ? { shadowColor: '#000', elevation: 1.5 } : tileShadow,
+                  {
+                    width: iconBoxSize,
+                    height: iconBoxSize,
+                    backgroundColor: tileBackground,
+                    borderRadius: iconBorderRadius,
+                    borderWidth: 0, // Explicitly ensure no border
+                  },
+                ]}
+              >
+                <Icon size={24} strokeWidth={1.5} color={iconColor} />
+              </View>
             </Pressable>
 
             <Text
@@ -86,7 +89,7 @@ export function HomeShortcutGrid(): React.JSX.Element {
               adjustsFontSizeToFit
               minimumFontScale={0.82}
               className="mt-2 text-center text-[13px] font-bold"
-              style={{ color: labelColor }}
+              style={{ color: labelColor, width: 80 }}
             >
               {label}
             </Text>

@@ -2,6 +2,7 @@ export default {
   light: {
     background: '#F7F9F9',
     surface: '#FFFFFF',
+    surfaceNavigation: '#FFFFFF',
     text: '#374151',
     muted: '#6B7280',
     border: '#E5E7EB',
@@ -12,6 +13,7 @@ export default {
   dark: {
     background: '#0F172A',
     surface: '#1E293B',
+    surfaceNavigation: '#182333',
     text: '#E7E5E4',
     muted: '#94A3B8',
     border: '#334155',

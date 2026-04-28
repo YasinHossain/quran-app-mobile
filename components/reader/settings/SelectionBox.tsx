@@ -29,7 +29,7 @@ export function SelectionBox({
         className={[
           'flex-row items-center justify-between gap-3 rounded-xl border',
           'border-border/30 dark:border-border-dark/20',
-          'bg-interactive dark:bg-interactive-dark',
+          'bg-surface dark:bg-surface-dark',
           'px-4 py-3',
           disabled ? 'opacity-50' : '',
         ].join(' ')}
@@ -37,7 +37,7 @@ export function SelectionBox({
       >
         <Text
           numberOfLines={1}
-          className="flex-1 text-sm font-semibold text-foreground dark:text-foreground-dark"
+          className="flex-1 text-sm font-semibold text-foreground dark:text-white"
         >
           {value}
         </Text>

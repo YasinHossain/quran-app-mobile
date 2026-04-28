@@ -165,12 +165,12 @@ export function SettingsSidebar({
           style={[
             styles.sheet,
             {
-              backgroundColor: palette.surface,
+              backgroundColor: palette.background,
               width: sheetWidth,
               transform: [{ translateX }],
             },
           ]}
-          className="bg-surface-navigation dark:bg-surface-navigation-dark border-l border-border/30 dark:border-border-dark/20"
+          className="border-l border-border/30 dark:border-border-dark/20"
         >
           <View
             style={{

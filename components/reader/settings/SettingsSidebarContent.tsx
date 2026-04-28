@@ -874,8 +874,13 @@ export function SettingsSidebarContent({
 
       {isSubPanel ? (
         <Animated.View
-          style={[styles.subPanel, { transform: [{ translateX: subTranslateX }] }]}
-          className="bg-surface-navigation dark:bg-surface-navigation-dark"
+          style={[
+            styles.subPanel,
+            {
+              backgroundColor: palette.background,
+              transform: [{ translateX: subTranslateX }],
+            },
+          ]}
         >
           {subPanel}
         </Animated.View>

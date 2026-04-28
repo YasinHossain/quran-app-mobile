@@ -54,7 +54,7 @@ function TabButton({
         className={[
           'text-xs font-semibold',
           isActive
-            ? 'text-foreground dark:text-foreground-dark'
+            ? 'text-foreground dark:text-white'
             : 'text-muted dark:text-muted-dark',
         ].join(' ')}
       >

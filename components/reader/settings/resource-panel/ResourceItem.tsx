@@ -38,7 +38,7 @@ export function ResourceItem({
             'font-medium text-sm leading-tight',
             isSelected
               ? 'text-on-accent dark:text-on-accent-dark'
-              : 'text-foreground dark:text-foreground-dark',
+              : 'text-foreground dark:text-white',
           ].join(' ')}
         >
           {item.name}
