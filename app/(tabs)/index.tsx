@@ -2,6 +2,7 @@ import { Stack, useRouter } from 'expo-router';
 import React from 'react';
 import {
   Animated,
+  FlatList,
   Keyboard,
   Platform, Linking, Modal, Pressable,
   ScrollView,
@@ -9,11 +10,7 @@ import {
   TextInput,
   View,
   useWindowDimensions,
-  type NativeScrollEvent,
-  type NativeSyntheticEvent,
-  type ScrollViewProps,
 } from 'react-native';
-import { FlashList, type FlashListRef, type ListRenderItemInfo } from '@shopify/flash-list';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Menu, Moon, Sun } from 'lucide-react-native';
 
@@ -36,10 +33,8 @@ import juzData from '../../src/data/juz.json';
 
 import type { Chapter } from '@/types';
 
-const PINNED_TAB_OFFSET_TOLERANCE = 2;
 const LIST_HORIZONTAL_PADDING = 0;
 const TABS_BAR_HORIZONTAL_PADDING = 12;
-const TAB_TOGGLE_OUTER_HEIGHT = 48;
 
 const mapChapterToSurah = (chapter: Chapter): Surah =>
   new Surah({
@@ -62,11 +57,22 @@ function getNumColumns(width: number): number {
 }
 
 type HomeListItem =
-  | { type: 'tabs'; key: 'tabs' }
-  | { type: 'message'; key: 'loading' | 'error'; message: string; tone: 'muted' | 'error' }
   | { type: 'surah'; key: string; surah: Surah }
   | { type: 'juz'; key: string; juz: JuzSummary }
   | { type: 'page'; key: string; pageNumber: number };
+
+type HomeListRow =
+  | { type: 'tabs'; key: 'tabs' }
+  | { type: 'message'; key: 'loading' | 'error'; message: string; tone: 'muted' | 'error' }
+  | { type: 'grid-row'; key: string; items: HomeListItem[] };
+
+function chunkData<T>(data: T[], size: number): T[][] {
+  const chunks = [];
+  for (let i = 0; i < data.length; i += size) {
+    chunks.push(data.slice(i, i + size));
+  }
+  return chunks;
+}
 
 function HomeSearchHeader({
   headerSearchInputRef,
@@ -185,16 +191,9 @@ function HomeSearchHeader({
   );
 }
 
-function HomeIntro({
-  onLayout,
-}: {
-  onLayout: (height: number) => void;
-}): React.JSX.Element {
+function HomeIntro(): React.JSX.Element {
   return (
-    <View
-      onLayout={(event) => onLayout(Math.round(event.nativeEvent.layout.height))}
-      className="pt-3 pb-4"
-    >
+    <View className="pt-3 pb-4">
       <View className="px-3">
         <HomeVersePlaceholder />
       </View>
@@ -224,21 +223,12 @@ function HomeTabsBar({
   const toggleWidth = Math.max(0, tabsBarWidth - TABS_BAR_HORIZONTAL_PADDING * 2);
 
   return (
-    <View className="bg-background dark:bg-background-dark">
+    <View 
+      className="bg-background dark:bg-background-dark"
+      style={{ zIndex: 10 }}
+    >
       <View className="px-3 pb-3 pt-1" style={{ width: tabsBarWidth, alignSelf: 'center' }}>
         <HomeTabToggle activeTab={activeTab} width={toggleWidth} onTabChange={onTabChange} />
-      </View>
-    </View>
-  );
-}
-
-function HomeTabsSpacer({ containerWidth }: { containerWidth: number }): React.JSX.Element {
-  const tabsBarWidth = Math.max(0, containerWidth - LIST_HORIZONTAL_PADDING * 2);
-
-  return (
-    <View className="bg-background dark:bg-background-dark">
-      <View className="px-3 pb-3 pt-1" style={{ width: tabsBarWidth, alignSelf: 'center' }}>
-        <View style={{ height: TAB_TOGGLE_OUTER_HEIGHT }} />
       </View>
     </View>
   );
@@ -272,51 +262,56 @@ function buildHomeListData({
   isLoading,
   pageNumbers,
   surahs,
+  numColumns,
 }: {
   activeTab: HomeTab;
   errorMessage: string | null;
   isLoading: boolean;
   pageNumbers: number[];
   surahs: Surah[];
-}): HomeListItem[] {
-  const data: HomeListItem[] = [{ type: 'tabs', key: 'tabs' }];
+  numColumns: number;
+}): HomeListRow[] {
+  const rows: HomeListRow[] = [{ type: 'tabs', key: 'tabs' }];
 
   if (activeTab === 'surah') {
     if (errorMessage) {
-      data.push({ type: 'message', key: 'error', message: errorMessage, tone: 'error' });
-      return data;
+      rows.push({ type: 'message', key: 'error', message: errorMessage, tone: 'error' });
+      return rows;
     }
 
     if (isLoading) {
-      data.push({ type: 'message', key: 'loading', message: 'Loading…', tone: 'muted' });
-      return data;
+      rows.push({ type: 'message', key: 'loading', message: 'Loading…', tone: 'muted' });
+      return rows;
     }
 
-    data.push(
-      ...surahs.map((surah) => ({ type: 'surah' as const, key: `surah:${surah.id}`, surah }))
-    );
-    return data;
+    const items = surahs.map((surah) => ({ type: 'surah' as const, key: `surah:${surah.id}`, surah }));
+    chunkData(items, numColumns).forEach((chunk, index) => {
+      rows.push({ type: 'grid-row', key: `surah-row:${index}`, items: chunk });
+    });
+    return rows;
   }
 
   if (activeTab === 'juz') {
-    data.push(
-      ...(juzData as JuzSummary[]).map((juz) => ({
-        type: 'juz' as const,
-        key: `juz:${juz.number}`,
-        juz,
-      }))
-    );
-    return data;
+    const items = (juzData as JuzSummary[]).map((juz) => ({
+      type: 'juz' as const,
+      key: `juz:${juz.number}`,
+      juz,
+    }));
+    chunkData(items, numColumns).forEach((chunk, index) => {
+      rows.push({ type: 'grid-row', key: `juz-row:${index}`, items: chunk });
+    });
+    return rows;
   }
 
-  data.push(
-    ...pageNumbers.map((pageNumber) => ({
-      type: 'page' as const,
-      key: `page:${pageNumber}`,
-      pageNumber,
-    }))
-  );
-  return data;
+  const items = pageNumbers.map((pageNumber) => ({
+    type: 'page' as const,
+    key: `page:${pageNumber}`,
+    pageNumber,
+  }));
+  chunkData(items, numColumns).forEach((chunk, index) => {
+    rows.push({ type: 'grid-row', key: `page-row:${index}`, items: chunk });
+  });
+  return rows;
 }
 
 export default function ReadScreen(): React.JSX.Element {
@@ -325,12 +320,7 @@ export default function ReadScreen(): React.JSX.Element {
   const [isHeaderSearchOpen, setIsHeaderSearchOpen] = React.useState(false);
   const [headerSearchQuery, setHeaderSearchQuery] = React.useState('');
   const headerSearchInputRef = React.useRef<TextInput | null>(null);
-  const listRef = React.useRef<FlashListRef<HomeListItem> | null>(null);
-  const introHeightRef = React.useRef(0);
-  const tabOverlayScrollY = React.useRef(new Animated.Value(0)).current;
-  const scrollOffsetRef = React.useRef(0);
-  const pendingPinnedScrollOffsetRef = React.useRef<number | null>(null);
-  const [introHeight, setIntroHeight] = React.useState(0);
+  const listRef = React.useRef<FlatList<HomeListRow> | null>(null);
   const { chapters, isLoading, errorMessage } = useChapters();
   const { settings } = useSettings();
   const surahs = React.useMemo(() => chapters.map(mapChapterToSurah), [chapters]);
@@ -339,8 +329,8 @@ export default function ReadScreen(): React.JSX.Element {
   const numColumns = React.useMemo(() => getNumColumns(width), [width]);
 
   const listData = React.useMemo(
-    () => buildHomeListData({ activeTab, errorMessage, isLoading, pageNumbers, surahs }),
-    [activeTab, errorMessage, isLoading, pageNumbers, surahs]
+    () => buildHomeListData({ activeTab, errorMessage, isLoading, pageNumbers, surahs, numColumns }),
+    [activeTab, errorMessage, isLoading, pageNumbers, surahs, numColumns]
   );
 
   const closeHeaderSearch = React.useCallback(({ clearQuery }: { clearQuery: boolean }) => {
@@ -396,134 +386,73 @@ export default function ReadScreen(): React.JSX.Element {
     [closeHeaderSearch, router]
   );
 
-  const handleIntroLayout = React.useCallback((height: number) => {
-    const nextHeight = Math.max(0, height);
-    introHeightRef.current = nextHeight;
-    setIntroHeight((currentHeight) => (currentHeight === nextHeight ? currentHeight : nextHeight));
-  }, []);
-
-  const handleListScroll = React.useCallback(
-    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-      const nextOffset = event.nativeEvent.contentOffset.y;
-      scrollOffsetRef.current = nextOffset;
-    },
-    []
-  );
-
-  const tabOverlayTranslateY = React.useMemo(() => {
-    const measuredIntroHeight = Math.max(1, introHeight);
-
-    return tabOverlayScrollY.interpolate({
-      inputRange: [0, measuredIntroHeight],
-      outputRange: [introHeight, 0],
-      extrapolate: 'clamp',
-    });
-  }, [introHeight, tabOverlayScrollY]);
-
-  const renderHomeScrollComponent = React.useCallback(
-    (scrollProps: ScrollViewProps) => {
-      const {
-        onScroll,
-        ref: scrollRef,
-        ...restScrollProps
-      } = scrollProps as ScrollViewProps & { ref?: React.Ref<ScrollView> };
-      const composedOnScroll = Animated.event(
-        [{ nativeEvent: { contentOffset: { y: tabOverlayScrollY } } }],
-        {
-          useNativeDriver: true,
-          listener: onScroll,
-        }
-      );
-
-      return (
-        <Animated.ScrollView
-          {...restScrollProps}
-          ref={scrollRef}
-          onScroll={composedOnScroll}
-        />
-      );
-    },
-    [tabOverlayScrollY]
-  );
-
-  React.useLayoutEffect(() => {
-    const pendingOffset = pendingPinnedScrollOffsetRef.current;
-    if (pendingOffset === null) return;
-
-    pendingPinnedScrollOffsetRef.current = null;
-    scrollOffsetRef.current = pendingOffset;
-    tabOverlayScrollY.setValue(pendingOffset);
-    listRef.current?.scrollToOffset({ offset: pendingOffset, animated: false });
-  }, [activeTab, tabOverlayScrollY]);
-
   const handleTabChange = React.useCallback(
     (tab: HomeTab) => {
       if (tab === activeTab) return;
-
-      const pinnedOffset = introHeightRef.current;
-      const isPastIntro =
-        pinnedOffset > 0 && scrollOffsetRef.current >= pinnedOffset - PINNED_TAB_OFFSET_TOLERANCE;
-
-      if (isPastIntro) {
-        pendingPinnedScrollOffsetRef.current = pinnedOffset;
-        scrollOffsetRef.current = pinnedOffset;
-        tabOverlayScrollY.setValue(pinnedOffset);
-        setActiveTab(tab);
-        return;
-      }
-
       setActiveTab(tab);
     },
-    [activeTab, tabOverlayScrollY]
+    [activeTab]
   );
 
   const listHeader = React.useMemo(
-    () => <HomeIntro onLayout={handleIntroLayout} />,
-    [handleIntroLayout]
+    () => <HomeIntro />,
+    []
   );
 
   const renderItem = React.useCallback(
-    ({ item }: ListRenderItemInfo<HomeListItem>) => {
+    ({ item }: { item: HomeListRow }) => {
       if (item.type === 'tabs') {
-        return <HomeTabsSpacer containerWidth={width} />;
+        return (
+          <HomeTabsBar
+            activeTab={activeTab}
+            containerWidth={width}
+            onTabChange={handleTabChange}
+          />
+        );
       }
 
       if (item.type === 'message') {
         return <HomeListMessage message={item.message} tone={item.tone} />;
       }
 
-      if (item.type === 'surah') {
+      if (item.type === 'grid-row') {
         return (
-          <View style={{ flex: 1, marginBottom: 10, paddingHorizontal: 12 }}>
-            <SurahCard surah={item.surah} />
+          <View style={{ flexDirection: 'row', width: '100%' }}>
+            {item.items.map((gridItem, idx) => {
+              const flex = 1 / numColumns;
+              
+              if (gridItem.type === 'surah') {
+                return (
+                  <View key={gridItem.key} style={{ flex, marginBottom: 10, paddingHorizontal: 12 }}>
+                    <SurahCard surah={gridItem.surah} />
+                  </View>
+                );
+              }
+
+              if (gridItem.type === 'juz') {
+                return (
+                  <View key={gridItem.key} style={{ flex, marginBottom: 10, paddingHorizontal: 12 }}>
+                    <JuzCard juz={gridItem.juz} />
+                  </View>
+                );
+              }
+
+              return (
+                <View key={gridItem.key} style={{ flex, marginBottom: 10, paddingHorizontal: 12 }}>
+                  <PageCard pageNumber={gridItem.pageNumber} />
+                </View>
+              );
+            })}
+            {Array.from({ length: numColumns - item.items.length }).map((_, idx) => (
+              <View key={`empty-${idx}`} style={{ flex: 1 / numColumns, paddingHorizontal: 12 }} />
+            ))}
           </View>
         );
       }
-
-      if (item.type === 'juz') {
-        return (
-          <View style={{ flex: 1, marginBottom: 10, paddingHorizontal: 12 }}>
-            <JuzCard juz={item.juz} />
-          </View>
-        );
-      }
-
-      return (
-        <View style={{ flex: 1, marginBottom: 10, paddingHorizontal: 12 }}>
-          <PageCard pageNumber={item.pageNumber} />
-        </View>
-      );
+      
+      return null;
     },
-    [activeTab, handleTabChange, width]
-  );
-
-  const overrideItemLayout = React.useCallback(
-    (layout: { span?: number }, item: HomeListItem, _index: number, maxColumns: number) => {
-      if (item.type === 'tabs' || item.type === 'message') {
-        layout.span = maxColumns;
-      }
-    },
-    []
+    [activeTab, handleTabChange, width, numColumns]
   );
 
   return (
@@ -543,22 +472,19 @@ export default function ReadScreen(): React.JSX.Element {
       />
 
       <View className="flex-1">
-        <FlashList
+        <FlatList
           ref={listRef}
-          key={`home:${numColumns}`}
+          key={`home-flatlist`}
           data={listData}
           keyExtractor={(item) => item.key}
           renderItem={renderItem}
-          numColumns={numColumns}
           ListHeaderComponent={listHeader}
-          onScroll={handleListScroll}
+          stickyHeaderIndices={[1]}
           scrollEventThrottle={16}
-          renderScrollComponent={renderHomeScrollComponent}
-          drawDistance={Platform.OS === 'android' ? 900 : 650}
-          overrideProps={{ initialDrawBatchSize: 12 }}
-          getItemType={(item) => item.type}
-          overrideItemLayout={overrideItemLayout}
-          maintainVisibleContentPosition={{ disabled: true }}
+          initialNumToRender={8}
+          maxToRenderPerBatch={12}
+          windowSize={Platform.OS === 'android' ? 11 : 5}
+          removeClippedSubviews={Platform.OS === 'android'}
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={{
             paddingBottom: 24,
@@ -567,26 +493,6 @@ export default function ReadScreen(): React.JSX.Element {
           extraData={activeTab}
           style={{ flex: 1 }}
         />
-
-        <Animated.View
-          pointerEvents={introHeight > 0 ? 'auto' : 'none'}
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            zIndex: 20,
-            elevation: 8,
-            opacity: introHeight > 0 ? 1 : 0,
-            transform: [{ translateY: tabOverlayTranslateY }],
-          }}
-        >
-          <HomeTabsBar
-            activeTab={activeTab}
-            containerWidth={width}
-            onTabChange={handleTabChange}
-          />
-        </Animated.View>
       </View>
 
       <ComprehensiveSearchDropdown
