@@ -11,7 +11,7 @@ export type JuzSummary = {
 
 const cardShadow =
   Platform.OS === 'android'
-    ? { shadowColor: '#000', elevation: 1 }
+    ? { shadowColor: 'transparent', elevation: 0 }
     : {
         shadowColor: '#000',
         shadowOpacity: 0.06,

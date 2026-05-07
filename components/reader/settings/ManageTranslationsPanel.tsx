@@ -826,7 +826,7 @@ export function ManageTranslationsPanel({
         ListHeaderComponent={headerComponent}
         stickyHeaderIndices={[1]}
         keyboardShouldPersistTaps="handled"
-        removeClippedSubviews={Platform.OS === 'android'}
+        removeClippedSubviews={false}
         scrollEventThrottle={16}
         initialNumToRender={8}
         maxToRenderPerBatch={8}

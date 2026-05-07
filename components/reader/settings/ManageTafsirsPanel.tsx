@@ -776,7 +776,7 @@ export function ManageTafsirsPanel({
         ListHeaderComponent={renderHeader}
         stickyHeaderIndices={[0]}
         keyboardShouldPersistTaps="handled"
-        removeClippedSubviews={Platform.OS === 'android'}
+        removeClippedSubviews={false}
         drawDistance={Platform.OS === 'android' ? 350 : 250}
         getItemType={getRowType}
         overrideItemLayout={overrideRowLayout}

@@ -5,10 +5,10 @@ import {
   FlatList,
   Keyboard,
   Platform, Linking, Modal, Pressable,
-  ScrollView,
   Text,
   TextInput,
   View,
+  type GestureResponderEvent,
   useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -35,6 +35,22 @@ import type { Chapter } from '@/types';
 
 const LIST_HORIZONTAL_PADDING = 0;
 const TABS_BAR_HORIZONTAL_PADDING = 12;
+const HOME_SCROLLBAR_Z_INDEX = 101;
+const HOME_TABS_BAR_ESTIMATED_HEIGHT = 64;
+const HOME_INTRO_ESTIMATED_HEIGHT = 476;
+const HOME_NAV_CARD_HEIGHT = 72;
+const HOME_GRID_ROW_BOTTOM_GAP = 10;
+const HOME_GRID_ROW_HEIGHT = HOME_NAV_CARD_HEIGHT + HOME_GRID_ROW_BOTTOM_GAP;
+const HOME_MESSAGE_ROW_HEIGHT = 52;
+const HOME_CONTENT_BOTTOM_PADDING = 24;
+const HOME_SCROLLBAR_WIDTH = 26;
+const HOME_SCROLLBAR_VISIBLE_WIDTH = 5;
+const HOME_SCROLLBAR_MIN_THUMB_HEIGHT = 48;
+const HOME_SCROLLBAR_HIDE_DELAY_MS = 650;
+
+function clampNumber(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
 
 const mapChapterToSurah = (chapter: Chapter): Surah =>
   new Surah({
@@ -62,9 +78,16 @@ type HomeListItem =
   | { type: 'page'; key: string; pageNumber: number };
 
 type HomeListRow =
+  | { type: 'intro'; key: 'intro' }
   | { type: 'tabs'; key: 'tabs' }
   | { type: 'message'; key: 'loading' | 'error'; message: string; tone: 'muted' | 'error' }
   | { type: 'grid-row'; key: string; items: HomeListItem[] };
+
+type HomeRowLayout = {
+  index: number;
+  length: number;
+  offset: number;
+};
 
 function chunkData<T>(data: T[], size: number): T[][] {
   const chunks = [];
@@ -72,6 +95,32 @@ function chunkData<T>(data: T[], size: number): T[][] {
     chunks.push(data.slice(i, i + size));
   }
   return chunks;
+}
+
+function getHomeRowHeight(
+  row: HomeListRow,
+  homeIntroHeight: number,
+  tabsBarHeight: number
+): number {
+  if (row.type === 'intro') return homeIntroHeight;
+  if (row.type === 'tabs') return tabsBarHeight;
+  if (row.type === 'message') return HOME_MESSAGE_ROW_HEIGHT;
+  return HOME_GRID_ROW_HEIGHT;
+}
+
+function buildHomeRowLayouts(
+  rows: HomeListRow[],
+  homeIntroHeight: number,
+  tabsBarHeight: number
+): HomeRowLayout[] {
+  let offset = 0;
+
+  return rows.map((row, index) => {
+    const length = getHomeRowHeight(row, homeIntroHeight, tabsBarHeight);
+    const layout = { index, length, offset };
+    offset += length;
+    return layout;
+  });
 }
 
 function HomeSearchHeader({
@@ -191,9 +240,16 @@ function HomeSearchHeader({
   );
 }
 
-function HomeIntro(): React.JSX.Element {
+function HomeIntro({
+  onHeightChange,
+}: {
+  onHeightChange?: (height: number) => void;
+}): React.JSX.Element {
   return (
-    <View className="pt-3 pb-4">
+    <View
+      className="pt-3 pb-4"
+      onLayout={(event) => onHeightChange?.(event.nativeEvent.layout.height)}
+    >
       <View className="px-3">
         <HomeVersePlaceholder />
       </View>
@@ -213,22 +269,32 @@ function HomeIntro(): React.JSX.Element {
 function HomeTabsBar({
   activeTab,
   containerWidth,
+  onHeightChange,
   onTabChange,
 }: {
   activeTab: HomeTab;
   containerWidth: number;
+  onHeightChange?: (height: number) => void;
   onTabChange: (tab: HomeTab) => void;
 }): React.JSX.Element {
   const tabsBarWidth = Math.max(0, containerWidth - LIST_HORIZONTAL_PADDING * 2);
   const toggleWidth = Math.max(0, tabsBarWidth - TABS_BAR_HORIZONTAL_PADDING * 2);
 
   return (
-    <View 
+    <View
+      collapsable={false}
+      onLayout={(event) => onHeightChange?.(event.nativeEvent.layout.height)}
       className="bg-background dark:bg-background-dark"
-      style={{ zIndex: 10 }}
     >
-      <View className="px-3 pb-3 pt-1" style={{ width: tabsBarWidth, alignSelf: 'center' }}>
-        <HomeTabToggle activeTab={activeTab} width={toggleWidth} onTabChange={onTabChange} />
+      <View
+        className="px-3 pb-3 pt-1"
+        style={{ width: tabsBarWidth, alignSelf: 'center' }}
+      >
+        <HomeTabToggle
+          activeTab={activeTab}
+          width={toggleWidth}
+          onTabChange={onTabChange}
+        />
       </View>
     </View>
   );
@@ -256,6 +322,228 @@ function HomeListMessage({
   );
 }
 
+function HomeScrollBar({
+  contentHeight,
+  getCurrentScrollOffset,
+  onScrollToOffset,
+  scrollY,
+  topInset,
+  viewportHeight,
+}: {
+  contentHeight: number;
+  getCurrentScrollOffset: () => number;
+  onScrollToOffset: (offset: number) => void;
+  scrollY: Animated.Value;
+  topInset: number;
+  viewportHeight: number;
+}): React.JSX.Element | null {
+  const { isDark } = useAppTheme();
+  const trackHeight = Math.max(0, viewportHeight - topInset - 8);
+  const maxScrollOffset = Math.max(0, contentHeight - viewportHeight);
+  const isScrollable = maxScrollOffset > 1 && trackHeight > HOME_SCROLLBAR_MIN_THUMB_HEIGHT;
+  const thumbHeight = isScrollable
+    ? clampNumber(
+        (viewportHeight / contentHeight) * trackHeight,
+        HOME_SCROLLBAR_MIN_THUMB_HEIGHT,
+        trackHeight
+      )
+    : 0;
+  const maxThumbOffset = Math.max(0, trackHeight - thumbHeight);
+  const dragStartOffsetRef = React.useRef(0);
+  const dragStartYRef = React.useRef(0);
+  const pendingScrollOffsetRef = React.useRef<number | null>(null);
+  const scrollFrameRef = React.useRef<number | null>(null);
+  const hideTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const opacity = React.useRef(new Animated.Value(0)).current;
+
+  const thumbTranslateY = React.useMemo(
+    () =>
+      scrollY.interpolate({
+        inputRange: [0, Math.max(maxScrollOffset, 1)],
+        outputRange: [0, Math.max(maxThumbOffset, 1)],
+        extrapolate: 'clamp',
+      }),
+    [maxScrollOffset, maxThumbOffset, scrollY]
+  );
+
+  const flushPendingScrollOffset = React.useCallback(() => {
+    if (scrollFrameRef.current !== null) {
+      cancelAnimationFrame(scrollFrameRef.current);
+      scrollFrameRef.current = null;
+    }
+
+    const pendingOffset = pendingScrollOffsetRef.current;
+    pendingScrollOffsetRef.current = null;
+    if (pendingOffset !== null) {
+      onScrollToOffset(pendingOffset);
+    }
+  }, [onScrollToOffset]);
+
+  const clearHideTimer = React.useCallback(() => {
+    if (hideTimerRef.current !== null) {
+      clearTimeout(hideTimerRef.current);
+      hideTimerRef.current = null;
+    }
+  }, []);
+
+  const fadeScrollBarOut = React.useCallback(() => {
+    Animated.timing(opacity, {
+      toValue: 0,
+      duration: 180,
+      useNativeDriver: true,
+    }).start();
+  }, [opacity]);
+
+  const showScrollBar = React.useCallback(() => {
+    clearHideTimer();
+    Animated.timing(opacity, {
+      toValue: 1,
+      duration: 90,
+      useNativeDriver: true,
+    }).start();
+
+    hideTimerRef.current = setTimeout(() => {
+      hideTimerRef.current = null;
+      fadeScrollBarOut();
+    }, HOME_SCROLLBAR_HIDE_DELAY_MS);
+  }, [clearHideTimer, fadeScrollBarOut, opacity]);
+
+  const scheduleScrollToOffset = React.useCallback(
+    (offset: number) => {
+      pendingScrollOffsetRef.current = offset;
+      if (scrollFrameRef.current !== null) return;
+
+      scrollFrameRef.current = requestAnimationFrame(() => {
+        scrollFrameRef.current = null;
+        const pendingOffset = pendingScrollOffsetRef.current;
+        pendingScrollOffsetRef.current = null;
+        if (pendingOffset !== null) {
+          onScrollToOffset(pendingOffset);
+        }
+      });
+    },
+    [onScrollToOffset]
+  );
+
+  const scrollToDragPageY = React.useCallback(
+    (pageY: number) => {
+      const dragDeltaY = pageY - dragStartYRef.current;
+      const scrollDelta = (dragDeltaY / Math.max(maxThumbOffset, 1)) * maxScrollOffset;
+      scheduleScrollToOffset(
+        clampNumber(dragStartOffsetRef.current + scrollDelta, 0, maxScrollOffset)
+      );
+    },
+    [maxScrollOffset, maxThumbOffset, scheduleScrollToOffset]
+  );
+
+  React.useEffect(
+    () => () => {
+      if (scrollFrameRef.current !== null) {
+        cancelAnimationFrame(scrollFrameRef.current);
+      }
+      clearHideTimer();
+    },
+    [clearHideTimer]
+  );
+
+  React.useEffect(() => {
+    if (!isScrollable) {
+      opacity.setValue(0);
+      return undefined;
+    }
+
+    const listenerId = scrollY.addListener(() => {
+      showScrollBar();
+    });
+
+    return () => {
+      scrollY.removeListener(listenerId);
+    };
+  }, [isScrollable, opacity, scrollY, showScrollBar]);
+
+  const hideScrollBarSoon = React.useCallback(() => {
+    clearHideTimer();
+    hideTimerRef.current = setTimeout(() => {
+      hideTimerRef.current = null;
+      fadeScrollBarOut();
+    }, HOME_SCROLLBAR_HIDE_DELAY_MS);
+  }, [clearHideTimer, fadeScrollBarOut]);
+
+  const finishDrag = React.useCallback(() => {
+    flushPendingScrollOffset();
+    hideScrollBarSoon();
+  }, [flushPendingScrollOffset, hideScrollBarSoon]);
+
+  const handleResponderGrant = React.useCallback(
+    (event: GestureResponderEvent) => {
+      showScrollBar();
+      dragStartOffsetRef.current = clampNumber(getCurrentScrollOffset(), 0, maxScrollOffset);
+      dragStartYRef.current = event.nativeEvent.pageY;
+    },
+    [getCurrentScrollOffset, maxScrollOffset, showScrollBar]
+  );
+
+  const handleResponderMove = React.useCallback(
+    (event: GestureResponderEvent) => {
+      showScrollBar();
+      scrollToDragPageY(event.nativeEvent.pageY);
+    },
+    [scrollToDragPageY, showScrollBar]
+  );
+
+  if (!isScrollable) return null;
+
+  const thumbColor = isDark ? 'rgba(226, 232, 240, 0.62)' : 'rgba(47, 55, 68, 0.48)';
+
+  return (
+    <Animated.View
+      pointerEvents="box-none"
+      style={{
+        position: 'absolute',
+        top: topInset,
+        right: 0,
+        bottom: 8,
+        width: HOME_SCROLLBAR_WIDTH,
+        opacity,
+        zIndex: HOME_SCROLLBAR_Z_INDEX,
+        ...(Platform.OS === 'android'
+          ? { elevation: HOME_SCROLLBAR_Z_INDEX, shadowColor: 'transparent' }
+          : {}),
+      }}
+    >
+      <Animated.View
+        onStartShouldSetResponder={() => isScrollable}
+        onMoveShouldSetResponder={() => isScrollable}
+        onResponderGrant={handleResponderGrant}
+        onResponderMove={handleResponderMove}
+        onResponderRelease={finishDrag}
+        onResponderTerminate={finishDrag}
+        onResponderTerminationRequest={() => false}
+        style={{
+          position: 'absolute',
+          top: 0,
+          right: 0,
+          width: HOME_SCROLLBAR_WIDTH,
+          height: thumbHeight,
+          transform: [{ translateY: thumbTranslateY }],
+        }}
+      >
+        <View
+          style={{
+            position: 'absolute',
+            top: 0,
+            right: 8,
+            bottom: 0,
+            width: HOME_SCROLLBAR_VISIBLE_WIDTH,
+            borderRadius: 999,
+            backgroundColor: thumbColor,
+          }}
+        />
+      </Animated.View>
+    </Animated.View>
+  );
+}
+
 function buildHomeListData({
   activeTab,
   errorMessage,
@@ -271,7 +559,10 @@ function buildHomeListData({
   surahs: Surah[];
   numColumns: number;
 }): HomeListRow[] {
-  const rows: HomeListRow[] = [{ type: 'tabs', key: 'tabs' }];
+  const rows: HomeListRow[] = [
+    { type: 'intro', key: 'intro' },
+    { type: 'tabs', key: 'tabs' },
+  ];
 
   if (activeTab === 'surah') {
     if (errorMessage) {
@@ -321,6 +612,12 @@ export default function ReadScreen(): React.JSX.Element {
   const [headerSearchQuery, setHeaderSearchQuery] = React.useState('');
   const headerSearchInputRef = React.useRef<TextInput | null>(null);
   const listRef = React.useRef<FlatList<HomeListRow> | null>(null);
+  const scrollY = React.useRef(new Animated.Value(0)).current;
+  const homeIntroHeightRef = React.useRef(0);
+  const listScrollOffsetRef = React.useRef(0);
+  const [homeIntroHeight, setHomeIntroHeight] = React.useState(0);
+  const [tabsBarHeight, setTabsBarHeight] = React.useState(HOME_TABS_BAR_ESTIMATED_HEIGHT);
+  const [listViewportHeight, setListViewportHeight] = React.useState(0);
   const { chapters, isLoading, errorMessage } = useChapters();
   const { settings } = useSettings();
   const surahs = React.useMemo(() => chapters.map(mapChapterToSurah), [chapters]);
@@ -331,6 +628,27 @@ export default function ReadScreen(): React.JSX.Element {
   const listData = React.useMemo(
     () => buildHomeListData({ activeTab, errorMessage, isLoading, pageNumbers, surahs, numColumns }),
     [activeTab, errorMessage, isLoading, pageNumbers, surahs, numColumns]
+  );
+  const effectiveHomeIntroHeight =
+    homeIntroHeight > 0 ? homeIntroHeight : HOME_INTRO_ESTIMATED_HEIGHT;
+  const rowLayouts = React.useMemo(
+    () => buildHomeRowLayouts(listData, effectiveHomeIntroHeight, tabsBarHeight),
+    [effectiveHomeIntroHeight, listData, tabsBarHeight]
+  );
+  const listContentHeight = React.useMemo(() => {
+    const lastLayout = rowLayouts[rowLayouts.length - 1];
+    const rowsHeight = lastLayout ? lastLayout.offset + lastLayout.length : 0;
+    return rowsHeight + HOME_CONTENT_BOTTOM_PADDING;
+  }, [rowLayouts]);
+  const getHomeItemLayout = React.useCallback(
+    (_data: ArrayLike<HomeListRow> | null | undefined, index: number) => {
+      return rowLayouts[index] ?? { index, length: HOME_GRID_ROW_HEIGHT, offset: 0 };
+    },
+    [rowLayouts]
+  );
+  const listExtraData = React.useMemo(
+    () => ({ activeTab, homeIntroHeight: effectiveHomeIntroHeight, numColumns, tabsBarHeight }),
+    [activeTab, effectiveHomeIntroHeight, numColumns, tabsBarHeight]
   );
 
   const closeHeaderSearch = React.useCallback(({ clearQuery }: { clearQuery: boolean }) => {
@@ -394,36 +712,93 @@ export default function ReadScreen(): React.JSX.Element {
     [activeTab]
   );
 
-  const listHeader = React.useMemo(
-    () => <HomeIntro />,
-    []
+  const handleHomeIntroHeightChange = React.useCallback((height: number) => {
+    if (Math.abs(homeIntroHeightRef.current - height) < 1) return;
+
+    homeIntroHeightRef.current = height;
+    setHomeIntroHeight(height);
+  }, []);
+
+  const handleTabsBarHeightChange = React.useCallback((height: number) => {
+    setTabsBarHeight((currentHeight) =>
+      Math.abs(currentHeight - height) < 1 ? currentHeight : height
+    );
+  }, []);
+
+  const handleListScroll = React.useCallback((event: { nativeEvent: { contentOffset: { y: number } } }) => {
+    const offset = event.nativeEvent.contentOffset.y;
+    listScrollOffsetRef.current = offset;
+  }, []);
+
+  const handleAnimatedListScroll = React.useMemo(
+    () =>
+      Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
+        listener: handleListScroll,
+        useNativeDriver: true,
+      }),
+    [handleListScroll, scrollY]
   );
+
+  const handleListLayout = React.useCallback((event: { nativeEvent: { layout: { height: number } } }) => {
+    const height = event.nativeEvent.layout.height;
+    setListViewportHeight((currentHeight) =>
+      Math.abs(currentHeight - height) < 1 ? currentHeight : height
+    );
+  }, []);
+
+  const scrollToHomeOffset = React.useCallback((offset: number) => {
+    const maxOffset = Math.max(0, listContentHeight - listViewportHeight);
+    const nextOffset = clampNumber(offset, 0, maxOffset);
+    listScrollOffsetRef.current = nextOffset;
+    scrollY.setValue(nextOffset);
+    listRef.current?.scrollToOffset({ offset: nextOffset, animated: false });
+  }, [listContentHeight, listViewportHeight, scrollY]);
+
+  const getCurrentScrollOffset = React.useCallback(() => listScrollOffsetRef.current, []);
+
+  React.useEffect(() => {
+    if (listViewportHeight <= 0) return;
+
+    const maxOffset = Math.max(0, listContentHeight - listViewportHeight);
+    if (listScrollOffsetRef.current <= maxOffset) return;
+
+    scrollToHomeOffset(maxOffset);
+  }, [listContentHeight, listViewportHeight, scrollToHomeOffset]);
 
   const renderItem = React.useCallback(
     ({ item }: { item: HomeListRow }) => {
+      if (item.type === 'intro') {
+        return <HomeIntro onHeightChange={handleHomeIntroHeightChange} />;
+      }
+
       if (item.type === 'tabs') {
         return (
           <HomeTabsBar
             activeTab={activeTab}
             containerWidth={width}
+            onHeightChange={handleTabsBarHeightChange}
             onTabChange={handleTabChange}
           />
         );
       }
 
       if (item.type === 'message') {
-        return <HomeListMessage message={item.message} tone={item.tone} />;
+        return (
+          <View style={{ height: HOME_MESSAGE_ROW_HEIGHT }}>
+            <HomeListMessage message={item.message} tone={item.tone} />
+          </View>
+        );
       }
 
       if (item.type === 'grid-row') {
         return (
-          <View style={{ flexDirection: 'row', width: '100%' }}>
-            {item.items.map((gridItem, idx) => {
+          <View style={{ flexDirection: 'row', width: '100%', height: HOME_GRID_ROW_HEIGHT }}>
+            {item.items.map((gridItem) => {
               const flex = 1 / numColumns;
               
               if (gridItem.type === 'surah') {
                 return (
-                  <View key={gridItem.key} style={{ flex, marginBottom: 10, paddingHorizontal: 12 }}>
+                  <View key={gridItem.key} style={{ flex, height: HOME_NAV_CARD_HEIGHT, paddingHorizontal: 12 }}>
                     <SurahCard surah={gridItem.surah} />
                   </View>
                 );
@@ -431,14 +806,14 @@ export default function ReadScreen(): React.JSX.Element {
 
               if (gridItem.type === 'juz') {
                 return (
-                  <View key={gridItem.key} style={{ flex, marginBottom: 10, paddingHorizontal: 12 }}>
+                  <View key={gridItem.key} style={{ flex, height: HOME_NAV_CARD_HEIGHT, paddingHorizontal: 12 }}>
                     <JuzCard juz={gridItem.juz} />
                   </View>
                 );
               }
 
               return (
-                <View key={gridItem.key} style={{ flex, marginBottom: 10, paddingHorizontal: 12 }}>
+                <View key={gridItem.key} style={{ flex, height: HOME_NAV_CARD_HEIGHT, paddingHorizontal: 12 }}>
                   <PageCard pageNumber={gridItem.pageNumber} />
                 </View>
               );
@@ -452,7 +827,14 @@ export default function ReadScreen(): React.JSX.Element {
       
       return null;
     },
-    [activeTab, handleTabChange, width, numColumns]
+    [
+      activeTab,
+      handleHomeIntroHeightChange,
+      handleTabChange,
+      handleTabsBarHeightChange,
+      numColumns,
+      width,
+    ]
   );
 
   return (
@@ -472,26 +854,37 @@ export default function ReadScreen(): React.JSX.Element {
       />
 
       <View className="flex-1">
-        <FlatList
+        <Animated.FlatList
           ref={listRef}
           key={`home-flatlist`}
           data={listData}
           keyExtractor={(item) => item.key}
           renderItem={renderItem}
-          ListHeaderComponent={listHeader}
-          stickyHeaderIndices={[1]}
+          getItemLayout={getHomeItemLayout}
+          removeClippedSubviews={Platform.OS === 'android'}
+          onLayout={handleListLayout}
+          onScroll={handleAnimatedListScroll}
           scrollEventThrottle={16}
+          showsVerticalScrollIndicator={false}
           initialNumToRender={8}
           maxToRenderPerBatch={12}
-          windowSize={Platform.OS === 'android' ? 11 : 5}
-          removeClippedSubviews={Platform.OS === 'android'}
+          updateCellsBatchingPeriod={32}
+          windowSize={Platform.OS === 'android' ? 11 : 7}
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={{
-            paddingBottom: 24,
+            paddingBottom: HOME_CONTENT_BOTTOM_PADDING,
             paddingHorizontal: LIST_HORIZONTAL_PADDING,
           }}
-          extraData={activeTab}
+          extraData={listExtraData}
           style={{ flex: 1 }}
+        />
+        <HomeScrollBar
+          contentHeight={listContentHeight}
+          getCurrentScrollOffset={getCurrentScrollOffset}
+          onScrollToOffset={scrollToHomeOffset}
+          scrollY={scrollY}
+          topInset={8}
+          viewportHeight={listViewportHeight}
         />
       </View>
 
