@@ -124,7 +124,7 @@ export function HomeRecentCard(): React.JSX.Element {
                   </View>
                   <Text
                     numberOfLines={1}
-                    className="ml-2.5 min-w-0 shrink text-[15px] font-bold"
+                    className="ml-2.5 flex-1 text-[15px] font-bold"
                     style={{ color: textColor }}
                   >
                     {entry.chapter.name_simple}{' '}
@@ -138,7 +138,7 @@ export function HomeRecentCard(): React.JSX.Element {
         </ScrollView>
       ) : (
         <View
-          className="flex-row items-center rounded-full bg-interactive py-1.5 pl-1.5 pr-4 dark:bg-surface-navigation-dark"
+          className="mx-3 flex-row items-center rounded-full bg-interactive py-1.5 pl-1.5 pr-4 dark:bg-surface-navigation-dark"
           style={{ minHeight: 46, alignSelf: 'flex-start' }}
         >
           <View

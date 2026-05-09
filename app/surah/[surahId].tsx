@@ -20,6 +20,7 @@ import {
 } from 'react-native';
 
 import { ComprehensiveSearchDropdown } from '@/components/search/ComprehensiveSearchDropdown';
+import { HeaderActionButton, HeaderSearchBar } from '@/components/search/HeaderSearchBar';
 import { HeaderSearchInput } from '@/components/search/HeaderSearchInput';
 import {
   MushafSingleDocumentReader,
@@ -1295,49 +1296,34 @@ export default function SurahScreen(): React.JSX.Element {
     <View className="flex-1 bg-background dark:bg-background-dark">
       <Stack.Screen
         options={{
-          title: '',
-          headerTitleAlign: 'center',
-          headerLeft: () => (
-            <Pressable
-              onPress={() => router.back()}
-              hitSlop={10}
-              accessibilityRole="button"
-              accessibilityLabel="Go back"
-              style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1, marginLeft: 12 })}
-            >
-              <ArrowLeft color={palette.text} size={22} strokeWidth={2.25} />
-            </Pressable>
-          ),
-          headerTitle: () => (
-            <View style={{ width: '100%', paddingHorizontal: 8 }}>
-              <HeaderSearchInput
-                ref={(node) => {
-                  headerSearchInputRef.current = node;
-                }}
-                value={headerSearchQuery}
-                onChangeText={updateHeaderSearchQuery}
-                placeholder="Search…"
-                onFocus={() => setIsHeaderSearchOpen(true)}
-                onSubmitEditing={navigateToSearchPage}
-              />
-            </View>
-          ),
-          headerRight: () => (
-            <Pressable
-              onPress={openTranslationSettings}
-              hitSlop={10}
-              accessibilityRole="button"
-              accessibilityLabel="Open settings"
-            >
-              {({ pressed }) => (
-                <Settings
-                  color={palette.text}
-                  size={22}
-                  strokeWidth={2.25}
-                  style={{ marginRight: 12, opacity: pressed ? 0.5 : 1 }}
+          header: () => (
+            <HeaderSearchBar
+              left={
+                <HeaderActionButton accessibilityLabel="Go back" onPress={() => router.back()}>
+                  <ArrowLeft color={palette.text} size={22} strokeWidth={2.25} />
+                </HeaderActionButton>
+              }
+              search={
+                <HeaderSearchInput
+                  ref={(node) => {
+                    headerSearchInputRef.current = node;
+                  }}
+                  value={headerSearchQuery}
+                  onChangeText={updateHeaderSearchQuery}
+                  placeholder="Search…"
+                  onFocus={() => setIsHeaderSearchOpen(true)}
+                  onSubmitEditing={navigateToSearchPage}
                 />
-              )}
-            </Pressable>
+              }
+              right={
+                <HeaderActionButton
+                  accessibilityLabel="Open settings"
+                  onPress={openTranslationSettings}
+                >
+                  <Settings color={palette.text} size={22} strokeWidth={2.25} />
+                </HeaderActionButton>
+              }
+            />
           ),
         }}
       />

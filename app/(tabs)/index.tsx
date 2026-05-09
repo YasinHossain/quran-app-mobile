@@ -24,6 +24,7 @@ import { JuzCard, type JuzSummary } from '@/components/home/JuzCard';
 import { PageCard } from '@/components/home/PageCard';
 import { SurahCard } from '@/components/home/SurahCard';
 import { ComprehensiveSearchDropdown } from '@/components/search/ComprehensiveSearchDropdown';
+import { HeaderActionButton, HeaderSearchBar } from '@/components/search/HeaderSearchBar';
 import { HeaderSearchInput } from '@/components/search/HeaderSearchInput';
 import { useChapters } from '@/hooks/useChapters';
 import { preloadOfflineSurahNavigationPage } from '@/lib/surah/offlineSurahPageCache';
@@ -174,69 +175,63 @@ function HomeSearchHeader({
   };
 
   return (
-    <View
-      style={{ paddingTop: insets.top + 8, paddingHorizontal: 12, paddingBottom: 12 }}
-      className="bg-background dark:bg-background-dark flex-row items-center gap-3"
-    >
-      <View>
-        <Pressable
-          onPress={openMenu}
-          hitSlop={8}
-          className="p-2 -ml-2 rounded-full active:bg-interactive dark:active:bg-interactive-dark"
-        >
+    <HeaderSearchBar
+      left={
+        <View>
+          <HeaderActionButton accessibilityLabel="Open menu" onPress={openMenu}>
           <Menu size={24} color={isDark ? '#E5E5E5' : '#2F3744'} />
-        </Pressable>
+          </HeaderActionButton>
 
-        <Modal transparent visible={isMenuOpen} onRequestClose={closeMenu}>
-          <Animated.View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', opacity: fadeAnim }}>
-            <Pressable style={{ flex: 1, position: 'absolute', width: '100%', height: '100%' }} onPress={closeMenu} />
-            <Animated.View 
-              style={{ 
-                width: 280,
-                height: '100%',
-                backgroundColor: isDark ? '#1E293B' : '#FFFFFF',
-                transform: [{ translateX: slideAnim }],
-                paddingTop: insets.top,
-              }} 
-            >
-              <View className="px-5 py-6 border-b border-border dark:border-border-dark">
-                <Text className="text-xl font-bold text-foreground dark:text-foreground-dark">Quran</Text>
-              </View>
-              <Pressable
-                onPress={() => {
-                  closeMenu();
-                  Linking.openURL('https://appquran.com').catch(() => {});
+          <Modal transparent visible={isMenuOpen} onRequestClose={closeMenu}>
+            <Animated.View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', opacity: fadeAnim }}>
+              <Pressable style={{ flex: 1, position: 'absolute', width: '100%', height: '100%' }} onPress={closeMenu} />
+              <Animated.View
+                style={{
+                  width: 280,
+                  height: '100%',
+                  backgroundColor: isDark ? '#1E293B' : '#FFFFFF',
+                  transform: [{ translateX: slideAnim }],
+                  paddingTop: insets.top,
                 }}
-                className="px-5 py-4 active:bg-interactive dark:active:bg-interactive-dark"
               >
-                <Text className="text-base font-semibold text-content-primary dark:text-content-primary-dark">appquran.com</Text>
-              </Pressable>
+                <View className="px-5 py-6 border-b border-border dark:border-border-dark">
+                  <Text className="text-xl font-bold text-foreground dark:text-foreground-dark">Quran</Text>
+                </View>
+                <Pressable
+                  onPress={() => {
+                    closeMenu();
+                    Linking.openURL('https://appquran.com').catch(() => {});
+                  }}
+                  className="px-5 py-4 active:bg-interactive dark:active:bg-interactive-dark"
+                >
+                  <Text className="text-base font-semibold text-content-primary dark:text-content-primary-dark">appquran.com</Text>
+                </Pressable>
+              </Animated.View>
             </Animated.View>
-          </Animated.View>
-        </Modal>
-      </View>
-
-      <View className="flex-1">
+          </Modal>
+        </View>
+      }
+      search={
         <HeaderSearchInput
           ref={(node) => {
-          headerSearchInputRef.current = node;
-        }}
-        value={headerSearchQuery}
-        onChangeText={onQueryChange}
-        placeholder="Search…"
-        onFocus={onFocus}
-        onSubmitEditing={onSubmit}
-      />
-      </View>
-
-      <Pressable
-        onPress={() => setDarkModeEnabled(!isDark)}
-        hitSlop={8}
-        className="p-2 -mr-2 rounded-full active:bg-interactive dark:active:bg-interactive-dark"
-      >
-        {isDark ? <Sun size={24} color="#E5E5E5" /> : <Moon size={24} color="#2F3744" />}
-      </Pressable>
-    </View>
+            headerSearchInputRef.current = node;
+          }}
+          value={headerSearchQuery}
+          onChangeText={onQueryChange}
+          placeholder="Search…"
+          onFocus={onFocus}
+          onSubmitEditing={onSubmit}
+        />
+      }
+      right={
+        <HeaderActionButton
+          accessibilityLabel={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+          onPress={() => setDarkModeEnabled(!isDark)}
+        >
+          {isDark ? <Sun size={24} color="#E5E5E5" /> : <Moon size={24} color="#2F3744" />}
+        </HeaderActionButton>
+      }
+    />
   );
 }
 

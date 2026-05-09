@@ -219,7 +219,7 @@ export function HomeQuickLinksCard(): React.JSX.Element {
                     </View>
                     <Text
                       numberOfLines={1}
-                      className="ml-2.5 min-w-0 shrink text-[15px] font-bold"
+                      className="ml-2.5 flex-1 text-[15px] font-bold"
                       style={{ color: textColor }}
                     >
                       {surahName}{' '}
@@ -255,11 +255,11 @@ export function HomeQuickLinksCard(): React.JSX.Element {
                 onPress={() => setIsAddOpen(true)}
                 accessibilityRole="button"
                 accessibilityLabel="Add quick link"
-                className="flex-row items-center rounded-full bg-interactive py-1.5 pl-1.5 dark:bg-surface-navigation-dark"
+                className={`flex-row items-center rounded-full bg-interactive py-1.5 pl-1.5 dark:bg-surface-navigation-dark ${quickLinks.length === 0 ? 'pr-5' : 'pr-2'}`}
                 style={({ pressed }) => [
                   {
                     minHeight: 46,
-                    paddingRight: quickLinks.length === 0 ? 18 : 6,
+                    alignSelf: 'flex-start',
                     opacity: pressed ? 0.9 : 1,
                     transform: [{ scale: pressed ? 0.985 : 1 }],
                   },
