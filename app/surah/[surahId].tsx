@@ -1,7 +1,7 @@
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import React from 'react';
 import { ArrowLeft, Settings } from 'lucide-react-native';
-import { FlashList, type FlashListRef } from '@shopify/flash-list';
+import { FlashList } from '@shopify/flash-list';
 import {
   ActivityIndicator,
   Animated,
@@ -16,8 +16,6 @@ import {
   Text,
   TextInput,
   View,
-  type GestureResponderEvent,
-  type ViewToken,
 } from 'react-native';
 
 import { ComprehensiveSearchDropdown } from '@/components/search/ComprehensiveSearchDropdown';
@@ -31,16 +29,20 @@ import type { MushafSelectionPayload } from '@/components/mushaf/mushafWordPaylo
 import { SettingsSidebar } from '@/components/reader/settings/SettingsSidebar';
 import type { SettingsTab } from '@/components/reader/settings/SettingsTabToggle';
 import { BookmarkModal } from '@/components/bookmarks/BookmarkModal';
+import { MushafMessageState } from '@/components/surah/MushafMessageState';
 import { SurahHeaderCard } from '@/components/surah/SurahHeaderCard';
 import { VerseActionsSheet } from '@/components/surah/VerseActionsSheet';
 import { VerseCard } from '@/components/surah/VerseCard';
+import { VerseCardPlaceholder } from '@/components/surah/VerseCardPlaceholder';
+import { VerseScrubber } from '@/components/surah/VerseScrubber';
 import { useVerseAudioWordSync } from '@/components/surah/useVerseAudioWordSync';
 import { AddToPlannerModal, type VerseSummaryDetails } from '@/components/verse-planner-modal';
 import Colors from '@/constants/Colors';
 import { DEFAULT_MUSHAF_ID, findMushafOption } from '@/data/mushaf/options';
 import { useChapters } from '@/hooks/useChapters';
 import { useMushafPageData } from '@/hooks/useMushafPageData';
-import { useSurahVerses, type SurahVerse } from '@/hooks/useSurahVerses';
+import { useSurahVerses } from '@/hooks/useSurahVerses';
+import { useSurahVerseListController } from '@/hooks/surah/useSurahVerseListController';
 import { preloadOfflineSurahNavigationPage } from '@/lib/surah/offlineSurahPageCache';
 import { preloadOfflineTafsirSurah } from '@/lib/tafsir/tafsirCache';
 import { useTranslationResources } from '@/hooks/useTranslationResources';
@@ -51,255 +53,16 @@ import { useLayoutMetrics } from '@/providers/LayoutMetricsContext';
 import { useSettings } from '@/providers/SettingsContext';
 import { useAppTheme } from '@/providers/ThemeContext';
 import { container } from '@/src/core/infrastructure/di/container';
+import {
+  FALLBACK_MUSHAF_TOTAL_PAGES,
+  buildPageRangeNumbers,
+  clampPageToRange,
+  getChapterPageRange,
+  resolveActiveMushafVersion,
+} from '@/lib/utils/mushafPages';
+import { parseVerseKeyNumbers } from '@/lib/utils/verseKey';
 
-import type { Bookmark, MushafPackId } from '@/types';
-
-function parseVerseKeyNumbers(
-  verseKey: string | null
-): { surahId: number; verseNumber: number } | null {
-  if (!verseKey) return null;
-  const [surahRaw, verseRaw] = verseKey.split(':');
-  const surahId = Number.parseInt(surahRaw ?? '', 10);
-  const verseNumber = Number.parseInt(verseRaw ?? '', 10);
-  if (!Number.isFinite(surahId) || !Number.isFinite(verseNumber)) return null;
-  const normalizedSurah = Math.trunc(surahId);
-  const normalizedVerse = Math.trunc(verseNumber);
-  if (normalizedSurah <= 0 || normalizedVerse <= 0) return null;
-  return { surahId: normalizedSurah, verseNumber: normalizedVerse };
-}
-
-async function resolveActiveMushafVersion(
-  packId: MushafPackId,
-  fallbackVersion: string
-): Promise<string> {
-  try {
-    const activeInstall = await container
-      .getMushafPackInstallRegistry()
-      .getActive(packId);
-
-    return activeInstall?.version?.trim() || fallbackVersion;
-  } catch {
-    return fallbackVersion;
-  }
-}
-
-function VerseCardPlaceholder({ verseKey }: { verseKey: string }): React.JSX.Element {
-  return (
-    <View className="border-b border-border/40 py-4 dark:border-border-dark/30">
-      <View className="gap-4">
-        <Text className="text-sm font-semibold text-accent dark:text-accent-dark">{verseKey}</Text>
-        <View className="h-12 rounded-2xl bg-surface dark:bg-surface-dark" />
-        <View className="gap-3">
-          <View className="h-4 rounded-full bg-surface dark:bg-surface-dark" />
-          <View className="h-4 w-5/6 rounded-full bg-surface dark:bg-surface-dark" />
-          <View className="h-4 w-2/3 rounded-full bg-surface dark:bg-surface-dark" />
-        </View>
-      </View>
-    </View>
-  );
-}
-
-function clampNumber(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
-}
-
-const VERSE_SCRUBBER_WIDTH = 32;
-const VERSE_SCRUBBER_VISIBLE_WIDTH = 6;
-const VERSE_SCRUBBER_THUMB_HEIGHT = 116;
-const VERSE_SCRUBBER_SIDE_INSET = 8;
-
-function VerseScrubber({
-  bottomInset,
-  currentVerseNumber,
-  onScrubEnd,
-  onScrubToVerse,
-  verseCount,
-}: {
-  bottomInset: number;
-  currentVerseNumber: number;
-  onScrubEnd: () => void;
-  onScrubToVerse: (verseNumber: number) => void;
-  verseCount: number;
-}): React.JSX.Element | null {
-  const { resolvedTheme } = useAppTheme();
-  const palette = Colors[resolvedTheme];
-  const [trackHeight, setTrackHeight] = React.useState(0);
-  const [isDragging, setIsDragging] = React.useState(false);
-  const [scrubVerseNumber, setScrubVerseNumber] = React.useState<number | null>(null);
-  const lastScrubbedVerseRef = React.useRef<number | null>(null);
-
-  const normalizedVerseCount = Math.max(0, Math.trunc(verseCount));
-  const hasScrollableVerses = normalizedVerseCount > 1;
-  const isMeasured = trackHeight > 0;
-  const isScrollable = hasScrollableVerses && isMeasured;
-  const thumbHeight = isScrollable
-    ? clampNumber(VERSE_SCRUBBER_THUMB_HEIGHT, 48, trackHeight)
-    : 0;
-  const maxThumbOffset = Math.max(0, trackHeight - thumbHeight);
-  const rawDisplayVerseNumber =
-    typeof scrubVerseNumber === 'number' ? scrubVerseNumber : currentVerseNumber;
-  const displayVerseNumber = clampNumber(
-    Number.isFinite(rawDisplayVerseNumber) ? Math.trunc(rawDisplayVerseNumber) : 1,
-    1,
-    Math.max(1, normalizedVerseCount)
-  );
-  const thumbOffset =
-    normalizedVerseCount > 1
-      ? ((displayVerseNumber - 1) / (normalizedVerseCount - 1)) * maxThumbOffset
-      : 0;
-
-  const handleTrackLayout = React.useCallback(
-    (event: { nativeEvent: { layout: { height: number } } }) => {
-      const height = event.nativeEvent.layout.height;
-      setTrackHeight((currentHeight) =>
-        Math.abs(currentHeight - height) < 1 ? currentHeight : height
-      );
-    },
-    []
-  );
-
-  const scrubToLocationY = React.useCallback(
-    (locationY: number) => {
-      if (!isScrollable) return;
-
-      const nextProgress =
-        maxThumbOffset > 0
-          ? clampNumber(locationY - thumbHeight / 2, 0, maxThumbOffset) / maxThumbOffset
-          : 0;
-      const nextVerseNumber = clampNumber(
-        Math.round(nextProgress * (normalizedVerseCount - 1)) + 1,
-        1,
-        normalizedVerseCount
-      );
-
-      if (lastScrubbedVerseRef.current === nextVerseNumber) return;
-      lastScrubbedVerseRef.current = nextVerseNumber;
-      setScrubVerseNumber(nextVerseNumber);
-      onScrubToVerse(nextVerseNumber);
-    },
-    [isScrollable, maxThumbOffset, normalizedVerseCount, onScrubToVerse, thumbHeight]
-  );
-
-  const handleResponderGrant = React.useCallback(
-    (event: GestureResponderEvent) => {
-      setIsDragging(true);
-      lastScrubbedVerseRef.current = null;
-      scrubToLocationY(event.nativeEvent.locationY);
-    },
-    [scrubToLocationY]
-  );
-
-  const handleResponderMove = React.useCallback(
-    (event: GestureResponderEvent) => {
-      scrubToLocationY(event.nativeEvent.locationY);
-    },
-    [scrubToLocationY]
-  );
-
-  const finishDrag = React.useCallback(() => {
-    setIsDragging(false);
-    setScrubVerseNumber(null);
-    lastScrubbedVerseRef.current = null;
-    onScrubEnd();
-  }, [onScrubEnd]);
-
-  if (!hasScrollableVerses) return null;
-
-  const thumbColor = palette.tint;
-  const trackColor = resolvedTheme === 'dark' ? 'rgba(148, 163, 184, 0.22)' : 'rgba(15, 23, 42, 0.12)';
-  const labelBackground = resolvedTheme === 'dark' ? 'rgba(15, 23, 42, 0.94)' : 'rgba(255, 255, 255, 0.96)';
-  const labelBorder = resolvedTheme === 'dark' ? 'rgba(148, 163, 184, 0.32)' : 'rgba(15, 23, 42, 0.14)';
-
-  return (
-    <View
-      pointerEvents="box-none"
-      style={{
-        position: 'absolute',
-        top: VERSE_SCRUBBER_SIDE_INSET,
-        right: 0,
-        bottom: Math.max(VERSE_SCRUBBER_SIDE_INSET, bottomInset + VERSE_SCRUBBER_SIDE_INSET),
-        width: VERSE_SCRUBBER_WIDTH,
-        zIndex: 40,
-        ...(Platform.OS === 'android'
-          ? { elevation: 40, shadowColor: 'transparent' }
-          : {}),
-      }}
-    >
-      {isDragging && isMeasured ? (
-        <View
-          pointerEvents="none"
-          style={{
-            position: 'absolute',
-            right: VERSE_SCRUBBER_WIDTH + 4,
-            top: clampNumber(thumbOffset + thumbHeight / 2 - 18, 0, Math.max(0, trackHeight - 36)),
-            minWidth: 64,
-            borderRadius: 8,
-            borderWidth: StyleSheet.hairlineWidth,
-            borderColor: labelBorder,
-            backgroundColor: labelBackground,
-            paddingHorizontal: 10,
-            paddingVertical: 7,
-          }}
-        >
-          <Text
-            style={{
-              color: palette.text,
-              fontSize: 13,
-              fontWeight: '700',
-              textAlign: 'center',
-            }}
-          >
-            {displayVerseNumber}/{normalizedVerseCount}
-          </Text>
-        </View>
-      ) : null}
-
-      <View
-        onLayout={handleTrackLayout}
-        onStartShouldSetResponder={() => true}
-        onMoveShouldSetResponder={() => true}
-        onResponderGrant={handleResponderGrant}
-        onResponderMove={handleResponderMove}
-        onResponderRelease={finishDrag}
-        onResponderTerminate={finishDrag}
-        onResponderTerminationRequest={() => false}
-        style={{
-          flex: 1,
-          width: VERSE_SCRUBBER_WIDTH,
-        }}
-      >
-        {isMeasured ? (
-          <>
-            <View
-              pointerEvents="none"
-              style={{
-                position: 'absolute',
-                top: 0,
-                right: 11,
-                bottom: 0,
-                width: 2,
-                borderRadius: 999,
-                backgroundColor: trackColor,
-              }}
-            />
-            <View
-              pointerEvents="none"
-              style={{
-                position: 'absolute',
-                top: thumbOffset,
-                right: 8,
-                height: thumbHeight,
-                width: VERSE_SCRUBBER_VISIBLE_WIDTH,
-                borderRadius: 999,
-                backgroundColor: thumbColor,
-              }}
-            />
-          </>
-        ) : null}
-      </View>
-    </View>
-  );
-}
+import type { Bookmark } from '@/types';
 
 const styles = StyleSheet.create({
   contentStage: {
@@ -314,59 +77,7 @@ const styles = StyleSheet.create({
   },
 });
 
-function MushafMessageState({
-  color,
-  message,
-  showSpinner = false,
-}: {
-  color: string;
-  message: string;
-  showSpinner?: boolean;
-}): React.JSX.Element {
-  return (
-    <View className="flex-1 items-center justify-center gap-4 px-6">
-      {showSpinner ? <ActivityIndicator color={color} /> : null}
-      <Text className="text-center text-sm leading-6 text-muted dark:text-muted-dark">
-        {message}
-      </Text>
-    </View>
-  );
-}
-
 const INITIAL_PLACEHOLDER_VERSE_NUMBERS = [1, 2, 3, 4];
-const FALLBACK_MUSHAF_TOTAL_PAGES = 604;
-
-type ChapterPageRange = {
-  firstPage: number;
-  lastPage: number;
-};
-
-function getChapterPageRange(chapter?: { pages?: number[] } | null): ChapterPageRange | null {
-  const pages = Array.isArray(chapter?.pages)
-    ? chapter.pages.filter((page) => Number.isFinite(page) && page > 0).map((page) => Math.trunc(page))
-    : [];
-
-  if (!pages.length) return null;
-
-  return {
-    firstPage: Math.min(...pages),
-    lastPage: Math.max(...pages),
-  };
-}
-
-function buildPageRangeNumbers(range: ChapterPageRange | null, totalPages: number): number[] {
-  if (!range) return [];
-  const lastAvailablePage = Math.max(1, Math.trunc(totalPages || FALLBACK_MUSHAF_TOTAL_PAGES));
-  const firstPage = Math.max(1, Math.min(range.firstPage, lastAvailablePage));
-  const lastPage = Math.max(firstPage, Math.min(range.lastPage, lastAvailablePage));
-  return Array.from({ length: lastPage - firstPage + 1 }, (_value, index) => firstPage + index);
-}
-
-function clampPageToRange(pageNumber: number, range: ChapterPageRange | null): number {
-  if (!range) return 1;
-  if (!Number.isFinite(pageNumber) || pageNumber <= 0) return range.firstPage;
-  return Math.min(Math.max(Math.trunc(pageNumber), range.firstPage), range.lastPage);
-}
 
 export default function SurahScreen(): React.JSX.Element {
   const params = useLocalSearchParams<{
@@ -1095,440 +806,33 @@ export default function SurahScreen(): React.JSX.Element {
     ]
   );
 
-  const flatListRef = React.useRef<FlatList<number> | null>(null);
-  const flashListRef = React.useRef<FlashListRef<number> | null>(null);
-  const visibleVerseKeyRef = React.useRef<string | null>(null);
-  const lastPrefetchedMushafVerseRef = React.useRef<string | null>(null);
-  const mushafPrefetchRequestIdRef = React.useRef(0);
-  const didScrollToStartRef = React.useRef(false);
-  const [scrollTick, bumpScrollTick] = React.useReducer((value) => value + 1, 0);
-  const scrollRetryCountRef = React.useRef(0);
-  const scrollRetryTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const startVerseRef = React.useRef(startVerse);
-
-  const didAutoScrollToAudioVerseRef = React.useRef<string | null>(null);
-  const [autoScrollTick, bumpAutoScrollTick] = React.useReducer((value) => value + 1, 0);
-  const autoScrollRetryCountRef = React.useRef(0);
-  const autoScrollRetryTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const chapterNumberRef = React.useRef(chapterNumber);
-  React.useEffect(() => {
-    chapterNumberRef.current = chapterNumber;
-  }, [chapterNumber]);
-
-  const verseCountRef = React.useRef(verseCount);
-  React.useEffect(() => {
-    verseCountRef.current = verseCount;
-  }, [verseCount]);
-
-  React.useEffect(() => {
-    startVerseRef.current = startVerse;
-  }, [startVerse]);
-
-  const getVerseByNumberRef = React.useRef(getVerseByNumber);
-  React.useEffect(() => {
-    getVerseByNumberRef.current = getVerseByNumber;
-  }, [getVerseByNumber]);
-
-  const ensureVerseRangeLoadedRef = React.useRef(ensureVerseRangeLoaded);
-  React.useEffect(() => {
-    ensureVerseRangeLoadedRef.current = ensureVerseRangeLoaded;
-  }, [ensureVerseRangeLoaded]);
-
-  const setLastReadRef = React.useRef(setLastRead);
-  React.useEffect(() => {
-    setLastReadRef.current = setLastRead;
-  }, [setLastRead]);
-
-  React.useEffect(() => {
-    lastPrefetchedMushafVerseRef.current = null;
-    mushafPrefetchRequestIdRef.current = 0;
-  }, [selectedMushafId, selectedMushafVersion]);
-
-  const prefetchMushafForVerse = React.useCallback(
-    (verseKey: string | null) => {
-      const normalizedVerseKey = typeof verseKey === 'string' ? verseKey.trim() : '';
-      if (!normalizedVerseKey) return;
-
-      const prefetchKey = `${selectedMushafId}:${selectedMushafVersion}:${normalizedVerseKey}`;
-      if (lastPrefetchedMushafVerseRef.current === prefetchKey) {
-        return;
-      }
-
-      lastPrefetchedMushafVerseRef.current = prefetchKey;
-      const requestId = ++mushafPrefetchRequestIdRef.current;
-      const mushafRepository = container.getMushafPageRepository();
-
-      void (async () => {
-        try {
-          const activePackVersion = await resolveActiveMushafVersion(
-            selectedMushafId,
-            selectedMushafVersion
-          );
-          mushafRepository.setActivePageCacheIdentity({
-            packId: selectedMushafId,
-            version: activePackVersion,
-          });
-
-          const resolvedPage = await mushafRepository.findPageForVerse({
-            packId: selectedMushafId,
-            verseKey: normalizedVerseKey,
-          });
-
-          if (mushafPrefetchRequestIdRef.current !== requestId) {
-            return;
-          }
-
-          if (!resolvedPage) {
-            return;
-          }
-
-          await mushafRepository.prefetchPages({
-            packId: selectedMushafId,
-            pageNumbers: [resolvedPage - 1, resolvedPage, resolvedPage + 1],
-            expectedVersion: activePackVersion,
-          });
-        } catch {
-          // Ignore background mushaf prefetch failures on the translation screen.
-        }
-      })();
-    },
-    [selectedMushafId, selectedMushafVersion]
-  );
-
-  React.useEffect(() => {
-    if (!isSettingsOpen) return;
-    if (isMushafView) return;
-    if (selectedMushafOption?.renderer !== 'webview') return;
-
-    let cancelled = false;
-    let prefetchTimeout: ReturnType<typeof setTimeout> | null = null;
-
-    const interactionTask = InteractionManager.runAfterInteractions(() => {
-      prefetchTimeout = setTimeout(() => {
-        if (cancelled) return;
-        const focusVerseKey =
-          visibleVerseKeyRef.current ??
-          (typeof normalizedStartVerse === 'number'
-            ? getVerseByNumber(normalizedStartVerse)?.verse_key ?? null
-            : getVerseByNumber(1)?.verse_key ?? null);
-
-        prefetchMushafForVerse(focusVerseKey);
-      }, 120);
-    });
-
-    return () => {
-      cancelled = true;
-      interactionTask.cancel?.();
-      if (prefetchTimeout) {
-        clearTimeout(prefetchTimeout);
-      }
-    };
-  }, [
+  const {
+    flatListRef,
+    flashListRef,
+    handleScrubEnd,
+    handleScrubToVerse,
+    onViewableItemsChanged,
+    viewabilityConfig,
+    visibleVerseKeyRef,
+    visibleVerseNumber,
+  } = useSurahVerseListController({
+    audioActiveVerseKey: audio.activeVerseKey,
+    audioIsPlaying: audio.isPlaying,
+    chapterNumber,
+    ensureVerseRangeLoaded,
     getVerseByNumber,
     isMushafView,
     isSettingsOpen,
     normalizedStartVerse,
-    prefetchMushafForVerse,
-    selectedMushafOption?.renderer,
-  ]);
-
-  const lastReadReportedRef = React.useRef<string | null>(null);
-  const [visibleVerseNumber, setVisibleVerseNumber] = React.useState(
-    normalizedStartVerse ?? 1
-  );
-  const visibleVerseNumberRef = React.useRef(normalizedStartVerse ?? 1);
-  const scrubTargetVerseRef = React.useRef<number | null>(null);
-  const scrubFrameRef = React.useRef<number | null>(null);
-
-  React.useEffect(() => {
-    visibleVerseNumberRef.current = visibleVerseNumber;
-  }, [visibleVerseNumber]);
-
-  React.useEffect(() => {
-    lastReadReportedRef.current = null;
-    visibleVerseKeyRef.current = null;
-    scrubTargetVerseRef.current = null;
-    if (scrubFrameRef.current !== null) {
-      cancelAnimationFrame(scrubFrameRef.current);
-      scrubFrameRef.current = null;
-    }
-    visibleVerseNumberRef.current = normalizedStartVerse ?? 1;
-    setVisibleVerseNumber(normalizedStartVerse ?? 1);
-  }, [normalizedStartVerse, surahId]);
-
-  const viewabilityConfig = React.useRef({ itemVisiblePercentThreshold: 60 }).current;
-  const visibleRangeRef = React.useRef<{ first: number; last: number } | null>(null);
-
-  const onViewableItemsChanged = React.useRef(
-    ({ viewableItems }: { viewableItems: Array<ViewToken> }) => {
-      let firstVisibleIndex = Number.POSITIVE_INFINITY;
-      let lastVisibleIndex = -1;
-      const currentSurahId = chapterNumberRef.current;
-      if (!Number.isFinite(currentSurahId) || currentSurahId <= 0) return;
-
-      let bestIndex = Number.POSITIVE_INFINITY;
-      let bestItem: SurahVerse | null = null;
-
-      for (const token of viewableItems) {
-        if (!token.isViewable) continue;
-        const index = typeof token.index === 'number' ? token.index : Number.POSITIVE_INFINITY;
-        if (Number.isFinite(index)) {
-          firstVisibleIndex = Math.min(firstVisibleIndex, index);
-          lastVisibleIndex = Math.max(lastVisibleIndex, index);
-        }
-
-        const verseNumber =
-          typeof token.item === 'number'
-            ? token.item
-            : Number.parseInt(String(token.item ?? ''), 10);
-        if (!Number.isFinite(verseNumber) || verseNumber <= 0) continue;
-
-        const loadedVerse = getVerseByNumberRef.current(Math.trunc(verseNumber));
-        if (!loadedVerse) continue;
-        if (index >= bestIndex) continue;
-        bestIndex = index;
-        bestItem = loadedVerse;
-      }
-
-      visibleRangeRef.current =
-        lastVisibleIndex >= 0 && Number.isFinite(firstVisibleIndex)
-          ? { first: firstVisibleIndex, last: lastVisibleIndex }
-          : null;
-
-      if (Number.isFinite(firstVisibleIndex) && lastVisibleIndex >= 0) {
-        ensureVerseRangeLoadedRef.current(firstVisibleIndex + 1, lastVisibleIndex + 1, 1);
-      }
-
-      const targetStartVerse = startVerseRef.current;
-      const visibleRange = visibleRangeRef.current;
-      if (
-        visibleRange &&
-        Number.isFinite(targetStartVerse) &&
-        targetStartVerse > 0
-      ) {
-        const targetIndex = Math.max(0, Math.floor(targetStartVerse) - 1);
-        if (targetIndex >= visibleRange.first && targetIndex <= visibleRange.last) {
-          didScrollToStartRef.current = true;
-          scrollRetryCountRef.current = 0;
-          if (scrollRetryTimeoutRef.current) {
-            clearTimeout(scrollRetryTimeoutRef.current);
-            scrollRetryTimeoutRef.current = null;
-          }
-        }
-      }
-
-      if (!bestItem) return;
-
-      visibleVerseKeyRef.current = bestItem.verse_key ?? null;
-
-      const verseNumber = bestItem.verse_number;
-      if (!Number.isFinite(verseNumber) || verseNumber <= 0) return;
-      visibleVerseNumberRef.current = verseNumber;
-      setVisibleVerseNumber((currentVerseNumber) =>
-        currentVerseNumber === verseNumber ? currentVerseNumber : verseNumber
-      );
-
-      const globalVerseId =
-        typeof bestItem.id === 'number' && Number.isFinite(bestItem.id) && bestItem.id > 0
-          ? bestItem.id
-          : undefined;
-
-      const key = `${currentSurahId}:${verseNumber}`;
-      if (lastReadReportedRef.current === key) return;
-      lastReadReportedRef.current = key;
-
-      setLastReadRef.current(
-        String(currentSurahId),
-        verseNumber,
-        bestItem.verse_key,
-        globalVerseId
-      );
-    }
-  ).current;
-
-  React.useEffect(() => {
-    return () => {
-      if (scrollRetryTimeoutRef.current) {
-        clearTimeout(scrollRetryTimeoutRef.current);
-        scrollRetryTimeoutRef.current = null;
-      }
-      if (autoScrollRetryTimeoutRef.current) {
-        clearTimeout(autoScrollRetryTimeoutRef.current);
-        autoScrollRetryTimeoutRef.current = null;
-      }
-      if (scrubFrameRef.current !== null) {
-        cancelAnimationFrame(scrubFrameRef.current);
-        scrubFrameRef.current = null;
-      }
-    };
-  }, []);
-
-  React.useEffect(() => {
-    didScrollToStartRef.current = false;
-    scrollRetryCountRef.current = 0;
-    didAutoScrollToAudioVerseRef.current = null;
-    autoScrollRetryCountRef.current = 0;
-    if (scrollRetryTimeoutRef.current) {
-      clearTimeout(scrollRetryTimeoutRef.current);
-      scrollRetryTimeoutRef.current = null;
-    }
-    if (autoScrollRetryTimeoutRef.current) {
-      clearTimeout(autoScrollRetryTimeoutRef.current);
-      autoScrollRetryTimeoutRef.current = null;
-    }
-  }, [surahId, startVerseParam]);
-
-  React.useEffect(() => {
-    if (!Number.isFinite(startVerse) || startVerse <= 0) return;
-    if (didScrollToStartRef.current) return;
-    if (verseCountRef.current <= 0) return;
-
-    ensureVerseRangeLoadedRef.current(startVerse, startVerse, 1);
-
-    const scheduleRetry = () => {
-      if (didScrollToStartRef.current) return;
-      if (scrollRetryCountRef.current >= 10) return;
-      if (scrollRetryTimeoutRef.current) return;
-      scrollRetryCountRef.current += 1;
-      scrollRetryTimeoutRef.current = setTimeout(() => {
-        scrollRetryTimeoutRef.current = null;
-        bumpScrollTick();
-      }, 140);
-    };
-
-    const targetIndex = Math.max(0, Math.floor(startVerse) - 1);
-
-    if (targetIndex >= verseCountRef.current) return;
-
-    const list = Platform.OS === 'web' ? flatListRef.current : flashListRef.current;
-    if (!list) {
-      scheduleRetry();
-      return;
-    }
-
-    try {
-      list.scrollToIndex({ index: targetIndex, animated: false, viewPosition: 0 });
-    } catch {}
-
-    scheduleRetry();
-  }, [scrollTick, startVerse, verseCount]);
-
-  React.useEffect(() => {
-    if (!audio.isPlaying) {
-      didAutoScrollToAudioVerseRef.current = null;
-      autoScrollRetryCountRef.current = 0;
-      if (autoScrollRetryTimeoutRef.current) {
-        clearTimeout(autoScrollRetryTimeoutRef.current);
-        autoScrollRetryTimeoutRef.current = null;
-      }
-      return;
-    }
-
-    const verseKey = audio.activeVerseKey;
-    if (!verseKey) return;
-
-    const parsed = parseVerseKeyNumbers(verseKey);
-    if (!parsed) return;
-    if (!Number.isFinite(chapterNumber)) return;
-    if (parsed.surahId !== Math.trunc(chapterNumber)) return;
-
-    if (didAutoScrollToAudioVerseRef.current === verseKey) return;
-
-    const targetIndex = Math.max(0, parsed.verseNumber - 1);
-    if (targetIndex >= verseCountRef.current) return;
-    ensureVerseRangeLoadedRef.current(parsed.verseNumber, parsed.verseNumber, 1);
-
-    const list = Platform.OS === 'web' ? flatListRef.current : flashListRef.current;
-    if (!list) return;
-
-    const visibleRange = visibleRangeRef.current;
-    if (visibleRange && targetIndex >= visibleRange.first && targetIndex <= visibleRange.last) {
-      didAutoScrollToAudioVerseRef.current = verseKey;
-      autoScrollRetryCountRef.current = 0;
-      return;
-    }
-
-    try {
-      list.scrollToIndex({ index: targetIndex, animated: true, viewPosition: 0 });
-      didAutoScrollToAudioVerseRef.current = verseKey;
-      autoScrollRetryCountRef.current = 0;
-    } catch {
-      if (autoScrollRetryCountRef.current >= 6) return;
-      autoScrollRetryCountRef.current += 1;
-      if (autoScrollRetryTimeoutRef.current) return;
-      autoScrollRetryTimeoutRef.current = setTimeout(() => {
-        autoScrollRetryTimeoutRef.current = null;
-        bumpAutoScrollTick();
-      }, 120);
-    }
-  }, [
-    audio.activeVerseKey,
-    audio.isPlaying,
-    autoScrollTick,
-    chapterNumber,
+    selectedMushafId,
+    selectedMushafRenderer: selectedMushafOption?.renderer,
+    selectedMushafVersion,
+    setLastRead,
+    startVerse,
+    startVerseParam,
+    surahId,
     verseCount,
-  ]);
-
-  const scrollScrubFrameToVerse = React.useCallback((verseNumber: number) => {
-    if (!Number.isFinite(verseNumber) || verseNumber <= 0) return;
-    const targetVerseNumber = Math.max(
-      1,
-      Math.min(Math.trunc(verseNumber), Math.max(1, verseCountRef.current))
-    );
-    const targetIndex = targetVerseNumber - 1;
-
-    visibleVerseNumberRef.current = targetVerseNumber;
-    setVisibleVerseNumber((currentVerseNumber) =>
-      currentVerseNumber === targetVerseNumber ? currentVerseNumber : targetVerseNumber
-    );
-    ensureVerseRangeLoadedRef.current(targetVerseNumber, targetVerseNumber, 1);
-
-    const list = Platform.OS === 'web' ? flatListRef.current : flashListRef.current;
-    if (!list) return;
-
-    try {
-      list.scrollToIndex({ index: targetIndex, animated: false, viewPosition: 0 });
-    } catch {
-      ensureVerseRangeLoadedRef.current(targetVerseNumber, targetVerseNumber, 2);
-    }
-  }, []);
-
-  const runScrubFrame = React.useCallback(() => {
-    scrubFrameRef.current = null;
-
-    const targetVerseNumber = scrubTargetVerseRef.current;
-    if (!targetVerseNumber) return;
-
-    scrollScrubFrameToVerse(targetVerseNumber);
-  }, [scrollScrubFrameToVerse]);
-
-  const handleScrubToVerse = React.useCallback(
-    (verseNumber: number) => {
-      if (!Number.isFinite(verseNumber) || verseNumber <= 0) return;
-      const targetVerseNumber = Math.max(
-        1,
-        Math.min(Math.trunc(verseNumber), Math.max(1, verseCountRef.current))
-      );
-
-      scrubTargetVerseRef.current = targetVerseNumber;
-      ensureVerseRangeLoadedRef.current(targetVerseNumber, targetVerseNumber, 2);
-
-      if (scrubFrameRef.current === null) {
-        scrubFrameRef.current = requestAnimationFrame(runScrubFrame);
-      }
-    },
-    [runScrubFrame]
-  );
-
-  const handleScrubEnd = React.useCallback(() => {
-    scrubTargetVerseRef.current = null;
-    if (scrubFrameRef.current !== null) {
-      cancelAnimationFrame(scrubFrameRef.current);
-      scrubFrameRef.current = null;
-    }
-  }, []);
-
+  });
   const activeVersePinned = React.useMemo(() => {
     if (!activeVerse) return false;
     const apiId = typeof activeVerse.verseApiId === 'number' ? String(activeVerse.verseApiId) : null;
