@@ -28,13 +28,15 @@ export type VerseScrubberHandle = {
 type VerseScrubberProps = {
   bottomInset: number;
   currentVerseNumber: number;
-  onScrubToVerse: (verseNumber: number) => void;
+  onScrubStateChange?: (isScrubbing: boolean) => void;
+  onScrubToVerse: (verseNumber: number, options?: { isFinal?: boolean }) => void;
   verseCount: number;
 };
 
 export const VerseScrubber = React.forwardRef<VerseScrubberHandle, VerseScrubberProps>(function VerseScrubber({
   bottomInset,
   currentVerseNumber,
+  onScrubStateChange,
   onScrubToVerse,
   verseCount,
 }, ref): React.JSX.Element | null {
@@ -44,6 +46,8 @@ export const VerseScrubber = React.forwardRef<VerseScrubberHandle, VerseScrubber
   const [isDragging, setIsDragging] = React.useState(false);
   const [scrubVerseNumber, setScrubVerseNumber] = React.useState<number | null>(null);
   const lastScrubbedVerseRef = React.useRef<number | null>(null);
+  const desiredVerseNumberRef = React.useRef<number | null>(null);
+  const scrubFrameRef = React.useRef<ReturnType<typeof requestAnimationFrame> | null>(null);
   const isVisibleRef = React.useRef(false);
   const hideTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const opacity = React.useRef(new Animated.Value(0)).current;
@@ -85,6 +89,13 @@ export const VerseScrubber = React.forwardRef<VerseScrubberHandle, VerseScrubber
     }
   }, []);
 
+  const clearScrubFrame = React.useCallback(() => {
+    if (scrubFrameRef.current !== null) {
+      cancelAnimationFrame(scrubFrameRef.current);
+      scrubFrameRef.current = null;
+    }
+  }, []);
+
   const scheduleHide = React.useCallback(() => {
     clearHideTimer();
     hideTimerRef.current = setTimeout(() => {
@@ -116,9 +127,42 @@ export const VerseScrubber = React.forwardRef<VerseScrubberHandle, VerseScrubber
   React.useEffect(
     () => () => {
       clearHideTimer();
+      clearScrubFrame();
     },
-    [clearHideTimer]
+    [clearHideTimer, clearScrubFrame]
   );
+
+  const completeDrag = React.useCallback(() => {
+    onScrubStateChange?.(false);
+    setIsDragging(false);
+    setScrubVerseNumber(null);
+    lastScrubbedVerseRef.current = null;
+    desiredVerseNumberRef.current = null;
+    scheduleHide();
+  }, [onScrubStateChange, scheduleHide]);
+
+  const emitScrubVerse = React.useCallback(
+    (verseNumber: number, isFinal = false) => {
+      lastScrubbedVerseRef.current = verseNumber;
+      onScrubToVerse(verseNumber, { isFinal });
+    },
+    [onScrubToVerse]
+  );
+
+  const runScrubFrame = React.useCallback(() => {
+    scrubFrameRef.current = null;
+
+    const targetVerseNumber = desiredVerseNumberRef.current;
+    if (targetVerseNumber === null) return;
+    if (lastScrubbedVerseRef.current === targetVerseNumber) return;
+
+    emitScrubVerse(targetVerseNumber);
+  }, [emitScrubVerse]);
+
+  const scheduleScrubFrame = React.useCallback(() => {
+    if (scrubFrameRef.current !== null) return;
+    scrubFrameRef.current = requestAnimationFrame(runScrubFrame);
+  }, [runScrubFrame]);
 
   const scrubToLocationY = React.useCallback(
     (locationY: number) => {
@@ -134,24 +178,34 @@ export const VerseScrubber = React.forwardRef<VerseScrubberHandle, VerseScrubber
         normalizedVerseCount
       );
 
-      if (lastScrubbedVerseRef.current === nextVerseNumber) return;
-      lastScrubbedVerseRef.current = nextVerseNumber;
+      if (desiredVerseNumberRef.current === nextVerseNumber) return;
+
+      desiredVerseNumberRef.current = nextVerseNumber;
       setScrubVerseNumber(nextVerseNumber);
-      onScrubToVerse(nextVerseNumber);
+      scheduleScrubFrame();
     },
-    [isScrollable, maxThumbOffset, normalizedVerseCount, onScrubToVerse, thumbHeight]
+    [
+      isScrollable,
+      maxThumbOffset,
+      normalizedVerseCount,
+      scheduleScrubFrame,
+      thumbHeight,
+    ]
   );
 
   const handleResponderGrant = React.useCallback(
     (event: GestureResponderEvent) => {
       clearHideTimer();
+      clearScrubFrame();
       isVisibleRef.current = true;
       opacity.setValue(1);
+      onScrubStateChange?.(true);
       setIsDragging(true);
       lastScrubbedVerseRef.current = null;
+      desiredVerseNumberRef.current = null;
       scrubToLocationY(event.nativeEvent.locationY);
     },
-    [clearHideTimer, opacity, scrubToLocationY]
+    [clearHideTimer, clearScrubFrame, onScrubStateChange, opacity, scrubToLocationY]
   );
 
   const handleResponderMove = React.useCallback(
@@ -162,11 +216,18 @@ export const VerseScrubber = React.forwardRef<VerseScrubberHandle, VerseScrubber
   );
 
   const finishDrag = React.useCallback(() => {
-    setIsDragging(false);
-    setScrubVerseNumber(null);
-    lastScrubbedVerseRef.current = null;
-    scheduleHide();
-  }, [scheduleHide]);
+    const targetVerseNumber = desiredVerseNumberRef.current;
+
+    if (targetVerseNumber !== null && lastScrubbedVerseRef.current !== targetVerseNumber) {
+      clearScrubFrame();
+      emitScrubVerse(targetVerseNumber, true);
+    } else if (targetVerseNumber !== null) {
+      onScrubToVerse(targetVerseNumber, { isFinal: true });
+    } else {
+      clearScrubFrame();
+    }
+    completeDrag();
+  }, [clearScrubFrame, completeDrag, emitScrubVerse, onScrubToVerse]);
 
   if (!hasScrollableVerses) return null;
 

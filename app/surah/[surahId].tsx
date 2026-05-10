@@ -1051,6 +1051,12 @@ export default function SurahScreen(): React.JSX.Element {
 
   const viewabilityConfig = React.useRef({ itemVisiblePercentThreshold: 60 }).current;
   const visibleRangeRef = React.useRef<{ first: number; last: number } | null>(null);
+  const isVerseScrubbingRef = React.useRef(false);
+  const lastScrubPrefetchVerseRef = React.useRef<number | null>(null);
+  const lastScrubScrollVerseRef = React.useRef<number | null>(null);
+  const scrubScrollInFlightRef = React.useRef(false);
+  const scrubScrollRequestIdRef = React.useRef(0);
+  const queuedScrubScrollVerseRef = React.useRef<number | null>(null);
 
   const onViewableItemsChanged = React.useRef(
     ({ viewableItems }: { viewableItems: Array<ViewToken> }) => {
@@ -1117,6 +1123,9 @@ export default function SurahScreen(): React.JSX.Element {
       const verseNumber = bestItem.verse_number;
       if (!Number.isFinite(verseNumber) || verseNumber <= 0) return;
       visibleVerseNumberRef.current = verseNumber;
+
+      if (isVerseScrubbingRef.current) return;
+
       setVisibleVerseNumber((currentVerseNumber) =>
         currentVerseNumber === verseNumber ? currentVerseNumber : verseNumber
       );
@@ -1259,31 +1268,97 @@ export default function SurahScreen(): React.JSX.Element {
   ]);
 
   const handleScrubToVerse = React.useCallback(
-    (verseNumber: number) => {
+    (verseNumber: number, options?: { isFinal?: boolean }) => {
       if (!Number.isFinite(verseNumber) || verseNumber <= 0) return;
+      const isFinal = Boolean(options?.isFinal);
       const targetVerseNumber = Math.max(
         1,
         Math.min(Math.trunc(verseNumber), Math.max(1, verseCountRef.current))
       );
       const targetIndex = targetVerseNumber - 1;
 
+      if (
+        !isFinal &&
+        lastScrubScrollVerseRef.current === targetVerseNumber &&
+        queuedScrubScrollVerseRef.current === null
+      ) {
+        return;
+      }
+
       visibleVerseNumberRef.current = targetVerseNumber;
-      setVisibleVerseNumber((currentVerseNumber) =>
-        currentVerseNumber === targetVerseNumber ? currentVerseNumber : targetVerseNumber
-      );
-      ensureVerseRangeLoadedRef.current(targetVerseNumber, targetVerseNumber, 1);
+      if (isFinal) {
+        setVisibleVerseNumber((currentVerseNumber) =>
+          currentVerseNumber === targetVerseNumber ? currentVerseNumber : targetVerseNumber
+        );
+      }
+
+      const shouldPrefetch =
+        isFinal ||
+        lastScrubPrefetchVerseRef.current === null ||
+        Math.abs(targetVerseNumber - lastScrubPrefetchVerseRef.current) >= 12;
+
+      if (shouldPrefetch) {
+        lastScrubPrefetchVerseRef.current = targetVerseNumber;
+        const verseCount = Math.max(1, verseCountRef.current);
+        const prefetchRadius = isFinal ? 24 : 12;
+        ensureVerseRangeLoadedRef.current(
+          Math.max(1, targetVerseNumber - prefetchRadius),
+          Math.min(verseCount, targetVerseNumber + prefetchRadius),
+          isFinal ? 2 : 1
+        );
+      }
 
       const list = Platform.OS === 'web' ? flatListRef.current : flashListRef.current;
       if (!list) return;
 
+      if (!isFinal && scrubScrollInFlightRef.current) {
+        queuedScrubScrollVerseRef.current = targetVerseNumber;
+        return;
+      }
+
+      queuedScrubScrollVerseRef.current = null;
+      lastScrubScrollVerseRef.current = targetVerseNumber;
+
       try {
-        list.scrollToIndex({ index: targetIndex, animated: false, viewPosition: 0 });
+        const scrollResult = list.scrollToIndex({
+          index: targetIndex,
+          animated: false,
+          viewPosition: 0,
+        });
+        if (scrollResult && typeof (scrollResult as Promise<void>).catch === 'function') {
+          scrubScrollInFlightRef.current = true;
+          const requestId = ++scrubScrollRequestIdRef.current;
+          void (scrollResult as Promise<void>)
+            .catch(() => {
+              ensureVerseRangeLoadedRef.current(targetVerseNumber, targetVerseNumber, 2);
+            })
+            .finally(() => {
+              if (requestId !== scrubScrollRequestIdRef.current) return;
+              scrubScrollInFlightRef.current = false;
+              const queuedVerseNumber = queuedScrubScrollVerseRef.current;
+              queuedScrubScrollVerseRef.current = null;
+              if (queuedVerseNumber !== null) {
+                handleScrubToVerse(queuedVerseNumber);
+              }
+            });
+        }
       } catch {
         ensureVerseRangeLoadedRef.current(targetVerseNumber, targetVerseNumber, 2);
       }
     },
     []
   );
+
+  const handleScrubStateChange = React.useCallback((isScrubbing: boolean) => {
+    isVerseScrubbingRef.current = isScrubbing;
+    if (!isScrubbing) {
+      lastScrubPrefetchVerseRef.current = null;
+      lastScrubScrollVerseRef.current = null;
+      queuedScrubScrollVerseRef.current = null;
+      scrubScrollInFlightRef.current = false;
+      scrubScrollRequestIdRef.current += 1;
+    }
+  }, []);
 
   const handleSurahListScroll = React.useCallback(() => {
     verseScrubberRef.current?.show();
@@ -1504,6 +1579,7 @@ export default function SurahScreen(): React.JSX.Element {
                 ref={verseScrubberRef}
                 bottomInset={audioPlayerBarHeight}
                 currentVerseNumber={visibleVerseNumber}
+                onScrubStateChange={handleScrubStateChange}
                 onScrubToVerse={handleScrubToVerse}
                 verseCount={verseCount}
               />
