@@ -55,6 +55,7 @@ This document lists reusable UI components currently available in the codebase s
 | --- | --- | --- |
 | `MushafNativePage` | Native Unicode mushaf renderer for offline text packs; renders page lines/words from local pack payloads with stepped `mushafScaleStep` sizing, selectable text, per-word press events, and no route-level chrome so the page route can present a text-only mushaf feed. | `components/mushaf/MushafNativePage.tsx` |
 | `MushafWebViewPage` | Local WebView mushaf renderer for exact/downloadable packs; ports the web stepped preset sizing, fit detection, centered RTL overflow reflow, local QCF page-font loading, and the selection/word-tap bridge while keeping the rendered surface free of extra cards, labels, and buttons. | `components/mushaf/MushafWebViewPage.tsx` |
+| `MushafSingleDocumentReader` | Single-surface QCF/WebView mushaf reader used by Surah Mushaf view and the exact page route; reports active page changes, scroll activity, word taps, and exposes imperative page jumps for page-by-page scrubber navigation. | `components/mushaf/MushafSingleDocumentReader.tsx` |
 
 ## Reader Settings Components
 
@@ -62,6 +63,7 @@ This document lists reusable UI components currently available in the codebase s
 | --- | --- | --- |
 | `SettingsSidebar` | Right-side drawer (modal + animation) used for the reader settings panel, with explicit safe-area inset padding to keep the first-open animation stable. | `components/reader/settings/SettingsSidebar.tsx` |
 | `SettingsSidebarContent` | Settings UI content (web-parity header, tabs, sections, and subpanels/controls). | `components/reader/settings/SettingsSidebarContent.tsx` |
+| `IndexScrubber` | Shared right-side 1-based index scrubber used by verse and exact mushaf page readers; maps drag position to an index and delegates scrolling to the owning screen/reader. | `components/reader/IndexScrubber.tsx` |
 | `SettingsTabToggle` | Segmented control for switching between settings tabs. | `components/reader/settings/SettingsTabToggle.tsx` |
 | `CollapsibleSection` | Collapsible section wrapper used by settings groups. | `components/reader/settings/CollapsibleSection.tsx` |
 | `ToggleRow` | Label + switch row for boolean settings. | `components/reader/settings/ToggleRow.tsx` |
@@ -82,7 +84,7 @@ This document lists reusable UI components currently available in the codebase s
 | --- | --- | --- |
 | `SurahHeaderCard` | Surah intro/header block (calligraphy + metadata), web-like. | `components/surah/SurahHeaderCard.tsx` |
 | `VerseCard` | Separated verse row (verse key + Arabic + translations + ellipsis trigger) with optional subtle highlight for the active audio verse. | `components/surah/VerseCard.tsx` |
-| `VerseScrubber` | Right-side verse-index scrubber for Surah translation view; maps drag position to verse number and delegates list jumping to the screen. | `components/surah/VerseScrubber.tsx` |
+| `VerseScrubber` | Thin Surah-specific wrapper around `IndexScrubber` for verse-number scrubbing in the translation view. | `components/surah/VerseScrubber.tsx` |
 | `WordByWordVerse` | Word-by-word verse renderer (per-word Arabic with optional per-word translation). When the audio player is visible, words are tap-to-seek and the active word is highlighted. | `components/surah/WordByWordVerse.tsx` |
 | `useVerseAudioWordSync` | Hook that wires QDC word timing segments to the verse renderer (active word highlight + tap-to-seek). | `components/surah/useVerseAudioWordSync.ts` |
 | `VerseActionsSheet` | Bottom sheet for per-verse actions (play, tafsir, pin/bookmark, add to plan, share). | `components/surah/VerseActionsSheet.tsx` |

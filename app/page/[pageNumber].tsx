@@ -24,7 +24,11 @@ import {
   MushafWebViewPage,
   MushafWebViewPagePlaceholder,
 } from '@/components/mushaf/MushafWebViewPage';
-import { MushafSingleDocumentReader } from '@/components/mushaf/MushafSingleDocumentReader';
+import {
+  MushafSingleDocumentReader,
+  type MushafSingleDocumentReaderHandle,
+} from '@/components/mushaf/MushafSingleDocumentReader';
+import { IndexScrubber, type IndexScrubberHandle } from '@/components/reader/IndexScrubber';
 import { SettingsSidebar } from '@/components/reader/settings/SettingsSidebar';
 import { VerseActionsSheet } from '@/components/surah/VerseActionsSheet';
 import { AddToPlannerModal, type VerseSummaryDetails } from '@/components/verse-planner-modal';
@@ -549,6 +553,8 @@ export default function PageScreen(): React.JSX.Element {
   const resolvedMushafRenderer =
     initialPageProbe.data?.pack.renderer ?? selectedMushafOption?.renderer ?? 'text';
   const isExactRenderer = resolvedMushafRenderer === 'webview';
+  const shouldShowQpcTextPageScrubber =
+    selectedMushafId === 'qpc-uthmani-hafs' && !isExactRenderer;
   const activeMushafVersion = initialPageProbe.data?.pack.version ?? selectedMushafVersion;
   const canSyncActivePageCacheIdentity =
     initialPageProbe.data !== null || selectedMushafOption?.channel === 'bundled';
@@ -645,9 +651,15 @@ export default function PageScreen(): React.JSX.Element {
     React.useState(shouldLockInitialExactWindow);
   const totalPagesRef = React.useRef(FALLBACK_TOTAL_PAGES);
   const isExactRendererRef = React.useRef(isExactRenderer);
+  const shouldShowQpcTextPageScrubberRef = React.useRef(shouldShowQpcTextPageScrubber);
   const isInitialExactWindowLockedRef = React.useRef(shouldLockInitialExactWindow);
   const feedListRef = React.useRef<FlashListRef<number> | null>(null);
+  const exactReaderRef = React.useRef<MushafSingleDocumentReaderHandle | null>(null);
+  const exactPageScrubberRef = React.useRef<IndexScrubberHandle | null>(null);
   const initialPageNumberRef = React.useRef(initialPageNumber);
+  const [activeExactPageNumber, setActiveExactPageNumber] = React.useState(initialPageNumber);
+  const activeExactPageNumberRef = React.useRef(initialPageNumber);
+  const isExactPageScrubbingRef = React.useRef(false);
   const initialPageViewOffsetRef = React.useRef(0);
   const lastAppliedInitialScrollSignatureRef = React.useRef<string | null>(null);
   const didScrollToInitialPageRef = React.useRef(false);
@@ -756,11 +768,18 @@ export default function PageScreen(): React.JSX.Element {
   }, [isExactRenderer]);
 
   React.useEffect(() => {
+    shouldShowQpcTextPageScrubberRef.current = shouldShowQpcTextPageScrubber;
+  }, [shouldShowQpcTextPageScrubber]);
+
+  React.useEffect(() => {
     isInitialExactWindowLockedRef.current = isInitialExactWindowLocked;
   }, [isInitialExactWindowLocked]);
 
   React.useEffect(() => {
     initialPageNumberRef.current = initialPageNumber;
+    activeExactPageNumberRef.current = initialPageNumber;
+    isExactPageScrubbingRef.current = false;
+    setActiveExactPageNumber(initialPageNumber);
   }, [initialPageNumber]);
 
   const updateInitialPageViewOffset = React.useCallback((nextOffset: number) => {
@@ -868,6 +887,13 @@ export default function PageScreen(): React.JSX.Element {
         }
       }
 
+      if (shouldShowQpcTextPageScrubberRef.current && !isExactPageScrubbingRef.current) {
+        activeExactPageNumberRef.current = firstVisiblePageNumber;
+        setActiveExactPageNumber((currentPageNumber) =>
+          currentPageNumber === firstVisiblePageNumber ? currentPageNumber : firstVisiblePageNumber
+        );
+      }
+
       if (!isExactRendererRef.current) {
         return;
       }
@@ -905,6 +931,59 @@ export default function PageScreen(): React.JSX.Element {
 
     isInitialExactWindowLockedRef.current = false;
     setIsInitialExactWindowLocked(false);
+  }, []);
+
+  const handleExactActivePageChange = React.useCallback(
+    (pageNumber: number) => {
+      if (!Number.isFinite(pageNumber)) return;
+      if (isExactPageScrubbingRef.current) return;
+      const normalizedPageNumber = Math.min(
+        Math.max(Math.trunc(pageNumber), 1),
+        Math.max(1, totalPagesRef.current)
+      );
+      activeExactPageNumberRef.current = normalizedPageNumber;
+      setActiveExactPageNumber((currentPageNumber) =>
+        currentPageNumber === normalizedPageNumber ? currentPageNumber : normalizedPageNumber
+      );
+    },
+    []
+  );
+
+  const handleExactScrollActivity = React.useCallback(() => {
+    exactPageScrubberRef.current?.show();
+  }, []);
+
+  const handleMushafFeedScroll = React.useCallback(() => {
+    if (!shouldShowQpcTextPageScrubberRef.current) return;
+    exactPageScrubberRef.current?.show();
+  }, []);
+
+  const handleExactPageScrubStateChange = React.useCallback((isScrubbing: boolean) => {
+    isExactPageScrubbingRef.current = isScrubbing;
+  }, []);
+
+  const handleScrubToExactPage = React.useCallback((pageNumber: number) => {
+    if (!Number.isFinite(pageNumber)) return;
+    const normalizedPageNumber = Math.min(
+      Math.max(Math.trunc(pageNumber), 1),
+      Math.max(1, totalPagesRef.current)
+    );
+    activeExactPageNumberRef.current = normalizedPageNumber;
+    setActiveExactPageNumber((currentPageNumber) =>
+      currentPageNumber === normalizedPageNumber ? currentPageNumber : normalizedPageNumber
+    );
+    if (isExactRendererRef.current) {
+      exactReaderRef.current?.scrollToPage(normalizedPageNumber);
+      return;
+    }
+
+    try {
+      void feedListRef.current?.scrollToIndex({
+        index: normalizedPageNumber - 1,
+        animated: false,
+        viewPosition: 0,
+      });
+    } catch {}
   }, []);
 
   React.useEffect(() => {
@@ -1226,76 +1305,107 @@ export default function PageScreen(): React.JSX.Element {
       ) : initialPageProbe.errorMessage ? (
         <ErrorState message={initialPageProbe.errorMessage} />
       ) : isExactRenderer ? (
-        <MushafSingleDocumentReader
-          backgroundPageNumbers={exactReaderBackgroundPageNumbers}
-          chapterNamesById={chapterNamesById}
-          expectedVersion={activeMushafVersion}
-          focusTopInsetPx={arrivalFocusTopInset}
-          highlightVerseKey={arrivalHighlightVerseKey}
-          initialPageData={initialPageProbe.data}
-          initialPageNumber={initialPageNumber}
-          mushafScaleStep={settings.mushafScaleStep}
-          onSelectionChange={handleMushafSelectionChange}
-          onVersePress={handleVersePress}
-          packId={selectedMushafId}
-          totalPages={totalPages}
-        />
+        <>
+          <MushafSingleDocumentReader
+            ref={exactReaderRef}
+            backgroundPageNumbers={exactReaderBackgroundPageNumbers}
+            chapterNamesById={chapterNamesById}
+            expectedVersion={activeMushafVersion}
+            focusTopInsetPx={arrivalFocusTopInset}
+            highlightVerseKey={arrivalHighlightVerseKey}
+            initialPageData={initialPageProbe.data}
+            initialPageNumber={initialPageNumber}
+            mushafScaleStep={settings.mushafScaleStep}
+            onActivePageChange={handleExactActivePageChange}
+            onScrollActivity={handleExactScrollActivity}
+            onSelectionChange={handleMushafSelectionChange}
+            onVersePress={handleVersePress}
+            packId={selectedMushafId}
+            totalPages={totalPages}
+          />
+          {totalPages > 1 ? (
+            <IndexScrubber
+              ref={exactPageScrubberRef}
+              bottomInset={audioPlayerBarHeight}
+              currentIndex={activeExactPageNumber}
+              displayPrefix="Page"
+              itemCount={totalPages}
+              onScrubStateChange={handleExactPageScrubStateChange}
+              onScrubToIndex={handleScrubToExactPage}
+            />
+          ) : null}
+        </>
       ) : (
-        <FlashList
-          ref={feedListRef}
-          key={`mushaf-feed:${selectedMushafId}:${initialPageNumber}`}
-          data={pageNumbers}
-          keyExtractor={(item) => `mushaf-page:${selectedMushafId}:${item}`}
-          renderItem={({ item }) => {
-            const exactHeightCacheKey = isExactRenderer
-              ? getExactHeightCacheKeyForPage(item)
-              : null;
-            const cachedExactHeight =
-              exactHeightCacheKey === null ? null : readExactPageHeightCache(exactHeightCacheKey);
+        <>
+          <FlashList
+            ref={feedListRef}
+            key={`mushaf-feed:${selectedMushafId}:${initialPageNumber}`}
+            data={pageNumbers}
+            keyExtractor={(item) => `mushaf-page:${selectedMushafId}:${item}`}
+            renderItem={({ item }) => {
+              const exactHeightCacheKey = isExactRenderer
+                ? getExactHeightCacheKeyForPage(item)
+                : null;
+              const cachedExactHeight =
+                exactHeightCacheKey === null ? null : readExactPageHeightCache(exactHeightCacheKey);
 
-            return (
-              <MushafFeedPageRow
-                pageNumber={item}
-                packId={selectedMushafId}
-                expectedVersion={activeMushafVersion}
-                exactHeightCacheKey={exactHeightCacheKey}
-                cachedExactHeight={cachedExactHeight}
-                isExactRenderer={isExactRenderer}
-                isInExactRenderWindow={
-                  !isExactRenderer ||
-                  (item >= activeExactPageWindow.firstPageNumber &&
-                    item <= activeExactPageWindow.lastPageNumber)
-                }
-                mushafScaleStep={settings.mushafScaleStep}
-                estimatedHeight={estimatedItemSize}
-                chapterNamesById={chapterNamesById}
-                isInitialTargetPage={item === initialPageNumber}
-                loadingColor={palette.text}
-                highlightVerseKey={
-                  item === initialPageNumber ? arrivalHighlightVerseKey ?? undefined : undefined
-                }
-                onHighlightAnchorResolved={
-                  item === initialPageNumber && arrivalHighlightVerseKey
-                    ? handleInitialHighlightAnchorResolved
-                    : undefined
-                }
-                onExactHeightResolved={handleExactHeightResolved}
-                onExactPageFirstHeight={handleExactPageFirstHeight}
-                onSelectionChange={handleMushafSelectionChange}
-                onVersePress={handleVersePress}
-              />
-            );
-          }}
-          extraData={listExtraData}
-          initialScrollIndex={initialPageIndex}
-          drawDistance={Math.max(estimatedItemSize * 2, 1200)}
-          ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
-          contentContainerStyle={listContentContainerStyle}
-          viewabilityConfig={viewabilityConfig}
-          onViewableItemsChanged={onViewableItemsChanged}
-          onScrollBeginDrag={handleMushafScrollBegin}
-          showsVerticalScrollIndicator={false}
-        />
+              return (
+                <MushafFeedPageRow
+                  pageNumber={item}
+                  packId={selectedMushafId}
+                  expectedVersion={activeMushafVersion}
+                  exactHeightCacheKey={exactHeightCacheKey}
+                  cachedExactHeight={cachedExactHeight}
+                  isExactRenderer={isExactRenderer}
+                  isInExactRenderWindow={
+                    !isExactRenderer ||
+                    (item >= activeExactPageWindow.firstPageNumber &&
+                      item <= activeExactPageWindow.lastPageNumber)
+                  }
+                  mushafScaleStep={settings.mushafScaleStep}
+                  estimatedHeight={estimatedItemSize}
+                  chapterNamesById={chapterNamesById}
+                  isInitialTargetPage={item === initialPageNumber}
+                  loadingColor={palette.text}
+                  highlightVerseKey={
+                    item === initialPageNumber ? arrivalHighlightVerseKey ?? undefined : undefined
+                  }
+                  onHighlightAnchorResolved={
+                    item === initialPageNumber && arrivalHighlightVerseKey
+                      ? handleInitialHighlightAnchorResolved
+                      : undefined
+                  }
+                  onExactHeightResolved={handleExactHeightResolved}
+                  onExactPageFirstHeight={handleExactPageFirstHeight}
+                  onSelectionChange={handleMushafSelectionChange}
+                  onVersePress={handleVersePress}
+                />
+              );
+            }}
+            extraData={listExtraData}
+            initialScrollIndex={initialPageIndex}
+            drawDistance={Math.max(estimatedItemSize * 2, 1200)}
+            ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
+            contentContainerStyle={listContentContainerStyle}
+            viewabilityConfig={viewabilityConfig}
+            onViewableItemsChanged={onViewableItemsChanged}
+            onScroll={handleMushafFeedScroll}
+            onScrollBeginDrag={handleMushafScrollBegin}
+            scrollEventThrottle={16}
+            showsVerticalScrollIndicator={false}
+          />
+          {shouldShowQpcTextPageScrubber && totalPages > 1 ? (
+            <IndexScrubber
+              ref={exactPageScrubberRef}
+              bottomInset={audioPlayerBarHeight}
+              currentIndex={activeExactPageNumber}
+              displayPrefix="Page"
+              itemCount={totalPages}
+              onScrubStateChange={handleExactPageScrubStateChange}
+              onScrubToIndex={handleScrubToExactPage}
+            />
+          ) : null}
+        </>
       )}
 
       <SettingsSidebar

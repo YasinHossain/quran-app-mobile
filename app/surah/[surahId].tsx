@@ -24,9 +24,11 @@ import { HeaderActionButton, HeaderSearchBar } from '@/components/search/HeaderS
 import { HeaderSearchInput } from '@/components/search/HeaderSearchInput';
 import {
   MushafSingleDocumentReader,
+  type MushafSingleDocumentReaderHandle,
   type MushafSingleDocumentVersePress,
 } from '@/components/mushaf/MushafSingleDocumentReader';
 import type { MushafSelectionPayload } from '@/components/mushaf/mushafWordPayload';
+import { IndexScrubber, type IndexScrubberHandle } from '@/components/reader/IndexScrubber';
 import { SettingsSidebar } from '@/components/reader/settings/SettingsSidebar';
 import type { SettingsTab } from '@/components/reader/settings/SettingsTabToggle';
 import { BookmarkModal } from '@/components/bookmarks/BookmarkModal';
@@ -164,6 +166,17 @@ function clampPageToRange(pageNumber: number, range: ChapterPageRange | null): n
   if (!range) return 1;
   if (!Number.isFinite(pageNumber) || pageNumber <= 0) return range.firstPage;
   return Math.min(Math.max(Math.trunc(pageNumber), range.firstPage), range.lastPage);
+}
+
+function resolvePageIndexInList(pageNumber: number, pageNumbers: number[]): number {
+  if (pageNumbers.length === 0) return 1;
+  const normalizedPageNumber = Math.trunc(pageNumber);
+  const exactIndex = pageNumbers.indexOf(normalizedPageNumber);
+  if (exactIndex >= 0) return exactIndex + 1;
+
+  const nextPageIndex = pageNumbers.findIndex((candidate) => candidate > normalizedPageNumber);
+  if (nextPageIndex < 0) return pageNumbers.length;
+  return Math.max(1, nextPageIndex);
 }
 
 export default function SurahScreen(): React.JSX.Element {
@@ -896,6 +909,8 @@ export default function SurahScreen(): React.JSX.Element {
   const flatListRef = React.useRef<FlatList<number> | null>(null);
   const flashListRef = React.useRef<FlashListRef<number> | null>(null);
   const verseScrubberRef = React.useRef<VerseScrubberHandle | null>(null);
+  const mushafReaderRef = React.useRef<MushafSingleDocumentReaderHandle | null>(null);
+  const mushafPageScrubberRef = React.useRef<IndexScrubberHandle | null>(null);
   const visibleVerseKeyRef = React.useRef<string | null>(null);
   const lastPrefetchedMushafVerseRef = React.useRef<string | null>(null);
   const mushafPrefetchRequestIdRef = React.useRef(0);
@@ -904,6 +919,10 @@ export default function SurahScreen(): React.JSX.Element {
   const scrollRetryCountRef = React.useRef(0);
   const scrollRetryTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const startVerseRef = React.useRef(startVerse);
+  const [activeMushafPageNumber, setActiveMushafPageNumber] =
+    React.useState(initialMushafPageNumber);
+  const activeMushafPageNumberRef = React.useRef(initialMushafPageNumber);
+  const isMushafPageScrubbingRef = React.useRef(false);
 
   const didAutoScrollToAudioVerseRef = React.useRef<string | null>(null);
   const [autoScrollTick, bumpAutoScrollTick] = React.useReducer((value) => value + 1, 0);
@@ -923,6 +942,12 @@ export default function SurahScreen(): React.JSX.Element {
   React.useEffect(() => {
     startVerseRef.current = startVerse;
   }, [startVerse]);
+
+  React.useEffect(() => {
+    activeMushafPageNumberRef.current = initialMushafPageNumber;
+    isMushafPageScrubbingRef.current = false;
+    setActiveMushafPageNumber(initialMushafPageNumber);
+  }, [initialMushafPageNumber, selectedMushafId]);
 
   const getVerseByNumberRef = React.useRef(getVerseByNumber);
   React.useEffect(() => {
@@ -1364,6 +1389,51 @@ export default function SurahScreen(): React.JSX.Element {
     verseScrubberRef.current?.show();
   }, []);
 
+  const mushafPageScrubberIndex = React.useMemo(
+    () => resolvePageIndexInList(activeMushafPageNumber, mushafSurahPageNumbers),
+    [activeMushafPageNumber, mushafSurahPageNumbers]
+  );
+
+  const handleMushafActivePageChange = React.useCallback(
+    (pageNumber: number) => {
+      if (!Number.isFinite(pageNumber)) return;
+      if (isMushafPageScrubbingRef.current) return;
+      const normalizedPageNumber = clampPageToRange(pageNumber, mushafPageRange);
+      activeMushafPageNumberRef.current = normalizedPageNumber;
+      setActiveMushafPageNumber((currentPageNumber) =>
+        currentPageNumber === normalizedPageNumber ? currentPageNumber : normalizedPageNumber
+      );
+    },
+    [mushafPageRange]
+  );
+
+  const handleMushafScrollActivity = React.useCallback(() => {
+    mushafPageScrubberRef.current?.show();
+  }, []);
+
+  const handleMushafPageScrubStateChange = React.useCallback((isScrubbing: boolean) => {
+    isMushafPageScrubbingRef.current = isScrubbing;
+  }, []);
+
+  const handleScrubToMushafPageIndex = React.useCallback(
+    (pageIndex: number) => {
+      if (!Number.isFinite(pageIndex) || mushafSurahPageNumbers.length === 0) return;
+      const normalizedPageIndex = Math.max(
+        1,
+        Math.min(Math.trunc(pageIndex), mushafSurahPageNumbers.length)
+      );
+      const targetPageNumber = mushafSurahPageNumbers[normalizedPageIndex - 1];
+      if (!targetPageNumber) return;
+
+      activeMushafPageNumberRef.current = targetPageNumber;
+      setActiveMushafPageNumber((currentPageNumber) =>
+        currentPageNumber === targetPageNumber ? currentPageNumber : targetPageNumber
+      );
+      mushafReaderRef.current?.scrollToPage(targetPageNumber);
+    },
+    [mushafSurahPageNumbers]
+  );
+
   const activeVersePinned = React.useMemo(() => {
     if (!activeVerse) return false;
     const apiId = typeof activeVerse.verseApiId === 'number' ? String(activeVerse.verseApiId) : null;
@@ -1613,6 +1683,7 @@ export default function SurahScreen(): React.JSX.Element {
               <MushafMessageState color={palette.text} message={initialMushafPageProbe.errorMessage} />
             ) : (
               <MushafSingleDocumentReader
+                ref={mushafReaderRef}
                 backgroundPageNumbers={mushafInitialWindowPageNumbers}
                 chapterNamesById={chapterNamesById}
                 compactPageLines
@@ -1623,6 +1694,8 @@ export default function SurahScreen(): React.JSX.Element {
                 initialPageData={initialMushafPageProbe.data}
                 initialPageNumber={initialMushafPageNumber}
                 mushafScaleStep={settings.mushafScaleStep}
+                onActivePageChange={handleMushafActivePageChange}
+                onScrollActivity={handleMushafScrollActivity}
                 onSelectionChange={handleMushafSelectionChange}
                 onSurahNavigation={handleMushafSurahNavigation}
                 onVersePress={handleMushafVersePress}
@@ -1635,6 +1708,24 @@ export default function SurahScreen(): React.JSX.Element {
                 totalPages={mushafTotalPages}
               />
             )}
+            {isHydrated &&
+            resolvedMushafRenderer === 'webview' &&
+            !initialMushafPageProbe.errorMessage &&
+            mushafSurahPageNumbers.length > 1 ? (
+              <IndexScrubber
+                ref={mushafPageScrubberRef}
+                bottomInset={audioPlayerBarHeight}
+                currentIndex={mushafPageScrubberIndex}
+                itemCount={mushafSurahPageNumbers.length}
+                formatLabel={(pageIndex) => {
+                  const pageNumber =
+                    mushafSurahPageNumbers[Math.max(0, pageIndex - 1)] ?? activeMushafPageNumber;
+                  return `Page ${pageNumber}/${mushafTotalPages}`;
+                }}
+                onScrubStateChange={handleMushafPageScrubStateChange}
+                onScrubToIndex={handleScrubToMushafPageIndex}
+              />
+            ) : null}
           </Animated.View>
         ) : null}
       </View>

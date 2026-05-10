@@ -29,6 +29,10 @@ export type MushafSingleDocumentVersePress = {
   wordPosition: number;
 };
 
+export type MushafSingleDocumentReaderHandle = {
+  scrollToPage: (pageNumber: number) => void;
+};
+
 type MushafSingleDocumentReaderProps = {
   backgroundPageNumbers: number[];
   chapterNamesById: Map<number, string>;
@@ -40,7 +44,9 @@ type MushafSingleDocumentReaderProps = {
   initialPageData?: MushafPageData | null;
   initialPageNumber: number;
   mushafScaleStep: MushafScaleStep;
+  onActivePageChange?: (pageNumber: number) => void;
   onSelectionChange: (payload: MushafSelectionPayload) => void;
+  onScrollActivity?: () => void;
   onSurahNavigation?: (direction: 'next' | 'previous') => void;
   onVersePress: (verse: MushafSingleDocumentVersePress) => void;
   pageNumbers?: number[];
@@ -58,6 +64,14 @@ type ReaderMessage =
   | {
       type: 'reader-page-rendered';
       payload?: { pageNumber?: number };
+    }
+  | {
+      type: 'reader-active-page-change';
+      payload?: { pageNumber?: number };
+    }
+  | {
+      type: 'reader-scroll';
+      payload?: { scrollY?: number };
     }
   | {
       type: 'page-window-request';
@@ -182,26 +196,34 @@ function isReaderMessage(value: unknown): value is ReaderMessage {
   return Boolean(value && typeof value === 'object' && typeof (value as ReaderMessage).type === 'string');
 }
 
-export function MushafSingleDocumentReader({
-  backgroundPageNumbers,
-  chapterNamesById,
-  compactPageLines = false,
-  expectedVersion,
-  filterChapterId,
-  focusTopInsetPx,
-  highlightVerseKey,
-  initialPageData,
-  initialPageNumber,
-  mushafScaleStep,
-  onSelectionChange,
-  onSurahNavigation,
-  onVersePress,
-  pageNumbers,
-  packId,
-  surahIntro,
-  surahNavigation,
-  totalPages,
-}: MushafSingleDocumentReaderProps): React.JSX.Element {
+export const MushafSingleDocumentReader = React.forwardRef<
+  MushafSingleDocumentReaderHandle,
+  MushafSingleDocumentReaderProps
+>(function MushafSingleDocumentReader(
+  {
+    backgroundPageNumbers,
+    chapterNamesById,
+    compactPageLines = false,
+    expectedVersion,
+    filterChapterId,
+    focusTopInsetPx,
+    highlightVerseKey,
+    initialPageData,
+    initialPageNumber,
+    mushafScaleStep,
+    onActivePageChange,
+    onSelectionChange,
+    onScrollActivity,
+    onSurahNavigation,
+    onVersePress,
+    pageNumbers,
+    packId,
+    surahIntro,
+    surahNavigation,
+    totalPages,
+  },
+  ref
+): React.JSX.Element {
   const { width, height } = useWindowDimensions();
   const { resolvedTheme } = useAppTheme();
   const readerBackgroundColor = resolvedTheme === 'dark' ? '#102033' : '#F7F9F9';
@@ -284,6 +306,35 @@ export function MushafSingleDocumentReader({
     },
     [focusTopInsetPx, highlightVerseKey, initialPageNumber, shellDocument.layout]
   );
+
+  const scrollToPage = React.useCallback(
+    (pageNumber: number) => {
+      if (!Number.isFinite(pageNumber)) {
+        return;
+      }
+
+      const normalizedPageNumber = Math.min(
+        Math.max(Math.trunc(pageNumber), 1),
+        Math.max(1, totalPages)
+      );
+
+      if (allowedPageNumbers !== null && !allowedPageNumbers.has(normalizedPageNumber)) {
+        return;
+      }
+
+      webViewRef.current?.injectJavaScript(`
+        (function () {
+          if (window.__MUSHAF_READER__ && typeof window.__MUSHAF_READER__.scrollToPage === 'function') {
+            window.__MUSHAF_READER__.scrollToPage(${normalizedPageNumber});
+          }
+        })();
+        true;
+      `);
+    },
+    [allowedPageNumbers, totalPages]
+  );
+
+  React.useImperativeHandle(ref, () => ({ scrollToPage }), [scrollToPage]);
 
   const rememberPageData = React.useCallback((pageData: MushafPageData): void => {
     pageDataByNumberRef.current.set(pageData.pageNumber, pageData);
@@ -514,6 +565,20 @@ export function MushafSingleDocumentReader({
           }
           return;
         }
+        case 'reader-active-page-change': {
+          const payload = parsed.payload as { pageNumber?: unknown } | undefined;
+          const pageNumber =
+            typeof payload?.pageNumber === 'number' && Number.isFinite(payload.pageNumber)
+              ? Math.trunc(payload.pageNumber)
+              : null;
+          if (pageNumber !== null) {
+            onActivePageChange?.(pageNumber);
+          }
+          return;
+        }
+        case 'reader-scroll':
+          onScrollActivity?.();
+          return;
         case 'selection-change':
           onSelectionChange(parsed.payload as MushafSelectionPayload);
           return;
@@ -537,7 +602,9 @@ export function MushafSingleDocumentReader({
       initialPageNumber,
       injectPages,
       loadPages,
+      onActivePageChange,
       onSelectionChange,
+      onScrollActivity,
       onSurahNavigation,
       revealReader,
     ]
@@ -580,7 +647,7 @@ export function MushafSingleDocumentReader({
       </Animated.View>
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: {

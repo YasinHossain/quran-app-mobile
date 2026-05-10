@@ -508,6 +508,9 @@ function buildShellDocumentHtml({
         var loadedPageNumbers = new Set();
         var activeRenderTokens = Object.create(null);
         var scrollRequestTimeoutId = null;
+        var activePageRafId = null;
+        var scrollActivityRafId = null;
+        var lastEmittedActivePageNumber = null;
         var selectionRafId = null;
         var didScrollToInitialPage = false;
         var didScrollToHighlight = false;
@@ -638,7 +641,92 @@ function buildShellDocumentHtml({
           }
 
           window.scrollTo(0, Math.max(0, state.root.offsetTop));
+          scheduleActivePageReport();
           return true;
+        }
+
+        function resolveActivePageNumber() {
+          var viewportAnchor = Math.min(Math.max(window.innerHeight * 0.22, 72), 160);
+          var bestPageNumber = null;
+          var bestDistance = Number.POSITIVE_INFINITY;
+
+          pageStates.forEach(function (state) {
+            if (!state.root) {
+              return;
+            }
+
+            var rect = state.root.getBoundingClientRect();
+            if (rect.bottom < 0 || rect.top > window.innerHeight) {
+              return;
+            }
+
+            var distance = Math.abs(rect.top - viewportAnchor);
+            if (distance < bestDistance) {
+              bestDistance = distance;
+              bestPageNumber = state.pageNumber;
+            }
+          });
+
+          if (bestPageNumber !== null) {
+            return bestPageNumber;
+          }
+
+          var scrollTop = window.scrollY || document.documentElement.scrollTop || 0;
+          pageStates.forEach(function (state) {
+            if (!state.root) {
+              return;
+            }
+
+            var distance = Math.abs(state.root.offsetTop - scrollTop);
+            if (distance < bestDistance) {
+              bestDistance = distance;
+              bestPageNumber = state.pageNumber;
+            }
+          });
+
+          return bestPageNumber;
+        }
+
+        function emitActivePageIfChanged() {
+          activePageRafId = null;
+          var activePageNumber = resolveActivePageNumber();
+          if (!Number.isFinite(activePageNumber) || activePageNumber === lastEmittedActivePageNumber) {
+            return;
+          }
+
+          lastEmittedActivePageNumber = activePageNumber;
+          emit({
+            type: 'reader-active-page-change',
+            payload: {
+              pageNumber: activePageNumber,
+            },
+          });
+        }
+
+        function scheduleActivePageReport() {
+          if (activePageRafId !== null) {
+            return;
+          }
+
+          activePageRafId = requestAnimationFrame(emitActivePageIfChanged);
+        }
+
+        function emitScrollActivity() {
+          scrollActivityRafId = null;
+          emit({
+            type: 'reader-scroll',
+            payload: {
+              scrollY: window.scrollY || document.documentElement.scrollTop || 0,
+            },
+          });
+        }
+
+        function scheduleScrollActivityReport() {
+          if (scrollActivityRafId !== null) {
+            return;
+          }
+
+          scrollActivityRafId = requestAnimationFrame(emitScrollActivity);
         }
 
         function getPageRenderKey(pageData) {
@@ -1279,7 +1367,11 @@ function buildShellDocumentHtml({
           scheduleNearPageRequest();
         });
 
-        window.addEventListener('scroll', scheduleNearPageRequest, { passive: true });
+        window.addEventListener('scroll', function () {
+          scheduleNearPageRequest();
+          scheduleActivePageReport();
+          scheduleScrollActivityReport();
+        }, { passive: true });
 
         initPageStates();
         if (INITIAL_PAGE_NUMBER === FIRST_SHELL_PAGE_NUMBER && HIGHLIGHT_VERSE_KEY === '') {
@@ -1288,6 +1380,7 @@ function buildShellDocumentHtml({
           scrollToPage(INITIAL_PAGE_NUMBER);
         }
         didScrollToInitialPage = true;
+        scheduleActivePageReport();
 
         window.__MUSHAF_READER__ = {
           upsertPages: function (payload) {
