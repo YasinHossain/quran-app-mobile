@@ -111,13 +111,11 @@ const VERSE_SCRUBBER_SIDE_INSET = 8;
 function VerseScrubber({
   bottomInset,
   currentVerseNumber,
-  onScrubEnd,
   onScrubToVerse,
   verseCount,
 }: {
   bottomInset: number;
   currentVerseNumber: number;
-  onScrubEnd: () => void;
   onScrubToVerse: (verseNumber: number) => void;
   verseCount: number;
 }): React.JSX.Element | null {
@@ -200,8 +198,7 @@ function VerseScrubber({
     setIsDragging(false);
     setScrubVerseNumber(null);
     lastScrubbedVerseRef.current = null;
-    onScrubEnd();
-  }, [onScrubEnd]);
+  }, []);
 
   if (!hasScrollableVerses) return null;
 
@@ -1238,8 +1235,6 @@ export default function SurahScreen(): React.JSX.Element {
     normalizedStartVerse ?? 1
   );
   const visibleVerseNumberRef = React.useRef(normalizedStartVerse ?? 1);
-  const scrubTargetVerseRef = React.useRef<number | null>(null);
-  const scrubFrameRef = React.useRef<number | null>(null);
 
   React.useEffect(() => {
     visibleVerseNumberRef.current = visibleVerseNumber;
@@ -1248,11 +1243,6 @@ export default function SurahScreen(): React.JSX.Element {
   React.useEffect(() => {
     lastReadReportedRef.current = null;
     visibleVerseKeyRef.current = null;
-    scrubTargetVerseRef.current = null;
-    if (scrubFrameRef.current !== null) {
-      cancelAnimationFrame(scrubFrameRef.current);
-      scrubFrameRef.current = null;
-    }
     visibleVerseNumberRef.current = normalizedStartVerse ?? 1;
     setVisibleVerseNumber(normalizedStartVerse ?? 1);
   }, [normalizedStartVerse, surahId]);
@@ -1356,10 +1346,6 @@ export default function SurahScreen(): React.JSX.Element {
       if (autoScrollRetryTimeoutRef.current) {
         clearTimeout(autoScrollRetryTimeoutRef.current);
         autoScrollRetryTimeoutRef.current = null;
-      }
-      if (scrubFrameRef.current !== null) {
-        cancelAnimationFrame(scrubFrameRef.current);
-        scrubFrameRef.current = null;
       }
     };
   }, []);
@@ -1470,39 +1456,6 @@ export default function SurahScreen(): React.JSX.Element {
     verseCount,
   ]);
 
-  const scrollScrubFrameToVerse = React.useCallback((verseNumber: number) => {
-    if (!Number.isFinite(verseNumber) || verseNumber <= 0) return;
-    const targetVerseNumber = Math.max(
-      1,
-      Math.min(Math.trunc(verseNumber), Math.max(1, verseCountRef.current))
-    );
-    const targetIndex = targetVerseNumber - 1;
-
-    visibleVerseNumberRef.current = targetVerseNumber;
-    setVisibleVerseNumber((currentVerseNumber) =>
-      currentVerseNumber === targetVerseNumber ? currentVerseNumber : targetVerseNumber
-    );
-    ensureVerseRangeLoadedRef.current(targetVerseNumber, targetVerseNumber, 1);
-
-    const list = Platform.OS === 'web' ? flatListRef.current : flashListRef.current;
-    if (!list) return;
-
-    try {
-      list.scrollToIndex({ index: targetIndex, animated: false, viewPosition: 0 });
-    } catch {
-      ensureVerseRangeLoadedRef.current(targetVerseNumber, targetVerseNumber, 2);
-    }
-  }, []);
-
-  const runScrubFrame = React.useCallback(() => {
-    scrubFrameRef.current = null;
-
-    const targetVerseNumber = scrubTargetVerseRef.current;
-    if (!targetVerseNumber) return;
-
-    scrollScrubFrameToVerse(targetVerseNumber);
-  }, [scrollScrubFrameToVerse]);
-
   const handleScrubToVerse = React.useCallback(
     (verseNumber: number) => {
       if (!Number.isFinite(verseNumber) || verseNumber <= 0) return;
@@ -1510,24 +1463,25 @@ export default function SurahScreen(): React.JSX.Element {
         1,
         Math.min(Math.trunc(verseNumber), Math.max(1, verseCountRef.current))
       );
+      const targetIndex = targetVerseNumber - 1;
 
-      scrubTargetVerseRef.current = targetVerseNumber;
-      ensureVerseRangeLoadedRef.current(targetVerseNumber, targetVerseNumber, 2);
+      visibleVerseNumberRef.current = targetVerseNumber;
+      setVisibleVerseNumber((currentVerseNumber) =>
+        currentVerseNumber === targetVerseNumber ? currentVerseNumber : targetVerseNumber
+      );
+      ensureVerseRangeLoadedRef.current(targetVerseNumber, targetVerseNumber, 1);
 
-      if (scrubFrameRef.current === null) {
-        scrubFrameRef.current = requestAnimationFrame(runScrubFrame);
+      const list = Platform.OS === 'web' ? flatListRef.current : flashListRef.current;
+      if (!list) return;
+
+      try {
+        list.scrollToIndex({ index: targetIndex, animated: false, viewPosition: 0 });
+      } catch {
+        ensureVerseRangeLoadedRef.current(targetVerseNumber, targetVerseNumber, 2);
       }
     },
-    [runScrubFrame]
+    []
   );
-
-  const handleScrubEnd = React.useCallback(() => {
-    scrubTargetVerseRef.current = null;
-    if (scrubFrameRef.current !== null) {
-      cancelAnimationFrame(scrubFrameRef.current);
-      scrubFrameRef.current = null;
-    }
-  }, []);
 
   const activeVersePinned = React.useMemo(() => {
     if (!activeVerse) return false;
@@ -1739,7 +1693,6 @@ export default function SurahScreen(): React.JSX.Element {
               <VerseScrubber
                 bottomInset={audioPlayerBarHeight}
                 currentVerseNumber={visibleVerseNumber}
-                onScrubEnd={handleScrubEnd}
                 onScrubToVerse={handleScrubToVerse}
                 verseCount={verseCount}
               />
