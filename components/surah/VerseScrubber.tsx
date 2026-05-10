@@ -15,11 +15,12 @@ function clampNumber(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
-const VERSE_SCRUBBER_WIDTH = 32;
+const VERSE_SCRUBBER_WIDTH = 18;
 const VERSE_SCRUBBER_VISIBLE_WIDTH = 4;
 const VERSE_SCRUBBER_THUMB_HEIGHT = 72;
 const VERSE_SCRUBBER_SIDE_INSET = 8;
 const VERSE_SCRUBBER_HIDE_DELAY_MS = 650;
+const VERSE_SCRUBBER_THUMB_TOUCH_SLOP = 8;
 
 export type VerseScrubberHandle = {
   show: () => void;
@@ -44,9 +45,12 @@ export const VerseScrubber = React.forwardRef<VerseScrubberHandle, VerseScrubber
   const palette = Colors[resolvedTheme];
   const [trackHeight, setTrackHeight] = React.useState(0);
   const [isDragging, setIsDragging] = React.useState(false);
+  const [isTouchEnabled, setIsTouchEnabled] = React.useState(false);
   const [scrubVerseNumber, setScrubVerseNumber] = React.useState<number | null>(null);
   const lastScrubbedVerseRef = React.useRef<number | null>(null);
   const desiredVerseNumberRef = React.useRef<number | null>(null);
+  const dragStartPageYRef = React.useRef(0);
+  const dragStartVerseNumberRef = React.useRef(1);
   const scrubFrameRef = React.useRef<ReturnType<typeof requestAnimationFrame> | null>(null);
   const isVisibleRef = React.useRef(false);
   const hideTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -101,6 +105,7 @@ export const VerseScrubber = React.forwardRef<VerseScrubberHandle, VerseScrubber
     hideTimerRef.current = setTimeout(() => {
       hideTimerRef.current = null;
       isVisibleRef.current = false;
+      setIsTouchEnabled(false);
       Animated.timing(opacity, {
         toValue: 0,
         duration: 160,
@@ -113,6 +118,7 @@ export const VerseScrubber = React.forwardRef<VerseScrubberHandle, VerseScrubber
     clearHideTimer();
     if (!isVisibleRef.current) {
       isVisibleRef.current = true;
+      setIsTouchEnabled(true);
       Animated.timing(opacity, {
         toValue: 1,
         duration: 90,
@@ -164,16 +170,29 @@ export const VerseScrubber = React.forwardRef<VerseScrubberHandle, VerseScrubber
     scrubFrameRef.current = requestAnimationFrame(runScrubFrame);
   }, [runScrubFrame]);
 
-  const scrubToLocationY = React.useCallback(
+  const canStartDragAtLocationY = React.useCallback(
     (locationY: number) => {
       if (!isScrollable) return;
+      return (
+        locationY >= thumbOffset - VERSE_SCRUBBER_THUMB_TOUCH_SLOP &&
+        locationY <= thumbOffset + thumbHeight + VERSE_SCRUBBER_THUMB_TOUCH_SLOP
+      );
+    },
+    [isScrollable, thumbHeight, thumbOffset]
+  );
 
-      const nextProgress =
+  const scrubToPageY = React.useCallback(
+    (pageY: number) => {
+      if (!isScrollable) return;
+
+      const dragDeltaY = pageY - dragStartPageYRef.current;
+      const verseDelta =
         maxThumbOffset > 0
-          ? clampNumber(locationY - thumbHeight / 2, 0, maxThumbOffset) / maxThumbOffset
+          ? (dragDeltaY / maxThumbOffset) * Math.max(0, normalizedVerseCount - 1)
           : 0;
+
       const nextVerseNumber = clampNumber(
-        Math.round(nextProgress * (normalizedVerseCount - 1)) + 1,
+        Math.round(dragStartVerseNumberRef.current + verseDelta),
         1,
         normalizedVerseCount
       );
@@ -184,13 +203,7 @@ export const VerseScrubber = React.forwardRef<VerseScrubberHandle, VerseScrubber
       setScrubVerseNumber(nextVerseNumber);
       scheduleScrubFrame();
     },
-    [
-      isScrollable,
-      maxThumbOffset,
-      normalizedVerseCount,
-      scheduleScrubFrame,
-      thumbHeight,
-    ]
+    [isScrollable, maxThumbOffset, normalizedVerseCount, scheduleScrubFrame]
   );
 
   const handleResponderGrant = React.useCallback(
@@ -198,21 +211,24 @@ export const VerseScrubber = React.forwardRef<VerseScrubberHandle, VerseScrubber
       clearHideTimer();
       clearScrubFrame();
       isVisibleRef.current = true;
+      setIsTouchEnabled(true);
       opacity.setValue(1);
       onScrubStateChange?.(true);
       setIsDragging(true);
       lastScrubbedVerseRef.current = null;
       desiredVerseNumberRef.current = null;
-      scrubToLocationY(event.nativeEvent.locationY);
+      dragStartPageYRef.current = event.nativeEvent.pageY;
+      dragStartVerseNumberRef.current = displayVerseNumber;
+      setScrubVerseNumber(displayVerseNumber);
     },
-    [clearHideTimer, clearScrubFrame, onScrubStateChange, opacity, scrubToLocationY]
+    [clearHideTimer, clearScrubFrame, displayVerseNumber, onScrubStateChange, opacity]
   );
 
   const handleResponderMove = React.useCallback(
     (event: GestureResponderEvent) => {
-      scrubToLocationY(event.nativeEvent.locationY);
+      scrubToPageY(event.nativeEvent.pageY);
     },
-    [scrubToLocationY]
+    [scrubToPageY]
   );
 
   const finishDrag = React.useCallback(() => {
@@ -239,7 +255,7 @@ export const VerseScrubber = React.forwardRef<VerseScrubberHandle, VerseScrubber
 
   return (
     <Animated.View
-      pointerEvents="box-none"
+      pointerEvents={isTouchEnabled || isDragging ? 'box-none' : 'none'}
       style={{
         position: 'absolute',
         top: VERSE_SCRUBBER_SIDE_INSET,
@@ -284,8 +300,10 @@ export const VerseScrubber = React.forwardRef<VerseScrubberHandle, VerseScrubber
 
       <View
         onLayout={handleTrackLayout}
-        onStartShouldSetResponder={() => true}
-        onMoveShouldSetResponder={() => true}
+        onStartShouldSetResponder={(event) =>
+          Boolean(isTouchEnabled && canStartDragAtLocationY(event.nativeEvent.locationY))
+        }
+        onMoveShouldSetResponder={() => false}
         onResponderGrant={handleResponderGrant}
         onResponderMove={handleResponderMove}
         onResponderRelease={finishDrag}
@@ -302,7 +320,7 @@ export const VerseScrubber = React.forwardRef<VerseScrubberHandle, VerseScrubber
             style={{
               position: 'absolute',
               top: thumbOffset,
-              right: 9,
+              right: 7,
               height: thumbHeight,
               width: VERSE_SCRUBBER_VISIBLE_WIDTH,
               borderRadius: 999,

@@ -255,10 +255,11 @@ export function HomeQuickLinksCard(): React.JSX.Element {
                 onPress={() => setIsAddOpen(true)}
                 accessibilityRole="button"
                 accessibilityLabel="Add quick link"
-                className={`flex-row items-center rounded-full bg-interactive py-1.5 pl-1.5 dark:bg-surface-navigation-dark ${quickLinks.length === 0 ? 'pr-5' : 'pr-2'}`}
+                className={`flex-row items-center justify-center rounded-full bg-interactive dark:bg-surface-navigation-dark ${quickLinks.length === 0 ? 'py-1.5 pl-1.5 pr-5' : 'p-1.5'}`}
                 style={({ pressed }) => [
                   {
                     minHeight: 46,
+                    minWidth: quickLinks.length === 0 ? undefined : 46,
                     alignSelf: 'flex-start',
                     opacity: pressed ? 0.9 : 1,
                     transform: [{ scale: pressed ? 0.985 : 1 }],
