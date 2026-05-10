@@ -82,6 +82,7 @@ This document lists reusable UI components currently available in the codebase s
 | --- | --- | --- |
 | `SurahHeaderCard` | Surah intro/header block (calligraphy + metadata), web-like. | `components/surah/SurahHeaderCard.tsx` |
 | `VerseCard` | Separated verse row (verse key + Arabic + translations + ellipsis trigger) with optional subtle highlight for the active audio verse. | `components/surah/VerseCard.tsx` |
+| `VerseScrubber` | Right-side verse-index scrubber for Surah translation view; maps drag position to verse number and delegates list jumping to the screen. | `components/surah/VerseScrubber.tsx` |
 | `WordByWordVerse` | Word-by-word verse renderer (per-word Arabic with optional per-word translation). When the audio player is visible, words are tap-to-seek and the active word is highlighted. | `components/surah/WordByWordVerse.tsx` |
 | `useVerseAudioWordSync` | Hook that wires QDC word timing segments to the verse renderer (active word highlight + tap-to-seek). | `components/surah/useVerseAudioWordSync.ts` |
 | `VerseActionsSheet` | Bottom sheet for per-verse actions (play, tafsir, pin/bookmark, add to plan, share). | `components/surah/VerseActionsSheet.tsx` |
