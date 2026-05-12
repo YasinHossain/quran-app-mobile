@@ -95,22 +95,6 @@ export default function TabLayout() {
             easing: Easing.out(Easing.cubic),
           },
         },
-        sceneStyleInterpolator: ({ current }) => ({
-          sceneStyle: {
-            opacity: current.progress.interpolate({
-              inputRange: [-1, 0, 1],
-              outputRange: [0, 1, 0],
-            }),
-            transform: [
-              {
-                translateX: current.progress.interpolate({
-                  inputRange: [-1, 0, 1],
-                  outputRange: [18, 0, 18],
-                }),
-              },
-            ],
-          },
-        }),
       }}>
       <Tabs.Screen
         name="index"

@@ -179,6 +179,7 @@ export function ComprehensiveSearchDropdown({
   onNavigateToJuz,
   onNavigateToPage,
   onNavigateToSearch,
+  topInset = 0,
 }: {
   isOpen: boolean;
   query: string;
@@ -188,6 +189,7 @@ export function ComprehensiveSearchDropdown({
   onNavigateToJuz: (juzNumber: number) => void;
   onNavigateToPage: (pageNumber: number) => void;
   onNavigateToSearch: (query: string) => void;
+  topInset?: number;
 }): React.JSX.Element | null {
   const { resolvedTheme, isDark } = useAppTheme();
   const palette = Colors[resolvedTheme];
@@ -261,7 +263,7 @@ export function ComprehensiveSearchDropdown({
   if (!isOpen) return null;
 
   return (
-    <View style={styles.root} pointerEvents="box-none">
+    <View style={[styles.root, { paddingTop: topInset + 8 }]} pointerEvents="box-none">
       <View style={StyleSheet.absoluteFill} pointerEvents="none" className="bg-black/30" />
 
       {cardLayout ? (

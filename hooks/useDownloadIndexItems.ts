@@ -95,7 +95,7 @@ export function useDownloadIndexItems({
   itemsByKey: Map<DownloadKey, DownloadIndexItemWithKey>;
   isLoading: boolean;
   errorMessage: string | null;
-  refresh: () => void;
+  refresh: () => Promise<void>;
 } {
   const [items, setItems] = React.useState<DownloadIndexItemWithKey[]>([]);
   const [isLoading, setIsLoading] = React.useState(enabled);
@@ -152,7 +152,7 @@ export function useDownloadIndexItems({
   }, [enabled, pollIntervalMs, hasActiveItems, load]);
 
   const refresh = React.useCallback(() => {
-    void load(true);
+    return load(true);
   }, [load]);
 
   const itemsByKey = React.useMemo(

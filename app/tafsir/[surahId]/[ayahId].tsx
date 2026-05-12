@@ -1,5 +1,5 @@
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { Settings } from 'lucide-react-native';
+import { ArrowLeft, Settings } from 'lucide-react-native';
 import React from 'react';
 import {
   FlatList,
@@ -14,6 +14,11 @@ import {
 } from 'react-native';
 
 import { BookmarkModal } from '@/components/bookmarks/BookmarkModal';
+import { AppSearchHeader, ReaderOverlayHeader } from '@/components/navigation/AppHeader';
+import { useCollapsibleReaderHeader } from '@/components/navigation/useCollapsibleReaderHeader';
+import { useHeaderSearch } from '@/components/navigation/useHeaderSearch';
+import { ComprehensiveSearchDropdown } from '@/components/search/ComprehensiveSearchDropdown';
+import { HeaderActionButton } from '@/components/search/HeaderSearchBar';
 import { TafsirHtml } from '@/components/tafsir/TafsirHtml';
 import {
   TafsirTabPanels,
@@ -395,6 +400,7 @@ export default function TafsirScreen(): React.JSX.Element {
   const [plannerVerseSummary, setPlannerVerseSummary] = React.useState<VerseSummaryDetails | null>(
     null
   );
+  const headerSearch = useHeaderSearch();
   const [activeVerse, setActiveVerse] = React.useState<{
     title: string;
     surahId: number;
@@ -416,6 +422,7 @@ export default function TafsirScreen(): React.JSX.Element {
 
   const { resolvedTheme, isDark } = useAppTheme();
   const palette = Colors[resolvedTheme];
+  const readerHeader = useCollapsibleReaderHeader();
   const { settings } = useSettings();
   const audio = useAudioPlayer();
   const { isPinned } = useBookmarks();
@@ -567,12 +574,6 @@ export default function TafsirScreen(): React.JSX.Element {
     currentTarget,
     ensureCurrentSurahVerseRangeLoaded,
   ]);
-
-  const headerTitle = React.useMemo(() => {
-    if (currentNavigation.chapter?.name_simple) return currentNavigation.chapter.name_simple;
-    if (currentTarget?.surahId) return `Surah ${currentTarget.surahId}`;
-    return 'Surah';
-  }, [currentNavigation.chapter?.name_simple, currentTarget?.surahId]);
 
   const openVerseActions = React.useCallback(
     (params: {
@@ -1177,7 +1178,8 @@ export default function TafsirScreen(): React.JSX.Element {
               pageScrollRefsRef.current[verseKey] = ref;
             }}
             contentContainerStyle={{
-              padding: 16,
+              paddingHorizontal: 16,
+              paddingTop: readerHeader.headerHeight + 16,
               paddingBottom: 28,
               minHeight: Math.max(1, viewportHeight - 120),
             }}
@@ -1187,6 +1189,7 @@ export default function TafsirScreen(): React.JSX.Element {
             stickyHeaderIndices={isMultiTafsir ? [2] : undefined}
             onScroll={(event) => {
               pageScrollOffsetsRef.current[verseKey] = event.nativeEvent.contentOffset.y;
+              readerHeader.handleScroll(event);
             }}
             scrollEventThrottle={16}
           >
@@ -1316,6 +1319,8 @@ export default function TafsirScreen(): React.JSX.Element {
       pageStateByKey,
       pageSignature,
       pageWidth,
+      readerHeader.handleScroll,
+      readerHeader.headerHeight,
       settings.arabicFontFace,
       settings.arabicFontSize,
       settings.showByWords,
@@ -1391,27 +1396,39 @@ export default function TafsirScreen(): React.JSX.Element {
       <View className="flex-1 bg-background dark:bg-background-dark">
         <Stack.Screen
           options={{
-            title: headerTitle,
-            headerTitleAlign: 'center',
-            headerRight: () => (
-              <Pressable
-                onPress={() => setIsSettingsOpen(true)}
-                hitSlop={10}
-                accessibilityRole="button"
-                accessibilityLabel="Open settings"
-              >
-                {({ pressed }) => (
-                  <Settings
-                    color={palette.text}
-                    size={22}
-                    strokeWidth={2.25}
-                    style={{ marginRight: 12, opacity: pressed ? 0.5 : 1 }}
-                  />
-                )}
-              </Pressable>
-            ),
+            headerShown: false,
           }}
         />
+
+        <ReaderOverlayHeader
+          onLayout={readerHeader.handleHeaderLayout}
+          style={readerHeader.headerAnimatedStyle}
+        >
+          <AppSearchHeader
+            left={
+              <HeaderActionButton accessibilityLabel="Go back" onPress={() => router.back()}>
+                <ArrowLeft color={palette.text} size={22} strokeWidth={2.25} />
+              </HeaderActionButton>
+            }
+            inputRef={headerSearch.inputRef}
+            value={headerSearch.query}
+            onChangeText={headerSearch.updateQuery}
+            placeholder="Search…"
+            onFocus={() => {
+              readerHeader.showHeader();
+              headerSearch.setIsOpen(true);
+            }}
+            onSubmitEditing={() => headerSearch.navigateToSearch()}
+            right={
+              <HeaderActionButton
+                accessibilityLabel="Open settings"
+                onPress={() => setIsSettingsOpen(true)}
+              >
+                <Settings color={palette.text} size={22} strokeWidth={2.25} />
+              </HeaderActionButton>
+            }
+          />
+        </ReaderOverlayHeader>
 
         <FlatList
           ref={pagerRef}
@@ -1467,6 +1484,18 @@ export default function TafsirScreen(): React.JSX.Element {
             verseSummary={plannerVerseSummary}
           />
         ) : null}
+
+        <ComprehensiveSearchDropdown
+          isOpen={headerSearch.isOpen}
+          query={headerSearch.query}
+          onQueryChange={headerSearch.updateQuery}
+          onClose={() => headerSearch.close({ clearQuery: false })}
+          onNavigateToSurahVerse={headerSearch.navigateToSurahVerse}
+          onNavigateToJuz={headerSearch.navigateToJuz}
+          onNavigateToPage={headerSearch.navigateToPage}
+          onNavigateToSearch={headerSearch.navigateToSearch}
+          topInset={readerHeader.headerHeight}
+        />
 
         <SettingsSidebar
           isOpen={isSettingsOpen}

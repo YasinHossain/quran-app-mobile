@@ -24,6 +24,8 @@ import { DeleteFolderModal } from '@/components/bookmarks/DeleteFolderModal';
 import { FolderActionsSheet } from '@/components/bookmarks/FolderActionsSheet';
 import { FolderSettingsModal } from '@/components/bookmarks/FolderSettingsModal';
 import { LastReadSection } from '@/components/bookmarks/last-read';
+import { AppHeader } from '@/components/navigation/AppHeader';
+import { HeaderActionButton } from '@/components/search/HeaderSearchBar';
 import { VerseActionsSheet } from '@/components/surah/VerseActionsSheet';
 import { VerseCard } from '@/components/surah/VerseCard';
 import { AddToPlannerModal, type VerseSummaryDetails } from '@/components/verse-planner-modal';
@@ -423,25 +425,18 @@ export default function BookmarksScreen(): React.JSX.Element {
     <View className="flex-1 bg-background dark:bg-background-dark">
       <Stack.Screen
         options={{
-          headerRight: () => (
-            <Pressable
-              onPress={handleScrollToTop}
-              hitSlop={10}
-              accessibilityRole="button"
-              accessibilityLabel="Scroll to section cards"
-            >
-              {({ pressed }) => (
-                <ChevronUp
-                  color={palette.text}
-                  size={22}
-                  strokeWidth={2.25}
-                  style={{
-                    marginRight: 12,
-                    opacity: pressed ? 0.5 : 1,
-                  }}
-                />
-              )}
-            </Pressable>
+          header: () => (
+            <AppHeader
+              title="Bookmarks"
+              right={
+                <HeaderActionButton
+                  accessibilityLabel="Scroll to section cards"
+                  onPress={handleScrollToTop}
+                >
+                  <ChevronUp color={palette.text} size={22} strokeWidth={2.25} />
+                </HeaderActionButton>
+              }
+            />
           ),
         }}
       />

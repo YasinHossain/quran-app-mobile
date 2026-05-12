@@ -165,6 +165,7 @@ function buildShellDocumentHtml({
   theme: MushafReaderWebViewTheme;
   totalPages: number;
 }): string {
+  const topContentPaddingPx = Math.max(12, Math.round(focusTopInsetPx) + 12);
   const palette =
     theme === 'dark'
       ? {
@@ -242,7 +243,7 @@ function buildShellDocumentHtml({
       #app {
         width: min(calc(100vw - 8px), 720px);
         margin: 0 auto;
-        padding: 12px 0 24px;
+        padding: ${topContentPaddingPx}px 0 24px;
       }
 
       .surah-intro {

@@ -46,7 +46,7 @@ type MushafSingleDocumentReaderProps = {
   mushafScaleStep: MushafScaleStep;
   onActivePageChange?: (pageNumber: number) => void;
   onSelectionChange: (payload: MushafSelectionPayload) => void;
-  onScrollActivity?: () => void;
+  onScrollActivity?: (scrollY?: number) => void;
   onSurahNavigation?: (direction: 'next' | 'previous') => void;
   onVersePress: (verse: MushafSingleDocumentVersePress) => void;
   pageNumbers?: number[];
@@ -725,9 +725,15 @@ export const MushafSingleDocumentReader = React.forwardRef<
           }
           return;
         }
-        case 'reader-scroll':
-          onScrollActivity?.();
+        case 'reader-scroll': {
+          const payload = parsed.payload as { scrollY?: unknown } | undefined;
+          onScrollActivity?.(
+            typeof payload?.scrollY === 'number' && Number.isFinite(payload.scrollY)
+              ? payload.scrollY
+              : undefined
+          );
           return;
+        }
         case 'selection-change':
           onSelectionChange(parsed.payload as MushafSelectionPayload);
           return;

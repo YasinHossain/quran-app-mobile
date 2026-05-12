@@ -77,10 +77,13 @@ export const SettingsProvider = ({ children }: { children: React.ReactNode }): R
   const { settings, dispatch, isHydrated } = usePersistentSettings();
   const setters = useMemo(() => createSetters(dispatch), [dispatch]);
   const selectedTafsirIds = settings.tafsirIds ?? [];
+  const selectedTafsirIdsKey = useMemo(() => selectedTafsirIds.join(','), [selectedTafsirIds]);
+  const [verifiedTafsirSelectionKey, setVerifiedTafsirSelectionKey] = React.useState('');
   const {
     itemsByKey: downloadItemsByKey,
     isLoading: isDownloadIndexLoading,
     errorMessage: downloadIndexErrorMessage,
+    refresh: refreshDownloadIndex,
   } = useDownloadIndexItems({
     enabled: isHydrated && selectedTafsirIds.length > 0,
     pollIntervalMs: 0,
@@ -92,8 +95,34 @@ export const SettingsProvider = ({ children }: { children: React.ReactNode }): R
 
   useEffect(() => {
     if (!isHydrated) return;
+    if (selectedTafsirIds.length === 0) {
+      setVerifiedTafsirSelectionKey('');
+      return;
+    }
+
+    let cancelled = false;
+    setVerifiedTafsirSelectionKey('');
+
+    refreshDownloadIndex().finally(() => {
+      if (cancelled) return;
+      setVerifiedTafsirSelectionKey(selectedTafsirIdsKey);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    isHydrated,
+    refreshDownloadIndex,
+    selectedTafsirIds.length,
+    selectedTafsirIdsKey,
+  ]);
+
+  useEffect(() => {
+    if (!isHydrated) return;
     if (selectedTafsirIds.length === 0) return;
     if (isDownloadIndexLoading || downloadIndexErrorMessage) return;
+    if (verifiedTafsirSelectionKey !== selectedTafsirIdsKey) return;
 
     const installedTafsirIds = selectedTafsirIds.filter((tafsirId) => {
       const item = downloadItemsByKey.get(getDownloadKey({ kind: 'tafsir', tafsirId }));
@@ -113,6 +142,8 @@ export const SettingsProvider = ({ children }: { children: React.ReactNode }): R
     isDownloadIndexLoading,
     isHydrated,
     selectedTafsirIds,
+    selectedTafsirIdsKey,
+    verifiedTafsirSelectionKey,
   ]);
 
   const contextValue = useMemo<SettingsContextType>(

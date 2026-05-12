@@ -34,6 +34,7 @@ type IndexScrubberProps = {
   itemCount: number;
   onScrubStateChange?: (isScrubbing: boolean) => void;
   onScrubToIndex: (index: number, options?: { isFinal?: boolean }) => void;
+  topInset?: number;
 };
 
 export const IndexScrubber = React.forwardRef<IndexScrubberHandle, IndexScrubberProps>(
@@ -46,6 +47,7 @@ export const IndexScrubber = React.forwardRef<IndexScrubberHandle, IndexScrubber
       itemCount,
       onScrubStateChange,
       onScrubToIndex,
+      topInset = 0,
     },
     ref
   ): React.JSX.Element | null {
@@ -270,7 +272,7 @@ export const IndexScrubber = React.forwardRef<IndexScrubberHandle, IndexScrubber
         pointerEvents={isTouchEnabled || isDragging ? 'box-none' : 'none'}
         style={{
           position: 'absolute',
-          top: INDEX_SCRUBBER_SIDE_INSET,
+          top: Math.max(INDEX_SCRUBBER_SIDE_INSET, topInset + INDEX_SCRUBBER_SIDE_INSET),
           right: 0,
           bottom: Math.max(INDEX_SCRUBBER_SIDE_INSET, bottomInset + INDEX_SCRUBBER_SIDE_INSET),
           width: INDEX_SCRUBBER_WIDTH,

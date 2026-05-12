@@ -48,6 +48,16 @@ This document lists reusable UI components currently available in the codebase s
 | `HighlightedText` | Lightweight `<em>` tag highlighter renderer for search result snippets. | `components/search/HighlightedText.tsx` |
 | `SearchVerseResultCard` | Search results list item (Arabic + highlighted match snippet). | `components/search/SearchVerseResultCard.tsx` |
 
+## Navigation Header Components
+
+| Component / Hook | Description | File Path |
+| --- | --- | --- |
+| `AppHeader` | Shared safe-area navigation header for non-reader screens such as Bookmarks and Planner. | `components/navigation/AppHeader.tsx` |
+| `AppSearchHeader` | Shared safe-area header search layout used by Home and reader screens. | `components/navigation/AppHeader.tsx` |
+| `ReaderOverlayHeader` | Absolute reader header shell used when vertical reading scroll should collapse the header. | `components/navigation/AppHeader.tsx` |
+| `useHeaderSearch` | Shared header search state/navigation hook for Home, Surah/Mushaf, and Tafsir. | `components/navigation/useHeaderSearch.ts` |
+| `useCollapsibleReaderHeader` | Native-driver hide/show behavior for reader headers based on vertical scroll direction. | `components/navigation/useCollapsibleReaderHeader.ts` |
+
 ## Reader Data Hooks
 
 | Hook | Description | File Path |

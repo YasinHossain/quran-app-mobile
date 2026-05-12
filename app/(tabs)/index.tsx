@@ -1,9 +1,8 @@
-import { Stack, useRouter } from 'expo-router';
+import { Stack } from 'expo-router';
 import React from 'react';
 import {
   Animated,
   FlatList,
-  Keyboard,
   Platform, Linking, Modal, Pressable,
   Text,
   TextInput,
@@ -23,12 +22,11 @@ import { HomeVersePlaceholder } from '@/components/home/HomeVersePlaceholder';
 import { JuzCard, type JuzSummary } from '@/components/home/JuzCard';
 import { PageCard } from '@/components/home/PageCard';
 import { SurahCard } from '@/components/home/SurahCard';
+import { AppSearchHeader } from '@/components/navigation/AppHeader';
+import { useHeaderSearch } from '@/components/navigation/useHeaderSearch';
 import { ComprehensiveSearchDropdown } from '@/components/search/ComprehensiveSearchDropdown';
-import { HeaderActionButton, HeaderSearchBar } from '@/components/search/HeaderSearchBar';
-import { HeaderSearchInput } from '@/components/search/HeaderSearchInput';
+import { HeaderActionButton } from '@/components/search/HeaderSearchBar';
 import { useChapters } from '@/hooks/useChapters';
-import { preloadOfflineSurahNavigationPage } from '@/lib/surah/offlineSurahPageCache';
-import { useSettings } from '@/providers/SettingsContext';
 import { useAppTheme } from '@/providers/ThemeContext';
 import juzData from '../../src/data/juz.json';
 
@@ -175,7 +173,7 @@ function HomeSearchHeader({
   };
 
   return (
-    <HeaderSearchBar
+    <AppSearchHeader
       left={
         <View>
           <HeaderActionButton accessibilityLabel="Open menu" onPress={openMenu}>
@@ -211,18 +209,12 @@ function HomeSearchHeader({
           </Modal>
         </View>
       }
-      search={
-        <HeaderSearchInput
-          ref={(node) => {
-            headerSearchInputRef.current = node;
-          }}
-          value={headerSearchQuery}
-          onChangeText={onQueryChange}
-          placeholder="Search…"
-          onFocus={onFocus}
-          onSubmitEditing={onSubmit}
-        />
-      }
+      inputRef={headerSearchInputRef}
+      value={headerSearchQuery}
+      onChangeText={onQueryChange}
+      placeholder="Search…"
+      onFocus={onFocus}
+      onSubmitEditing={onSubmit}
       right={
         <HeaderActionButton
           accessibilityLabel={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
@@ -601,11 +593,8 @@ function buildHomeListData({
 }
 
 export default function ReadScreen(): React.JSX.Element {
-  const router = useRouter();
   const [activeTab, setActiveTab] = React.useState<HomeTab>('surah');
-  const [isHeaderSearchOpen, setIsHeaderSearchOpen] = React.useState(false);
-  const [headerSearchQuery, setHeaderSearchQuery] = React.useState('');
-  const headerSearchInputRef = React.useRef<TextInput | null>(null);
+  const headerSearch = useHeaderSearch();
   const listRef = React.useRef<FlatList<HomeListRow> | null>(null);
   const scrollY = React.useRef(new Animated.Value(0)).current;
   const homeIntroHeightRef = React.useRef(0);
@@ -614,7 +603,6 @@ export default function ReadScreen(): React.JSX.Element {
   const [tabsBarHeight, setTabsBarHeight] = React.useState(HOME_TABS_BAR_ESTIMATED_HEIGHT);
   const [listViewportHeight, setListViewportHeight] = React.useState(0);
   const { chapters, isLoading, errorMessage } = useChapters();
-  const { settings } = useSettings();
   const surahs = React.useMemo(() => chapters.map(mapChapterToSurah), [chapters]);
   const pageNumbers = React.useMemo(() => Array.from({ length: 604 }, (_, index) => index + 1), []);
   const { width } = useWindowDimensions();
@@ -644,59 +632,6 @@ export default function ReadScreen(): React.JSX.Element {
   const listExtraData = React.useMemo(
     () => ({ activeTab, homeIntroHeight: effectiveHomeIntroHeight, numColumns, tabsBarHeight }),
     [activeTab, effectiveHomeIntroHeight, numColumns, tabsBarHeight]
-  );
-
-  const closeHeaderSearch = React.useCallback(({ clearQuery }: { clearQuery: boolean }) => {
-    setIsHeaderSearchOpen(false);
-    if (clearQuery) setHeaderSearchQuery('');
-    headerSearchInputRef.current?.blur();
-    Keyboard.dismiss();
-  }, []);
-
-  const updateHeaderSearchQuery = React.useCallback((value: string) => {
-    setHeaderSearchQuery(value);
-    setIsHeaderSearchOpen(true);
-  }, []);
-
-  const navigateToSearchPage = React.useCallback(
-    (queryOverride?: string) => {
-      const trimmed = (queryOverride ?? headerSearchQuery).trim();
-      if (!trimmed) return;
-      closeHeaderSearch({ clearQuery: true });
-      router.push({ pathname: '/search', params: { query: trimmed } });
-    },
-    [closeHeaderSearch, headerSearchQuery, router]
-  );
-
-  const navigateToSurahVerse = React.useCallback(
-    async (surahId: number, verse?: number) => {
-      closeHeaderSearch({ clearQuery: true });
-      await preloadOfflineSurahNavigationPage({ surahId, verseNumber: verse, settings });
-      router.push({
-        pathname: '/surah/[surahId]',
-        params: {
-          surahId: String(surahId),
-          ...(typeof verse === 'number' ? { startVerse: String(verse) } : {}),
-        },
-      });
-    },
-    [closeHeaderSearch, router, settings]
-  );
-
-  const navigateToJuz = React.useCallback(
-    (juzNumber: number) => {
-      closeHeaderSearch({ clearQuery: true });
-      router.push({ pathname: '/juz/[juzNumber]', params: { juzNumber: String(juzNumber) } });
-    },
-    [closeHeaderSearch, router]
-  );
-
-  const navigateToPage = React.useCallback(
-    (pageNumber: number) => {
-      closeHeaderSearch({ clearQuery: true });
-      router.push({ pathname: '/page/[pageNumber]', params: { pageNumber: String(pageNumber) } });
-    },
-    [closeHeaderSearch, router]
   );
 
   const handleTabChange = React.useCallback(
@@ -838,11 +773,11 @@ export default function ReadScreen(): React.JSX.Element {
         options={{
           header: () => (
             <HomeSearchHeader
-              headerSearchInputRef={headerSearchInputRef}
-              headerSearchQuery={headerSearchQuery}
-              onQueryChange={updateHeaderSearchQuery}
-              onFocus={() => setIsHeaderSearchOpen(true)}
-              onSubmit={() => navigateToSearchPage()}
+              headerSearchInputRef={headerSearch.inputRef}
+              headerSearchQuery={headerSearch.query}
+              onQueryChange={headerSearch.updateQuery}
+              onFocus={() => headerSearch.setIsOpen(true)}
+              onSubmit={() => headerSearch.navigateToSearch()}
             />
           ),
         }}
@@ -884,14 +819,14 @@ export default function ReadScreen(): React.JSX.Element {
       </View>
 
       <ComprehensiveSearchDropdown
-        isOpen={isHeaderSearchOpen}
-        query={headerSearchQuery}
-        onQueryChange={updateHeaderSearchQuery}
-        onClose={() => closeHeaderSearch({ clearQuery: false })}
-        onNavigateToSurahVerse={navigateToSurahVerse}
-        onNavigateToJuz={navigateToJuz}
-        onNavigateToPage={navigateToPage}
-        onNavigateToSearch={navigateToSearchPage}
+        isOpen={headerSearch.isOpen}
+        query={headerSearch.query}
+        onQueryChange={headerSearch.updateQuery}
+        onClose={() => headerSearch.close({ clearQuery: false })}
+        onNavigateToSurahVerse={headerSearch.navigateToSurahVerse}
+        onNavigateToJuz={headerSearch.navigateToJuz}
+        onNavigateToPage={headerSearch.navigateToPage}
+        onNavigateToSearch={headerSearch.navigateToSearch}
       />
     </View>
   );

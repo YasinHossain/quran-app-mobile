@@ -9,6 +9,7 @@ type VerseScrubberProps = {
   currentVerseNumber: number;
   onScrubStateChange?: (isScrubbing: boolean) => void;
   onScrubToVerse: (verseNumber: number, options?: { isFinal?: boolean }) => void;
+  topInset?: number;
   verseCount: number;
 };
 
@@ -19,6 +20,7 @@ export const VerseScrubber = React.forwardRef<VerseScrubberHandle, VerseScrubber
       currentVerseNumber,
       onScrubStateChange,
       onScrubToVerse,
+      topInset,
       verseCount,
     },
     ref
@@ -31,6 +33,7 @@ export const VerseScrubber = React.forwardRef<VerseScrubberHandle, VerseScrubber
         itemCount={verseCount}
         onScrubStateChange={onScrubStateChange}
         onScrubToIndex={onScrubToVerse}
+        topInset={topInset}
       />
     );
   }

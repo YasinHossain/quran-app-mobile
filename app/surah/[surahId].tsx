@@ -8,20 +8,22 @@ import {
   Easing,
   FlatList,
   InteractionManager,
-  Keyboard,
   Platform,
   Pressable,
   Share,
   StyleSheet,
   Text,
-  TextInput,
   View,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
   type ViewToken,
 } from 'react-native';
 
 import { ComprehensiveSearchDropdown } from '@/components/search/ComprehensiveSearchDropdown';
-import { HeaderActionButton, HeaderSearchBar } from '@/components/search/HeaderSearchBar';
-import { HeaderSearchInput } from '@/components/search/HeaderSearchInput';
+import { AppSearchHeader, ReaderOverlayHeader } from '@/components/navigation/AppHeader';
+import { useCollapsibleReaderHeader } from '@/components/navigation/useCollapsibleReaderHeader';
+import { useHeaderSearch } from '@/components/navigation/useHeaderSearch';
+import { HeaderActionButton } from '@/components/search/HeaderSearchBar';
 import {
   MushafSingleDocumentReader,
   type MushafSingleDocumentReaderHandle,
@@ -43,7 +45,6 @@ import { DEFAULT_MUSHAF_ID, findMushafOption } from '@/data/mushaf/options';
 import { useChapters } from '@/hooks/useChapters';
 import { useMushafPageData } from '@/hooks/useMushafPageData';
 import { useSurahVerses, type SurahVerse } from '@/hooks/useSurahVerses';
-import { preloadOfflineSurahNavigationPage } from '@/lib/surah/offlineSurahPageCache';
 import { preloadOfflineTafsirSurah } from '@/lib/tafsir/tafsirCache';
 import { useTranslationResources } from '@/hooks/useTranslationResources';
 import { primeVerseDetailsCache } from '@/lib/verse/verseDetailsCache';
@@ -199,9 +200,7 @@ export default function SurahScreen(): React.JSX.Element {
   const isSettingsOpenRef = React.useRef(isSettingsOpen);
   const isSettingsClosingRef = React.useRef(false);
   const pendingSettingsRouteActionRef = React.useRef<(() => void) | null>(null);
-  const [isHeaderSearchOpen, setIsHeaderSearchOpen] = React.useState(false);
-  const [headerSearchQuery, setHeaderSearchQuery] = React.useState('');
-  const headerSearchInputRef = React.useRef<TextInput | null>(null);
+  const headerSearch = useHeaderSearch({ preserveMushafView: isMushafView });
   const [isVerseActionsOpen, setIsVerseActionsOpen] = React.useState(false);
   const [isBookmarkModalOpen, setIsBookmarkModalOpen] = React.useState(false);
   const [isAddToPlannerOpen, setIsAddToPlannerOpen] = React.useState(false);
@@ -217,13 +216,18 @@ export default function SurahScreen(): React.JSX.Element {
 
   const { resolvedTheme } = useAppTheme();
   const palette = Colors[resolvedTheme];
+  const readerHeader = useCollapsibleReaderHeader();
   const { chapters } = useChapters();
   const audio = useAudioPlayer();
   const verseAudioWordSync = useVerseAudioWordSync();
   const { audioPlayerBarHeight } = useLayoutMetrics();
   const listContentContainerStyle = React.useMemo(
-    () => ({ padding: 16, paddingBottom: 24 + audioPlayerBarHeight }),
-    [audioPlayerBarHeight]
+    () => ({
+      paddingHorizontal: 16,
+      paddingTop: readerHeader.headerHeight + 16,
+      paddingBottom: 24 + audioPlayerBarHeight,
+    }),
+    [audioPlayerBarHeight, readerHeader.headerHeight]
   );
 
   const { settings, isHydrated } = useSettings();
@@ -249,6 +253,11 @@ export default function SurahScreen(): React.JSX.Element {
   }, [settings.tafsirIds]);
 
   const showTranslationAttribution = !isMushafView && verseTranslationIds.length > 1;
+
+  React.useEffect(() => {
+    readerHeader.resetHeader();
+  }, [chapterNumber, isMushafView, readerHeader.resetHeader]);
+
   const { translationsById } = useTranslationResources({
     enabled: showTranslationAttribution,
     language: settings.contentLanguage,
@@ -385,64 +394,6 @@ export default function SurahScreen(): React.JSX.Element {
   const closeVerseActions = React.useCallback(() => {
     setIsVerseActionsOpen(false);
   }, []);
-
-  const closeHeaderSearch = React.useCallback(
-    ({ clearQuery }: { clearQuery: boolean }) => {
-      setIsHeaderSearchOpen(false);
-      if (clearQuery) setHeaderSearchQuery('');
-      headerSearchInputRef.current?.blur();
-      Keyboard.dismiss();
-    },
-    []
-  );
-
-  const updateHeaderSearchQuery = React.useCallback((value: string) => {
-    setHeaderSearchQuery(value);
-    setIsHeaderSearchOpen(true);
-  }, []);
-
-  const navigateToSearchPage = React.useCallback(() => {
-    const trimmed = headerSearchQuery.trim();
-    if (!trimmed) return;
-    closeHeaderSearch({ clearQuery: true });
-    router.push({ pathname: '/search', params: { query: trimmed } });
-  }, [closeHeaderSearch, headerSearchQuery, router]);
-
-  const navigateToSurahVerse = React.useCallback(
-    async (targetSurahId: number, verse?: number) => {
-      closeHeaderSearch({ clearQuery: true });
-      await preloadOfflineSurahNavigationPage({
-        surahId: targetSurahId,
-        verseNumber: verse,
-        settings,
-      });
-      router.push({
-        pathname: '/surah/[surahId]',
-        params: {
-          surahId: String(targetSurahId),
-          ...(typeof verse === 'number' ? { startVerse: String(verse) } : {}),
-          ...(isMushafView ? { view: 'mushaf' } : {}),
-        },
-      });
-    },
-    [closeHeaderSearch, isMushafView, router, settings]
-  );
-
-  const navigateToJuz = React.useCallback(
-    (juzNumber: number) => {
-      closeHeaderSearch({ clearQuery: true });
-      router.push({ pathname: '/juz/[juzNumber]', params: { juzNumber: String(juzNumber) } });
-    },
-    [closeHeaderSearch, router]
-  );
-
-  const navigateToPage = React.useCallback(
-    (pageNumber: number) => {
-      closeHeaderSearch({ clearQuery: true });
-      router.push({ pathname: '/page/[pageNumber]', params: { pageNumber: String(pageNumber) } });
-    },
-    [closeHeaderSearch, router, settings]
-  );
 
   React.useEffect(() => {
     isSettingsOpenRef.current = isSettingsOpen;
@@ -1314,9 +1265,10 @@ export default function SurahScreen(): React.JSX.Element {
     }
   }, []);
 
-  const handleSurahListScroll = React.useCallback(() => {
+  const handleSurahListScroll = React.useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
     verseScrubberRef.current?.show();
-  }, []);
+    readerHeader.handleScroll(event);
+  }, [readerHeader]);
 
   const mushafPageScrubberIndex = React.useMemo(
     () => resolvePageIndexInList(activeMushafPageNumber, mushafSurahPageNumbers),
@@ -1336,9 +1288,12 @@ export default function SurahScreen(): React.JSX.Element {
     [mushafPageRange]
   );
 
-  const handleMushafScrollActivity = React.useCallback(() => {
+  const handleMushafScrollActivity = React.useCallback((scrollY?: number) => {
     mushafPageScrubberRef.current?.show();
-  }, []);
+    if (typeof scrollY === 'number') {
+      readerHeader.handleScrollOffset(scrollY);
+    }
+  }, [readerHeader]);
 
   const handleMushafPageScrubStateChange = React.useCallback((isScrubbing: boolean) => {
     isMushafPageScrubbingRef.current = isScrubbing;
@@ -1418,37 +1373,36 @@ export default function SurahScreen(): React.JSX.Element {
     <View className="flex-1 bg-background dark:bg-background-dark">
       <Stack.Screen
         options={{
-          header: () => (
-            <HeaderSearchBar
-              left={
-                <HeaderActionButton accessibilityLabel="Go back" onPress={() => router.back()}>
-                  <ArrowLeft color={palette.text} size={22} strokeWidth={2.25} />
-                </HeaderActionButton>
-              }
-              search={
-                <HeaderSearchInput
-                  ref={(node) => {
-                    headerSearchInputRef.current = node;
-                  }}
-                  value={headerSearchQuery}
-                  onChangeText={updateHeaderSearchQuery}
-                  placeholder="Search…"
-                  onFocus={() => setIsHeaderSearchOpen(true)}
-                  onSubmitEditing={navigateToSearchPage}
-                />
-              }
-              right={
-                <HeaderActionButton
-                  accessibilityLabel="Open settings"
-                  onPress={openTranslationSettings}
-                >
-                  <Settings color={palette.text} size={22} strokeWidth={2.25} />
-                </HeaderActionButton>
-              }
-            />
-          ),
+          headerShown: false,
         }}
       />
+
+      <ReaderOverlayHeader
+        onLayout={readerHeader.handleHeaderLayout}
+        style={readerHeader.headerAnimatedStyle}
+      >
+        <AppSearchHeader
+          left={
+            <HeaderActionButton accessibilityLabel="Go back" onPress={() => router.back()}>
+              <ArrowLeft color={palette.text} size={22} strokeWidth={2.25} />
+            </HeaderActionButton>
+          }
+          inputRef={headerSearch.inputRef}
+          value={headerSearch.query}
+          onChangeText={headerSearch.updateQuery}
+          placeholder="Search…"
+          onFocus={() => {
+            readerHeader.showHeader();
+            headerSearch.setIsOpen(true);
+          }}
+          onSubmitEditing={() => headerSearch.navigateToSearch()}
+          right={
+            <HeaderActionButton accessibilityLabel="Open settings" onPress={openTranslationSettings}>
+              <Settings color={palette.text} size={22} strokeWidth={2.25} />
+            </HeaderActionButton>
+          }
+        />
+      </ReaderOverlayHeader>
 
       <View style={styles.contentStage}>
         {!isMushafView ? (
@@ -1457,7 +1411,7 @@ export default function SurahScreen(): React.JSX.Element {
             pointerEvents="auto"
           >
             {!hasLoadedContent && offlineNotInstalled ? (
-              <View className="flex-1 px-4 pt-4">
+              <View className="flex-1 px-4" style={{ paddingTop: readerHeader.headerHeight + 16 }}>
                 <View className="mt-2 gap-3">
                   <Text className="text-sm text-muted dark:text-muted-dark">
                     You’re offline and this translation isn’t downloaded yet.
@@ -1476,7 +1430,7 @@ export default function SurahScreen(): React.JSX.Element {
                 </View>
               </View>
             ) : !hasLoadedContent && errorMessage ? (
-              <View className="flex-1 px-4 pt-4">
+              <View className="flex-1 px-4" style={{ paddingTop: readerHeader.headerHeight + 16 }}>
                 <View className="mt-2 gap-3">
                   <Text className="text-sm text-error dark:text-error-dark">{errorMessage}</Text>
                   <Pressable
@@ -1504,7 +1458,7 @@ export default function SurahScreen(): React.JSX.Element {
                 scrollEnabled={false}
               />
             ) : verseCount <= 0 ? (
-              <View className="flex-1 px-4 pt-4">
+              <View className="flex-1 px-4" style={{ paddingTop: readerHeader.headerHeight + 16 }}>
                 <Text className="mt-2 text-sm text-muted dark:text-muted-dark">
                   No verses found for this surah.
                 </Text>
@@ -1580,6 +1534,7 @@ export default function SurahScreen(): React.JSX.Element {
                 currentVerseNumber={visibleVerseNumber}
                 onScrubStateChange={handleScrubStateChange}
                 onScrubToVerse={handleScrubToVerse}
+                topInset={readerHeader.headerHeight}
                 verseCount={verseCount}
               />
             ) : null}
@@ -1618,7 +1573,7 @@ export default function SurahScreen(): React.JSX.Element {
                 compactPageLines
                 expectedVersion={activeMushafVersion}
                 filterChapterId={Math.trunc(chapterNumber)}
-                focusTopInsetPx={96}
+                focusTopInsetPx={readerHeader.headerHeight + 12}
                 highlightVerseKey={mushafHighlightVerseKey}
                 initialPageData={initialMushafPageProbe.data}
                 initialPageNumber={initialMushafPageNumber}
@@ -1646,6 +1601,7 @@ export default function SurahScreen(): React.JSX.Element {
                 bottomInset={audioPlayerBarHeight}
                 currentIndex={mushafPageScrubberIndex}
                 itemCount={mushafSurahPageNumbers.length}
+                topInset={readerHeader.headerHeight}
                 formatLabel={(pageIndex) => {
                   const pageNumber =
                     mushafSurahPageNumbers[Math.max(0, pageIndex - 1)] ?? activeMushafPageNumber;
@@ -1696,19 +1652,15 @@ export default function SurahScreen(): React.JSX.Element {
       ) : null}
 
       <ComprehensiveSearchDropdown
-        isOpen={isHeaderSearchOpen}
-        query={headerSearchQuery}
-        onQueryChange={updateHeaderSearchQuery}
-        onClose={() => closeHeaderSearch({ clearQuery: false })}
-        onNavigateToSurahVerse={navigateToSurahVerse}
-        onNavigateToJuz={navigateToJuz}
-        onNavigateToPage={navigateToPage}
-        onNavigateToSearch={(query) => {
-          const trimmed = query.trim();
-          if (!trimmed) return;
-          closeHeaderSearch({ clearQuery: true });
-          router.push({ pathname: '/search', params: { query: trimmed } });
-        }}
+        isOpen={headerSearch.isOpen}
+        query={headerSearch.query}
+        onQueryChange={headerSearch.updateQuery}
+        onClose={() => headerSearch.close({ clearQuery: false })}
+        onNavigateToSurahVerse={headerSearch.navigateToSurahVerse}
+        onNavigateToJuz={headerSearch.navigateToJuz}
+        onNavigateToPage={headerSearch.navigateToPage}
+        onNavigateToSearch={headerSearch.navigateToSearch}
+        topInset={readerHeader.headerHeight}
       />
       <SettingsSidebar
         isOpen={isSettingsOpen}
