@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { dialogTransform, useModalTransition } from '@/components/motion/modalTransition';
 import Colors from '@/constants/Colors';
 import { useAppTheme } from '@/providers/ThemeContext';
 
@@ -37,11 +38,7 @@ export function DeleteFolderModal({
 
   const [isDeleting, setIsDeleting] = React.useState(false);
 
-  const dialogScale = React.useRef(new Animated.Value(0.96)).current;
-  const overlayOpacity = React.useRef(new Animated.Value(0)).current;
-  const animationTokenRef = React.useRef(0);
-  const dismissEnabledRef = React.useRef(false);
-  const [visible, setVisible] = React.useState(shouldRender);
+  const { visible, progress, dismissEnabledRef } = useModalTransition(shouldRender);
 
   React.useEffect(() => {
     if (!shouldRender) return;
@@ -51,39 +48,7 @@ export function DeleteFolderModal({
   const handleOverlayPress = React.useCallback(() => {
     if (!dismissEnabledRef.current) return;
     onClose();
-  }, [onClose]);
-
-  React.useEffect(() => {
-    const token = ++animationTokenRef.current;
-    dialogScale.stopAnimation();
-    overlayOpacity.stopAnimation();
-
-    if (shouldRender) {
-      dismissEnabledRef.current = false;
-      setVisible(true);
-      Animated.parallel([
-        Animated.timing(dialogScale, { toValue: 1, duration: 220, useNativeDriver: true }),
-        Animated.timing(overlayOpacity, { toValue: 1, duration: 220, useNativeDriver: true }),
-      ]).start();
-
-      const enableDismissTimeout = setTimeout(() => {
-        if (animationTokenRef.current !== token) return;
-        dismissEnabledRef.current = true;
-      }, 240);
-
-      return () => clearTimeout(enableDismissTimeout);
-    }
-
-    dismissEnabledRef.current = false;
-    Animated.parallel([
-      Animated.timing(dialogScale, { toValue: 0.96, duration: 180, useNativeDriver: true }),
-      Animated.timing(overlayOpacity, { toValue: 0, duration: 180, useNativeDriver: true }),
-    ]).start(({ finished }) => {
-      if (!finished) return;
-      if (animationTokenRef.current !== token) return;
-      setVisible(false);
-    });
-  }, [dialogScale, overlayOpacity, shouldRender]);
+  }, [dismissEnabledRef, onClose]);
 
   const handleDelete = React.useCallback(() => {
     if (!folder) return;
@@ -110,7 +75,7 @@ export function DeleteFolderModal({
     >
       <View style={styles.root}>
         <Pressable style={StyleSheet.absoluteFill} onPress={handleOverlayPress}>
-          <Animated.View style={[styles.overlay, { opacity: overlayOpacity }]} />
+          <Animated.View style={[styles.overlay, { opacity: progress }]} />
         </Pressable>
 
         <KeyboardAvoidingView
@@ -121,7 +86,7 @@ export function DeleteFolderModal({
             style={[
               styles.dialog,
               { maxHeight: maxDialogHeight, minHeight: minDialogHeight },
-              { transform: [{ scale: dialogScale }] },
+              dialogTransform(progress),
             ]}
             className="bg-surface dark:bg-surface-dark border border-border/30 dark:border-border-dark/20"
           >

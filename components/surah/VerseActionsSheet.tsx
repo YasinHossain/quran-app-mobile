@@ -8,9 +8,10 @@ import {
   X,
 } from 'lucide-react-native';
 import React from 'react';
-import { Animated, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, Modal, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { useModalTransition, verticalSheetTransform } from '@/components/motion/modalTransition';
 import Colors from '@/constants/Colors';
 import { useAppTheme } from '@/providers/ThemeContext';
 
@@ -45,13 +46,13 @@ export function VerseActionsSheet({
 }): React.JSX.Element {
   const { resolvedTheme, isDark } = useAppTheme();
   const palette = Colors[resolvedTheme];
+  const { height: windowHeight } = useWindowDimensions();
   const PlayPauseIcon = isPlaying ? Pause : Play;
-
-  const translateY = React.useRef(new Animated.Value(500)).current;
-  const overlayOpacity = React.useRef(new Animated.Value(0)).current;
-  const animationTokenRef = React.useRef(0);
-  const dismissEnabledRef = React.useRef(false);
-  const [visible, setVisible] = React.useState(isOpen);
+  const { visible, progress, dismissEnabledRef } = useModalTransition(isOpen, {
+    openDuration: 260,
+    closeDuration: 170,
+  });
+  const hiddenTranslateY = Math.max(360, Math.round(windowHeight * 0.48));
 
   const runAndClose = React.useCallback(
     (fn?: () => void) => {
@@ -71,55 +72,7 @@ export function VerseActionsSheet({
   const handleOverlayPress = React.useCallback(() => {
     if (!dismissEnabledRef.current) return;
     onClose();
-  }, [onClose]);
-
-  React.useEffect(() => {
-    const token = ++animationTokenRef.current;
-    translateY.stopAnimation();
-    overlayOpacity.stopAnimation();
-
-    if (isOpen) {
-      dismissEnabledRef.current = false;
-      setVisible(true);
-      Animated.parallel([
-        Animated.timing(translateY, {
-          toValue: 0,
-          duration: 220,
-          useNativeDriver: true,
-        }),
-        Animated.timing(overlayOpacity, {
-          toValue: 1,
-          duration: 220,
-          useNativeDriver: true,
-        }),
-      ]).start();
-
-      const enableDismissTimeout = setTimeout(() => {
-        if (animationTokenRef.current !== token) return;
-        dismissEnabledRef.current = true;
-      }, 240);
-
-      return () => clearTimeout(enableDismissTimeout);
-    }
-
-    dismissEnabledRef.current = false;
-    Animated.parallel([
-      Animated.timing(translateY, {
-        toValue: 500,
-        duration: 180,
-        useNativeDriver: true,
-      }),
-      Animated.timing(overlayOpacity, {
-        toValue: 0,
-        duration: 180,
-        useNativeDriver: true,
-      }),
-    ]).start(({ finished }) => {
-      if (!finished) return;
-      if (animationTokenRef.current !== token) return;
-      setVisible(false);
-    });
-  }, [isOpen, overlayOpacity, translateY]);
+  }, [dismissEnabledRef, onClose]);
 
   return (
     <Modal
@@ -132,11 +85,11 @@ export function VerseActionsSheet({
     >
       <View style={styles.root}>
         <Pressable style={StyleSheet.absoluteFill} onPress={handleOverlayPress}>
-          <Animated.View style={[styles.overlay, { opacity: overlayOpacity }]} />
+          <Animated.View style={[styles.overlay, { opacity: progress }]} />
         </Pressable>
 
         <Animated.View
-          style={[styles.sheet, { transform: [{ translateY }] }]}
+          style={[styles.sheet, verticalSheetTransform(progress, hiddenTranslateY)]}
           className="bg-surface dark:bg-surface-dark rounded-t-3xl border-t border-border/30 dark:border-border-dark/20"
         >
           <SafeAreaView edges={['bottom']}>

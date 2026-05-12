@@ -17,6 +17,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { useModalTransition, verticalSheetTransform } from '@/components/motion/modalTransition';
 import Colors from '@/constants/Colors';
 import { useQuickSearch } from '@/hooks/useQuickSearch';
 import { preloadOfflineSurahNavigationPage } from '@/lib/surah/offlineSurahPageCache';
@@ -209,11 +210,11 @@ export function ComprehensiveSearchModal({
     perPage: 10,
   });
 
-  const overlayOpacity = React.useRef(new Animated.Value(0)).current;
-  const translateY = React.useRef(new Animated.Value(24)).current;
-  const animationTokenRef = React.useRef(0);
-  const dismissEnabledRef = React.useRef(false);
-  const [visible, setVisible] = React.useState(isOpen);
+  const { visible, progress, dismissEnabledRef } = useModalTransition(isOpen, {
+    openDuration: 230,
+    closeDuration: 160,
+  });
+  const focusFrameRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const closeAndReset = React.useCallback(() => {
     setQuery('');
@@ -223,49 +224,23 @@ export function ComprehensiveSearchModal({
   const handleOverlayPress = React.useCallback(() => {
     if (!dismissEnabledRef.current) return;
     closeAndReset();
-  }, [closeAndReset]);
+  }, [closeAndReset, dismissEnabledRef]);
 
   React.useEffect(() => {
-    const token = ++animationTokenRef.current;
-    overlayOpacity.stopAnimation();
-    translateY.stopAnimation();
-
     if (isOpen) {
-      dismissEnabledRef.current = false;
-      setVisible(true);
       setQuery(initialQuery);
-
-      Animated.parallel([
-        Animated.timing(overlayOpacity, { toValue: 1, duration: 200, useNativeDriver: true }),
-        Animated.timing(translateY, { toValue: 0, duration: 200, useNativeDriver: true }),
-      ]).start();
-
-      const enableDismissTimeout = setTimeout(() => {
-        if (animationTokenRef.current !== token) return;
-        dismissEnabledRef.current = true;
-      }, 220);
-
-      const focusTimeout = setTimeout(() => {
-        if (animationTokenRef.current !== token) return;
+      focusFrameRef.current = setTimeout(() => {
         inputRef.current?.focus();
       }, 260);
 
       return () => {
-        clearTimeout(enableDismissTimeout);
-        clearTimeout(focusTimeout);
+        if (focusFrameRef.current !== null) {
+          clearTimeout(focusFrameRef.current);
+          focusFrameRef.current = null;
+        }
       };
     }
-
-    dismissEnabledRef.current = false;
-    Animated.parallel([
-      Animated.timing(overlayOpacity, { toValue: 0, duration: 160, useNativeDriver: true }),
-      Animated.timing(translateY, { toValue: 24, duration: 160, useNativeDriver: true }),
-    ]).start(({ finished }) => {
-      if (!finished) return;
-      if (animationTokenRef.current !== token) return;
-      setVisible(false);
-    });
-  }, [initialQuery, isOpen, overlayOpacity, translateY]);
+  }, [initialQuery, isOpen]);
 
   const navigateToSearchPage = React.useCallback(() => {
     const trimmed = query.trim();
@@ -350,14 +325,14 @@ export function ComprehensiveSearchModal({
     >
       <View style={styles.root}>
         <Pressable style={StyleSheet.absoluteFill} onPress={handleOverlayPress}>
-          <Animated.View style={[styles.overlay, { opacity: overlayOpacity }]} />
+          <Animated.View style={[styles.overlay, { opacity: progress }]} />
         </Pressable>
 
         <Animated.View
           style={[
             styles.card,
             { maxHeight, minHeight },
-            { transform: [{ translateY }] },
+            verticalSheetTransform(progress, 28),
           ]}
           className="bg-surface-navigation dark:bg-surface-navigation-dark border border-border/30 dark:border-border-dark/20"
         >

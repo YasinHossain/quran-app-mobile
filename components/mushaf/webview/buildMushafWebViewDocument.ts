@@ -56,13 +56,13 @@ function buildShellDocumentHtml({
     theme === 'dark'
       ? {
           background: '#102033',
-          highlight: 'rgba(250, 204, 21, 0.22)',
+          highlight: 'rgba(34, 197, 94, 0.26)',
           text: '#E7E5E4',
           muted: '#94A3B8',
         }
       : {
           background: '#F7F9F9',
-          highlight: 'rgba(245, 158, 11, 0.18)',
+          highlight: 'rgba(34, 197, 94, 0.2)',
           text: '#111827',
           muted: '#6B7280',
         };
@@ -199,8 +199,15 @@ function buildShellDocumentHtml({
 
       .word.arrival-highlight,
       .reflow-word.arrival-highlight {
-        box-shadow: inset 0 -0.5em 0 var(--highlight);
-        border-radius: 0.3em;
+        background:
+          linear-gradient(
+            to bottom,
+            transparent 14%,
+            var(--highlight) 14%,
+            var(--highlight) 88%,
+            transparent 88%
+          );
+        border-radius: 0.15em;
       }
 
       .reflow-spacer {
@@ -240,6 +247,8 @@ function buildShellDocumentHtml({
         var lastContainerWidth = 0;
         var stableReflowState = null;
         var activeRenderToken = 0;
+        var isArrivalHighlightVisible = false;
+        var arrivalHighlightTimeoutId = null;
 
         function emit(message) {
           if (!window.ReactNativeWebView) {
@@ -594,6 +603,7 @@ function buildShellDocumentHtml({
             wordNode.dataset.verseKey = verseKey;
             if (
               currentPayload &&
+              isArrivalHighlightVisible &&
               typeof currentPayload.highlightVerseKey === 'string' &&
               currentPayload.highlightVerseKey === verseKey
             ) {
@@ -610,6 +620,23 @@ function buildShellDocumentHtml({
           }
 
           return wordNode;
+        }
+
+        function clearArrivalHighlights() {
+          isArrivalHighlightVisible = false;
+          var highlights = pageContent.querySelectorAll('.arrival-highlight');
+          for (var index = 0; index < highlights.length; index += 1) {
+            highlights[index].classList.remove('arrival-highlight');
+          }
+          arrivalHighlightTimeoutId = null;
+        }
+
+        function scheduleArrivalHighlightClear() {
+          if (arrivalHighlightTimeoutId !== null) {
+            clearTimeout(arrivalHighlightTimeoutId);
+          }
+
+          arrivalHighlightTimeoutId = setTimeout(clearArrivalHighlights, 1800);
         }
 
         function renderStandardLines() {
@@ -770,6 +797,7 @@ function buildShellDocumentHtml({
             rendererAssets: nextPayload.data.rendererAssets || {},
             qcfFontLoaded: false,
           };
+          isArrivalHighlightVisible = Boolean(currentPayload.highlightVerseKey);
 
           document.title = escapeHtml('Mushaf Page ' + String(nextPayload.data.pageNumber));
           pageRoot.setAttribute('aria-label', 'Page ' + String(nextPayload.data.pageNumber));
@@ -787,6 +815,10 @@ function buildShellDocumentHtml({
           applyLayoutMode();
           scheduleSelectionReport();
           setTimeout(applyLayoutMode, 0);
+
+          if (currentPayload && currentPayload.highlightVerseKey) {
+            scheduleArrivalHighlightClear();
+          }
         }
 
         function getWordTarget(node) {

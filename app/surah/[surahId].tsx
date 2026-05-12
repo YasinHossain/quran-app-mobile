@@ -272,7 +272,7 @@ export default function SurahScreen(): React.JSX.Element {
     chapterNumber,
     translationIds: verseTranslationIds,
     wordLang: settings.wordLang,
-    includeWords: Boolean(!isMushafView && (settings.showByWords || audio.isVisible)),
+    includeWords: Boolean(!isMushafView),
     includeWordTranslations: Boolean(!isMushafView && settings.showByWords),
     initialVerseNumber: normalizedStartVerse,
     enabled: !isMushafView,
@@ -924,11 +924,6 @@ export default function SurahScreen(): React.JSX.Element {
   const activeMushafPageNumberRef = React.useRef(initialMushafPageNumber);
   const isMushafPageScrubbingRef = React.useRef(false);
 
-  const didAutoScrollToAudioVerseRef = React.useRef<string | null>(null);
-  const [autoScrollTick, bumpAutoScrollTick] = React.useReducer((value) => value + 1, 0);
-  const autoScrollRetryCountRef = React.useRef(0);
-  const autoScrollRetryTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-
   const chapterNumberRef = React.useRef(chapterNumber);
   React.useEffect(() => {
     chapterNumberRef.current = chapterNumber;
@@ -1179,25 +1174,15 @@ export default function SurahScreen(): React.JSX.Element {
         clearTimeout(scrollRetryTimeoutRef.current);
         scrollRetryTimeoutRef.current = null;
       }
-      if (autoScrollRetryTimeoutRef.current) {
-        clearTimeout(autoScrollRetryTimeoutRef.current);
-        autoScrollRetryTimeoutRef.current = null;
-      }
     };
   }, []);
 
   React.useEffect(() => {
     didScrollToStartRef.current = false;
     scrollRetryCountRef.current = 0;
-    didAutoScrollToAudioVerseRef.current = null;
-    autoScrollRetryCountRef.current = 0;
     if (scrollRetryTimeoutRef.current) {
       clearTimeout(scrollRetryTimeoutRef.current);
       scrollRetryTimeoutRef.current = null;
-    }
-    if (autoScrollRetryTimeoutRef.current) {
-      clearTimeout(autoScrollRetryTimeoutRef.current);
-      autoScrollRetryTimeoutRef.current = null;
     }
   }, [surahId, startVerseParam]);
 
@@ -1235,62 +1220,6 @@ export default function SurahScreen(): React.JSX.Element {
 
     scheduleRetry();
   }, [scrollTick, startVerse, verseCount]);
-
-  React.useEffect(() => {
-    if (!audio.isPlaying) {
-      didAutoScrollToAudioVerseRef.current = null;
-      autoScrollRetryCountRef.current = 0;
-      if (autoScrollRetryTimeoutRef.current) {
-        clearTimeout(autoScrollRetryTimeoutRef.current);
-        autoScrollRetryTimeoutRef.current = null;
-      }
-      return;
-    }
-
-    const verseKey = audio.activeVerseKey;
-    if (!verseKey) return;
-
-    const parsed = parseVerseKeyNumbers(verseKey);
-    if (!parsed) return;
-    if (!Number.isFinite(chapterNumber)) return;
-    if (parsed.surahId !== Math.trunc(chapterNumber)) return;
-
-    if (didAutoScrollToAudioVerseRef.current === verseKey) return;
-
-    const targetIndex = Math.max(0, parsed.verseNumber - 1);
-    if (targetIndex >= verseCountRef.current) return;
-    ensureVerseRangeLoadedRef.current(parsed.verseNumber, parsed.verseNumber, 1);
-
-    const list = Platform.OS === 'web' ? flatListRef.current : flashListRef.current;
-    if (!list) return;
-
-    const visibleRange = visibleRangeRef.current;
-    if (visibleRange && targetIndex >= visibleRange.first && targetIndex <= visibleRange.last) {
-      didAutoScrollToAudioVerseRef.current = verseKey;
-      autoScrollRetryCountRef.current = 0;
-      return;
-    }
-
-    try {
-      list.scrollToIndex({ index: targetIndex, animated: true, viewPosition: 0 });
-      didAutoScrollToAudioVerseRef.current = verseKey;
-      autoScrollRetryCountRef.current = 0;
-    } catch {
-      if (autoScrollRetryCountRef.current >= 6) return;
-      autoScrollRetryCountRef.current += 1;
-      if (autoScrollRetryTimeoutRef.current) return;
-      autoScrollRetryTimeoutRef.current = setTimeout(() => {
-        autoScrollRetryTimeoutRef.current = null;
-        bumpAutoScrollTick();
-      }, 120);
-    }
-  }, [
-    audio.activeVerseKey,
-    audio.isPlaying,
-    autoScrollTick,
-    chapterNumber,
-    verseCount,
-  ]);
 
   const handleScrubToVerse = React.useCallback(
     (verseNumber: number, options?: { isFinal?: boolean }) => {

@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { useModalTransition, verticalSheetTransform } from '@/components/motion/modalTransition';
 import Colors from '@/constants/Colors';
 import { useAppTheme } from '@/providers/ThemeContext';
 
@@ -32,51 +33,18 @@ export function FolderActionsSheet({
   const { resolvedTheme, isDark } = useAppTheme();
   const palette = Colors[resolvedTheme];
 
-  const overlayOpacity = React.useRef(new Animated.Value(0)).current;
-  const sheetTranslateY = React.useRef(new Animated.Value(28)).current;
-  const animationTokenRef = React.useRef(0);
-  const dismissEnabledRef = React.useRef(false);
-  const [visible, setVisible] = React.useState(isOpen);
+  const { visible, progress, dismissEnabledRef } = useModalTransition(isOpen, {
+    openDuration: 240,
+    closeDuration: 160,
+  });
 
   const maxSheetHeight = Math.max(0, Math.round(windowHeight * 0.56));
   const minSheetHeight = Math.min(maxSheetHeight, Math.max(220, Math.round(windowHeight * 0.3)));
 
-  React.useEffect(() => {
-    const token = ++animationTokenRef.current;
-    overlayOpacity.stopAnimation();
-    sheetTranslateY.stopAnimation();
-
-    if (isOpen) {
-      dismissEnabledRef.current = false;
-      setVisible(true);
-      Animated.parallel([
-        Animated.timing(overlayOpacity, { toValue: 1, duration: 180, useNativeDriver: true }),
-        Animated.timing(sheetTranslateY, { toValue: 0, duration: 220, useNativeDriver: true }),
-      ]).start();
-
-      const enableDismissTimeout = setTimeout(() => {
-        if (animationTokenRef.current !== token) return;
-        dismissEnabledRef.current = true;
-      }, 240);
-
-      return () => clearTimeout(enableDismissTimeout);
-    }
-
-    dismissEnabledRef.current = false;
-    Animated.parallel([
-      Animated.timing(overlayOpacity, { toValue: 0, duration: 140, useNativeDriver: true }),
-      Animated.timing(sheetTranslateY, { toValue: 28, duration: 160, useNativeDriver: true }),
-    ]).start(({ finished }) => {
-      if (!finished) return;
-      if (animationTokenRef.current !== token) return;
-      setVisible(false);
-    });
-  }, [isOpen, overlayOpacity, sheetTranslateY]);
-
   const handleOverlayPress = React.useCallback(() => {
     if (!dismissEnabledRef.current) return;
     onClose();
-  }, [onClose]);
+  }, [dismissEnabledRef, onClose]);
 
   const runAndClose = React.useCallback(
     (fn: () => void) => {
@@ -98,14 +66,14 @@ export function FolderActionsSheet({
     >
       <View style={styles.root}>
         <Pressable style={StyleSheet.absoluteFill} onPress={handleOverlayPress}>
-          <Animated.View style={[styles.overlay, { opacity: overlayOpacity }]} />
+          <Animated.View style={[styles.overlay, { opacity: progress }]} />
         </Pressable>
 
         <Animated.View
           style={[
             styles.sheet,
             { maxHeight: maxSheetHeight, minHeight: minSheetHeight },
-            { transform: [{ translateY: sheetTranslateY }] },
+            verticalSheetTransform(progress, Math.max(260, Math.round(windowHeight * 0.38))),
           ]}
           className="bg-surface dark:bg-surface-dark border border-border/30 dark:border-border-dark/20"
         >
@@ -223,4 +191,3 @@ const styles = StyleSheet.create({
     width: '100%',
   },
 });
-

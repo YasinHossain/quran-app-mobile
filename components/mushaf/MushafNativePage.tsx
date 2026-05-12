@@ -128,6 +128,17 @@ export function MushafNativePage({
   onWordLongPress,
   onWordPress,
 }: MushafNativePageProps): React.JSX.Element {
+  const [isHighlightVisible, setIsHighlightVisible] = React.useState(true);
+
+  React.useEffect(() => {
+    if (highlightVerseKey) {
+      setIsHighlightVisible(true);
+      const timer = setTimeout(() => {
+        setIsHighlightVisible(false);
+      }, 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [highlightVerseKey]);
   const { width } = useWindowDimensions();
   const { resolvedTheme } = useAppTheme();
   const palette = Colors[resolvedTheme];
@@ -137,11 +148,11 @@ export function MushafNativePage({
   const verticalPadding = Math.max(6, Math.round(fontSize * 0.18));
   const lineSlots = React.useMemo(() => buildLineSlots(data), [data]);
   const normalizedHighlightVerseKey =
-    typeof highlightVerseKey === 'string' && highlightVerseKey.trim()
+    isHighlightVisible && typeof highlightVerseKey === 'string' && highlightVerseKey.trim()
       ? highlightVerseKey.trim()
       : undefined;
   const highlightBackgroundColor =
-    resolvedTheme === 'dark' ? 'rgba(250, 204, 21, 0.22)' : 'rgba(245, 158, 11, 0.18)';
+    resolvedTheme === 'dark' ? 'rgba(34, 197, 94, 0.26)' : 'rgba(34, 197, 94, 0.2)';
 
   return (
     <View className="items-center">
@@ -190,6 +201,6 @@ const styles = StyleSheet.create({
     includeFontPadding: false,
   },
   highlightedWord: {
-    borderRadius: 6,
+    borderRadius: 3,
   },
 });

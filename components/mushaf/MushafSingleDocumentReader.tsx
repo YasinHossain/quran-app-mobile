@@ -95,6 +95,10 @@ type ReaderMessage =
     };
 
 const ENABLE_MUSHAF_QCF_DEV_LOGS = __DEV__;
+const BACKGROUND_WARM_BATCH_SIZE = 2;
+const BACKGROUND_WARM_BATCH_DELAY_MS = 180;
+const BACKGROUND_WARM_START_DELAY_MS = 220;
+const MAX_BACKGROUND_WARM_PAGE_COUNT = 80;
 
 function logMushafQcfDev(event: string, details: Record<string, unknown>): void {
   if (!ENABLE_MUSHAF_QCF_DEV_LOGS) {
@@ -153,6 +157,28 @@ function normalizeAllowedPageNumbers(
 
   const normalized = normalizePageNumbers(pageNumbers, totalPages);
   return normalized.length ? new Set(normalized) : null;
+}
+
+function shouldBackgroundWarmPageNumbers(pageNumbers: number[] | undefined): pageNumbers is number[] {
+  return (
+    Array.isArray(pageNumbers) &&
+    pageNumbers.length > 1 &&
+    pageNumbers.length <= MAX_BACKGROUND_WARM_PAGE_COUNT
+  );
+}
+
+function sortPageNumbersByDistance(pageNumbers: number[], anchorPageNumber: number): number[] {
+  const normalizedAnchor = Number.isFinite(anchorPageNumber) ? Math.trunc(anchorPageNumber) : 1;
+
+  return [...pageNumbers].sort((left, right) => {
+    const leftDistance = Math.abs(left - normalizedAnchor);
+    const rightDistance = Math.abs(right - normalizedAnchor);
+    if (leftDistance !== rightDistance) {
+      return leftDistance - rightDistance;
+    }
+
+    return left - right;
+  });
 }
 
 function filterPageDataForChapter(
@@ -232,9 +258,15 @@ export const MushafSingleDocumentReader = React.forwardRef<
   const hasInitialPaintRef = React.useRef(false);
   const readerOpacity = React.useRef(new Animated.Value(0)).current;
   const readerSessionRef = React.useRef(0);
+  const backgroundWarmRunRef = React.useRef(0);
+  const backgroundWarmTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const backgroundWarmQueueRef = React.useRef<number[]>([]);
+  const hasCompletedBackgroundWarmRef = React.useRef(false);
+  const activePageNumberRef = React.useRef(initialPageNumber);
   const pageDataByNumberRef = React.useRef(new Map<number, MushafPageData>());
   const requestedPageNumbersRef = React.useRef(new Set<number>());
   const loadingPageNumbersRef = React.useRef(new Set<number>());
+  const loadPagesRef = React.useRef<((pageNumbers: number[], reason: string) => void) | null>(null);
   const firstPackDirectoryUriRef = React.useRef<string | null>(
     initialPageData?.rendererAssets?.packDirectoryUri ?? null
   );
@@ -322,6 +354,11 @@ export const MushafSingleDocumentReader = React.forwardRef<
         return;
       }
 
+      loadPagesRef.current?.(
+        [normalizedPageNumber - 1, normalizedPageNumber, normalizedPageNumber + 1],
+        'imperative-scroll-window'
+      );
+
       webViewRef.current?.injectJavaScript(`
         (function () {
           if (window.__MUSHAF_READER__ && typeof window.__MUSHAF_READER__.scrollToPage === 'function') {
@@ -397,11 +434,112 @@ export const MushafSingleDocumentReader = React.forwardRef<
     },
     [allowedPageNumbers, expectedVersion, filterChapterId, injectPages, packId, rememberPageData, totalPages]
   );
+  loadPagesRef.current = loadPages;
+
+  const clearBackgroundWarmTimeout = React.useCallback(() => {
+    if (backgroundWarmTimeoutRef.current !== null) {
+      clearTimeout(backgroundWarmTimeoutRef.current);
+      backgroundWarmTimeoutRef.current = null;
+    }
+  }, []);
+
+  const stopBackgroundWarm = React.useCallback(() => {
+    backgroundWarmRunRef.current += 1;
+    backgroundWarmQueueRef.current = [];
+    clearBackgroundWarmTimeout();
+  }, [clearBackgroundWarmTimeout]);
+
+  const startBackgroundWarm = React.useCallback(
+    (reason: string, anchorPageNumber: number) => {
+      if (!shouldBackgroundWarmPageNumbers(pageNumbers) || hasCompletedBackgroundWarmRef.current) {
+        return;
+      }
+
+      const normalizedPageNumbers = normalizePageNumbers(pageNumbers, totalPages).filter(
+        (candidate) =>
+          (allowedPageNumbers === null || allowedPageNumbers.has(candidate)) &&
+          !pageDataByNumberRef.current.has(candidate) &&
+          !loadingPageNumbersRef.current.has(candidate)
+      );
+      const queue = sortPageNumbersByDistance(normalizedPageNumbers, anchorPageNumber);
+
+      if (queue.length === 0) {
+        hasCompletedBackgroundWarmRef.current = true;
+        return;
+      }
+
+      const readerSession = readerSessionRef.current;
+      const warmRun = backgroundWarmRunRef.current + 1;
+      backgroundWarmRunRef.current = warmRun;
+      backgroundWarmQueueRef.current = queue;
+      hasCompletedBackgroundWarmRef.current = false;
+      clearBackgroundWarmTimeout();
+
+      const runNextBatch = () => {
+        if (
+          readerSessionRef.current !== readerSession ||
+          backgroundWarmRunRef.current !== warmRun ||
+          !isReaderReadyRef.current
+        ) {
+          return;
+        }
+
+        const batch: number[] = [];
+        const queueRef = backgroundWarmQueueRef.current;
+
+        while (queueRef.length > 0 && batch.length < BACKGROUND_WARM_BATCH_SIZE) {
+          const nextPageNumber = queueRef.shift();
+          if (
+            typeof nextPageNumber === 'number' &&
+            !pageDataByNumberRef.current.has(nextPageNumber) &&
+            !loadingPageNumbersRef.current.has(nextPageNumber)
+          ) {
+            batch.push(nextPageNumber);
+          }
+        }
+
+        if (batch.length > 0) {
+          loadPages(batch, reason);
+        }
+
+        if (queueRef.length === 0) {
+          backgroundWarmTimeoutRef.current = null;
+          hasCompletedBackgroundWarmRef.current = true;
+          logMushafQcfDev('background-warm-complete', {
+            anchorPageNumber,
+            pageCount: normalizedPageNumbers.length,
+            reason,
+          });
+          return;
+        }
+
+        backgroundWarmTimeoutRef.current = setTimeout(
+          runNextBatch,
+          BACKGROUND_WARM_BATCH_DELAY_MS
+        );
+      };
+
+      logMushafQcfDev('background-warm-start', {
+        anchorPageNumber,
+        pageCount: queue.length,
+        reason,
+      });
+
+      backgroundWarmTimeoutRef.current = setTimeout(
+        runNextBatch,
+        BACKGROUND_WARM_START_DELAY_MS
+      );
+    },
+    [allowedPageNumbers, clearBackgroundWarmTimeout, loadPages, pageNumbers, totalPages]
+  );
 
   React.useEffect(() => {
+    stopBackgroundWarm();
     readerSessionRef.current += 1;
     isReaderReadyRef.current = false;
     hasInitialPaintRef.current = false;
+    hasCompletedBackgroundWarmRef.current = false;
+    activePageNumberRef.current = initialPageNumber;
     readerOpacity.setValue(0);
     pageDataByNumberRef.current = new Map();
     requestedPageNumbersRef.current = new Set();
@@ -422,8 +560,11 @@ export const MushafSingleDocumentReader = React.forwardRef<
     packId,
     rememberPageData,
     resolvedTheme,
+    stopBackgroundWarm,
     totalPages,
   ]);
+
+  React.useEffect(() => stopBackgroundWarm, [stopBackgroundWarm]);
 
   const revealReader = React.useCallback(() => {
     if (hasInitialPaintRef.current) {
@@ -562,6 +703,10 @@ export const MushafSingleDocumentReader = React.forwardRef<
               : null;
           if (pageNumber === initialPageNumber || pageNumber === null) {
             revealReader();
+            startBackgroundWarm(
+              'post-first-visible-page',
+              pageNumber ?? activePageNumberRef.current
+            );
           }
           return;
         }
@@ -572,7 +717,11 @@ export const MushafSingleDocumentReader = React.forwardRef<
               ? Math.trunc(payload.pageNumber)
               : null;
           if (pageNumber !== null) {
+            activePageNumberRef.current = pageNumber;
             onActivePageChange?.(pageNumber);
+            if (hasInitialPaintRef.current && !hasCompletedBackgroundWarmRef.current) {
+              startBackgroundWarm('active-page-priority-change', pageNumber);
+            }
           }
           return;
         }
@@ -607,6 +756,7 @@ export const MushafSingleDocumentReader = React.forwardRef<
       onScrollActivity,
       onSurahNavigation,
       revealReader,
+      startBackgroundWarm,
     ]
   );
 

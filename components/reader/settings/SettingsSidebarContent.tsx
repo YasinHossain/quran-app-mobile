@@ -151,9 +151,7 @@ export function SettingsSidebarContent({
             : nextPanel === 'mushaf'
               ? mountedSubPanels.mushaf
               : true;
-      const shouldMountAfterAnimationStart =
-        nextPanel === 'translations' && isHeavyPanel && !isMounted;
-      const shouldDeferBody = isHeavyPanel && !isMounted && !shouldMountAfterAnimationStart;
+      const shouldDeferBody = isHeavyPanel && !isMounted;
       const token = ++animationTokenRef.current;
       navProgress.stopAnimation();
       navProgress.setValue(0);
@@ -170,7 +168,7 @@ export function SettingsSidebarContent({
         navProgress.stopAnimation();
         Animated.timing(navProgress, {
           toValue: 1,
-          duration: 220,
+          duration: 240,
           easing: Easing.out(Easing.cubic),
           isInteraction: false,
           useNativeDriver: true,
@@ -197,12 +195,6 @@ export function SettingsSidebarContent({
           setIsSubPanelContentReady(true);
         });
 
-        if (shouldMountAfterAnimationStart) {
-          requestAnimationFrame(() => {
-            if (animationTokenRef.current !== token) return;
-            setMountedSubPanels((prev) => (prev.translations ? prev : { ...prev, translations: true }));
-          });
-        }
       });
     },
     [mountedSubPanels.mushaf, mountedSubPanels.tafsir, mountedSubPanels.translations, navProgress]
@@ -218,8 +210,8 @@ export function SettingsSidebarContent({
     navProgress.stopAnimation();
     Animated.timing(navProgress, {
       toValue: 0,
-      duration: 200,
-      easing: Easing.in(Easing.cubic),
+      duration: 190,
+      easing: Easing.out(Easing.cubic),
       isInteraction: false,
       useNativeDriver: true,
     }).start(({ finished }) => {
@@ -488,6 +480,18 @@ export function SettingsSidebarContent({
     inputRange: [0, 1],
     outputRange: [panelWidth, 0],
   });
+  const subOpacity = navProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.96, 1],
+  });
+  const rootTranslateX = navProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, -22],
+  });
+  const rootOpacity = navProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [1, 0.9],
+  });
 
   const subPanelTitle = isSubPanel
     ? panel.type === 'translations'
@@ -736,7 +740,10 @@ export function SettingsSidebarContent({
 
   return (
     <View className="flex-1">
-      <View style={{ flex: 1 }} pointerEvents={isSubPanel ? 'none' : 'auto'}>
+      <Animated.View
+        style={{ flex: 1, opacity: rootOpacity, transform: [{ translateX: rootTranslateX }] }}
+        pointerEvents={isSubPanel ? 'none' : 'auto'}
+      >
         <View className="flex-1">
           <View style={styles.header} className="border-b border-border/30 dark:border-border-dark/20">
             <View style={styles.headerSide} />
@@ -870,7 +877,7 @@ export function SettingsSidebarContent({
             )}
           </View>
         </View>
-      </View>
+      </Animated.View>
 
       {isSubPanel ? (
         <Animated.View
@@ -878,6 +885,7 @@ export function SettingsSidebarContent({
             styles.subPanel,
             {
               backgroundColor: palette.background,
+              opacity: subOpacity,
               transform: [{ translateX: subTranslateX }],
             },
           ]}

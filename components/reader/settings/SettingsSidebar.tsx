@@ -1,8 +1,9 @@
 import React from 'react';
-import { Animated, Easing, Modal, Platform, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { Animated, Modal, Platform, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import Colors from '@/constants/Colors';
+import { sideSheetTransform, useModalTransition } from '@/components/motion/modalTransition';
 import { useAppTheme } from '@/providers/ThemeContext';
 
 import { SettingsSidebarContent } from './SettingsSidebarContent';
@@ -32,118 +33,11 @@ export function SettingsSidebar({
   const palette = Colors[resolvedTheme];
   const sheetWidth = Math.min(390, Math.round(width * 0.92));
   const hiddenTranslateX = sheetWidth + 12;
-
-  const translateX = React.useRef(new Animated.Value(isOpen ? 0 : sheetWidth)).current;
-  const overlayOpacity = React.useRef(new Animated.Value(isOpen ? 1 : 0)).current;
-  const animationTokenRef = React.useRef(0);
-  const pendingOpenRef = React.useRef(false);
-  const afterCloseFrameRef = React.useRef<number | null>(null);
-  const [visible, setVisible] = React.useState(isOpen);
-
-  React.useEffect(() => {
-    return () => {
-      if (afterCloseFrameRef.current !== null) {
-        cancelAnimationFrame(afterCloseFrameRef.current);
-        afterCloseFrameRef.current = null;
-      }
-    };
-  }, []);
-
-  const startOpenAnimation = React.useCallback(() => {
-    if (!isOpen) return;
-    if (!visible) return;
-    if (!pendingOpenRef.current) return;
-    pendingOpenRef.current = false;
-
-    const token = ++animationTokenRef.current;
-    if (afterCloseFrameRef.current !== null) {
-      cancelAnimationFrame(afterCloseFrameRef.current);
-      afterCloseFrameRef.current = null;
-    }
-    translateX.stopAnimation();
-    overlayOpacity.stopAnimation();
-    translateX.setValue(hiddenTranslateX);
-    overlayOpacity.setValue(0);
-
-    Animated.parallel([
-      Animated.timing(translateX, {
-        toValue: 0,
-        duration: 220,
-        easing: Easing.out(Easing.cubic),
-        isInteraction: false,
-        useNativeDriver: true,
-      }),
-      Animated.timing(overlayOpacity, {
-        toValue: 1,
-        duration: 220,
-        easing: Easing.out(Easing.cubic),
-        isInteraction: false,
-        useNativeDriver: true,
-      }),
-    ]).start(({ finished }) => {
-      if (!finished) return;
-      if (animationTokenRef.current !== token) return;
-    });
-  }, [hiddenTranslateX, isOpen, overlayOpacity, translateX, visible]);
-
-  React.useEffect(() => {
-    if (isOpen) return;
-    if (visible) return;
-    translateX.stopAnimation();
-    overlayOpacity.stopAnimation();
-    translateX.setValue(hiddenTranslateX);
-    overlayOpacity.setValue(0);
-  }, [hiddenTranslateX, isOpen, overlayOpacity, translateX, visible]);
-
-  React.useEffect(() => {
-    if (isOpen) {
-      if (visible) return;
-      const token = ++animationTokenRef.current;
-      pendingOpenRef.current = true;
-      translateX.stopAnimation();
-      overlayOpacity.stopAnimation();
-      translateX.setValue(hiddenTranslateX);
-      overlayOpacity.setValue(0);
-      setVisible(true);
-      if (animationTokenRef.current !== token) return;
-      return;
-    }
-
-    if (!visible) return;
-    const token = ++animationTokenRef.current;
-    pendingOpenRef.current = false;
-    translateX.stopAnimation();
-    overlayOpacity.stopAnimation();
-
-    Animated.parallel([
-      Animated.timing(translateX, {
-        toValue: hiddenTranslateX,
-        duration: 190,
-        easing: Easing.out(Easing.cubic),
-        isInteraction: false,
-        useNativeDriver: true,
-      }),
-      Animated.timing(overlayOpacity, {
-        toValue: 0,
-        duration: 190,
-        easing: Easing.out(Easing.cubic),
-        isInteraction: false,
-        useNativeDriver: true,
-      }),
-    ]).start(({ finished }) => {
-      if (!finished) return;
-      if (animationTokenRef.current !== token) return;
-      setVisible(false);
-      afterCloseFrameRef.current = requestAnimationFrame(() => {
-        afterCloseFrameRef.current = null;
-        onAfterClose?.();
-      });
-    });
-  }, [hiddenTranslateX, isOpen, onAfterClose, overlayOpacity, translateX, visible]);
-
-  React.useLayoutEffect(() => {
-    startOpenAnimation();
-  }, [startOpenAnimation]);
+  const { visible, progress } = useModalTransition(isOpen, {
+    openDuration: 270,
+    closeDuration: 190,
+    onAfterClose,
+  });
 
   return (
     <Modal
@@ -153,12 +47,11 @@ export function SettingsSidebar({
       animationType="none"
       hardwareAccelerated
       statusBarTranslucent
-      onShow={startOpenAnimation}
       {...(Platform.OS === 'ios' ? { presentationStyle: 'overFullScreen' as const } : {})}
     >
       <View style={styles.root}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose}>
-          <Animated.View style={[styles.overlay, { opacity: overlayOpacity }]} />
+          <Animated.View style={[styles.overlay, { opacity: progress }]} />
         </Pressable>
 
         <Animated.View
@@ -167,8 +60,8 @@ export function SettingsSidebar({
             {
               backgroundColor: palette.background,
               width: sheetWidth,
-              transform: [{ translateX }],
             },
+            sideSheetTransform(progress, hiddenTranslateX),
           ]}
           className="border-l border-border/30 dark:border-border-dark/20"
         >

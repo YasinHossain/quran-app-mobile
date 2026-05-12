@@ -16,6 +16,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import Colors from '@/constants/Colors';
+import { dialogTransform, useModalTransition } from '@/components/motion/modalTransition';
 import { useChapters } from '@/hooks/useChapters';
 import { useBookmarks } from '@/providers/BookmarkContext';
 import { useAppTheme } from '@/providers/ThemeContext';
@@ -253,48 +254,12 @@ export function AddToPlannerModal({
     verseSurahId,
   ]);
 
-  const dialogScale = React.useRef(new Animated.Value(0.96)).current;
-  const overlayOpacity = React.useRef(new Animated.Value(0)).current;
-  const animationTokenRef = React.useRef(0);
-  const dismissEnabledRef = React.useRef(false);
-  const [visible, setVisible] = React.useState(isOpen);
+  const { visible, progress, dismissEnabledRef } = useModalTransition(isOpen);
 
   const handleOverlayPress = React.useCallback(() => {
     if (!dismissEnabledRef.current) return;
     onClose();
-  }, [onClose]);
-
-  React.useEffect(() => {
-    const token = ++animationTokenRef.current;
-    dialogScale.stopAnimation();
-    overlayOpacity.stopAnimation();
-
-    if (isOpen) {
-      dismissEnabledRef.current = false;
-      setVisible(true);
-      Animated.parallel([
-        Animated.timing(dialogScale, { toValue: 1, duration: 220, useNativeDriver: true }),
-        Animated.timing(overlayOpacity, { toValue: 1, duration: 220, useNativeDriver: true }),
-      ]).start();
-
-      const enableDismissTimeout = setTimeout(() => {
-        if (animationTokenRef.current !== token) return;
-        dismissEnabledRef.current = true;
-      }, 240);
-
-      return () => clearTimeout(enableDismissTimeout);
-    }
-
-    dismissEnabledRef.current = false;
-    Animated.parallel([
-      Animated.timing(dialogScale, { toValue: 0.96, duration: 180, useNativeDriver: true }),
-      Animated.timing(overlayOpacity, { toValue: 0, duration: 180, useNativeDriver: true }),
-    ]).start(({ finished }) => {
-      if (!finished) return;
-      if (animationTokenRef.current !== token) return;
-      setVisible(false);
-    });
-  }, [dialogScale, isOpen, overlayOpacity]);
+  }, [dismissEnabledRef, onClose]);
 
   if (!visible) return null;
 
@@ -313,7 +278,7 @@ export function AddToPlannerModal({
     >
       <View style={styles.root}>
         <Pressable style={StyleSheet.absoluteFill} onPress={handleOverlayPress}>
-          <Animated.View style={[styles.overlay, { opacity: overlayOpacity }]} />
+          <Animated.View style={[styles.overlay, { opacity: progress }]} />
         </Pressable>
 
         <KeyboardAvoidingView
@@ -324,7 +289,7 @@ export function AddToPlannerModal({
             style={[
               styles.sheet,
               { maxHeight: maxDialogHeight, minHeight: minDialogHeight },
-              { transform: [{ scale: dialogScale }] },
+              dialogTransform(progress),
             ]}
             className="bg-surface dark:bg-surface-dark border border-border/30 dark:border-border-dark/20"
           >

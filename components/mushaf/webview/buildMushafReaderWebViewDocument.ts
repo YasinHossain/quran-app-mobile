@@ -170,14 +170,14 @@ function buildShellDocumentHtml({
       ? {
           background: '#102033',
           border: 'rgba(255,255,255,0.12)',
-          highlight: 'rgba(250, 204, 21, 0.22)',
+          highlight: 'rgba(34, 197, 94, 0.26)',
           text: '#E7E5E4',
           muted: '#94A3B8',
         }
       : {
           background: '#F7F9F9',
           border: 'rgba(15,23,42,0.12)',
-          highlight: 'rgba(245, 158, 11, 0.18)',
+          highlight: 'rgba(34, 197, 94, 0.2)',
           text: '#111827',
           muted: '#6B7280',
         };
@@ -400,8 +400,15 @@ function buildShellDocumentHtml({
 
       .word.arrival-highlight,
       .reflow-word.arrival-highlight {
-        box-shadow: inset 0 -0.5em 0 var(--highlight);
-        border-radius: 0.3em;
+        background:
+          linear-gradient(
+            to bottom,
+            transparent 14%,
+            var(--highlight) 14%,
+            var(--highlight) 88%,
+            transparent 88%
+          );
+        border-radius: 0.15em;
       }
 
       .reflow-spacer {
@@ -514,6 +521,8 @@ function buildShellDocumentHtml({
         var selectionRafId = null;
         var didScrollToInitialPage = false;
         var didScrollToHighlight = false;
+        var isArrivalHighlightVisible = Boolean(HIGHLIGHT_VERSE_KEY);
+        var arrivalHighlightTimeoutId = null;
 
         function emit(message) {
           if (!window.ReactNativeWebView) {
@@ -839,7 +848,11 @@ function buildShellDocumentHtml({
           wordNode.dataset.pageNumber = String(state.pageNumber);
           if (verseKey) {
             wordNode.dataset.verseKey = verseKey;
-            if (HIGHLIGHT_VERSE_KEY && HIGHLIGHT_VERSE_KEY === verseKey) {
+            if (
+              isArrivalHighlightVisible &&
+              HIGHLIGHT_VERSE_KEY &&
+              HIGHLIGHT_VERSE_KEY === verseKey
+            ) {
               wordNode.classList.add('arrival-highlight');
             }
           }
@@ -854,6 +867,27 @@ function buildShellDocumentHtml({
           }
 
           return wordNode;
+        }
+
+        function clearArrivalHighlights() {
+          isArrivalHighlightVisible = false;
+          var highlights = app.querySelectorAll('.arrival-highlight');
+          for (var index = 0; index < highlights.length; index += 1) {
+            highlights[index].classList.remove('arrival-highlight');
+          }
+          arrivalHighlightTimeoutId = null;
+        }
+
+        function scheduleArrivalHighlightClear() {
+          if (!HIGHLIGHT_VERSE_KEY) {
+            return;
+          }
+
+          if (arrivalHighlightTimeoutId !== null) {
+            clearTimeout(arrivalHighlightTimeoutId);
+          }
+
+          arrivalHighlightTimeoutId = setTimeout(clearArrivalHighlights, 1800);
         }
 
         function clearPage(state) {
@@ -1103,6 +1137,9 @@ function buildShellDocumentHtml({
           loadedPageNumbers.add(pageNumber);
           emitPageRendered(state);
           scrollToHighlightedVerseIfReady(state);
+          if (pageNumber === INITIAL_PAGE_NUMBER && HIGHLIGHT_VERSE_KEY) {
+            scheduleArrivalHighlightClear();
+          }
           setTimeout(function () {
             applyLayoutMode(state, layout);
             ensureActiveLayoutRendered(state);
@@ -1390,6 +1427,7 @@ function buildShellDocumentHtml({
 
             if (typeof payload.highlightVerseKey === 'string') {
               HIGHLIGHT_VERSE_KEY = payload.highlightVerseKey.trim();
+              isArrivalHighlightVisible = Boolean(HIGHLIGHT_VERSE_KEY);
             }
             if (typeof payload.initialPageNumber === 'number') {
               INITIAL_PAGE_NUMBER = payload.initialPageNumber;
@@ -1411,6 +1449,7 @@ function buildShellDocumentHtml({
           scrollToPage: scrollToPage,
           scrollToVerse: function (verseKey) {
             HIGHLIGHT_VERSE_KEY = typeof verseKey === 'string' ? verseKey.trim() : '';
+            isArrivalHighlightVisible = Boolean(HIGHLIGHT_VERSE_KEY);
             didScrollToHighlight = false;
             pageStates.forEach(function (state) {
               if (state.data) {

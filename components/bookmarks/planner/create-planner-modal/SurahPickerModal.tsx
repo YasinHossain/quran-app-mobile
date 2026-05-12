@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { useModalTransition, verticalSheetTransform } from '@/components/motion/modalTransition';
 import Colors from '@/constants/Colors';
 import { useAppTheme } from '@/providers/ThemeContext';
 
@@ -40,48 +41,15 @@ export function SurahPickerModal({
   const palette = Colors[resolvedTheme];
   const { height: windowHeight } = useWindowDimensions();
 
-  const overlayOpacity = React.useRef(new Animated.Value(0)).current;
-  const translateY = React.useRef(new Animated.Value(40)).current;
-  const animationTokenRef = React.useRef(0);
-  const dismissEnabledRef = React.useRef(false);
-  const [visible, setVisible] = React.useState(isOpen);
-
-  React.useEffect(() => {
-    const token = ++animationTokenRef.current;
-    overlayOpacity.stopAnimation();
-    translateY.stopAnimation();
-
-    if (isOpen) {
-      dismissEnabledRef.current = false;
-      setVisible(true);
-      Animated.parallel([
-        Animated.timing(overlayOpacity, { toValue: 1, duration: 200, useNativeDriver: true }),
-        Animated.timing(translateY, { toValue: 0, duration: 200, useNativeDriver: true }),
-      ]).start();
-
-      const enableDismissTimeout = setTimeout(() => {
-        if (animationTokenRef.current !== token) return;
-        dismissEnabledRef.current = true;
-      }, 220);
-
-      return () => clearTimeout(enableDismissTimeout);
-    }
-
-    dismissEnabledRef.current = false;
-    Animated.parallel([
-      Animated.timing(overlayOpacity, { toValue: 0, duration: 160, useNativeDriver: true }),
-      Animated.timing(translateY, { toValue: 40, duration: 160, useNativeDriver: true }),
-    ]).start(({ finished }) => {
-      if (!finished) return;
-      if (animationTokenRef.current !== token) return;
-      setVisible(false);
-    });
-  }, [isOpen, overlayOpacity, translateY]);
+  const { visible, progress, dismissEnabledRef } = useModalTransition(isOpen, {
+    openDuration: 230,
+    closeDuration: 160,
+  });
 
   const handleOverlayPress = React.useCallback(() => {
     if (!dismissEnabledRef.current) return;
     onClose();
-  }, [onClose]);
+  }, [dismissEnabledRef, onClose]);
 
   const maxSheetHeight = Math.max(0, Math.round(windowHeight * 0.8));
   const minSheetHeight = Math.min(maxSheetHeight, Math.max(320, Math.round(windowHeight * 0.5)));
@@ -98,14 +66,14 @@ export function SurahPickerModal({
     >
       <View style={styles.root}>
         <Pressable style={StyleSheet.absoluteFill} onPress={handleOverlayPress}>
-          <Animated.View style={[styles.overlay, { opacity: overlayOpacity }]} />
+          <Animated.View style={[styles.overlay, { opacity: progress }]} />
         </Pressable>
 
         <Animated.View
           style={[
             styles.card,
             { maxHeight: maxSheetHeight, minHeight: minSheetHeight },
-            { transform: [{ translateY }] },
+            verticalSheetTransform(progress, 44),
           ]}
           className="bg-surface dark:bg-surface-dark border border-border/30 dark:border-border-dark/20"
         >

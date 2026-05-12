@@ -1,7 +1,7 @@
 import React from 'react';
 import { Bookmark, Home, Calendar, Settings, Search } from 'lucide-react-native';
 import { Tabs } from 'expo-router';
-import { View, type LayoutChangeEvent } from 'react-native';
+import { Easing, View, type LayoutChangeEvent } from 'react-native';
 import { BottomTabBar, type BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -87,6 +87,30 @@ export default function TabLayout() {
         headerStyle: { backgroundColor: palette.background },
         headerTitleStyle: { color: palette.text },
         headerTintColor: palette.text,
+        animation: 'shift',
+        transitionSpec: {
+          animation: 'timing',
+          config: {
+            duration: 180,
+            easing: Easing.out(Easing.cubic),
+          },
+        },
+        sceneStyleInterpolator: ({ current }) => ({
+          sceneStyle: {
+            opacity: current.progress.interpolate({
+              inputRange: [-1, 0, 1],
+              outputRange: [0, 1, 0],
+            }),
+            transform: [
+              {
+                translateX: current.progress.interpolate({
+                  inputRange: [-1, 0, 1],
+                  outputRange: [18, 0, 18],
+                }),
+              },
+            ],
+          },
+        }),
       }}>
       <Tabs.Screen
         name="index"

@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { dialogTransform, useModalTransition } from '@/components/motion/modalTransition';
 import { SurahVerseSelectorRow } from '@/components/search/SurahVerseSelectorRow';
 import Colors from '@/constants/Colors';
 import { DEFAULT_RECITER, type Reciter, useReciters } from '@/hooks/audio/useReciters';
@@ -173,51 +174,15 @@ export function PlaybackOptionsModal({
     );
   }, [audio.reciter, reciters]);
 
-  const overlayOpacity = React.useRef(new Animated.Value(0)).current;
-  const dialogScale = React.useRef(new Animated.Value(0.96)).current;
-  const animationTokenRef = React.useRef(0);
-  const dismissEnabledRef = React.useRef(false);
-  const [visible, setVisible] = React.useState(isOpen);
+  const { visible, progress, dismissEnabledRef } = useModalTransition(isOpen);
 
   const maxDialogHeight = Math.max(0, Math.round(windowHeight * 0.85));
   const minDialogHeight = Math.min(maxDialogHeight, Math.max(420, Math.round(windowHeight * 0.7)));
 
-  React.useEffect(() => {
-    const token = ++animationTokenRef.current;
-    overlayOpacity.stopAnimation();
-    dialogScale.stopAnimation();
-
-    if (isOpen) {
-      dismissEnabledRef.current = false;
-      setVisible(true);
-      Animated.parallel([
-        Animated.timing(overlayOpacity, { toValue: 1, duration: 220, useNativeDriver: true }),
-        Animated.timing(dialogScale, { toValue: 1, duration: 220, useNativeDriver: true }),
-      ]).start();
-
-      const enableDismissTimeout = setTimeout(() => {
-        if (animationTokenRef.current !== token) return;
-        dismissEnabledRef.current = true;
-      }, 240);
-
-      return () => clearTimeout(enableDismissTimeout);
-    }
-
-    dismissEnabledRef.current = false;
-    Animated.parallel([
-      Animated.timing(overlayOpacity, { toValue: 0, duration: 180, useNativeDriver: true }),
-      Animated.timing(dialogScale, { toValue: 0.96, duration: 180, useNativeDriver: true }),
-    ]).start(({ finished }) => {
-      if (!finished) return;
-      if (animationTokenRef.current !== token) return;
-      setVisible(false);
-    });
-  }, [dialogScale, isOpen, overlayOpacity]);
-
   const handleOverlayPress = React.useCallback(() => {
     if (!dismissEnabledRef.current) return;
     onClose();
-  }, [onClose]);
+  }, [dismissEnabledRef, onClose]);
 
   const commit = React.useCallback(() => {
     const fallbackSurahId = parseChapterIdFromVerseKey(audio.activeVerseKey);
@@ -348,7 +313,7 @@ export function PlaybackOptionsModal({
     >
       <View style={styles.root}>
         <Pressable style={StyleSheet.absoluteFill} onPress={handleOverlayPress}>
-          <Animated.View style={[styles.overlay, { opacity: overlayOpacity }]} />
+          <Animated.View style={[styles.overlay, { opacity: progress }]} />
         </Pressable>
 
         <KeyboardAvoidingView
@@ -359,7 +324,7 @@ export function PlaybackOptionsModal({
             style={[
               styles.dialog,
               { maxHeight: maxDialogHeight, minHeight: minDialogHeight },
-              { transform: [{ scale: dialogScale }] },
+              dialogTransform(progress),
             ]}
             className="bg-surface dark:bg-surface-dark border border-border/30 dark:border-border-dark/20"
           >

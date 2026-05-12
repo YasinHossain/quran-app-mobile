@@ -11,6 +11,12 @@ This document lists reusable UI components currently available in the codebase s
 | `MonoText` | Themed text component with a monospace font for code-like snippets. | `components/StyledText.tsx` |
 | `Text`, `View`, `useThemeColor` | Themed primitives that apply light/dark colors based on the current color scheme. | `components/Themed.tsx` |
 
+## Motion Utilities
+
+| Utility | Description | File Path |
+| --- | --- | --- |
+| `useModalTransition` | Shared native-driver modal/sheet transition state used by dialogs, bottom sheets, and side drawers for consistent open/close timing. | `components/motion/modalTransition.ts` |
+
 ## Home Screen Components
 
 | Component | Description | File Path |
@@ -55,7 +61,7 @@ This document lists reusable UI components currently available in the codebase s
 | --- | --- | --- |
 | `MushafNativePage` | Native Unicode mushaf renderer for offline text packs; renders page lines/words from local pack payloads with stepped `mushafScaleStep` sizing, selectable text, per-word press events, and no route-level chrome so the page route can present a text-only mushaf feed. | `components/mushaf/MushafNativePage.tsx` |
 | `MushafWebViewPage` | Local WebView mushaf renderer for exact/downloadable packs; ports the web stepped preset sizing, fit detection, centered RTL overflow reflow, local QCF page-font loading, and the selection/word-tap bridge while keeping the rendered surface free of extra cards, labels, and buttons. | `components/mushaf/MushafWebViewPage.tsx` |
-| `MushafSingleDocumentReader` | Single-surface QCF/WebView mushaf reader used by Surah Mushaf view and the exact page route; reports active page changes, scroll activity, word taps, and exposes imperative page jumps for page-by-page scrubber navigation. | `components/mushaf/MushafSingleDocumentReader.tsx` |
+| `MushafSingleDocumentReader` | Single-surface QCF/WebView mushaf reader used by Surah Mushaf view and the exact page route; reports active page changes, scroll activity, word taps, exposes imperative page jumps for page-by-page scrubber navigation, and background-warms bounded surah page windows after first paint. | `components/mushaf/MushafSingleDocumentReader.tsx` |
 
 ## Reader Settings Components
 
