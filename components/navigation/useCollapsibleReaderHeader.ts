@@ -1,31 +1,38 @@
 import React from 'react';
-import { Animated, Easing, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
+import { Animated, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 
 const DEFAULT_READER_HEADER_HEIGHT = 76;
 const SCROLL_DELTA_THRESHOLD = 4;
 const HIDE_SCROLL_DISTANCE = 26;
 const SHOW_SCROLL_DISTANCE = 10;
 const RESET_SCROLL_SUPPRESSION_MS = 450;
+const MIN_TOP_VISIBLE_LOCK_DISTANCE = 32;
 
 export function useCollapsibleReaderHeader() {
   const [headerHeight, setHeaderHeight] = React.useState(DEFAULT_READER_HEADER_HEIGHT);
+  const [headerPointerEvents, setHeaderPointerEvents] = React.useState<'box-none' | 'none'>(
+    'box-none'
+  );
+  const [isHeaderVisible, setIsHeaderVisible] = React.useState(true);
   const hiddenProgress = React.useRef(new Animated.Value(0)).current;
   const lastScrollOffsetRef = React.useRef(0);
   const directionalScrollDistanceRef = React.useRef(0);
   const suppressScrollUntilRef = React.useRef(0);
   const isHiddenRef = React.useRef(false);
+  const isTopLockedRef = React.useRef(true);
+  const topVisibleLockDistance = React.useMemo(
+    () => Math.max(MIN_TOP_VISIBLE_LOCK_DISTANCE, Math.round(headerHeight * 0.65)),
+    [headerHeight]
+  );
 
   const setHidden = React.useCallback(
     (hidden: boolean) => {
       if (isHiddenRef.current === hidden) return;
       isHiddenRef.current = hidden;
-      Animated.timing(hiddenProgress, {
-        toValue: hidden ? 1 : 0,
-        duration: hidden ? 380 : 260,
-        easing: Easing.out(Easing.cubic),
-        isInteraction: false,
-        useNativeDriver: true,
-      }).start();
+      hiddenProgress.stopAnimation();
+      hiddenProgress.setValue(hidden ? 1 : 0);
+      setHeaderPointerEvents(hidden ? 'none' : 'box-none');
+      setIsHeaderVisible(!hidden);
     },
     [hiddenProgress]
   );
@@ -50,11 +57,16 @@ export function useCollapsibleReaderHeader() {
         return;
       }
 
-      if (normalizedOffset <= 2) {
+      if (normalizedOffset <= topVisibleLockDistance) {
         directionalScrollDistanceRef.current = 0;
-        setHidden(false);
+        if (!isTopLockedRef.current || isHiddenRef.current) {
+          setHidden(false);
+        }
+        isTopLockedRef.current = true;
         return;
       }
+
+      isTopLockedRef.current = false;
 
       if (delta > SCROLL_DELTA_THRESHOLD) {
         directionalScrollDistanceRef.current =
@@ -74,7 +86,7 @@ export function useCollapsibleReaderHeader() {
         }
       }
     },
-    [setHidden]
+    [setHidden, topVisibleLockDistance]
   );
 
   const handleScroll = React.useCallback(
@@ -86,10 +98,15 @@ export function useCollapsibleReaderHeader() {
 
   const showHeader = React.useCallback(() => setHidden(false), [setHidden]);
 
+  const isHidden = React.useCallback(() => isHiddenRef.current, []);
+
   const resetHeader = React.useCallback(() => {
     hiddenProgress.stopAnimation();
     hiddenProgress.setValue(0);
     isHiddenRef.current = false;
+    setHeaderPointerEvents('box-none');
+    setIsHeaderVisible(true);
+    isTopLockedRef.current = true;
     lastScrollOffsetRef.current = 0;
     directionalScrollDistanceRef.current = 0;
     suppressScrollUntilRef.current = Date.now() + RESET_SCROLL_SUPPRESSION_MS;
@@ -97,16 +114,9 @@ export function useCollapsibleReaderHeader() {
 
   const headerAnimatedStyle = React.useMemo(
     () => ({
-      transform: [
-        {
-          translateY: hiddenProgress.interpolate({
-            inputRange: [0, 1],
-            outputRange: [0, -headerHeight],
-          }),
-        },
-      ],
+      opacity: isHeaderVisible ? 1 : 0,
     }),
-    [headerHeight, hiddenProgress]
+    [isHeaderVisible]
   );
 
   return {
@@ -115,6 +125,8 @@ export function useCollapsibleReaderHeader() {
     handleScrollOffset,
     headerAnimatedStyle,
     headerHeight,
+    headerPointerEvents,
+    isHidden,
     resetHeader,
     showHeader,
   };

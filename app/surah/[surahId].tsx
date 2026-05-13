@@ -1266,8 +1266,8 @@ export default function SurahScreen(): React.JSX.Element {
   }, []);
 
   const handleSurahListScroll = React.useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    verseScrubberRef.current?.show();
     readerHeader.handleScroll(event);
+    verseScrubberRef.current?.show();
   }, [readerHeader]);
 
   const mushafPageScrubberIndex = React.useMemo(
@@ -1289,10 +1289,12 @@ export default function SurahScreen(): React.JSX.Element {
   );
 
   const handleMushafScrollActivity = React.useCallback((scrollY?: number) => {
-    mushafPageScrubberRef.current?.show();
     if (typeof scrollY === 'number') {
       readerHeader.handleScrollOffset(scrollY);
+      mushafPageScrubberRef.current?.show();
+      return;
     }
+    mushafPageScrubberRef.current?.show();
   }, [readerHeader]);
 
   const handleMushafPageScrubStateChange = React.useCallback((isScrubbing: boolean) => {
@@ -1379,6 +1381,7 @@ export default function SurahScreen(): React.JSX.Element {
 
       <ReaderOverlayHeader
         onLayout={readerHeader.handleHeaderLayout}
+        pointerEvents={readerHeader.headerPointerEvents}
         style={readerHeader.headerAnimatedStyle}
       >
         <AppSearchHeader
@@ -1534,7 +1537,7 @@ export default function SurahScreen(): React.JSX.Element {
                 currentVerseNumber={visibleVerseNumber}
                 onScrubStateChange={handleScrubStateChange}
                 onScrubToVerse={handleScrubToVerse}
-                topInset={readerHeader.headerHeight}
+                topInset={0}
                 verseCount={verseCount}
               />
             ) : null}
@@ -1601,7 +1604,7 @@ export default function SurahScreen(): React.JSX.Element {
                 bottomInset={audioPlayerBarHeight}
                 currentIndex={mushafPageScrubberIndex}
                 itemCount={mushafSurahPageNumbers.length}
-                topInset={readerHeader.headerHeight}
+                topInset={0}
                 formatLabel={(pageIndex) => {
                   const pageNumber =
                     mushafSurahPageNumbers[Math.max(0, pageIndex - 1)] ?? activeMushafPageNumber;

@@ -22,6 +22,8 @@ type HeaderShellProps = {
 
 function HeaderShell({ children, onLayout, style }: HeaderShellProps): React.JSX.Element {
   const insets = useSafeAreaInsets();
+  const { resolvedTheme } = useAppTheme();
+  const palette = Colors[resolvedTheme];
 
   return (
     <View
@@ -32,6 +34,7 @@ function HeaderShell({ children, onLayout, style }: HeaderShellProps): React.JSX
           paddingTop: insets.top + 8,
           paddingHorizontal: 12,
           paddingBottom: 12,
+          backgroundColor: palette.background,
         },
         style,
       ]}
@@ -120,16 +123,18 @@ export function AppSearchHeader({
 export function ReaderOverlayHeader({
   children,
   onLayout,
+  pointerEvents = 'box-none',
   style,
 }: {
   children: React.ReactNode;
   onLayout?: (event: LayoutChangeEvent) => void;
+  pointerEvents?: 'box-none' | 'none';
   style?: Animated.WithAnimatedValue<StyleProp<ViewStyle>>;
 }): React.JSX.Element {
   return (
     <Animated.View
       onLayout={onLayout}
-      pointerEvents="box-none"
+      pointerEvents={pointerEvents}
       style={[
         {
           position: 'absolute',

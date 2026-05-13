@@ -23,6 +23,7 @@ const INDEX_SCRUBBER_HIDE_DELAY_MS = 650;
 const INDEX_SCRUBBER_THUMB_TOUCH_SLOP = 8;
 
 export type IndexScrubberHandle = {
+  hide: () => void;
   show: () => void;
 };
 
@@ -137,7 +138,20 @@ export const IndexScrubber = React.forwardRef<IndexScrubberHandle, IndexScrubber
       scheduleHide();
     }, [clearHideTimer, opacity, scheduleHide]);
 
-    React.useImperativeHandle(ref, () => ({ show: showTemporarily }), [showTemporarily]);
+    const hideImmediately = React.useCallback(() => {
+      if (isDragging) return;
+      clearHideTimer();
+      isVisibleRef.current = false;
+      setIsTouchEnabled(false);
+      opacity.stopAnimation();
+      opacity.setValue(0);
+    }, [clearHideTimer, isDragging, opacity]);
+
+    React.useImperativeHandle(
+      ref,
+      () => ({ hide: hideImmediately, show: showTemporarily }),
+      [hideImmediately, showTemporarily]
+    );
 
     React.useEffect(
       () => () => {

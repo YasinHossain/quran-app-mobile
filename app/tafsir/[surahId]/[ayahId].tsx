@@ -1402,6 +1402,7 @@ export default function TafsirScreen(): React.JSX.Element {
 
         <ReaderOverlayHeader
           onLayout={readerHeader.handleHeaderLayout}
+          pointerEvents={readerHeader.headerPointerEvents}
           style={readerHeader.headerAnimatedStyle}
         >
           <AppSearchHeader
