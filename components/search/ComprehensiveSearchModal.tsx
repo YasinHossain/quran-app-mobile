@@ -384,6 +384,7 @@ export function ComprehensiveSearchModal({
                       title="Go To"
                       buttonLabel="Go"
                       variant="card"
+                      dropdownVisualOffset={1}
                     />
                   </ScrollView>
                 ) : (

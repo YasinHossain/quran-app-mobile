@@ -328,7 +328,7 @@ export function PlaybackOptionsModal({
             ]}
             className="bg-surface dark:bg-surface-dark border border-border/30 dark:border-border-dark/20"
           >
-            <SafeAreaView edges={['top', 'bottom']} style={styles.dialogSafeArea}>
+            <View style={styles.dialogSafeArea}>
               <View className={isDark ? 'dark' : ''} style={styles.inner}>
                 <View className="px-4 pt-4 pb-3 border-b border-border/30 dark:border-border-dark/20">
                   <View className="flex-row items-center justify-between gap-3">
@@ -497,7 +497,7 @@ export function PlaybackOptionsModal({
                   </View>
                 </View>
               </View>
-            </SafeAreaView>
+            </View>
           </Animated.View>
         </KeyboardAvoidingView>
       </View>
@@ -981,14 +981,14 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   dialogSafeArea: {
-    flex: 1,
+    flexShrink: 1,
   },
   inner: {
-    flex: 1,
+    flexShrink: 1,
     width: '100%',
   },
   content: {
-    flex: 1,
+    flexShrink: 1,
     minHeight: 0,
   },
   scrollContent: {

@@ -58,10 +58,7 @@ export function DeleteFolderModal({
   }, [folder, isDeleting, onConfirmDelete]);
 
   const maxDialogHeight = Math.max(0, Math.round(windowHeight * 0.92));
-  const minDialogHeight = Math.min(
-    maxDialogHeight,
-    Math.max(320, Math.min(520, Math.round(windowHeight * 0.46)))
-  );
+  const minDialogHeight = Math.min(maxDialogHeight, 260);
 
   return (
     <Modal
@@ -90,7 +87,7 @@ export function DeleteFolderModal({
             ]}
             className="bg-surface dark:bg-surface-dark border border-border/30 dark:border-border-dark/20"
           >
-            <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
+            <View style={styles.safeArea}>
               <View className={isDark ? 'dark' : ''} style={styles.inner}>
                 <View className="flex-row items-center justify-between px-6 pt-6 pb-4">
                   <View className="flex-row items-center gap-3">
@@ -205,7 +202,7 @@ export function DeleteFolderModal({
                   </View>
                 </View>
               </View>
-            </SafeAreaView>
+            </View>
           </Animated.View>
         </KeyboardAvoidingView>
       </View>
@@ -237,13 +234,13 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   safeArea: {
-    flex: 1,
+    flexShrink: 1,
   },
   inner: {
-    flex: 1,
+    flexShrink: 1,
   },
   flex: {
-    flex: 1,
+    flexShrink: 1,
   },
   scrollContent: {
     paddingBottom: 16,

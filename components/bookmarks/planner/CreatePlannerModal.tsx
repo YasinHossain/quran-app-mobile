@@ -22,8 +22,7 @@ import { useChapters } from '@/hooks/useChapters';
 import { useBookmarks } from '@/providers/BookmarkContext';
 import { useAppTheme } from '@/providers/ThemeContext';
 
-import { RangeBoundary } from './create-planner-modal/RangeBoundary';
-import { SurahPickerModal } from './create-planner-modal/SurahPickerModal';
+import { SurahVerseSelectorRow } from '@/components/search/SurahVerseSelectorRow';
 import {
   buildChapterLookup,
   buildPlannerPlanDefinitions,
@@ -44,13 +43,6 @@ const resetFormState = (): PlanFormData => ({
 
 const clampDays = (value: number): number => Math.max(1, Math.min(365, Math.round(value)));
 
-const clampVerse = (verse: number | undefined, maxVerse: number, fallback: number): number => {
-  if (maxVerse <= 0) return fallback;
-  if (typeof verse !== 'number' || !Number.isFinite(verse) || verse < 1) return fallback;
-  if (verse > maxVerse) return maxVerse;
-  return verse;
-};
-
 export function CreatePlannerModal({
   isOpen,
   onClose,
@@ -67,28 +59,33 @@ export function CreatePlannerModal({
 
   const [formData, setFormData] = React.useState<PlanFormData>(resetFormState);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
-  const [activePicker, setActivePicker] = React.useState<'start' | 'end' | null>(null);
 
   const shouldRender = isOpen;
 
   const { visible, progress, dismissEnabledRef } = useModalTransition(shouldRender);
+  const inputRef = React.useRef<TextInput | null>(null);
+  const focusTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  React.useEffect(() => {
+    if (isOpen) {
+      focusTimeoutRef.current = setTimeout(() => {
+        inputRef.current?.focus();
+      }, 320);
+    } else {
+      if (focusTimeoutRef.current) {
+        clearTimeout(focusTimeoutRef.current);
+        focusTimeoutRef.current = null;
+      }
+    }
+    return () => {
+      if (focusTimeoutRef.current) {
+        clearTimeout(focusTimeoutRef.current);
+        focusTimeoutRef.current = null;
+      }
+    };
+  }, [isOpen]);
 
   const chapterLookup = React.useMemo(() => buildChapterLookup(chapters), [chapters]);
-
-  const startChapter =
-    typeof formData.startSurah === 'number' ? chapterLookup[formData.startSurah] : undefined;
-  const endChapter =
-    typeof formData.endSurah === 'number' ? chapterLookup[formData.endSurah] : undefined;
-
-  const normalizedStartVerse = React.useMemo(() => {
-    if (!startChapter) return undefined;
-    return clampVerse(formData.startVerse, startChapter.verses_count, 1);
-  }, [formData.startVerse, startChapter]);
-
-  const normalizedEndVerse = React.useMemo(() => {
-    if (!endChapter) return undefined;
-    return clampVerse(formData.endVerse, endChapter.verses_count, endChapter.verses_count);
-  }, [endChapter, formData.endVerse]);
 
   const stats = React.useMemo(() => getPlannerStats(chapters, formData), [chapters, formData]);
   const planDefinitions = React.useMemo(
@@ -135,7 +132,6 @@ export function CreatePlannerModal({
   const handleClose = React.useCallback(() => {
     setFormData(resetFormState());
     setIsSubmitting(false);
-    setActivePicker(null);
     onClose();
   }, [onClose]);
 
@@ -148,27 +144,42 @@ export function CreatePlannerModal({
     handleClose();
   }, [dismissEnabledRef, handleClose]);
 
-  const handleSelectSurah = React.useCallback(
-    (value: number) => {
-      if (activePicker === 'start') {
-        const chapter = chapterLookup[value];
-        updateFormData({
-          startSurah: value,
-          startVerse: chapter ? clampVerse(formData.startVerse, chapter.verses_count, 1) : undefined,
-        });
-      }
-      if (activePicker === 'end') {
-        const chapter = chapterLookup[value];
-        updateFormData({
-          endSurah: value,
-          endVerse: chapter
-            ? clampVerse(formData.endVerse, chapter.verses_count, chapter.verses_count)
-            : undefined,
-        });
-      }
-      setActivePicker(null);
+  const handleSelectStartSurah = React.useCallback(
+    (surahId: number) => {
+      updateFormData({
+        startSurah: surahId,
+        startVerse: undefined,
+      });
     },
-    [activePicker, chapterLookup, formData.endVerse, formData.startVerse, updateFormData]
+    [updateFormData]
+  );
+
+  const handleSelectStartVerse = React.useCallback(
+    (verseNumber: number) => {
+      updateFormData({
+        startVerse: verseNumber,
+      });
+    },
+    [updateFormData]
+  );
+
+  const handleSelectEndSurah = React.useCallback(
+    (surahId: number) => {
+      updateFormData({
+        endSurah: surahId,
+        endVerse: undefined,
+      });
+    },
+    [updateFormData]
+  );
+
+  const handleSelectEndVerse = React.useCallback(
+    (verseNumber: number) => {
+      updateFormData({
+        endVerse: verseNumber,
+      });
+    },
+    [updateFormData]
   );
 
   const setEstimatedDays = React.useCallback(
@@ -198,23 +209,21 @@ export function CreatePlannerModal({
   const maxName = 50;
   const currentLength = Math.min(maxName, formData.planName.length);
   const maxDialogHeight = Math.max(0, Math.round(windowHeight * 0.92));
-  const minDialogHeight = Math.min(
-    maxDialogHeight,
-    Math.max(420, Math.min(620, Math.round(windowHeight * 0.6)))
-  );
+
+  let contentMinHeight = 530;
+  if (duplicatePlanName) {
+    contentMinHeight += 30;
+  }
+  if (stats.isValidRange && stats.totalVerses > 0) {
+    contentMinHeight += 100;
+  }
+  if (chapters.length === 0) {
+    contentMinHeight += 70;
+  }
+
+  const minDialogHeight = Math.min(maxDialogHeight, contentMinHeight);
 
   return (
-    <>
-      <SurahPickerModal
-        isOpen={activePicker !== null}
-        chapters={chapters}
-        isLoading={isChaptersLoading && chapters.length === 0}
-        errorMessage={errorMessage}
-        onRetry={refresh}
-        onClose={() => setActivePicker(null)}
-        onSelect={handleSelectSurah}
-      />
-
       <Modal
         transparent
         visible={visible}
@@ -241,7 +250,7 @@ export function CreatePlannerModal({
               ]}
               className="bg-surface dark:bg-surface-dark border border-border/30 dark:border-border-dark/20"
             >
-              <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
+              <View style={styles.safeArea}>
                 <View className={isDark ? 'dark' : ''} style={styles.inner}>
                   <View className="px-5 py-5">
                     <View className="flex-row items-center justify-between">
@@ -289,12 +298,12 @@ export function CreatePlannerModal({
                         </View>
                         <View className="rounded-xl border border-border dark:border-border-dark bg-surface dark:bg-surface-dark px-3 py-3">
                           <TextInput
+                            ref={inputRef}
                             value={formData.planName}
                             onChangeText={(planName) => updateFormData({ planName })}
                             placeholder="Enter Plan Name"
                             placeholderTextColor={palette.muted}
                             maxLength={maxName}
-                            autoFocus
                             returnKeyType="done"
                             className="text-base text-foreground dark:text-foreground-dark"
                           />
@@ -308,34 +317,28 @@ export function CreatePlannerModal({
                       </View>
 
                       <View className="gap-4">
-                        <RangeBoundary
+                        <SurahVerseSelectorRow
+                          chapters={chapters}
+                          isLoading={isChaptersLoading}
                           surahLabel="Start Surah"
                           verseLabel="Verse"
-                          chapter={startChapter}
-                          onOpenSurahPicker={() => setActivePicker('start')}
-                          verseValue={normalizedStartVerse}
-                          onVerseChange={(next) =>
-                            updateFormData({
-                              startVerse: startChapter
-                                ? clampVerse(next, startChapter.verses_count, 1)
-                                : next,
-                            })
-                          }
+                          selectedSurah={formData.startSurah}
+                          selectedVerse={formData.startVerse}
+                          onSelectSurah={handleSelectStartSurah}
+                          onSelectVerse={handleSelectStartVerse}
+                          dropdownVisualOffset={1}
                         />
 
-                        <RangeBoundary
+                        <SurahVerseSelectorRow
+                          chapters={chapters}
+                          isLoading={isChaptersLoading}
                           surahLabel="End Surah"
                           verseLabel="Verse"
-                          chapter={endChapter}
-                          onOpenSurahPicker={() => setActivePicker('end')}
-                          verseValue={normalizedEndVerse}
-                          onVerseChange={(next) =>
-                            updateFormData({
-                              endVerse: endChapter
-                                ? clampVerse(next, endChapter.verses_count, endChapter.verses_count)
-                                : next,
-                            })
-                          }
+                          selectedSurah={formData.endSurah}
+                          selectedVerse={formData.endVerse}
+                          onSelectSurah={handleSelectEndSurah}
+                          onSelectVerse={handleSelectEndVerse}
+                          dropdownVisualOffset={1}
                         />
                       </View>
 
@@ -453,12 +456,11 @@ export function CreatePlannerModal({
                     </View>
                   </View>
                 </View>
-              </SafeAreaView>
+              </View>
             </Animated.View>
           </KeyboardAvoidingView>
         </View>
       </Modal>
-    </>
   );
 }
 
@@ -478,8 +480,8 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     alignSelf: 'center',
   },
-  safeArea: { flex: 1 },
-  inner: { flex: 1 },
-  flex: { flex: 1 },
+  safeArea: { flexShrink: 1 },
+  inner: { flexShrink: 1 },
+  flex: { flexShrink: 1 },
   scrollContent: { paddingBottom: 10 },
 });

@@ -49,6 +49,7 @@ export function GoToSurahVerseCard({
   variant = 'card',
   onNavigate,
   onSearchSuggestion,
+  dropdownVisualOffset,
 }: {
   title?: string;
   subtitle?: string;
@@ -56,6 +57,7 @@ export function GoToSurahVerseCard({
   variant?: 'card' | 'embedded';
   onNavigate: (surahId: number, verse?: number) => void;
   onSearchSuggestion?: (query: string) => void;
+  dropdownVisualOffset?: number;
 }): React.JSX.Element {
   const { isDark, resolvedTheme } = useAppTheme();
   const palette = Colors[resolvedTheme];
@@ -139,6 +141,7 @@ export function GoToSurahVerseCard({
               selectedVerse={selectedVerse}
               onSelectSurah={handleSelectSurah}
               onSelectVerse={handleSelectVerse}
+              dropdownVisualOffset={dropdownVisualOffset}
             />
           </View>
 

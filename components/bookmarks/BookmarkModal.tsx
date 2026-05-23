@@ -108,13 +108,10 @@ export function BookmarkModal({
   );
 
   const maxDialogHeight = Math.max(0, Math.round(windowHeight * 0.92));
-  const pinMinDialogHeight = Math.min(
-    maxDialogHeight,
-    Math.max(340, Math.min(520, Math.round(windowHeight * 0.52)))
-  );
+  const pinMinDialogHeight = Math.min(maxDialogHeight, 300);
   const bookmarkMinDialogHeight = Math.min(
     maxDialogHeight,
-    Math.max(420, Math.round(windowHeight * 0.72))
+    Math.max(380, Math.min(600, Math.round(windowHeight * 0.55)))
   );
   const minDialogHeight = activeTab === 'bookmark' ? bookmarkMinDialogHeight : pinMinDialogHeight;
 
@@ -145,7 +142,7 @@ export function BookmarkModal({
             ]}
             className="bg-surface dark:bg-surface-dark border border-border/30 dark:border-border-dark/20"
           >
-            <SafeAreaView edges={['top', 'bottom']} style={styles.dialogSafeArea}>
+            <View style={styles.dialogSafeArea}>
               <View className={isDark ? 'dark' : ''} style={styles.dialogInner}>
                 <View className="px-4 py-4 relative">
                   <View className="flex-row items-start justify-center">
@@ -392,7 +389,7 @@ export function BookmarkModal({
                   </View>
                 )}
               </View>
-            </SafeAreaView>
+            </View>
           </Animated.View>
         </KeyboardAvoidingView>
       </View>
@@ -424,13 +421,13 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   dialogSafeArea: {
-    flex: 1,
+    flexShrink: 1,
   },
   dialogInner: {
-    flex: 1,
+    flexShrink: 1,
   },
   tabFill: {
-    flex: 1,
+    flexShrink: 1,
     minHeight: 0,
   },
   scrollContent: {

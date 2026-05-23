@@ -3,12 +3,12 @@ import { Animated, Easing } from 'react-native';
 
 export const modalMotion = {
   overlayColor: 'rgba(0,0,0,0.55)',
-  openDuration: 260,
-  closeDuration: 180,
-  quickOpenDuration: 220,
-  quickCloseDuration: 160,
-  openEasing: Easing.out(Easing.cubic),
-  closeEasing: Easing.out(Easing.cubic),
+  openDuration: 300,
+  closeDuration: 220,
+  quickOpenDuration: 260,
+  quickCloseDuration: 180,
+  openEasing: Easing.out(Easing.quad),
+  closeEasing: Easing.out(Easing.quad),
 } as const;
 
 type UseModalTransitionOptions = {
@@ -34,7 +34,6 @@ export function useModalTransition(
   const visibleRef = React.useRef(isOpen);
   const dismissEnabledRef = React.useRef(isOpen);
   const animationTokenRef = React.useRef(0);
-  const openFrameRef = React.useRef<number | null>(null);
   const afterCloseFrameRef = React.useRef<number | null>(null);
   const onAfterCloseRef = React.useRef(onAfterClose);
 
@@ -47,10 +46,6 @@ export function useModalTransition(
       animationTokenRef.current += 1;
       dismissEnabledRef.current = false;
       progress.stopAnimation();
-      if (openFrameRef.current !== null) {
-        cancelAnimationFrame(openFrameRef.current);
-        openFrameRef.current = null;
-      }
       if (afterCloseFrameRef.current !== null) {
         cancelAnimationFrame(afterCloseFrameRef.current);
         afterCloseFrameRef.current = null;
@@ -63,10 +58,6 @@ export function useModalTransition(
     dismissEnabledRef.current = false;
     progress.stopAnimation();
 
-    if (openFrameRef.current !== null) {
-      cancelAnimationFrame(openFrameRef.current);
-      openFrameRef.current = null;
-    }
     if (afterCloseFrameRef.current !== null) {
       cancelAnimationFrame(afterCloseFrameRef.current);
       afterCloseFrameRef.current = null;
@@ -79,21 +70,16 @@ export function useModalTransition(
         setVisible(true);
       }
 
-      openFrameRef.current = requestAnimationFrame(() => {
-        openFrameRef.current = null;
+      Animated.timing(progress, {
+        toValue: 1,
+        duration: openDuration,
+        easing: modalMotion.openEasing,
+        isInteraction: false,
+        useNativeDriver: true,
+      }).start(({ finished }) => {
+        if (!finished) return;
         if (animationTokenRef.current !== token) return;
-
-        Animated.timing(progress, {
-          toValue: 1,
-          duration: openDuration,
-          easing: modalMotion.openEasing,
-          isInteraction: false,
-          useNativeDriver: true,
-        }).start(({ finished }) => {
-          if (!finished) return;
-          if (animationTokenRef.current !== token) return;
-          dismissEnabledRef.current = true;
-        });
+        dismissEnabledRef.current = true;
       });
 
       return;
@@ -127,24 +113,18 @@ export function useModalTransition(
 
 export function dialogTransform(progress: Animated.Value): {
   opacity: Animated.AnimatedInterpolation<number>;
-  transform: Array<{ scale: Animated.AnimatedInterpolation<number> } | { translateY: Animated.AnimatedInterpolation<number> }>;
+  transform: Array<{ translateY: Animated.AnimatedInterpolation<number> }>;
 } {
   return {
     opacity: progress.interpolate({
       inputRange: [0, 1],
-      outputRange: [0.98, 1],
+      outputRange: [0, 1],
     }),
     transform: [
       {
-        scale: progress.interpolate({
-          inputRange: [0, 1],
-          outputRange: [0.965, 1],
-        }),
-      },
-      {
         translateY: progress.interpolate({
           inputRange: [0, 1],
-          outputRange: [10, 0],
+          outputRange: [6, 0],
         }),
       },
     ],

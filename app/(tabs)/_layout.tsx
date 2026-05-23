@@ -1,5 +1,5 @@
 import React from 'react';
-import { Bookmark, Home, Calendar, Settings, Search } from 'lucide-react-native';
+import { Bookmark, Home, Calendar, Search } from 'lucide-react-native';
 import { Tabs } from 'expo-router';
 import { Easing, View, type LayoutChangeEvent } from 'react-native';
 import { BottomTabBar, type BottomTabBarProps } from '@react-navigation/bottom-tabs';
@@ -123,13 +123,6 @@ export default function TabLayout() {
         options={{
           title: 'Planner',
           tabBarIcon: ({ color }) => <TabBarIcon Icon={Calendar} color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="settings"
-        options={{
-          title: 'Settings',
-          tabBarIcon: ({ color }) => <TabBarIcon Icon={Settings} color={color} />,
         }}
       />
     </Tabs>
