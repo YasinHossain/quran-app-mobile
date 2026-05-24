@@ -713,6 +713,7 @@ export default function SurahScreen(): React.JSX.Element {
       audioActiveVerseKey: audio.activeVerseKey,
       audioIsVisible: audio.isVisible,
       pagesSignature,
+      verseAudioWordSync,
     }),
     [
       pagesSignature,
@@ -722,6 +723,7 @@ export default function SurahScreen(): React.JSX.Element {
       settings.translationFontSize,
       audio.activeVerseKey,
       audio.isVisible,
+      verseAudioWordSync,
     ]
   );
 

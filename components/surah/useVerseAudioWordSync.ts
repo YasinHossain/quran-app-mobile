@@ -58,27 +58,11 @@ export function useVerseAudioWordSync(chapterId?: number | null): VerseAudioWord
     [chapterId, audio.activeVerseKey]
   );
 
-  const isCurrentPlayingChapter = React.useMemo(() => {
-    const playingChapterId = parseChapterIdFromVerseKey(audio.activeVerseKey);
-    return activeChapterId !== null && activeChapterId === playingChapterId;
-  }, [activeChapterId, audio.activeVerseKey]);
-
-  const { audioFile } = useQdcAudioFile(
-    audio.reciter.id,
-    isCurrentPlayingChapter ? null : activeChapterId,
-    true
-  );
-
-  const verseTimings = React.useMemo(() => {
-    if (isCurrentPlayingChapter && audio.verseTimings) {
-      return audio.verseTimings;
-    }
-    return audioFile?.verseTimings;
-  }, [isCurrentPlayingChapter, audio.verseTimings, audioFile?.verseTimings]);
+  const { audioFile } = useQdcAudioFile(audio.reciter.id, activeChapterId, true);
 
   const verseTimingIndex = React.useMemo(
-    () => buildVerseTimingIndex(verseTimings),
-    [verseTimings]
+    () => buildVerseTimingIndex(audioFile?.verseTimings),
+    [audioFile?.verseTimings]
   );
 
   const activeSegments = React.useMemo((): QdcAudioSegment[] | null => {

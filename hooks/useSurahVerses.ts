@@ -430,7 +430,7 @@ export function useSurahVerses({
   const requestTokenRef = React.useRef(0);
   const inFlightPagesRef = React.useRef(new Map<number, Promise<void>>());
   const dataSourceRef = React.useRef<'network' | 'offline'>(
-    initialHasLoadedContent ? 'offline' : 'network'
+    (initialHasLoadedContent && !includeWords) ? 'offline' : 'network'
   );
   const initialVerseNumberRef = React.useRef(initialVerseNumber);
   const pagesSignature = React.useMemo(
@@ -819,31 +819,37 @@ export function useSurahVerses({
       const hasWarmOfflinePages = Object.keys(warmOfflinePages).length > 0;
 
       if (hasWarmOfflinePages) {
-        dataSourceRef.current = 'offline';
-        pagesByNumberRef.current = warmOfflinePages;
-        setPagesByNumber((previous) => {
-          const previousPageNumbers = Object.keys(previous);
-          const nextPageNumbers = Object.keys(warmOfflinePages);
-          if (previousPageNumbers.length !== nextPageNumbers.length) return warmOfflinePages;
+        if (!includeWords) {
+          dataSourceRef.current = 'offline';
+          pagesByNumberRef.current = warmOfflinePages;
+          setPagesByNumber((previous) => {
+            const previousPageNumbers = Object.keys(previous);
+            const nextPageNumbers = Object.keys(warmOfflinePages);
+            if (previousPageNumbers.length !== nextPageNumbers.length) return warmOfflinePages;
 
-          for (const pageNumber of nextPageNumbers) {
-            const numericPageNumber = Number(pageNumber);
-            const previousPage = previous[numericPageNumber];
-            const nextPage = warmOfflinePages[numericPageNumber];
-            if (!previousPage || !nextPage || !arePageVersesEquivalent(previousPage, nextPage)) {
-              return warmOfflinePages;
+            for (const pageNumber of nextPageNumbers) {
+              const numericPageNumber = Number(pageNumber);
+              const previousPage = previous[numericPageNumber];
+              const nextPage = warmOfflinePages[numericPageNumber];
+              if (!previousPage || !nextPage || !arePageVersesEquivalent(previousPage, nextPage)) {
+                return warmOfflinePages;
+              }
             }
-          }
 
-          return previous;
-        });
-        setPendingPageCount(0);
-        setErrorMessage(null);
-        setOfflineNotInstalled(false);
-        setIsLoadingMore(false);
-        if (mode === 'initial') setIsLoading(false);
-        if (mode === 'refresh') setIsRefreshing(false);
-        return;
+            return previous;
+          });
+          setPendingPageCount(0);
+          setErrorMessage(null);
+          setOfflineNotInstalled(false);
+          setIsLoadingMore(false);
+          if (mode === 'initial') setIsLoading(false);
+          if (mode === 'refresh') setIsRefreshing(false);
+          return;
+        } else {
+          pagesByNumberRef.current = warmOfflinePages;
+          setPagesByNumber(warmOfflinePages);
+          if (mode === 'initial') setIsLoading(false);
+        }
       }
 
       const canPreserveCurrentPages = pagesBelongToChapter(
@@ -865,7 +871,7 @@ export function useSurahVerses({
       if (mode === 'refresh') setIsRefreshing(true);
 
       try {
-        const loadedOfflineFirst = await loadOfflineFirstData(token);
+        const loadedOfflineFirst = !includeWords && await loadOfflineFirstData(token);
         if (requestTokenRef.current !== token) return;
         if (loadedOfflineFirst) return;
 
@@ -906,6 +912,7 @@ export function useSurahVerses({
       chapterNumber,
       enabled,
       fetchPage,
+      includeWords,
       loadOfflineFirstData,
       perPage,
       resolvedTranslationIds,

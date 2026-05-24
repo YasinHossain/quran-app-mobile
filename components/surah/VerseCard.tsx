@@ -1,7 +1,17 @@
 import React from 'react';
 import { MoreHorizontal } from 'lucide-react-native';
 import type { LayoutChangeEvent } from 'react-native';
-import { Platform, Pressable, Text, ToastAndroid, View } from 'react-native';
+import {
+  Modal,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  ToastAndroid,
+  TouchableWithoutFeedback,
+  View,
+  useWindowDimensions,
+} from 'react-native';
 
 import Colors from '@/constants/Colors';
 import { useAppTheme } from '@/providers/ThemeContext';
@@ -64,7 +74,17 @@ function VerseCardComponent({
 }): React.JSX.Element {
   const { resolvedTheme } = useAppTheme();
   const palette = Colors[resolvedTheme];
+  const screenDimensions = useWindowDimensions();
+  const screenWidth = screenDimensions.width;
   const [wordTranslationTooltip, setWordTranslationTooltip] = React.useState<string | null>(null);
+  const [tooltipData, setTooltipData] = React.useState<{
+    text: string;
+    pageX: number;
+    pageY: number;
+    width: number;
+    height: number;
+  } | null>(null);
+  const [tooltipSize, setTooltipSize] = React.useState({ width: 0, height: 0 });
   const tooltipHideTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const arabicFontFamily = getFirstFontFamily(arabicFontFace);
   const sanitizedArabicText = arabicText.trim();
@@ -115,22 +135,58 @@ function VerseCardComponent({
     };
   }, []);
 
-  const showWordTranslation = React.useCallback((text: string) => {
-    const trimmed = text.trim();
-    if (!trimmed) return;
-
-    if (Platform.OS === 'android') {
-      ToastAndroid.showWithGravity(trimmed, ToastAndroid.SHORT, ToastAndroid.BOTTOM);
-      return;
-    }
-
-    setWordTranslationTooltip(trimmed);
-    if (tooltipHideTimeoutRef.current) clearTimeout(tooltipHideTimeoutRef.current);
-    tooltipHideTimeoutRef.current = setTimeout(() => {
+  const dismissTooltip = React.useCallback(() => {
+    if (tooltipHideTimeoutRef.current) {
+      clearTimeout(tooltipHideTimeoutRef.current);
       tooltipHideTimeoutRef.current = null;
-      setWordTranslationTooltip(null);
-    }, 2500);
+    }
+    setTooltipData(null);
+    setWordTranslationTooltip(null);
+    setTooltipSize({ width: 0, height: 0 });
   }, []);
+
+  const showWordTranslation = React.useCallback(
+    (
+      text: string,
+      measurement?: { pageX: number; pageY: number; width: number; height: number }
+    ) => {
+      const trimmed = text.trim();
+      if (!trimmed) return;
+
+      if (tooltipHideTimeoutRef.current) {
+        clearTimeout(tooltipHideTimeoutRef.current);
+        tooltipHideTimeoutRef.current = null;
+      }
+
+      setTooltipSize({ width: 0, height: 0 });
+
+      if (measurement) {
+        setTooltipData({
+          text: trimmed,
+          pageX: measurement.pageX,
+          pageY: measurement.pageY,
+          width: measurement.width,
+          height: measurement.height,
+        });
+
+        tooltipHideTimeoutRef.current = setTimeout(() => {
+          tooltipHideTimeoutRef.current = null;
+          setTooltipData(null);
+        }, 3000);
+      } else {
+        if (Platform.OS === 'android') {
+          ToastAndroid.showWithGravity(trimmed, ToastAndroid.SHORT, ToastAndroid.BOTTOM);
+        } else {
+          setWordTranslationTooltip(trimmed);
+          tooltipHideTimeoutRef.current = setTimeout(() => {
+            tooltipHideTimeoutRef.current = null;
+            setWordTranslationTooltip(null);
+          }, 3000);
+        }
+      }
+    },
+    []
+  );
 
   const isSeekEnabled = Boolean(audioWordSync?.isSeekEnabled);
 
@@ -142,9 +198,23 @@ function VerseCardComponent({
   );
 
   const handleTranslationWordPress = React.useCallback(
-    ({ word }: { word: VerseWord; wordPosition: number }) => {
+    ({
+      word,
+      measurement,
+    }: {
+      word: VerseWord;
+      wordPosition: number;
+      measurement?: {
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+        pageX: number;
+        pageY: number;
+      };
+    }) => {
       if (!word.translationText) return;
-      showWordTranslation(word.translationText);
+      showWordTranslation(word.translationText, measurement);
     },
     [showWordTranslation]
   );
@@ -256,20 +326,111 @@ function VerseCardComponent({
     .filter(Boolean)
     .join(' ');
 
-  if (onPress) {
-    return (
-      <Pressable
-        onPress={onPress}
-        accessibilityRole="button"
-        className={containerClassName}
-        style={({ pressed }) => ({ opacity: pressed ? 0.95 : 1 })}
-      >
-        {content}
-      </Pressable>
-    );
-  }
+  const renderTooltipModal = () => {
+    if (!tooltipData) return null;
 
-  return <View className={containerClassName}>{content}</View>;
+    const { text, pageX, pageY, width, height } = tooltipData;
+    const centerX = pageX + width / 2;
+
+    const hasMeasured = tooltipSize.width > 0 && tooltipSize.height > 0;
+    const gap = 16;
+    const fitsAbove = pageY - tooltipSize.height - (gap + 4) > 50;
+    const finalTop = fitsAbove ? pageY - tooltipSize.height - gap : pageY + height + gap;
+    const isAbove = fitsAbove;
+
+    const tooltipWidth = tooltipSize.width || 180;
+    const leftCoordinate = Math.max(
+      12,
+      Math.min(screenWidth - tooltipWidth - 12, centerX - tooltipWidth / 2)
+    );
+
+    return (
+      <Modal
+        visible={true}
+        transparent={true}
+        animationType="none"
+        onRequestClose={dismissTooltip}
+      >
+        <TouchableWithoutFeedback onPress={dismissTooltip}>
+          <View style={StyleSheet.absoluteFill}>
+            <View
+              onLayout={(e) => {
+                const { width: w, height: h } = e.nativeEvent.layout;
+                setTooltipSize({ width: w, height: h });
+              }}
+              style={{
+                position: 'absolute',
+                left: leftCoordinate,
+                top: finalTop,
+                backgroundColor: palette.tint,
+                borderRadius: 6,
+                paddingVertical: 8,
+                paddingHorizontal: 12,
+                maxWidth: Math.min(256, screenWidth - 24),
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.15,
+                shadowRadius: 4,
+                elevation: 4,
+                opacity: hasMeasured ? 1 : 0,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Text style={{ color: '#ffffff', fontSize: 13, fontWeight: '500', textAlign: 'center' }}>
+                {text}
+              </Text>
+              <View
+                style={{
+                  width: 0,
+                  height: 0,
+                  borderLeftWidth: 6,
+                  borderRightWidth: 6,
+                  borderStyle: 'solid',
+                  backgroundColor: 'transparent',
+                  borderLeftColor: 'transparent',
+                  borderRightColor: 'transparent',
+                  position: 'absolute',
+                  left: centerX - leftCoordinate - 6,
+                  ...(isAbove
+                    ? {
+                        borderTopWidth: 6,
+                        borderTopColor: palette.tint,
+                        bottom: -6,
+                      }
+                    : {
+                        borderBottomWidth: 6,
+                        borderBottomColor: palette.tint,
+                        top: -6,
+                      }),
+                }}
+              />
+            </View>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
+    );
+  };
+
+  const mainView = onPress ? (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      className={containerClassName}
+      style={({ pressed }) => ({ opacity: pressed ? 0.95 : 1 })}
+    >
+      {content}
+    </Pressable>
+  ) : (
+    <View className={containerClassName}>{content}</View>
+  );
+
+  return (
+    <>
+      {mainView}
+      {renderTooltipModal()}
+    </>
+  );
 }
 
 export const VerseCard = React.memo(VerseCardComponent);
