@@ -350,7 +350,7 @@ function AddQuickLinkModal({
 
   const canSubmit = typeof selectedSurah === 'number' && typeof selectedVerse === 'number';
   const maxHeight = Math.max(0, Math.round(windowHeight * 0.72));
-  const minHeight = Math.min(maxHeight, Math.max(310, Math.round(windowHeight * 0.36)));
+  const minHeight = Math.min(maxHeight, 240);
 
   return (
     <Modal
@@ -407,6 +407,7 @@ function AddQuickLinkModal({
                   selectedVerse={selectedVerse}
                   onSelectSurah={handleSelectSurah}
                   onSelectVerse={setSelectedVerse}
+                  dropdownVisualOffset={1}
                 />
               </View>
 
