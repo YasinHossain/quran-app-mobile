@@ -359,6 +359,11 @@ export function ManageTranslationsPanel({
   const latestSelectionRef = React.useRef(localOrderedSelection);
   const commitTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const commitRevisionRef = React.useRef(0);
+  const orderedSelectionRef = React.useRef(orderedSelection);
+
+  React.useEffect(() => {
+    orderedSelectionRef.current = orderedSelection;
+  }, [orderedSelection]);
 
   React.useEffect(() => {
     latestSelectionRef.current = localOrderedSelection;
@@ -393,6 +398,8 @@ export function ManageTranslationsPanel({
 
         InteractionManager.runAfterInteractions(() => {
           if (scheduledRevision !== commitRevisionRef.current) return;
+          if (areSelectionsEqual(idsToCommit, orderedSelectionRef.current)) return;
+
           if (typeof React.startTransition === 'function') {
             React.startTransition(() => {
               onChangeSelection(idsToCommit);
@@ -413,7 +420,10 @@ export function ManageTranslationsPanel({
         clearTimeout(commitTimeoutRef.current);
         commitTimeoutRef.current = null;
       }
-      onChangeSelection([...latestSelectionRef.current]);
+      const finalSelection = latestSelectionRef.current;
+      if (!areSelectionsEqual(finalSelection, orderedSelectionRef.current)) {
+        onChangeSelection([...finalSelection]);
+      }
     },
     [onChangeSelection]
   );

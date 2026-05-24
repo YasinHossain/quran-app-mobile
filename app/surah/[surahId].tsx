@@ -1459,7 +1459,7 @@ export default function SurahScreen(): React.JSX.Element {
                   <VerseCardPlaceholder verseKey={`${chapterNumber}:${item}`} />
                 )}
                 contentContainerStyle={listContentContainerStyle}
-                ListHeaderComponent={chapter ? <SurahHeaderCard chapter={chapter} /> : null}
+                ListHeaderComponent={resolvedChapter ? <SurahHeaderCard chapter={resolvedChapter} /> : null}
                 scrollEnabled={false}
               />
             ) : verseCount <= 0 ? (
@@ -1485,7 +1485,7 @@ export default function SurahScreen(): React.JSX.Element {
                 viewabilityConfig={viewabilityConfig}
                 onViewableItemsChanged={onViewableItemsChanged}
                 showsVerticalScrollIndicator={false}
-                ListHeaderComponent={chapter ? <SurahHeaderCard chapter={chapter} /> : null}
+                ListHeaderComponent={resolvedChapter ? <SurahHeaderCard chapter={resolvedChapter} /> : null}
                 ListFooterComponent={
                   isLoadingMore || (errorMessage && hasLoadedContent) ? (
                     <View className="mt-2 flex-row items-center gap-3">
@@ -1517,7 +1517,7 @@ export default function SurahScreen(): React.JSX.Element {
                 viewabilityConfig={viewabilityConfig}
                 onViewableItemsChanged={onViewableItemsChanged}
                 showsVerticalScrollIndicator={false}
-                ListHeaderComponent={chapter ? <SurahHeaderCard chapter={chapter} /> : null}
+                ListHeaderComponent={resolvedChapter ? <SurahHeaderCard chapter={resolvedChapter} /> : null}
                 ListFooterComponent={
                   isLoadingMore || (errorMessage && hasLoadedContent) ? (
                     <View className="mt-2 flex-row items-center gap-3">

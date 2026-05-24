@@ -1,5 +1,6 @@
 import React from 'react';
 import { Animated, Easing, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const DEFAULT_READER_HEADER_HEIGHT = 76;
 const SCROLL_DELTA_THRESHOLD = 4;
@@ -18,7 +19,9 @@ const DIRECTION_COMMIT_MS = 400;
 const RECYCLING_SPIKE_THRESHOLD = 250;
 
 export function useCollapsibleReaderHeader() {
-  const [headerHeight, setHeaderHeight] = React.useState(DEFAULT_READER_HEADER_HEIGHT);
+  const insets = useSafeAreaInsets();
+  const estimatedHeight = (insets.top || 0) + 64;
+  const [headerHeight, setHeaderHeight] = React.useState(estimatedHeight);
   const [headerPointerEvents, setHeaderPointerEvents] = React.useState<'box-none' | 'none'>(
     'box-none'
   );
