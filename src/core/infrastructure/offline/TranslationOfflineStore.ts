@@ -21,6 +21,7 @@ function mapJoinedRowsToOfflineVerses(
     arabic_uthmani: string;
     translation_id: number | null;
     translation_text: string | null;
+    words_json?: string | null;
   }>,
   resolvedTranslationIds: number[]
 ): OfflineVerseWithTranslations[] {
@@ -31,6 +32,7 @@ function mapJoinedRowsToOfflineVerses(
       surahId: number;
       ayahNumber: number;
       arabicUthmani: string;
+      wordsJson?: string;
       translationsById: Map<number, string>;
     }
   >();
@@ -45,6 +47,7 @@ function mapJoinedRowsToOfflineVerses(
         surahId: row.surah,
         ayahNumber: row.ayah,
         arabicUthmani: row.arabic_uthmani,
+        wordsJson: row.words_json || undefined,
         translationsById: new Map<number, string>(),
       };
       byVerseKey.set(row.verse_key, existing);
@@ -64,6 +67,7 @@ function mapJoinedRowsToOfflineVerses(
       surahId: verse.surahId,
       ayahNumber: verse.ayahNumber,
       arabicUthmani: verse.arabicUthmani,
+      wordsJson: verse.wordsJson,
       translations: resolvedTranslationIds
         .map((translationId) => {
           const text = verse.translationsById.get(translationId);
@@ -88,12 +92,13 @@ export class TranslationOfflineStore implements ITranslationOfflineStore {
 
     await db.withTransactionAsync(async () => {
       const upsertVerseStmt = await db.prepareAsync(`
-        INSERT INTO offline_verses(verse_key, surah, ayah, arabic_uthmani)
-        VALUES (?, ?, ?, ?)
+        INSERT INTO offline_verses(verse_key, surah, ayah, arabic_uthmani, words_json)
+        VALUES (?, ?, ?, ?, ?)
         ON CONFLICT(verse_key) DO UPDATE SET
           surah = excluded.surah,
           ayah = excluded.ayah,
-          arabic_uthmani = excluded.arabic_uthmani;
+          arabic_uthmani = excluded.arabic_uthmani,
+          words_json = COALESCE(excluded.words_json, offline_verses.words_json);
       `);
 
       const upsertTranslationStmt = await db.prepareAsync(`
@@ -110,6 +115,7 @@ export class TranslationOfflineStore implements ITranslationOfflineStore {
             verse.surahId,
             verse.ayahNumber,
             verse.arabicUthmani,
+            verse.wordsJson ?? null,
           ]);
         }
 
@@ -140,9 +146,10 @@ export class TranslationOfflineStore implements ITranslationOfflineStore {
         surah: number;
         ayah: number;
         arabic_uthmani: string;
+        words_json: string | null;
       }>(
         `
-        SELECT verse_key, surah, ayah, arabic_uthmani
+        SELECT verse_key, surah, ayah, arabic_uthmani, words_json
         FROM offline_verses
         WHERE surah = ?
         ORDER BY ayah ASC;
@@ -155,6 +162,7 @@ export class TranslationOfflineStore implements ITranslationOfflineStore {
         surahId: row.surah,
         ayahNumber: row.ayah,
         arabicUthmani: row.arabic_uthmani,
+        wordsJson: row.words_json || undefined,
         translations: [],
       }));
     }
@@ -167,6 +175,7 @@ export class TranslationOfflineStore implements ITranslationOfflineStore {
       arabic_uthmani: string;
       translation_id: number | null;
       translation_text: string | null;
+      words_json: string | null;
     }>(
       `
       SELECT
@@ -174,6 +183,7 @@ export class TranslationOfflineStore implements ITranslationOfflineStore {
         v.surah AS surah,
         v.ayah AS ayah,
         v.arabic_uthmani AS arabic_uthmani,
+        v.words_json AS words_json,
         t.translation_id AS translation_id,
         t.text AS translation_text
       FROM offline_verses v
@@ -216,9 +226,10 @@ export class TranslationOfflineStore implements ITranslationOfflineStore {
         surah: number;
         ayah: number;
         arabic_uthmani: string;
+        words_json: string | null;
       }>(
         `
-        SELECT verse_key, surah, ayah, arabic_uthmani
+        SELECT verse_key, surah, ayah, arabic_uthmani, words_json
         FROM offline_verses
         WHERE surah = ?
         ORDER BY ayah ASC
@@ -232,6 +243,7 @@ export class TranslationOfflineStore implements ITranslationOfflineStore {
         surahId: row.surah,
         ayahNumber: row.ayah,
         arabicUthmani: row.arabic_uthmani,
+        wordsJson: row.words_json || undefined,
         translations: [],
       }));
     }
@@ -244,10 +256,11 @@ export class TranslationOfflineStore implements ITranslationOfflineStore {
       arabic_uthmani: string;
       translation_id: number | null;
       translation_text: string | null;
+      words_json: string | null;
     }>(
       `
       WITH verse_page AS (
-        SELECT verse_key, surah, ayah, arabic_uthmani
+        SELECT verse_key, surah, ayah, arabic_uthmani, words_json
         FROM offline_verses
         WHERE surah = ?
         ORDER BY ayah ASC
@@ -258,6 +271,7 @@ export class TranslationOfflineStore implements ITranslationOfflineStore {
         v.surah AS surah,
         v.ayah AS ayah,
         v.arabic_uthmani AS arabic_uthmani,
+        v.words_json AS words_json,
         t.translation_id AS translation_id,
         t.text AS translation_text
       FROM verse_page v
@@ -288,9 +302,10 @@ export class TranslationOfflineStore implements ITranslationOfflineStore {
         surah: number;
         ayah: number;
         arabic_uthmani: string;
+        words_json: string | null;
       }>(
         `
-        SELECT verse_key, surah, ayah, arabic_uthmani
+        SELECT verse_key, surah, ayah, arabic_uthmani, words_json
         FROM offline_verses
         WHERE verse_key = ?
         LIMIT 1;
@@ -305,6 +320,7 @@ export class TranslationOfflineStore implements ITranslationOfflineStore {
         surahId: row.surah,
         ayahNumber: row.ayah,
         arabicUthmani: row.arabic_uthmani,
+        wordsJson: row.words_json || undefined,
         translations: [],
       };
     }
@@ -317,6 +333,7 @@ export class TranslationOfflineStore implements ITranslationOfflineStore {
       arabic_uthmani: string;
       translation_id: number | null;
       translation_text: string | null;
+      words_json: string | null;
     }>(
       `
       SELECT
@@ -324,6 +341,7 @@ export class TranslationOfflineStore implements ITranslationOfflineStore {
         v.surah AS surah,
         v.ayah AS ayah,
         v.arabic_uthmani AS arabic_uthmani,
+        v.words_json AS words_json,
         t.translation_id AS translation_id,
         t.text AS translation_text
       FROM offline_verses v
@@ -352,6 +370,7 @@ export class TranslationOfflineStore implements ITranslationOfflineStore {
       surahId: firstRow.surah,
       ayahNumber: firstRow.ayah,
       arabicUthmani: firstRow.arabic_uthmani,
+      wordsJson: firstRow.words_json || undefined,
       translations: resolvedTranslationIds
         .map((translationId) => {
           const text = translationsById.get(translationId);

@@ -229,6 +229,7 @@ export class DownloadTranslationUseCase {
         surahId,
         ayahNumber: verse.ayahNumber,
         arabicUthmani: verse.arabicUthmani,
+        wordsJson: verse.wordsJson,
       }));
 
       const translationRows: OfflineTranslationRowInput[] = response.verses.map((verse) => ({

@@ -3,6 +3,7 @@ export type ChapterTranslationVerse = {
   ayahNumber: number;
   arabicUthmani: string;
   translationText: string;
+  wordsJson?: string;
 };
 
 export type ChapterTranslationVersesPage = {

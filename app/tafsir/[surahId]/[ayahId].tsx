@@ -1203,7 +1203,7 @@ export default function TafsirScreen(): React.JSX.Element {
             }}
             contentContainerStyle={{
               paddingHorizontal: 16,
-              paddingTop: readerHeader.headerHeight,
+              paddingTop: Math.max(0, readerHeader.headerHeight - insets.top),
               paddingBottom: 28,
               minHeight: Math.max(1, viewportHeight - 120),
             }}
@@ -1262,7 +1262,6 @@ export default function TafsirScreen(): React.JSX.Element {
                       elevation: 10,
                       marginHorizontal: -16,
                       zIndex: 12,
-                      paddingTop: insets.top,
                     }
                   : undefined
               }
@@ -1425,19 +1424,6 @@ export default function TafsirScreen(): React.JSX.Element {
           }}
         />
 
-        <View
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            height: insets.top,
-            backgroundColor: palette.background,
-            zIndex: 45,
-          }}
-          pointerEvents="none"
-        />
-
         <ReaderOverlayHeader
           onLayout={readerHeader.handleHeaderLayout}
           pointerEvents={readerHeader.headerPointerEvents}
@@ -1470,6 +1456,7 @@ export default function TafsirScreen(): React.JSX.Element {
         </ReaderOverlayHeader>
 
         <FlatList
+          style={{ marginTop: insets.top, flex: 1 }}
           ref={pagerRef}
           data={pagerTargets}
           extraData={pagerExtraData}
