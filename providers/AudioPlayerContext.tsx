@@ -4,6 +4,7 @@ import { useAudioPlayer as useExpoAudioPlayer, useAudioPlayerStatus } from 'expo
 
 import { DEFAULT_RECITER, type Reciter } from '@/hooks/audio/useReciters';
 import { useQdcAudioFile } from '@/hooks/audio/useQdcAudioFile';
+import type { QdcAudioVerseTiming } from '@/src/core/infrastructure/audio/qdcAudio';
 import { getItem, parseJson, setItem } from '@/lib/storage/appStorage';
 import {
   clearPlayerLockScreenControls,
@@ -215,6 +216,7 @@ interface AudioPlayerContextType {
   segmentEndSec: number;
   positionSec: number;
   durationSec: number;
+  verseTimings?: QdcAudioVerseTiming[] | undefined;
   playVerse: (verseKey: string) => void;
   nextVerse: () => boolean;
   prevVerse: () => boolean;
@@ -1047,6 +1049,7 @@ export function AudioPlayerProvider({ children }: { children: React.ReactNode })
       segmentEndSec,
       positionSec,
       durationSec,
+      verseTimings: audioFile?.verseTimings,
       playVerse,
       nextVerse,
       prevVerse,

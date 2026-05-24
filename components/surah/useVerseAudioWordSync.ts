@@ -50,19 +50,35 @@ export type VerseAudioWordSync = {
   seekToWord: (params: { verseKey: string; wordPosition: number }) => void;
 };
 
-export function useVerseAudioWordSync(): VerseAudioWordSync {
+export function useVerseAudioWordSync(chapterId?: number | null): VerseAudioWordSync {
   const audio = useAudioPlayer();
 
   const activeChapterId = React.useMemo(
-    () => parseChapterIdFromVerseKey(audio.activeVerseKey),
-    [audio.activeVerseKey]
+    () => chapterId ?? parseChapterIdFromVerseKey(audio.activeVerseKey),
+    [chapterId, audio.activeVerseKey]
   );
 
-  const { audioFile } = useQdcAudioFile(audio.reciter.id, activeChapterId, true);
+  const isCurrentPlayingChapter = React.useMemo(() => {
+    const playingChapterId = parseChapterIdFromVerseKey(audio.activeVerseKey);
+    return activeChapterId !== null && activeChapterId === playingChapterId;
+  }, [activeChapterId, audio.activeVerseKey]);
+
+  const { audioFile } = useQdcAudioFile(
+    audio.reciter.id,
+    isCurrentPlayingChapter ? null : activeChapterId,
+    true
+  );
+
+  const verseTimings = React.useMemo(() => {
+    if (isCurrentPlayingChapter && audio.verseTimings) {
+      return audio.verseTimings;
+    }
+    return audioFile?.verseTimings;
+  }, [isCurrentPlayingChapter, audio.verseTimings, audioFile?.verseTimings]);
 
   const verseTimingIndex = React.useMemo(
-    () => buildVerseTimingIndex(audioFile?.verseTimings),
-    [audioFile?.verseTimings]
+    () => buildVerseTimingIndex(verseTimings),
+    [verseTimings]
   );
 
   const activeSegments = React.useMemo((): QdcAudioSegment[] | null => {
@@ -173,13 +189,15 @@ export function useVerseAudioWordSync(): VerseAudioWordSync {
 
       const canSeekImmediately =
         audio.activeVerseKey === normalizedVerseKey &&
-        audio.isPlaying &&
         !audio.isLoading &&
         typeof relativeSec === 'number' &&
         Number.isFinite(relativeSec);
 
       if (canSeekImmediately) {
         audio.seekRelative(relativeSec);
+        if (!audio.isPlaying) {
+          audio.togglePlay();
+        }
         return;
       }
 
@@ -192,6 +210,7 @@ export function useVerseAudioWordSync(): VerseAudioWordSync {
       audio.isPlaying,
       audio.playVerse,
       audio.seekRelative,
+      audio.togglePlay,
       isSeekEnabled,
       verseTimingIndex,
     ]

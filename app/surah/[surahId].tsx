@@ -219,7 +219,6 @@ export default function SurahScreen(): React.JSX.Element {
   const readerHeader = useCollapsibleReaderHeader();
   const { chapters } = useChapters();
   const audio = useAudioPlayer();
-  const verseAudioWordSync = useVerseAudioWordSync();
   const { audioPlayerBarHeight } = useLayoutMetrics();
   const listContentContainerStyle = React.useMemo(
     () => ({
@@ -233,6 +232,7 @@ export default function SurahScreen(): React.JSX.Element {
   const { settings, isHydrated } = useSettings();
   const { isPinned, setLastRead } = useBookmarks();
   const chapterNumber = surahId ? Number(surahId) : NaN;
+  const verseAudioWordSync = useVerseAudioWordSync(chapterNumber);
   const selectedMushafId = settings.mushafId ?? DEFAULT_MUSHAF_ID;
   const selectedMushafOption = findMushafOption(selectedMushafId);
   const selectedMushafVersion = selectedMushafOption?.version ?? 'unknown';
