@@ -423,22 +423,16 @@ export default function BookmarksScreen(): React.JSX.Element {
 
   return (
     <View className="flex-1 bg-background dark:bg-background-dark">
-      <Stack.Screen
-        options={{
-          header: () => (
-            <AppHeader
-              title="Bookmarks"
-              right={
-                <HeaderActionButton
-                  accessibilityLabel="Scroll to section cards"
-                  onPress={handleScrollToTop}
-                >
-                  <ChevronUp color={palette.text} size={22} strokeWidth={2.25} />
-                </HeaderActionButton>
-              }
-            />
-          ),
-        }}
+      <AppHeader
+        title="Bookmarks"
+        right={
+          <HeaderActionButton
+            accessibilityLabel="Scroll to section cards"
+            onPress={handleScrollToTop}
+          >
+            <ChevronUp color={palette.text} size={22} strokeWidth={2.25} />
+          </HeaderActionButton>
+        }
       />
 
       {!isHydrated ? (

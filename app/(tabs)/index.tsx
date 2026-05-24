@@ -615,18 +615,12 @@ export default function ReadScreen(): React.JSX.Element {
 
   return (
     <View className="flex-1 bg-background dark:bg-background-dark">
-      <Stack.Screen
-        options={{
-          header: () => (
-            <HomeSearchHeader
-              headerSearchInputRef={headerSearch.inputRef}
-              headerSearchQuery={headerSearch.query}
-              onQueryChange={headerSearch.updateQuery}
-              onFocus={() => headerSearch.setIsOpen(true)}
-              onSubmit={() => headerSearch.navigateToSearch()}
-            />
-          ),
-        }}
+      <HomeSearchHeader
+        headerSearchInputRef={headerSearch.inputRef}
+        headerSearchQuery={headerSearch.query}
+        onQueryChange={headerSearch.updateQuery}
+        onFocus={() => headerSearch.setIsOpen(true)}
+        onSubmit={() => headerSearch.navigateToSearch()}
       />
 
       <View className="flex-1">

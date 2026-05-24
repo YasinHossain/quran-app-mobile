@@ -28,26 +28,17 @@ function TabBarIcon({
 
 function ReportingTabBar(props: BottomTabBarProps): React.JSX.Element {
   const { setBottomTabBarHeight } = useLayoutMetrics();
-  const [height, setHeight] = React.useState(0);
+  const insets = useSafeAreaInsets();
+  const bottomPadding = Math.max(insets.bottom, 12);
+  const height = 54 + bottomPadding;
 
-  const handleLayout = React.useCallback(
-    (event: LayoutChangeEvent) => {
-      const h = event.nativeEvent.layout.height;
-      setHeight(h);
-      setBottomTabBarHeight(h);
-    },
-    [setBottomTabBarHeight]
-  );
+  React.useEffect(() => {
+    setBottomTabBarHeight(height);
+  }, [height, setBottomTabBarHeight]);
 
   return (
-    <View style={{ backgroundColor: 'transparent' }}>
-      <View style={{ height, backgroundColor: 'transparent' }} />
-      <View 
-        onLayout={handleLayout} 
-        style={{ position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: 'transparent' }}
-      >
-        <BottomTabBar {...props} />
-      </View>
+    <View style={{ height }}>
+      <BottomTabBar {...props} />
     </View>
   );
 }
@@ -83,7 +74,7 @@ export default function TabLayout() {
           paddingTop: 8,
         },
         tabBarLabelStyle: { fontSize: 10, fontWeight: '500' },
-        headerShown: useClientOnlyValue(false, true),
+        headerShown: false,
         headerStyle: { backgroundColor: palette.background },
         headerTitleStyle: { color: palette.text },
         headerTintColor: palette.text,

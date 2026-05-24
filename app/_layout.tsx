@@ -120,7 +120,7 @@ function RootLayoutNav() {
   return (
     <ThemeProvider value={theme}>
       <View className={isDark ? 'flex-1 dark' : 'flex-1'} style={{ backgroundColor: palette.background }}>
-        <Stack screenOptions={{ contentStyle: { backgroundColor: palette.background } }}>
+        <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: palette.background } }}>
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
         </Stack>

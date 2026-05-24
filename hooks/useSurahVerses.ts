@@ -398,17 +398,16 @@ export function useSurahVerses({
     [chapterNumber, chapters]
   );
   const verseCount = chapter?.verses_count ?? 0;
-  const initialPagesByNumberRef = React.useRef<Record<number, SurahVerse[]> | null>(null);
-  if (initialPagesByNumberRef.current === null) {
-    initialPagesByNumberRef.current = getInitialOfflinePagesSnapshot({
+  const initialPagesByNumber = React.useMemo(() => {
+    return getInitialOfflinePagesSnapshot({
       enabled,
       chapterNumber,
       translationIds: resolvedTranslationIds,
       perPage,
       verseCount,
     });
-  }
-  const initialPagesByNumber = initialPagesByNumberRef.current;
+  }, [enabled, chapterNumber, translationsKey, perPage, verseCount]);
+
   const initialHasLoadedContent = Object.keys(initialPagesByNumber).length > 0;
 
   const [isLoading, setIsLoading] = React.useState(!initialHasLoadedContent);
@@ -432,6 +431,44 @@ export function useSurahVerses({
   const dataSourceRef = React.useRef<'network' | 'offline'>(
     (initialHasLoadedContent && !includeWords) ? 'offline' : 'network'
   );
+
+  const [prevChapterNumber, setPrevChapterNumber] = React.useState(chapterNumber);
+  const [prevTranslationsKey, setPrevTranslationsKey] = React.useState(translationsKey);
+  const [prevIncludeWords, setPrevIncludeWords] = React.useState(includeWords);
+  const [prevIncludeWordTranslations, setPrevIncludeWordTranslations] = React.useState(includeWordTranslations);
+
+  if (
+    chapterNumber !== prevChapterNumber ||
+    translationsKey !== prevTranslationsKey ||
+    includeWords !== prevIncludeWords ||
+    includeWordTranslations !== prevIncludeWordTranslations
+  ) {
+    setPrevChapterNumber(chapterNumber);
+    setPrevTranslationsKey(translationsKey);
+    setPrevIncludeWords(includeWords);
+    setPrevIncludeWordTranslations(includeWordTranslations);
+
+    const warmOfflinePages = getInitialOfflinePagesSnapshot({
+      enabled,
+      chapterNumber,
+      translationIds: resolvedTranslationIds,
+      perPage,
+      verseCount,
+    });
+    const hasWarmOfflinePages = Object.keys(warmOfflinePages).length > 0;
+    const shouldBeLoading = !hasWarmOfflinePages;
+
+    setPagesByNumber(warmOfflinePages);
+    pagesByNumberRef.current = warmOfflinePages;
+    setIsLoading(shouldBeLoading);
+    setPendingPageCount(0);
+    setErrorMessage(null);
+    setOfflineNotInstalled(false);
+    setIsRefreshing(false);
+    setIsLoadingMore(false);
+    dataSourceRef.current = (hasWarmOfflinePages && !includeWords) ? 'offline' : 'network';
+    inFlightPagesRef.current.clear();
+  }
   const initialVerseNumberRef = React.useRef(initialVerseNumber);
   const pagesSignature = React.useMemo(
     () => Object.keys(pagesByNumber).sort((a, b) => Number(a) - Number(b)).join(','),
@@ -875,7 +912,7 @@ export function useSurahVerses({
         if (requestTokenRef.current !== token) return;
         if (loadedOfflineFirst) return;
 
-        if (canPreserveCurrentPages) {
+        if (canPreserveCurrentPages && !hasWarmOfflinePages) {
           pagesByNumberRef.current = {};
           setPagesByNumber({});
           if (mode === 'initial') setIsLoading(true);

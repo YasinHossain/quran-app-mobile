@@ -12,6 +12,7 @@ import {
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BookmarkModal } from '@/components/bookmarks/BookmarkModal';
 import { AppSearchHeader, ReaderOverlayHeader } from '@/components/navigation/AppHeader';
@@ -410,15 +411,12 @@ export default function TafsirScreen(): React.JSX.Element {
   } | null>(null);
   const [isPagerScrollEnabled, setIsPagerScrollEnabled] = React.useState(true);
 
-  React.useEffect(() => {
-    if (!parsedRouteTarget) {
-      setCurrentTarget(null);
-      return;
-    }
-    setCurrentTarget((previous) =>
-      previous && areSameTarget(previous, parsedRouteTarget) ? previous : parsedRouteTarget
-    );
-  }, [parsedRouteTarget]);
+  const [prevParsedRouteTarget, setPrevParsedRouteTarget] = React.useState(parsedRouteTarget);
+
+  if (parsedRouteTarget && (!prevParsedRouteTarget || !areSameTarget(parsedRouteTarget, prevParsedRouteTarget))) {
+    setPrevParsedRouteTarget(parsedRouteTarget);
+    setCurrentTarget(parsedRouteTarget);
+  }
 
   const { resolvedTheme, isDark } = useAppTheme();
   const palette = Colors[resolvedTheme];
@@ -427,6 +425,7 @@ export default function TafsirScreen(): React.JSX.Element {
   const audio = useAudioPlayer();
   const { isPinned } = useBookmarks();
   const { chapters } = useChapters();
+  const insets = useSafeAreaInsets();
 
   const translationIds = React.useMemo(() => {
     const ids = Array.isArray(settings.translationIds)
@@ -503,7 +502,8 @@ export default function TafsirScreen(): React.JSX.Element {
 
   React.useEffect(() => {
     setIsPagerScrollEnabled(true);
-  }, [currentTarget?.ayahId, currentTarget?.surahId]);
+    readerHeader.resetHeader();
+  }, [currentTarget?.ayahId, currentTarget?.surahId, readerHeader.resetHeader]);
 
   const { tafsirById } = useTafsirResources({ enabled: tafsirIds.length > 0 });
   const activeTafsirName =
@@ -670,6 +670,30 @@ export default function TafsirScreen(): React.JSX.Element {
   const pageStateByKeyRef = React.useRef(pageStateByKey);
   const inflightRequestsRef = React.useRef<Set<string>>(new Set());
   const generationRef = React.useRef(0);
+
+  const [prevTarget, setPrevTarget] = React.useState(currentTarget);
+
+  if (currentTarget && (!prevTarget || !areSameTarget(currentTarget, prevTarget))) {
+    setPrevTarget(currentTarget);
+    const targetKey = getVerseKey(currentTarget);
+    if (!pageStateByKey[targetKey]) {
+      const nextState = buildOfflineFirstPageState({
+        target: currentTarget,
+        chapters,
+        pageSignature,
+        translationIds,
+        tafsirIds,
+      });
+      setPageStateByKey((prev) => ({
+        ...prev,
+        [targetKey]: nextState,
+      }));
+      pageStateByKeyRef.current = {
+        ...pageStateByKey,
+        [targetKey]: nextState,
+      };
+    }
+  }
 
   React.useEffect(() => {
     pageStateByKeyRef.current = pageStateByKey;
@@ -1179,7 +1203,7 @@ export default function TafsirScreen(): React.JSX.Element {
             }}
             contentContainerStyle={{
               paddingHorizontal: 16,
-              paddingTop: readerHeader.headerHeight + 16,
+              paddingTop: readerHeader.headerHeight,
               paddingBottom: 28,
               minHeight: Math.max(1, viewportHeight - 120),
             }}
@@ -1238,6 +1262,7 @@ export default function TafsirScreen(): React.JSX.Element {
                       elevation: 10,
                       marginHorizontal: -16,
                       zIndex: 12,
+                      paddingTop: insets.top,
                     }
                   : undefined
               }
@@ -1400,6 +1425,19 @@ export default function TafsirScreen(): React.JSX.Element {
           }}
         />
 
+        <View
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            height: insets.top,
+            backgroundColor: palette.background,
+            zIndex: 45,
+          }}
+          pointerEvents="none"
+        />
+
         <ReaderOverlayHeader
           onLayout={readerHeader.handleHeaderLayout}
           pointerEvents={readerHeader.headerPointerEvents}
@@ -1445,6 +1483,7 @@ export default function TafsirScreen(): React.JSX.Element {
           getItemLayout={getPagerItemLayout}
           onMomentumScrollEnd={handlePagerScrollEnd}
           onScrollToIndexFailed={handleScrollToIndexFailed}
+          onScrollBeginDrag={readerHeader.resetHeader}
           initialScrollIndex={currentTargetIndex >= 0 ? currentTargetIndex : undefined}
           initialNumToRender={3}
           maxToRenderPerBatch={3}

@@ -1015,12 +1015,17 @@ export default function SurahScreen(): React.JSX.Element {
     visibleVerseNumberRef.current = visibleVerseNumber;
   }, [visibleVerseNumber]);
 
-  React.useEffect(() => {
+  const [prevSurahId, setPrevSurahId] = React.useState(surahId);
+  const [prevNormalizedStartVerse, setPrevNormalizedStartVerse] = React.useState(normalizedStartVerse);
+
+  if (surahId !== prevSurahId || normalizedStartVerse !== prevNormalizedStartVerse) {
+    setPrevSurahId(surahId);
+    setPrevNormalizedStartVerse(normalizedStartVerse);
     lastReadReportedRef.current = null;
     visibleVerseKeyRef.current = null;
     visibleVerseNumberRef.current = normalizedStartVerse ?? 1;
     setVisibleVerseNumber(normalizedStartVerse ?? 1);
-  }, [normalizedStartVerse, surahId]);
+  }
 
   const viewabilityConfig = React.useRef({ itemVisiblePercentThreshold: 60 }).current;
   const visibleRangeRef = React.useRef<{ first: number; last: number } | null>(null);

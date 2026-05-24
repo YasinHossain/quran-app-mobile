@@ -1,6 +1,8 @@
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { Settings } from 'lucide-react-native';
 import React from 'react';
+
+import { AppHeader } from '@/components/navigation/AppHeader';
 import {
   ActivityIndicator,
   Keyboard,
@@ -153,16 +155,7 @@ export default function SearchScreen(): React.JSX.Element {
     const showShortQueryHint = trimmed.length > 0 && !shouldSearch;
 
     return (
-      <View className="px-4 pt-6 pb-3 gap-4">
-        <View>
-          <Text className="text-xl font-semibold text-foreground dark:text-foreground-dark">
-            Search
-          </Text>
-          <Text className="mt-1 text-sm text-muted dark:text-muted-dark">
-            Search across Surah names and verses.
-          </Text>
-        </View>
-
+      <View className="px-4 pt-3 pb-3 gap-4">
         <View className="rounded-xl bg-interactive dark:bg-interactive-dark px-4 py-3 flex-row items-center gap-2 border border-border/30 dark:border-border-dark/20">
           <TextInput
             value={query}
@@ -236,26 +229,25 @@ export default function SearchScreen(): React.JSX.Element {
 
   return (
     <View className="flex-1 bg-background dark:bg-background-dark">
-      <Stack.Screen
-        options={{
-          headerRight: () => (
-            <Pressable
-              onPress={() => setIsSettingsOpen(true)}
-              hitSlop={10}
-              accessibilityRole="button"
-              accessibilityLabel="Open settings"
-            >
-              {({ pressed }) => (
-                <Settings
-                  color={palette.text}
-                  size={22}
-                  strokeWidth={2.25}
-                  style={{ marginRight: 12, opacity: pressed ? 0.5 : 1 }}
-                />
-              )}
-            </Pressable>
-          ),
-        }}
+      <AppHeader
+        title="Search"
+        right={
+          <Pressable
+            onPress={() => setIsSettingsOpen(true)}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel="Open settings"
+          >
+            {({ pressed }) => (
+              <Settings
+                color={palette.text}
+                size={22}
+                strokeWidth={2.25}
+                style={{ marginRight: 12, opacity: pressed ? 0.5 : 1 }}
+              />
+            )}
+          </Pressable>
+        }
       />
 
       <FlashList
