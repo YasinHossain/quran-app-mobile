@@ -62,7 +62,7 @@ export function CreatePlannerModal({
 
   const shouldRender = isOpen;
 
-  const { visible, progress, dismissEnabledRef } = useModalTransition(shouldRender);
+  const { visible, progress, dismissEnabledRef, onModalShow } = useModalTransition(shouldRender);
   const inputRef = React.useRef<TextInput | null>(null);
   const focusTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -227,6 +227,7 @@ export function CreatePlannerModal({
       <Modal
         transparent
         visible={visible}
+        onShow={onModalShow}
         onRequestClose={handleClose}
         animationType="none"
         {...(Platform.OS === 'ios' ? { presentationStyle: 'overFullScreen' as const } : {})}
@@ -244,10 +245,15 @@ export function CreatePlannerModal({
             <Animated.View
               style={[
                 styles.sheet,
-                { maxHeight: maxDialogHeight, minHeight: minDialogHeight },
+                {
+                  maxHeight: maxDialogHeight,
+                  minHeight: minDialogHeight,
+                  backgroundColor: palette.surface,
+                  borderColor: palette.border,
+                },
                 dialogTransform(progress),
               ]}
-              className="bg-surface dark:bg-surface-dark border border-border/30 dark:border-border-dark/20"
+              className="border"
             >
               <View style={styles.safeArea}>
                 <View className={isDark ? 'dark' : ''} style={styles.inner}>

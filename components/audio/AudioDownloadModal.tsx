@@ -206,7 +206,7 @@ export function AudioDownloadModal({
     );
   }, [audio.reciter, reciters]);
 
-  const { visible, progress, dismissEnabledRef } = useModalTransition(isOpen);
+  const { visible, progress, dismissEnabledRef, onModalShow } = useModalTransition(isOpen);
 
   const prevIsOpenRef = React.useRef(false);
   React.useEffect(() => {
@@ -406,6 +406,7 @@ export function AudioDownloadModal({
     <Modal
       transparent
       visible={visible}
+      onShow={onModalShow}
       onRequestClose={() => {
         if (downloadBusy) return;
         onClose();
@@ -748,8 +749,19 @@ function DownloadScopeToggle({
   value: DownloadScope;
   onChange: (scope: DownloadScope) => void;
 }): React.JSX.Element {
+  const { resolvedTheme } = useAppTheme();
+  const palette = Colors[resolvedTheme];
+
   return (
-    <View className="flex-row items-center rounded-full bg-interactive dark:bg-interactive-dark p-1">
+    <View
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        borderRadius: 9999,
+        backgroundColor: palette.interactive,
+        padding: 4,
+      }}
+    >
       <DownloadScopeToggleButton
         label="Verse"
         isActive={value === 'verse'}
@@ -778,6 +790,9 @@ function DownloadScopeToggleButton({
   isActive: boolean;
   onPress: () => void;
 }): React.JSX.Element {
+  const { resolvedTheme } = useAppTheme();
+  const palette = Colors[resolvedTheme];
+
   const activeShadow =
     Platform.OS === 'android'
       ? { elevation: 2 }
@@ -793,20 +808,21 @@ function DownloadScopeToggleButton({
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={label}
-      className={[
-        'h-10 flex-1 items-center justify-center rounded-full px-2',
-        isActive ? 'bg-surface dark:bg-surface-dark' : '',
-      ].join(' ')}
-      style={({ pressed }) => [isActive ? activeShadow : null, { opacity: pressed ? 0.9 : 1 }]}
+      className="h-10 flex-1 items-center justify-center rounded-full px-2"
+      style={({ pressed }) => [
+        isActive ? activeShadow : null,
+        {
+          opacity: pressed ? 0.9 : 1,
+          backgroundColor: isActive ? palette.surface : 'transparent',
+        },
+      ]}
     >
       <Text
         numberOfLines={1}
-        className={[
-          'text-xs font-semibold',
-          isActive
-            ? 'text-foreground dark:text-foreground-dark'
-            : 'text-muted dark:text-muted-dark',
-        ].join(' ')}
+        style={{
+          color: isActive ? palette.text : palette.muted,
+        }}
+        className="text-xs font-semibold"
       >
         {label}
       </Text>

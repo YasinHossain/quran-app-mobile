@@ -174,7 +174,7 @@ export function PlaybackOptionsModal({
     );
   }, [audio.reciter, reciters]);
 
-  const { visible, progress, dismissEnabledRef } = useModalTransition(isOpen);
+  const { visible, progress, dismissEnabledRef, onModalShow } = useModalTransition(isOpen);
 
   const maxDialogHeight = Math.max(0, Math.round(windowHeight * 0.85));
   const minDialogHeight = Math.min(maxDialogHeight, Math.max(420, Math.round(windowHeight * 0.7)));
@@ -305,6 +305,7 @@ export function PlaybackOptionsModal({
     <Modal
       transparent
       visible={visible}
+      onShow={onModalShow}
       onRequestClose={onClose}
       animationType="none"
       {...(Platform.OS === 'ios' ? { presentationStyle: 'overFullScreen' as const } : {})}
@@ -935,20 +936,28 @@ function TabButton({
   onPress: () => void;
   icon: React.ReactNode;
 }): React.JSX.Element {
+  const { resolvedTheme } = useAppTheme();
+  const palette = Colors[resolvedTheme];
+
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={label}
-      className={[
-        'px-3 py-2 rounded-xl',
-        isActive ? 'bg-accent' : 'bg-interactive dark:bg-interactive-dark',
-      ].join(' ')}
-      style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
+      className="px-3 py-2 rounded-xl"
+      style={({ pressed }) => ({
+        opacity: pressed ? 0.9 : 1,
+        backgroundColor: isActive ? palette.accent : palette.interactive,
+      })}
     >
       <View className="flex-row items-center gap-2">
         {icon}
-        <Text className={isActive ? 'text-sm font-semibold text-on-accent' : 'text-sm font-semibold text-foreground dark:text-foreground-dark'}>
+        <Text
+          style={{
+            color: isActive ? palette.onAccent : palette.text,
+          }}
+          className="text-sm font-semibold"
+        >
           {label}
         </Text>
       </View>

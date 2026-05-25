@@ -48,13 +48,32 @@ export function VerseActionsSheet({
   const palette = Colors[resolvedTheme];
   const { height: windowHeight } = useWindowDimensions();
   const PlayPauseIcon = isPlaying ? Pause : Play;
-  const { visible, progress, dismissEnabledRef } = useModalTransition(isOpen, {
+  const pendingActionRef = React.useRef<(() => void) | null>(null);
+  const [instantClose, setInstantClose] = React.useState(false);
+
+  React.useEffect(() => {
+    if (isOpen) {
+      pendingActionRef.current = null;
+      setInstantClose(false);
+    }
+  }, [isOpen]);
+
+  const { visible, progress, dismissEnabledRef, onModalShow } = useModalTransition(isOpen, {
     openDuration: 260,
-    closeDuration: 170,
+    closeDuration: instantClose ? 0 : 150,
+    onAfterClose: () => {
+      if (pendingActionRef.current) {
+        const action = pendingActionRef.current;
+        pendingActionRef.current = null;
+        requestAnimationFrame(() => {
+          action();
+        });
+      }
+    },
   });
   const hiddenTranslateY = Math.max(360, Math.round(windowHeight * 0.48));
 
-  const runAndClose = React.useCallback(
+  const handleImmediateAction = React.useCallback(
     (fn?: () => void) => {
       if (!fn) return;
       fn();
@@ -63,11 +82,15 @@ export function VerseActionsSheet({
     [onClose]
   );
 
-  const runShareAndClose = React.useCallback(() => {
-    if (!onShare) return;
-    onClose();
-    void onShare();
-  }, [onClose, onShare]);
+  const handleDeferredAction = React.useCallback(
+    (fn?: () => void) => {
+      if (!fn) return;
+      pendingActionRef.current = fn;
+      setInstantClose(true);
+      onClose();
+    },
+    [onClose]
+  );
 
   const handleOverlayPress = React.useCallback(() => {
     if (!dismissEnabledRef.current) return;
@@ -78,6 +101,7 @@ export function VerseActionsSheet({
     <Modal
       transparent
       visible={visible}
+      onShow={onModalShow}
       onRequestClose={onClose}
       animationType="none"
       statusBarTranslucent
@@ -88,8 +112,12 @@ export function VerseActionsSheet({
         </Pressable>
 
         <Animated.View
-          style={[styles.sheet, verticalSheetTransform(progress, hiddenTranslateY)]}
-          className="bg-surface dark:bg-surface-dark rounded-t-3xl border-t border-border/30 dark:border-border-dark/20"
+          style={[
+            styles.sheet,
+            { backgroundColor: palette.surface, borderColor: palette.border },
+            verticalSheetTransform(progress, hiddenTranslateY),
+          ]}
+          className="rounded-t-3xl border-t"
         >
           <SafeAreaView edges={['bottom']}>
             <View className={isDark ? 'dark' : ''}>
@@ -116,34 +144,34 @@ export function VerseActionsSheet({
                   <ActionRow
                     icon={<PlayPauseIcon color={palette.muted} size={20} strokeWidth={2.25} />}
                     label={isPlaying ? 'Pause audio' : 'Play audio'}
-                    onPress={() => runAndClose(onPlayPause)}
+                    onPress={() => handleImmediateAction(onPlayPause)}
                     disabled={!onPlayPause}
                   />
                   {showViewTafsir ? (
                     <ActionRow
                       icon={<BookOpenText color={palette.muted} size={20} strokeWidth={2.25} />}
                       label="View Tafsir"
-                      onPress={() => runAndClose(onOpenTafsir)}
+                      onPress={() => handleDeferredAction(onOpenTafsir)}
                       disabled={!onOpenTafsir}
                     />
                   ) : null}
                   <ActionRow
                     icon={<Bookmark color={palette.muted} size={20} strokeWidth={2.25} />}
                     label={showRemove ? 'Remove Bookmark' : 'Pin or Bookmark'}
-                    onPress={() => runAndClose(onBookmark)}
+                    onPress={() => handleDeferredAction(onBookmark)}
                     active={isBookmarked || showRemove}
                     disabled={!onBookmark}
                   />
                   <ActionRow
                     icon={<Calendar color={palette.muted} size={20} strokeWidth={2.25} />}
                     label="Add to Plan"
-                    onPress={() => runAndClose(onAddToPlan)}
+                    onPress={() => handleDeferredAction(onAddToPlan)}
                     disabled={!onAddToPlan}
                   />
                   <ActionRow
                     icon={<Share2 color={palette.muted} size={20} strokeWidth={2.25} />}
                     label="Share"
-                    onPress={runShareAndClose}
+                    onPress={() => handleDeferredAction(onShare)}
                     disabled={!onShare}
                   />
                 </View>

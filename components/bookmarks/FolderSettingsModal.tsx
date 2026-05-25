@@ -45,7 +45,7 @@ export function FolderSettingsModal({
   const [selectedColor, setSelectedColor] = React.useState<string>(DEFAULT_FOLDER_COLOR);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
 
-  const { visible, progress, dismissEnabledRef } = useModalTransition(shouldRender);
+  const { visible, progress, dismissEnabledRef, onModalShow } = useModalTransition(shouldRender);
   const inputRef = React.useRef<TextInput | null>(null);
   const focusTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -113,6 +113,7 @@ export function FolderSettingsModal({
     <Modal
       transparent
       visible={visible}
+      onShow={onModalShow}
       onRequestClose={onClose}
       animationType="none"
       {...(Platform.OS === 'ios' ? { presentationStyle: 'overFullScreen' as const } : {})}

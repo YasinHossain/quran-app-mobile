@@ -33,7 +33,7 @@ export function SettingsSidebar({
   const palette = Colors[resolvedTheme];
   const sheetWidth = Math.min(390, Math.round(width * 0.92));
   const hiddenTranslateX = sheetWidth + 12;
-  const { visible, progress } = useModalTransition(isOpen, {
+  const { visible, progress, onModalShow } = useModalTransition(isOpen, {
     openDuration: 270,
     closeDuration: 190,
     onAfterClose,
@@ -43,6 +43,7 @@ export function SettingsSidebar({
     <Modal
       transparent
       visible={visible}
+      onShow={onModalShow}
       onRequestClose={onClose}
       animationType="none"
       statusBarTranslucent

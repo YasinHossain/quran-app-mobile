@@ -210,7 +210,7 @@ export function ComprehensiveSearchModal({
     perPage: 10,
   });
 
-  const { visible, progress, dismissEnabledRef } = useModalTransition(isOpen, {
+  const { visible, progress, dismissEnabledRef, onModalShow } = useModalTransition(isOpen, {
     openDuration: 230,
     closeDuration: 160,
   });
@@ -317,6 +317,7 @@ export function ComprehensiveSearchModal({
     <Modal
       transparent
       visible={visible}
+      onShow={onModalShow}
       onRequestClose={closeAndReset}
       animationType="none"
       statusBarTranslucent

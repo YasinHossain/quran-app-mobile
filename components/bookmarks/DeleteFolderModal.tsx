@@ -38,7 +38,7 @@ export function DeleteFolderModal({
 
   const [isDeleting, setIsDeleting] = React.useState(false);
 
-  const { visible, progress, dismissEnabledRef } = useModalTransition(shouldRender);
+  const { visible, progress, dismissEnabledRef, onModalShow } = useModalTransition(shouldRender);
 
   React.useEffect(() => {
     if (!shouldRender) return;
@@ -64,6 +64,7 @@ export function DeleteFolderModal({
     <Modal
       transparent
       visible={visible}
+      onShow={onModalShow}
       onRequestClose={onClose}
       animationType="none"
       {...(Platform.OS === 'ios' ? { presentationStyle: 'overFullScreen' as const } : {})}

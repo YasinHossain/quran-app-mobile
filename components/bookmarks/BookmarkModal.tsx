@@ -53,7 +53,7 @@ export function BookmarkModal({
   const [isCreatingFolder, setIsCreatingFolder] = React.useState(false);
   const [newFolderName, setNewFolderName] = React.useState('');
 
-  const { visible, progress, dismissEnabledRef } = useModalTransition(isOpen);
+  const { visible, progress, dismissEnabledRef, onModalShow } = useModalTransition(isOpen);
 
   const closeAndReset = React.useCallback(() => {
     setIsCreatingFolder(false);
@@ -119,6 +119,7 @@ export function BookmarkModal({
     <Modal
       transparent
       visible={visible}
+      onShow={onModalShow}
       onRequestClose={closeAndReset}
       animationType="none"
       {...(Platform.OS === 'ios' ? { presentationStyle: 'overFullScreen' as const } : {})}
@@ -136,10 +137,15 @@ export function BookmarkModal({
           <Animated.View
             style={[
               styles.dialog,
-              { maxHeight: maxDialogHeight, minHeight: minDialogHeight },
+              {
+                maxHeight: maxDialogHeight,
+                minHeight: minDialogHeight,
+                backgroundColor: palette.surface,
+                borderColor: palette.border,
+              },
               dialogTransform(progress),
             ]}
-            className="bg-surface dark:bg-surface-dark border border-border/30 dark:border-border-dark/20"
+            className="border"
           >
             <View style={styles.dialogSafeArea}>
               <View className={isDark ? 'dark' : ''} style={styles.dialogInner}>
@@ -168,33 +174,45 @@ export function BookmarkModal({
                     </Pressable>
                   </View>
 
-                  <View className="mt-4 flex-row items-center p-1 rounded-full bg-interactive dark:bg-interactive-dark border border-border dark:border-border-dark">
-                    {tabs.map((tab) => (
-                      <Pressable
-                        key={tab.id}
-                        onPress={() => setActiveTab(tab.id)}
-                        accessibilityRole="button"
-                        accessibilityLabel={tab.label}
-                        className={[
-                          'flex-1 px-4 py-2 rounded-full',
-                          activeTab === tab.id
-                            ? 'bg-surface dark:bg-surface-dark'
-                            : 'bg-transparent',
-                        ].join(' ')}
-                        style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
-                      >
-                        <Text
-                          className={[
-                            'text-sm font-semibold text-center',
-                            activeTab === tab.id
-                              ? 'text-foreground dark:text-foreground-dark'
-                              : 'text-muted dark:text-muted-dark',
-                          ].join(' ')}
+                  <View
+                    style={{
+                      marginTop: 16,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      padding: 4,
+                      borderRadius: 9999,
+                      borderWidth: 1,
+                      backgroundColor: palette.interactive,
+                      borderColor: palette.border,
+                    }}
+                  >
+                    {tabs.map((tab) => {
+                      const isActive = activeTab === tab.id;
+                      return (
+                        <Pressable
+                          key={tab.id}
+                          onPress={() => setActiveTab(tab.id)}
+                          accessibilityRole="button"
+                          accessibilityLabel={tab.label}
+                          style={({ pressed }) => [
+                            styles.tabButton,
+                            {
+                              opacity: pressed ? 0.9 : 1,
+                              backgroundColor: isActive ? palette.surface : 'transparent',
+                            },
+                          ]}
                         >
-                          {tab.label}
-                        </Text>
-                      </Pressable>
-                    ))}
+                          <Text
+                            style={{
+                              color: isActive ? palette.text : palette.muted,
+                            }}
+                            className="text-sm font-semibold text-center"
+                          >
+                            {tab.label}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
                   </View>
                 </View>
 
@@ -435,5 +453,11 @@ const styles = StyleSheet.create({
   centerScrollContent: {
     flexGrow: 1,
     justifyContent: 'center',
+  },
+  tabButton: {
+    flex: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 9999,
   },
 });

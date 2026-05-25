@@ -254,7 +254,7 @@ export function AddToPlannerModal({
     verseSurahId,
   ]);
 
-  const { visible, progress, dismissEnabledRef } = useModalTransition(isOpen);
+  const { visible, progress, dismissEnabledRef, onModalShow } = useModalTransition(isOpen);
 
   const handleOverlayPress = React.useCallback(() => {
     if (!dismissEnabledRef.current) return;
@@ -270,6 +270,7 @@ export function AddToPlannerModal({
     <Modal
       transparent
       visible={visible}
+      onShow={onModalShow}
       onRequestClose={onClose}
       animationType="none"
       {...(Platform.OS === 'ios' ? { presentationStyle: 'overFullScreen' as const } : {})}
@@ -287,10 +288,15 @@ export function AddToPlannerModal({
           <Animated.View
             style={[
               styles.sheet,
-              { maxHeight: maxDialogHeight, minHeight: minDialogHeight },
+              {
+                maxHeight: maxDialogHeight,
+                minHeight: minDialogHeight,
+                backgroundColor: palette.surface,
+                borderColor: palette.border,
+              },
               dialogTransform(progress),
             ]}
-            className="bg-surface dark:bg-surface-dark border border-border/30 dark:border-border-dark/20"
+            className="border"
           >
             <View style={styles.safeArea}>
               <View className={isDark ? 'dark' : ''} style={styles.inner}>

@@ -33,9 +33,28 @@ export function FolderActionsSheet({
   const { resolvedTheme, isDark } = useAppTheme();
   const palette = Colors[resolvedTheme];
 
-  const { visible, progress, dismissEnabledRef } = useModalTransition(isOpen, {
+  const pendingActionRef = React.useRef<(() => void) | null>(null);
+  const [instantClose, setInstantClose] = React.useState(false);
+
+  React.useEffect(() => {
+    if (isOpen) {
+      pendingActionRef.current = null;
+      setInstantClose(false);
+    }
+  }, [isOpen]);
+
+  const { visible, progress, dismissEnabledRef, onModalShow } = useModalTransition(isOpen, {
     openDuration: 240,
-    closeDuration: 160,
+    closeDuration: instantClose ? 0 : 150,
+    onAfterClose: () => {
+      if (pendingActionRef.current) {
+        const action = pendingActionRef.current;
+        pendingActionRef.current = null;
+        requestAnimationFrame(() => {
+          action();
+        });
+      }
+    },
   });
 
   const maxSheetHeight = Math.max(0, Math.round(windowHeight * 0.56));
@@ -46,9 +65,10 @@ export function FolderActionsSheet({
     onClose();
   }, [dismissEnabledRef, onClose]);
 
-  const runAndClose = React.useCallback(
+  const handleDeferredAction = React.useCallback(
     (fn: () => void) => {
-      fn();
+      pendingActionRef.current = fn;
+      setInstantClose(true);
       onClose();
     },
     [onClose]
@@ -58,6 +78,7 @@ export function FolderActionsSheet({
     <Modal
       transparent
       visible={visible}
+      onShow={onModalShow}
       onRequestClose={onClose}
       animationType="none"
       {...(Platform.OS === 'ios' ? { presentationStyle: 'overFullScreen' as const } : {})}
@@ -71,10 +92,15 @@ export function FolderActionsSheet({
         <Animated.View
           style={[
             styles.sheet,
-            { maxHeight: maxSheetHeight, minHeight: minSheetHeight },
+            {
+              maxHeight: maxSheetHeight,
+              minHeight: minSheetHeight,
+              backgroundColor: palette.surface,
+              borderColor: palette.border,
+            },
             verticalSheetTransform(progress, Math.max(260, Math.round(windowHeight * 0.38))),
           ]}
-          className="bg-surface dark:bg-surface-dark border border-border/30 dark:border-border-dark/20"
+          className="border"
         >
           <SafeAreaView edges={['bottom']} style={styles.safeArea}>
             <View className={isDark ? 'dark' : ''} style={styles.inner}>
@@ -105,7 +131,7 @@ export function FolderActionsSheet({
                   <ActionRow
                     icon={<SlidersHorizontal color={palette.muted} size={20} strokeWidth={2.25} />}
                     label="Edit Folder"
-                    onPress={() => runAndClose(onEdit)}
+                    onPress={() => handleDeferredAction(onEdit)}
                     accessibilityLabel="Edit Folder"
                   />
                   <ActionRow
@@ -117,7 +143,7 @@ export function FolderActionsSheet({
                       />
                     }
                     label="Delete Folder"
-                    onPress={() => runAndClose(onDelete)}
+                    onPress={() => handleDeferredAction(onDelete)}
                     accessibilityLabel="Delete Folder"
                     destructive
                   />
