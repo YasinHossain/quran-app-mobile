@@ -10,6 +10,7 @@ import {
   peekOfflineSurahPageCache,
 } from '@/lib/surah/offlineSurahPageCache';
 import { useChapters } from '@/hooks/useChapters';
+import { primeVerseDetailsCache } from '@/lib/verse/verseDetailsCache';
 import type { OfflineVerseWithTranslations } from '@/src/core/domain/repositories/ITranslationOfflineStore';
 import { apiFetch } from '@/src/core/infrastructure/api/apiFetch';
 
@@ -190,13 +191,25 @@ function normalizeOfflineVersePageData(
       }
     }
 
+    const translationItems = buildTranslationItems(translations, translationIds);
+    const translationTexts = buildTranslationTexts(translations, translationIds);
+
+    // CRITICAL: Prime the memory cache for all loaded/fetched offline verses.
+    // This prevents layout flickers and skeletons when transitioning or swiping targets on the Tafsir screen.
+    primeVerseDetailsCache({
+      verseKey: verse.verseKey,
+      arabicText: verse.arabicUthmani,
+      translationIds,
+      translationTexts,
+    });
+
     return {
       verse_number: verse.ayahNumber,
       verse_key: verse.verseKey,
       text_uthmani: verse.arabicUthmani,
       translations,
-      translationItems: buildTranslationItems(translations, translationIds),
-      translationTexts: buildTranslationTexts(translations, translationIds),
+      translationItems,
+      translationTexts,
       words,
     };
   });
@@ -516,15 +529,28 @@ export function useSurahVerses({
 
   const normalizeVersePage = React.useCallback(
     (pageVerses: ApiVersesResponse['verses']): SurahVerse[] =>
-      (pageVerses ?? []).map((verse) => ({
-        id: verse.id,
-        verse_number: verse.verse_number,
-        verse_key: verse.verse_key,
-        text_uthmani: verse.text_uthmani,
-        translations: verse.translations,
-        translationItems: buildTranslationItems(verse.translations, resolvedTranslationIds),
-        translationTexts: buildTranslationTexts(verse.translations, resolvedTranslationIds),
-      })),
+      (pageVerses ?? []).map((verse) => {
+        const translationItems = buildTranslationItems(verse.translations, resolvedTranslationIds);
+        const translationTexts = buildTranslationTexts(verse.translations, resolvedTranslationIds);
+        
+        // CRITICAL: Prime the memory cache for all network-fetched verses.
+        // This prevents skeletons and flickering when swiping pages/verses on the Tafsir screen.
+        primeVerseDetailsCache({
+          verseKey: verse.verse_key,
+          arabicText: verse.text_uthmani,
+          translationIds: resolvedTranslationIds,
+          translationTexts,
+        });
+        return {
+          id: verse.id,
+          verse_number: verse.verse_number,
+          verse_key: verse.verse_key,
+          text_uthmani: verse.text_uthmani,
+          translations: verse.translations,
+          translationItems,
+          translationTexts,
+        };
+      }),
     [resolvedTranslationIds]
   );
 

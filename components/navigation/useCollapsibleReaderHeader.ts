@@ -183,6 +183,11 @@ export function useCollapsibleReaderHeader() {
     [opacity]
   );
 
+  const suppressScroll = React.useCallback((durationMs: number) => {
+    suppressScrollUntilRef.current = Date.now() + durationMs;
+    directionalScrollDistanceRef.current = 0;
+  }, []);
+
   return {
     handleHeaderLayout,
     handleScroll,
@@ -193,5 +198,7 @@ export function useCollapsibleReaderHeader() {
     isHidden,
     resetHeader,
     showHeader,
+    hiddenProgress,
+    suppressScroll,
   };
 }

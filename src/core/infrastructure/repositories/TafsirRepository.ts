@@ -10,6 +10,13 @@ import { cacheResources as cacheTafsirResources, getCachedResources as getTafsir
 
 export class TafsirRepository implements ITafsirRepository {
   async getAllResources(): Promise<Tafsir[]> {
+    const cached = await this.getCachedResources();
+    if (cached.length > 0) {
+      void fetchAllResources().catch((err) => {
+        logger.warn('Failed to background refresh tafsir resources:', undefined, err as Error);
+      });
+      return cached;
+    }
     return fetchAllResources();
   }
 

@@ -3,7 +3,7 @@ import { Tafsir, type TafsirData } from '@/src/core/domain/entities/Tafsir';
 import { logger } from '@/src/core/infrastructure/monitoring/logger';
 
 const CACHE_KEY = 'tafsir-resources';
-const CACHE_TTL_MS = 1000 * 60 * 60; // 1 hour
+const CACHE_TTL_MS = 1000 * 60 * 60 * 24 * 14; // 14 days
 
 type CachePayload = { timestamp: number; data: TafsirData[] };
 

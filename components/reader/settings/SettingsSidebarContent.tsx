@@ -41,7 +41,7 @@ type Panel =
   | { type: 'ui-language' }
   | { type: 'mushaf' };
 
-type PanelType = Panel['type'];
+export type PanelType = Panel['type'];
 type SubPanelType = Exclude<PanelType, 'root'>;
 
 const WORD_LANGUAGES = [
@@ -170,6 +170,7 @@ export function SettingsSidebarContent({
   activeTabOverride,
   onTabChange,
   containerWidth,
+  initialPanel,
 }: {
   onClose?: () => void;
   showTafsirSetting?: boolean;
@@ -177,6 +178,7 @@ export function SettingsSidebarContent({
   activeTabOverride?: SettingsTab;
   onTabChange?: (tab: SettingsTab) => void;
   containerWidth?: number;
+  initialPanel?: PanelType;
 }): React.JSX.Element {
   const { width: windowWidth } = useWindowDimensions();
   const {
@@ -198,22 +200,17 @@ export function SettingsSidebarContent({
   const palette = Colors[resolvedTheme];
 
   const [activeTab, setActiveTab] = React.useState<SettingsTab>(activeTabOverride ?? 'translations');
-  const [panel, setPanel] = React.useState<Panel>({ type: 'root' });
+  const [panel, setPanel] = React.useState<Panel>(() => ({ type: initialPanel ?? 'root' }));
   const [isReadingOpen, setIsReadingOpen] = React.useState(true);
   const [isTafsirOpen, setIsTafsirOpen] = React.useState(showTafsirSetting && pageType === 'tafsir');
   const [isFontOpen, setIsFontOpen] = React.useState(true);
   const [arabicFontFilter, setArabicFontFilter] = React.useState<ArabicFontFilter>('Uthmani');
-  const [isSubPanelContentReady, setIsSubPanelContentReady] = React.useState(false);
-  const [mountedSubPanels, setMountedSubPanels] = React.useState<{
-    translations: boolean;
-    tafsir: boolean;
-    mushaf: boolean;
-  }>(() => ({ translations: false, tafsir: false, mushaf: false }));
+
 
   const previousMushafIdRef = React.useRef<MushafPackId | undefined>(settings.mushafId);
   const animationTokenRef = React.useRef(0);
   const openPanelRafRef = React.useRef<number | null>(null);
-  const navProgress = React.useRef(new Animated.Value(0)).current;
+  const navProgress = React.useRef(new Animated.Value(initialPanel && initialPanel !== 'root' ? 1 : 0)).current;
   const panelWidth = containerWidth ?? Math.min(390, Math.round(windowWidth * 0.92));
 
   React.useEffect(() => {
@@ -310,21 +307,9 @@ export function SettingsSidebarContent({
 
   const openPanel = React.useCallback(
     (nextPanel: SubPanelType) => {
-      const isHeavyPanel =
-        nextPanel === 'translations' || nextPanel === 'tafsir' || nextPanel === 'mushaf';
-      const isMounted =
-        nextPanel === 'translations'
-          ? mountedSubPanels.translations
-          : nextPanel === 'tafsir'
-            ? mountedSubPanels.tafsir
-            : nextPanel === 'mushaf'
-              ? mountedSubPanels.mushaf
-              : true;
-      const shouldDeferBody = isHeavyPanel && !isMounted;
       const token = ++animationTokenRef.current;
       navProgress.stopAnimation();
       navProgress.setValue(0);
-      setIsSubPanelContentReady(!shouldDeferBody);
       setPanel({ type: nextPanel });
       if (openPanelRafRef.current !== null) {
         cancelAnimationFrame(openPanelRafRef.current);
@@ -337,36 +322,17 @@ export function SettingsSidebarContent({
         navProgress.stopAnimation();
         Animated.timing(navProgress, {
           toValue: 1,
-          duration: 240,
+          duration: 200,
           easing: Easing.out(Easing.cubic),
           isInteraction: false,
           useNativeDriver: true,
         }).start(({ finished }) => {
           if (!finished) return;
           if (animationTokenRef.current !== token) return;
-          if (shouldDeferBody) {
-            setMountedSubPanels((prev) => {
-              if (nextPanel === 'translations') {
-                if (prev.translations) return prev;
-                return { ...prev, translations: true };
-              }
-              if (nextPanel === 'tafsir') {
-                if (prev.tafsir) return prev;
-                return { ...prev, tafsir: true };
-              }
-              if (nextPanel === 'mushaf') {
-                if (prev.mushaf) return prev;
-                return { ...prev, mushaf: true };
-              }
-              return prev;
-            });
-          }
-          setIsSubPanelContentReady(true);
         });
-
       });
     },
-    [mountedSubPanels.mushaf, mountedSubPanels.tafsir, mountedSubPanels.translations, navProgress]
+    [navProgress]
   );
 
   const closePanel = React.useCallback(() => {
@@ -379,7 +345,7 @@ export function SettingsSidebarContent({
     navProgress.stopAnimation();
     Animated.timing(navProgress, {
       toValue: 0,
-      duration: 190,
+      duration: 160,
       easing: Easing.out(Easing.cubic),
       isInteraction: false,
       useNativeDriver: true,
@@ -387,7 +353,6 @@ export function SettingsSidebarContent({
       if (!finished) return;
       if (animationTokenRef.current !== token) return;
       setPanel({ type: 'root' });
-      setIsSubPanelContentReady(false);
     });
   }, [navProgress, panel.type]);
 
@@ -676,12 +641,10 @@ export function SettingsSidebarContent({
       : 'Mushaf'
     : '';
 
-  const isTranslationsVisible = panel.type === 'translations' && isSubPanelContentReady;
-  const isTafsirVisible = panel.type === 'tafsir' && isSubPanelContentReady;
+  const isTranslationsVisible = panel.type === 'translations';
+  const isTafsirVisible = panel.type === 'tafsir';
 
-  const shouldRenderTranslationsPanel = mountedSubPanels.translations || panel.type === 'translations';
-  const shouldRenderTafsirPanel = mountedSubPanels.tafsir || panel.type === 'tafsir';
-  const shouldRenderMushafPanel = mountedSubPanels.mushaf || panel.type === 'mushaf';
+
 
   const subPanel = (
     <View className="flex-1">
@@ -720,40 +683,36 @@ export function SettingsSidebarContent({
       ) : null}
 
       <View className="flex-1">
-        {shouldRenderTranslationsPanel ? (
-          <View style={[{ flex: 1 }, panel.type === 'translations' ? null : styles.hidden]}>
-            {mountedSubPanels.translations ? (
-              <ManageTranslationsPanel
-                translations={translationRecords}
-                orderedSelection={settings.translationIds ?? []}
-                onChangeSelection={setTranslationIds}
-                isLoading={isTranslationResourcesLoading}
-                errorMessage={translationResourcesError}
-                onRefresh={refreshTranslationResources}
-                isActive={isTranslationsVisible}
-              />
-            ) : null}
+        {panel.type === 'translations' ? (
+          <View style={{ flex: 1 }}>
+            <ManageTranslationsPanel
+              translations={translationRecords}
+              orderedSelection={settings.translationIds ?? []}
+              onChangeSelection={setTranslationIds}
+              isLoading={isTranslationResourcesLoading}
+              errorMessage={translationResourcesError}
+              onRefresh={refreshTranslationResources}
+              isActive={isTranslationsVisible}
+            />
           </View>
         ) : null}
 
-        {shouldRenderTafsirPanel ? (
-          <View style={[{ flex: 1 }, panel.type === 'tafsir' ? null : styles.hidden]}>
-            {mountedSubPanels.tafsir ? (
-              <ManageTafsirsPanel
-                tafsirs={tafsirRecords}
-                orderedSelection={settings.tafsirIds ?? []}
-                onChangeSelection={setTafsirIds}
-                isLoading={isTafsirResourcesLoading}
-                errorMessage={tafsirResourcesError}
-                onRefresh={refreshTafsirResources}
-                languageSort={tafsirLanguageSort}
-                isActive={isTafsirVisible}
-              />
-            ) : null}
+        {panel.type === 'tafsir' ? (
+          <View style={{ flex: 1 }}>
+            <ManageTafsirsPanel
+              tafsirs={tafsirRecords}
+              orderedSelection={settings.tafsirIds ?? []}
+              onChangeSelection={setTafsirIds}
+              isLoading={isTafsirResourcesLoading}
+              errorMessage={tafsirResourcesError}
+              onRefresh={refreshTafsirResources}
+              languageSort={tafsirLanguageSort}
+              isActive={isTafsirVisible}
+            />
           </View>
         ) : null}
 
-        {panel.type === 'word-language' && isSubPanelContentReady ? (
+        {panel.type === 'word-language' ? (
           <FlatList
             data={WORD_LANGUAGE_ITEMS}
             keyExtractor={(item) => item.code}
@@ -781,7 +740,7 @@ export function SettingsSidebarContent({
           />
         ) : null}
 
-        {panel.type === 'arabic-font' && isSubPanelContentReady ? (
+        {panel.type === 'arabic-font' ? (
           <FlatList
             data={arabicFontItems}
             keyExtractor={(item) => item.value}
@@ -803,7 +762,7 @@ export function SettingsSidebarContent({
           />
         ) : null}
 
-        {panel.type === 'ui-language' && isSubPanelContentReady ? (
+        {panel.type === 'ui-language' ? (
           <FlatList
             data={UI_LANGUAGE_ITEMS}
             keyExtractor={(item) => item.code}
@@ -820,97 +779,95 @@ export function SettingsSidebarContent({
           />
         ) : null}
 
-        {shouldRenderMushafPanel ? (
-          <View style={[{ flex: 1 }, panel.type === 'mushaf' ? null : styles.hidden]}>
-            {mountedSubPanels.mushaf ? (
-              <FlatList
-                data={mushafPackEntries}
-                keyExtractor={(item) => item.option.id}
-                contentContainerStyle={{ padding: 12, gap: 10, paddingBottom: 24 }}
-                ListHeaderComponent={
-                  <View className="px-1 pb-3">
-                    <Text className="text-xs leading-5 text-muted dark:text-muted-dark">
-                      Keep the bundled Unicode mushaf for instant offline reading. Exact packs download
-                      into local versioned storage and stay available offline once installed.
+        {panel.type === 'mushaf' ? (
+          <View style={{ flex: 1 }}>
+            <FlatList
+              data={mushafPackEntries}
+              keyExtractor={(item) => item.option.id}
+              contentContainerStyle={{ padding: 12, gap: 10, paddingBottom: 24 }}
+              ListHeaderComponent={
+                <View className="px-1 pb-3">
+                  <Text className="text-xs leading-5 text-muted dark:text-muted-dark">
+                    Keep the bundled Unicode mushaf for instant offline reading. Exact packs download
+                    into local versioned storage and stay available offline once installed.
+                  </Text>
+                  {isMushafPackManagerLoading ? (
+                    <Text className="mt-3 text-xs text-muted dark:text-muted-dark">
+                      Refreshing local mushaf pack status…
                     </Text>
-                    {isMushafPackManagerLoading ? (
-                      <Text className="mt-3 text-xs text-muted dark:text-muted-dark">
-                        Refreshing local mushaf pack status…
+                  ) : null}
+                  {mushafPackManagerError ? (
+                    <View className="mt-3 rounded-2xl border border-error/30 bg-error/10 px-4 py-3 dark:border-error-dark/30 dark:bg-error-dark/10">
+                      <Text className="text-xs leading-5 text-error dark:text-error-dark">
+                        {mushafPackManagerError}
                       </Text>
-                    ) : null}
-                    {mushafPackManagerError ? (
-                      <View className="mt-3 rounded-2xl border border-error/30 bg-error/10 px-4 py-3 dark:border-error-dark/30 dark:bg-error-dark/10">
-                        <Text className="text-xs leading-5 text-error dark:text-error-dark">
-                          {mushafPackManagerError}
-                        </Text>
-                        <View className="mt-3 flex-row">
-                          <Pressable
-                            onPress={refreshMushafPacks}
-                            className="rounded-full bg-interactive px-4 py-2 dark:bg-interactive-dark"
-                            style={({ pressed }) => ({ opacity: pressed ? 0.88 : 1 })}
-                          >
-                            <Text className="text-xs font-semibold text-foreground dark:text-foreground-dark">
-                              Retry
-                            </Text>
-                          </Pressable>
-                        </View>
+                      <View className="mt-3 flex-row">
+                        <Pressable
+                          onPress={refreshMushafPacks}
+                          className="rounded-full bg-interactive px-4 py-2 dark:bg-interactive-dark"
+                          style={({ pressed }) => ({ opacity: pressed ? 0.88 : 1 })}
+                        >
+                          <Text className="text-xs font-semibold text-foreground dark:text-foreground-dark">
+                            Retry
+                          </Text>
+                        </Pressable>
                       </View>
-                    ) : null}
-                  </View>
-                }
-                renderItem={({ item }) => {
-                  const isSelectable = item.isInstalled || item.isBundled;
-                  const primaryAction = isSelectable
+                    </View>
+                  ) : null}
+                </View>
+              }
+              renderItem={({ item }) => {
+                const isSelectable = item.isInstalled || item.isBundled;
+                const primaryAction = isSelectable
+                  ? {
+                      label: item.isSelected ? 'Selected' : 'Use',
+                      onPress: () => {
+                        applyMushafSelection(item.option.id);
+                        closePanel();
+                      },
+                      disabled: item.isSelected || item.isBusy,
+                      tone: item.isSelected ? ('default' as const) : ('accent' as const),
+                    }
+                  : item.isInstallImplemented
                     ? {
-                        label: item.isSelected ? 'Selected' : 'Use',
+                        label: item.downloadItem?.status === 'failed' ? 'Retry install' : 'Install',
                         onPress: () => {
-                          applyMushafSelection(item.option.id);
-                          closePanel();
+                          void handleInstallMushafPack(item.option.id);
                         },
-                        disabled: item.isSelected || item.isBusy,
-                        tone: item.isSelected ? ('default' as const) : ('accent' as const),
+                        disabled: item.isBusy,
+                        tone: 'accent' as const,
                       }
-                    : item.isInstallImplemented
-                      ? {
-                          label: item.downloadItem?.status === 'failed' ? 'Retry install' : 'Install',
-                          onPress: () => {
-                            void handleInstallMushafPack(item.option.id);
-                          },
-                          disabled: item.isBusy,
-                          tone: 'accent' as const,
-                        }
-                      : {
-                          label: 'Coming soon',
-                          onPress: () => undefined,
-                          disabled: true,
-                        };
+                    : {
+                        label: 'Coming soon',
+                        onPress: () => undefined,
+                        disabled: true,
+                      };
 
-                  const secondaryAction =
-                    item.isInstalled && !item.isBundled
-                      ? {
-                          label: 'Delete',
-                          onPress: () => handleDeleteMushafPack(item.option.id),
-                          disabled: item.isBusy,
-                          tone: 'danger' as const,
-                        }
-                      : undefined;
+                const secondaryAction =
+                  item.isInstalled && !item.isBundled
+                    ? {
+                        label: 'Delete',
+                        onPress: () => handleDeleteMushafPack(item.option.id),
+                        disabled: item.isBusy,
+                        tone: 'danger' as const,
+                      }
+                    : undefined;
 
-                  return (
-                    <MushafPackOptionCard
-                      title={item.option.name}
-                      description={item.option.description}
-                      statusLabel={item.statusLabel}
-                      progressLabel={item.progressLabel}
-                      errorMessage={item.errorMessage}
-                      sourceLabel={item.definition?.sourceLabel ?? null}
-                      isSelected={item.isSelected}
-                      primaryAction={primaryAction}
-                      secondaryAction={secondaryAction}
-                    />
-                  );
-                }}
-              />
-            ) : null}
+                return (
+                  <MushafPackOptionCard
+                    title={item.option.name}
+                    description={item.option.description}
+                    statusLabel={item.statusLabel}
+                    progressLabel={item.progressLabel}
+                    errorMessage={item.errorMessage}
+                    sourceLabel={item.definition?.sourceLabel ?? null}
+                    isSelected={item.isSelected}
+                    primaryAction={primaryAction}
+                    secondaryAction={secondaryAction}
+                  />
+                );
+              }}
+            />
           </View>
         ) : null}
 

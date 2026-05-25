@@ -2,6 +2,7 @@ import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { ArrowLeft, Settings } from 'lucide-react-native';
 import React from 'react';
 import {
+  Animated,
   FlatList,
   Pressable,
   ScrollView,
@@ -27,6 +28,7 @@ import {
   type TafsirTabContentState,
 } from '@/components/tafsir/TafsirTabs';
 import { SettingsSidebar } from '@/components/reader/settings/SettingsSidebar';
+import type { PanelType } from '@/components/reader/settings/SettingsSidebarContent';
 import { VerseActionsSheet } from '@/components/surah/VerseActionsSheet';
 import { VerseCard } from '@/components/surah/VerseCard';
 import { AddToPlannerModal, type VerseSummaryDetails } from '@/components/verse-planner-modal';
@@ -341,6 +343,14 @@ function buildOfflineTafsirStates(
   return nextState;
 }
 
+function hasTranslations(verse: ApiVerse | null | undefined, translationIds: number[]): boolean {
+  if (!verse) return false;
+  const translations = verse.translations ?? [];
+  return translationIds.every((id) =>
+    translations.some((t) => t.resource_id === id)
+  );
+}
+
 function buildOfflineFirstPageState(params: {
   target: VerseTarget;
   chapters: SurahHeaderChapter[];
@@ -353,8 +363,11 @@ function buildOfflineFirstPageState(params: {
   const existingMatchesSignature = params.existing?.signature === params.pageSignature;
   const existingTafsirById =
     existingMatchesSignature ? params.existing?.tafsirById ?? {} : {};
+
+  // CRITICAL: Always reuse the existing verse (even on signature mismatch/hydration lag)
+  // to prevent the verse card from disappearing/flickering. Wiping it causes layout shifts.
   const verse =
-    (existingMatchesSignature ? params.existing?.verse ?? null : null) ??
+    params.existing?.verse ??
     getVerseDetailsSnapshot(verseKey, params.translationIds) ??
     peekVersePreview(verseKey);
   const tafsirById = buildOfflineTafsirStates(verseKey, params.tafsirIds, existingTafsirById);
@@ -362,11 +375,11 @@ function buildOfflineFirstPageState(params: {
   return {
     signature: params.pageSignature,
     chapter:
-      (existingMatchesSignature ? params.existing?.chapter : null) ??
+      params.existing?.chapter ??
       getChapterById(params.chapters, params.target.surahId),
     verse,
     isLoading: verse == null,
-    errorMessage: existingMatchesSignature ? params.existing?.errorMessage ?? null : null,
+    errorMessage: params.existing?.errorMessage ?? null,
     tafsirById,
   };
 }
@@ -394,6 +407,7 @@ export default function TafsirScreen(): React.JSX.Element {
 
   const [currentTarget, setCurrentTarget] = React.useState<VerseTarget | null>(parsedRouteTarget);
   const [isSettingsOpen, setIsSettingsOpen] = React.useState(false);
+  const [settingsInitialPanel, setSettingsInitialPanel] = React.useState<PanelType | undefined>(undefined);
   const [verseRenderSignal, setVerseRenderSignal] = React.useState(0);
   const [isVerseActionsOpen, setIsVerseActionsOpen] = React.useState(false);
   const [isBookmarkModalOpen, setIsBookmarkModalOpen] = React.useState(false);
@@ -410,6 +424,7 @@ export default function TafsirScreen(): React.JSX.Element {
     translationTexts: string[];
   } | null>(null);
   const [isPagerScrollEnabled, setIsPagerScrollEnabled] = React.useState(true);
+  const [isVerticalScrollEnabled, setIsVerticalScrollEnabled] = React.useState(true);
 
   const [prevParsedRouteTarget, setPrevParsedRouteTarget] = React.useState(parsedRouteTarget);
 
@@ -499,6 +514,14 @@ export default function TafsirScreen(): React.JSX.Element {
     if (activeTafsirId === activeTafsirTabId) return;
     setActiveTafsirTabId(activeTafsirId);
   }, [activeTafsirId, activeTafsirTabId]);
+
+  const lastActiveTafsirIdRef = React.useRef(activeTafsirId);
+  React.useEffect(() => {
+    if (activeTafsirId !== lastActiveTafsirIdRef.current) {
+      lastActiveTafsirIdRef.current = activeTafsirId;
+      readerHeader.suppressScroll(800);
+    }
+  }, [activeTafsirId, readerHeader]);
 
   React.useEffect(() => {
     setIsPagerScrollEnabled(true);
@@ -702,16 +725,19 @@ export default function TafsirScreen(): React.JSX.Element {
   React.useEffect(() => {
     generationRef.current += 1;
     inflightRequestsRef.current.clear();
-    setPageStateByKey(() => {
+    setPageStateByKey((previous) => {
       if (!currentTarget) return {};
+      const targetKey = getVerseKey(currentTarget);
+      const existing = previous[targetKey];
 
       return {
-        [getVerseKey(currentTarget)]: buildOfflineFirstPageState({
+        [targetKey]: buildOfflineFirstPageState({
           target: currentTarget,
           chapters,
           pageSignature,
           translationIds,
           tafsirIds,
+          existing,
         }),
       };
     });
@@ -727,10 +753,13 @@ export default function TafsirScreen(): React.JSX.Element {
       const existing = pageStateByKeyRef.current[verseKey];
       const existingMatchesSignature = existing?.signature === pageSignature;
       const previewVerse = peekVersePreview(verseKey);
+      const candidateVerse = existing?.verse ?? previewVerse ?? null;
+
+      // CRITICAL: Verify if candidateVerse has all requested translations. If it is already complete,
+      // we can mark hasVerseReady = true, bypassing redundant network queries and layout flickers.
       const hasVerseReady =
-        existingMatchesSignature &&
-        !existing.isLoading &&
-        (existing.verse !== null || existing.errorMessage !== null);
+        candidateVerse !== null &&
+        hasTranslations(candidateVerse, translationIds);
       const hasTafsirReady =
         existingMatchesSignature &&
         tafsirIds.every((tafsirId) => hasLoadedTafsirState(existing.tafsirById[tafsirId]));
@@ -747,7 +776,7 @@ export default function TafsirScreen(): React.JSX.Element {
       });
 
       const versePromise = hasVerseReady
-        ? Promise.resolve(existing?.verse ?? previewVerse ?? null)
+        ? Promise.resolve(candidateVerse)
         : getVerseDetailsCached(verseKey, translationIds);
       const tafsirPromise = Promise.all(
         tafsirIdsToFetch.map(async (tafsirId) => {
@@ -780,13 +809,10 @@ export default function TafsirScreen(): React.JSX.Element {
           [verseKey]: {
             signature: pageSignature,
             chapter,
-            verse:
-              currentMatchesSignature && current.verse !== null
-                ? current.verse
-                : previewVerse ?? null,
+            verse: current?.verse ?? previewVerse ?? null,
             isLoading:
               !hasVerseReady &&
-              !(currentMatchesSignature && current.verse !== null) &&
+              !current?.verse &&
               previewVerse == null,
             errorMessage: null,
             tafsirById: buildPendingTafsirStates(
@@ -939,12 +965,17 @@ export default function TafsirScreen(): React.JSX.Element {
               [activeTafsirId]: activeTafsirState,
             };
 
+            const existingVerse =
+              existing?.verse ??
+              getVerseDetailsSnapshot(verseKey, translationIds) ??
+              peekVersePreview(verseKey);
+
             const nextPageState: PageState = {
               signature: pageSignature,
-              chapter: (existingMatchesSignature ? existing?.chapter : null) ?? getChapterById(chapters, currentSurahId),
-              verse: existingMatchesSignature ? existing?.verse ?? null : null,
-              isLoading: existingMatchesSignature ? existing?.isLoading ?? false : true,
-              errorMessage: existingMatchesSignature ? existing?.errorMessage ?? null : null,
+              chapter: existing?.chapter ?? getChapterById(chapters, currentSurahId),
+              verse: existingVerse,
+              isLoading: existing?.isLoading ?? (existingVerse == null),
+              errorMessage: existing?.errorMessage ?? null,
               tafsirById: nextTafsirById,
             };
 
@@ -1024,18 +1055,17 @@ export default function TafsirScreen(): React.JSX.Element {
 
             if (!didChangeForVerse) continue;
 
+            const existingVerse =
+              existing?.verse ??
+              getVerseDetailsSnapshot(verseKey, translationIds) ??
+              previewVerse;
+
             nextState[verseKey] = {
               signature: pageSignature,
-              chapter:
-                (existingMatchesSignature ? existing?.chapter : null) ??
-                getChapterById(chapters, target.surahId),
-              verse:
-                (existingMatchesSignature ? existing?.verse : null) ??
-                previewVerse ??
-                null,
-              isLoading:
-                existingMatchesSignature ? existing?.isLoading ?? false : previewVerse == null,
-              errorMessage: existingMatchesSignature ? existing?.errorMessage ?? null : null,
+              chapter: existing?.chapter ?? getChapterById(chapters, target.surahId),
+              verse: existingVerse,
+              isLoading: existing?.isLoading ?? (existingVerse == null),
+              errorMessage: existing?.errorMessage ?? null,
               tafsirById: nextTafsirById,
             };
             didChange = true;
@@ -1210,6 +1240,7 @@ export default function TafsirScreen(): React.JSX.Element {
             keyboardShouldPersistTaps="handled"
             removeClippedSubviews={false}
             nestedScrollEnabled
+            scrollEnabled={isVerticalScrollEnabled}
             stickyHeaderIndices={isMultiTafsir ? [2] : undefined}
             onScroll={(event) => {
               pageScrollOffsetsRef.current[verseKey] = event.nativeEvent.contentOffset.y;
@@ -1271,9 +1302,18 @@ export default function TafsirScreen(): React.JSX.Element {
                   tafsirIds={tafsirIds}
                   activeTafsirId={activeTafsirId}
                   onActiveTafsirChange={setActiveTafsirTabId}
-                  onAddTafsir={() => setIsSettingsOpen(true)}
-                  onTabsTouchStart={() => setIsPagerScrollEnabled(false)}
-                  onTabsTouchEnd={() => setIsPagerScrollEnabled(true)}
+                  onAddTafsir={() => {
+                    setSettingsInitialPanel('tafsir');
+                    setIsSettingsOpen(true);
+                  }}
+                  onTabsTouchStart={() => {
+                    setIsPagerScrollEnabled(false);
+                    setIsVerticalScrollEnabled(false);
+                  }}
+                  onTabsTouchEnd={() => {
+                    setIsPagerScrollEnabled(true);
+                    setIsVerticalScrollEnabled(true);
+                  }}
                 />
               ) : null}
             </View>
@@ -1293,7 +1333,10 @@ export default function TafsirScreen(): React.JSX.Element {
                     {activeTafsirName}
                   </Text>
                   <Pressable
-                    onPress={() => setIsSettingsOpen(true)}
+                    onPress={() => {
+                      setSettingsInitialPanel('tafsir');
+                      setIsSettingsOpen(true);
+                    }}
                     className="rounded-lg border border-border bg-surface px-3 py-2 dark:bg-surface-dark"
                     style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}
                     accessibilityRole="button"
@@ -1447,7 +1490,10 @@ export default function TafsirScreen(): React.JSX.Element {
             right={
               <HeaderActionButton
                 accessibilityLabel="Open settings"
-                onPress={() => setIsSettingsOpen(true)}
+                onPress={() => {
+                  setSettingsInitialPanel(undefined);
+                  setIsSettingsOpen(true);
+                }}
               >
                 <Settings color={palette.text} size={22} strokeWidth={2.25} />
               </HeaderActionButton>
@@ -1529,6 +1575,7 @@ export default function TafsirScreen(): React.JSX.Element {
           onClose={() => setIsSettingsOpen(false)}
           showTafsirSetting
           pageType="tafsir"
+          initialPanel={settingsInitialPanel}
         />
       </View>
     </View>

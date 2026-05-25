@@ -3,6 +3,7 @@ import React from 'react';
 import { getItem, parseJson, setItem } from '@/lib/storage/appStorage';
 import { apiFetch } from '@/src/core/infrastructure/api/apiFetch';
 import { logger } from '@/src/core/infrastructure/monitoring/logger';
+import staticTranslationsData from '../src/data/translations.json';
 
 type ApiTranslationResource = {
   id: number;
@@ -35,6 +36,11 @@ const STORAGE_TTL_MS = 1000 * 60 * 60 * 24 * 14; // 14 days
 
 const cachedByLanguage = new Map<string, TranslationResource[]>();
 const cachedMetaByLanguage = new Map<string, { updatedAt: number }>();
+
+// Prepopulate default English translations list
+cachedByLanguage.set('en', staticTranslationsData);
+cachedMetaByLanguage.set('en', { updatedAt: Date.now() });
+
 const cachedPromises = new Map<string, Promise<TranslationResource[]>>();
 const cachedStoragePromises = new Map<string, Promise<TranslationResource[] | null>>();
 
@@ -194,16 +200,16 @@ export function useTranslationResources({
   const normalizedLanguage = normalizeLanguage(language);
 
   const [translations, setTranslations] = React.useState<TranslationResource[]>(
-    cachedByLanguage.get(normalizedLanguage) ?? []
+    cachedByLanguage.get(normalizedLanguage) ?? staticTranslationsData
   );
   const [isLoading, setIsLoading] = React.useState(
-    enabled ? !cachedByLanguage.has(normalizedLanguage) : false
+    enabled ? !cachedByLanguage.has(normalizedLanguage) && !cachedByLanguage.has('en') : false
   );
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    setTranslations(cachedByLanguage.get(normalizedLanguage) ?? []);
-    setIsLoading(enabled ? !cachedByLanguage.has(normalizedLanguage) : false);
+    setTranslations(cachedByLanguage.get(normalizedLanguage) ?? staticTranslationsData);
+    setIsLoading(enabled ? !cachedByLanguage.has(normalizedLanguage) && !cachedByLanguage.has('en') : false);
     setErrorMessage(null);
   }, [enabled, normalizedLanguage]);
 

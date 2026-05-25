@@ -5,7 +5,10 @@ import { Tafsir } from '@/src/core/domain/entities/Tafsir';
 import { container } from '@/src/core/infrastructure/di/container';
 import { logger } from '@/src/core/infrastructure/monitoring/logger';
 
-let cachedTafsirs: Tafsir[] | null = null;
+import staticTafsirsData from '../src/data/tafsirs.json';
+
+const initialTafsirs = staticTafsirsData.map((data) => Tafsir.fromJSON(data));
+let cachedTafsirs: Tafsir[] | null = initialTafsirs;
 let cachedPromise: Promise<Tafsir[]> | null = null;
 
 async function loadTafsirs(): Promise<Tafsir[]> {

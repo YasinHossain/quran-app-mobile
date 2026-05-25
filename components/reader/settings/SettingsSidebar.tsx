@@ -6,7 +6,7 @@ import Colors from '@/constants/Colors';
 import { sideSheetTransform, useModalTransition } from '@/components/motion/modalTransition';
 import { useAppTheme } from '@/providers/ThemeContext';
 
-import { SettingsSidebarContent } from './SettingsSidebarContent';
+import { SettingsSidebarContent, type PanelType } from './SettingsSidebarContent';
 
 import type { SettingsTab } from './SettingsTabToggle';
 
@@ -18,6 +18,7 @@ export function SettingsSidebar({
   pageType,
   activeTab,
   onTabChange,
+  initialPanel,
 }: {
   isOpen: boolean;
   onClose: () => void;
@@ -26,6 +27,7 @@ export function SettingsSidebar({
   pageType?: 'verse' | 'tafsir' | 'bookmarks';
   activeTab?: SettingsTab;
   onTabChange?: (tab: SettingsTab) => void;
+  initialPanel?: PanelType;
 }): React.JSX.Element {
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -34,8 +36,8 @@ export function SettingsSidebar({
   const sheetWidth = Math.min(390, Math.round(width * 0.92));
   const hiddenTranslateX = sheetWidth + 12;
   const { visible, progress, onModalShow } = useModalTransition(isOpen, {
-    openDuration: 270,
-    closeDuration: 190,
+    openDuration: 220,
+    closeDuration: 160,
     onAfterClose,
   });
 
@@ -73,14 +75,17 @@ export function SettingsSidebar({
             }}
           >
             <View className={isDark ? 'flex-1 dark' : 'flex-1'}>
-              <SettingsSidebarContent
-                onClose={onClose}
-                showTafsirSetting={showTafsirSetting}
-                pageType={pageType}
-                activeTabOverride={activeTab}
-                onTabChange={onTabChange}
-                containerWidth={sheetWidth}
-              />
+              {visible && (
+                <SettingsSidebarContent
+                  onClose={onClose}
+                  showTafsirSetting={showTafsirSetting}
+                  pageType={pageType}
+                  activeTabOverride={activeTab}
+                  onTabChange={onTabChange}
+                  containerWidth={sheetWidth}
+                  initialPanel={initialPanel}
+                />
+              )}
             </View>
           </View>
         </Animated.View>

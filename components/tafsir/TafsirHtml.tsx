@@ -34,7 +34,7 @@ function htmlToPlainText(input: string): string {
     .trim();
 }
 
-export function TafsirHtml({
+export const TafsirHtml = React.memo(function TafsirHtml({
   html,
   fontSize,
   contentKey,
@@ -141,4 +141,4 @@ export function TafsirHtml({
       )}
     </View>
   );
-}
+});
