@@ -40,4 +40,6 @@ export interface ITranslationOfflineStore {
   }): Promise<OfflineVerseWithTranslations[]>;
 
   deleteTranslation(translationId: number): Promise<void>;
+
+  deleteWordTranslation(): Promise<void>;
 }

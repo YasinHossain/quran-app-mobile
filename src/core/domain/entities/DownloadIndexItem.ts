@@ -16,6 +16,7 @@ export type DownloadableContent =
   | { kind: 'tafsir'; scope: 'surah'; surahId: number; tafsirId: number }
   | { kind: 'audio'; reciterId: number; scope: 'surah'; surahId: number }
   | { kind: 'words'; scope: 'surah'; surahId: number }
+  | { kind: 'word-translation'; languageCode: string }
   | { kind: 'mushaf-pack'; packId: MushafPackId; version: string };
 
 export type DownloadProgress =
@@ -56,6 +57,8 @@ export function getDownloadKey(content: DownloadableContent): DownloadKey {
       return `audio:${content.reciterId}:${content.scope}:${content.surahId}`;
     case 'words':
       return `words:${content.scope}:${content.surahId}`;
+    case 'word-translation':
+      return `word-translation:${content.languageCode}`;
     case 'mushaf-pack':
       return `mushaf-pack:${content.packId}:${content.version}`;
     default: {
@@ -114,6 +117,11 @@ export function isDownloadableContent(value: unknown): value is DownloadableCont
       Number.isFinite(words.surahId) &&
       words.surahId > 0
     );
+  }
+
+  if (candidate.kind === 'word-translation') {
+    const wt = candidate as Partial<Extract<DownloadableContent, { kind: 'word-translation' }>>;
+    return typeof wt.languageCode === 'string' && wt.languageCode.trim().length > 0;
   }
 
   if (candidate.kind === 'mushaf-pack') {

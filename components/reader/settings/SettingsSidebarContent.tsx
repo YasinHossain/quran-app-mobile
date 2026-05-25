@@ -21,6 +21,13 @@ import { capitalizeLanguageName, type ResourceRecord } from './resource-panel/re
 import { SettingsTabToggle, type SettingsTab } from './SettingsTabToggle';
 import { ToggleRow } from './ToggleRow';
 import { ArabicFontFilterToggle, type ArabicFontFilter } from './ArabicFontFilterToggle';
+import { useDownloadIndexItems } from '@/hooks/useDownloadIndexItems';
+import { getDownloadKey, type DownloadIndexItemWithKey } from '@/src/core/domain/entities/DownloadIndexItem';
+import { DownloadWordTranslationUseCase, requestWordDownloadCancel } from '@/src/core/application/use-cases/DownloadWordTranslation';
+import { DeleteWordTranslationUseCase } from '@/src/core/application/use-cases/DeleteWordTranslation';
+import { ResourceDownloadAction } from './resource-panel/ResourceDownloadAction';
+import { container } from '@/src/core/infrastructure/di/container';
+import { logger } from '@/src/core/infrastructure/monitoring/logger';
 
 import type { MushafPackId } from '@/types';
 import { clampMushafScaleStep, MUSHAF_SCALE_MAX, MUSHAF_SCALE_MIN } from '@/types';
@@ -74,6 +81,87 @@ function getUiLanguageName(code: string | undefined): string {
   if (!code) return 'English';
   return UI_LANGUAGES.find((l) => l.code === code)?.name ?? code;
 }
+
+const WordLanguageResourceRow = React.memo(function WordLanguageResourceRow({
+  item,
+  downloadItem,
+  isSelected,
+  isBusy,
+  isDark,
+  tintColor,
+  onToggle,
+  onPressDownload,
+  onPressDelete,
+  onCancelDownload,
+}: {
+  item: WordLanguageItem;
+  downloadItem: DownloadIndexItemWithKey | undefined;
+  isSelected: boolean;
+  isBusy: boolean;
+  isDark: boolean;
+  tintColor: string;
+  onToggle: (id: number) => void;
+  onPressDownload: (code: string) => void;
+  onPressDelete: (code: string) => void;
+  onCancelDownload: (code: string) => void;
+}) {
+  const status = downloadItem?.status;
+  const isDownloading = status === 'queued' || status === 'downloading';
+  const isDeleting = status === 'deleting';
+  const isInstalled = status === 'installed';
+
+  const canDownload = !isBusy && !isDownloading && !isDeleting && !isInstalled;
+  const canDelete = !isBusy && !isDownloading && !isDeleting && isInstalled;
+  const canCancel = isDownloading;
+
+  const isArabic = item.code === 'ar';
+
+  const actionIcon = isArabic ? null : (
+    <ResourceDownloadAction
+      status={status}
+      progress={downloadItem?.progress}
+      isSelected={isSelected}
+      isDark={isDark}
+      tintColor={tintColor}
+    />
+  );
+
+  const trailingPress = isArabic
+    ? undefined
+    : isDownloading
+      ? () => {
+          if (canCancel) onCancelDownload(item.code);
+        }
+      : isInstalled
+        ? () => {
+            if (canDelete) onPressDelete(item.code);
+          }
+        : () => {
+            if (canDownload) onPressDownload(item.code);
+          };
+
+  const trailingLabel = isArabic
+    ? undefined
+    : isDownloading
+      ? `Cancel ${item.name} word-by-word download`
+      : isInstalled
+        ? `Delete ${item.name} offline word-by-word download`
+        : `Download ${item.name} word-by-word for offline use`;
+
+  return (
+    <ResourceItem
+      item={item}
+      isSelected={isSelected}
+      onToggle={onToggle}
+      trailingAction={actionIcon ?? undefined}
+      onTrailingPress={trailingPress}
+      trailingAccessibilityLabel={trailingLabel}
+      trailingDisabled={
+        isArabic || isDeleting || (isDownloading ? !canCancel : isInstalled ? !canDelete : !canDownload)
+      }
+    />
+  );
+});
 
 export function SettingsSidebarContent({
   onClose,
@@ -138,6 +226,87 @@ export function SettingsSidebarContent({
       navProgress.stopAnimation();
     };
   }, [navProgress]);
+
+  const { itemsByKey, refresh: refreshIndex } = useDownloadIndexItems({
+    enabled: panel.type === 'word-language',
+    pollIntervalMs: 800,
+  });
+
+  const [busyWordLangCodes, setBusyWordLangCodes] = React.useState<Set<string>>(() => new Set());
+
+  const handleDownloadWordLanguage = React.useCallback(async (code: string) => {
+    if (busyWordLangCodes.has(code)) return;
+    setBusyWordLangCodes((prev) => {
+      const next = new Set(prev);
+      next.add(code);
+      return next;
+    });
+    try {
+      const useCase = new DownloadWordTranslationUseCase(
+        container.getDownloadIndexRepository(),
+        container.getTranslationOfflineStore(),
+        container.getTranslationDownloadRepository(),
+        logger
+      );
+      await useCase.execute(code);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      Alert.alert('Download failed', message);
+    } finally {
+      setBusyWordLangCodes((prev) => {
+        const next = new Set(prev);
+        next.delete(code);
+        return next;
+      });
+      refreshIndex();
+    }
+  }, [busyWordLangCodes, refreshIndex]);
+
+  const handleDeleteWordLanguage = React.useCallback((code: string) => {
+    if (busyWordLangCodes.has(code)) return;
+    Alert.alert(
+      'Delete word-by-word download?',
+      `This removes offline word-by-word translations for this language.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            void (async () => {
+              setBusyWordLangCodes((prev) => {
+                const next = new Set(prev);
+                next.add(code);
+                return next;
+              });
+              try {
+                const useCase = new DeleteWordTranslationUseCase(
+                  container.getDownloadIndexRepository(),
+                  container.getTranslationOfflineStore(),
+                  logger
+                );
+                await useCase.execute(code);
+              } catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                Alert.alert('Delete failed', message);
+              } finally {
+                setBusyWordLangCodes((prev) => {
+                  const next = new Set(prev);
+                  next.delete(code);
+                  return next;
+                });
+                refreshIndex();
+              }
+            })();
+          },
+        },
+      ]
+    );
+  }, [busyWordLangCodes, refreshIndex]);
+
+  const handleCancelWordDownload = React.useCallback((code: string) => {
+    requestWordDownloadCancel(code);
+  }, []);
 
   const openPanel = React.useCallback(
     (nextPanel: SubPanelType) => {
@@ -589,15 +758,26 @@ export function SettingsSidebarContent({
             data={WORD_LANGUAGE_ITEMS}
             keyExtractor={(item) => item.code}
             contentContainerStyle={{ paddingVertical: 12, paddingBottom: 20 }}
-            renderItem={({ item }) => (
-              <View className="px-4 py-1">
-                <ResourceItem
-                  item={item}
-                  isSelected={item.code === settings.wordLang}
-                  onToggle={handleSelectWordLanguage}
-                />
-              </View>
-            )}
+            renderItem={({ item }) => {
+              const key = getDownloadKey({ kind: 'word-translation', languageCode: item.code });
+              const downloadItem = itemsByKey.get(key);
+              return (
+                <View className="px-4 py-1">
+                  <WordLanguageResourceRow
+                    item={item}
+                    downloadItem={downloadItem}
+                    isSelected={item.code === settings.wordLang}
+                    isBusy={busyWordLangCodes.has(item.code)}
+                    isDark={isDark}
+                    tintColor={palette.tint}
+                    onToggle={handleSelectWordLanguage}
+                    onPressDownload={handleDownloadWordLanguage}
+                    onPressDelete={handleDeleteWordLanguage}
+                    onCancelDownload={handleCancelWordDownload}
+                  />
+                </View>
+              );
+            }}
           />
         ) : null}
 

@@ -34,23 +34,25 @@ function toPositiveInt(value: number): number {
 export class QuranComTranslationDownloadRepository implements ITranslationDownloadRepository {
   async getChapterVersesPage(params: {
     chapterNumber: number;
-    translationId: number;
+    translationId?: number;
     page: number;
     perPage: number;
+    wordLang?: string;
   }): Promise<ChapterTranslationVersesPage> {
     const chapterNumber = toPositiveInt(params.chapterNumber);
-    const translationId = toPositiveInt(params.translationId);
+    const translationId = params.translationId ? toPositiveInt(params.translationId) : undefined;
     const page = Math.max(1, toPositiveInt(params.page));
     const perPage = Math.max(1, toPositiveInt(params.perPage));
+    const wordLang = params.wordLang || 'en';
 
     const response = await apiFetch<ApiVersesResponse>(
       `/verses/by_chapter/${chapterNumber}`,
       {
-        language: 'en',
+        language: wordLang,
         words: 'true',
         word_fields: 'text_uthmani,char_type_name,position',
-        word_translation_language: 'en',
-        translations: String(translationId),
+        word_translation_language: wordLang,
+        ...(translationId ? { translations: String(translationId) } : {}),
         fields: 'text_uthmani',
         per_page: String(perPage),
         page: String(page),
@@ -61,7 +63,7 @@ export class QuranComTranslationDownloadRepository implements ITranslationDownlo
     const verses = (response.verses ?? [])
       .map((verse) => {
         const translations = verse.translations ?? [];
-        const matching = translations.find((t) => t.resource_id === translationId);
+        const matching = translationId ? translations.find((t) => t.resource_id === translationId) : undefined;
         const text = matching?.text ?? translations[0]?.text ?? '';
 
         const rawWords = verse.words ?? [];

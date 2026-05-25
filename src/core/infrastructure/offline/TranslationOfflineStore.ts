@@ -396,6 +396,22 @@ export class TranslationOfflineStore implements ITranslationOfflineStore {
       `);
     });
   }
+
+  async deleteWordTranslation(): Promise<void> {
+    const db = await getAppDbAsync();
+
+    await db.withTransactionAsync(async () => {
+      await db.runAsync('UPDATE offline_verses SET words_json = NULL');
+      await db.runAsync(`
+        DELETE FROM offline_verses
+        WHERE NOT EXISTS (
+          SELECT 1
+          FROM offline_translations t
+          WHERE t.verse_key = offline_verses.verse_key
+        );
+      `);
+    });
+  }
 }
 
 function normalizeTranslationIds(translationIds: number[]): number[] {

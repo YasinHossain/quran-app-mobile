@@ -12,6 +12,7 @@ import {
 import Colors from '@/constants/Colors';
 import { HeaderSearchInput } from '@/components/search/HeaderSearchInput';
 import { useDownloadIndexItems } from '@/hooks/useDownloadIndexItems';
+import { useSettings } from '@/providers/SettingsContext';
 import { useAppTheme } from '@/providers/ThemeContext';
 import { DeleteTranslationUseCase } from '@/src/core/application/use-cases/DeleteTranslation';
 import {
@@ -339,6 +340,7 @@ export function ManageTranslationsPanel({
   isActive?: boolean;
 }): React.JSX.Element {
   const { resolvedTheme, isDark } = useAppTheme();
+  const { settings } = useSettings();
   const palette = Colors[resolvedTheme];
   const [isReordering, setIsReordering] = React.useState(false);
   const [searchTerm, setSearchTerm] = React.useState('');
@@ -467,7 +469,7 @@ export function ManageTranslationsPanel({
           container.getTranslationPackRepository()
         );
 
-        await useCase.execute(translationId);
+        await useCase.execute(translationId, settings.wordLang);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         Alert.alert('Download failed', message);
