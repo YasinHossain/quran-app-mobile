@@ -45,11 +45,10 @@ export function SettingsSidebar({
       visible={visible}
       onRequestClose={onClose}
       animationType="none"
-      hardwareAccelerated
       statusBarTranslucent
       {...(Platform.OS === 'ios' ? { presentationStyle: 'overFullScreen' as const } : {})}
     >
-      <View style={styles.root}>
+      <View className={isDark ? 'dark' : ''} style={styles.root}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose}>
           <Animated.View style={[styles.overlay, { opacity: progress }]} />
         </Pressable>

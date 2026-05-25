@@ -1,5 +1,6 @@
 import React from 'react';
 import { Modal, Platform, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { useAppTheme } from '@/providers/ThemeContext';
 
 type AnchorLayout = { x: number; y: number; width: number; height: number };
 
@@ -20,6 +21,7 @@ export function AnchoredDropdownModal({
   minWidth?: number;
   children: React.ReactNode;
 }): React.JSX.Element | null {
+  const { isDark } = useAppTheme();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const [anchorLayout, setAnchorLayout] = React.useState<AnchorLayout | null>(null);
 
@@ -84,7 +86,6 @@ export function AnchoredDropdownModal({
       onRequestClose={onClose}
       animationType="none"
       statusBarTranslucent
-      hardwareAccelerated
       {...(Platform.OS === 'ios' ? { presentationStyle: 'overFullScreen' as const } : {})}
     >
       <Pressable
@@ -94,7 +95,7 @@ export function AnchoredDropdownModal({
         accessibilityLabel="Close dropdown"
       />
       {anchorLayout ? (
-        <View style={[styles.dropdown, { left, top, width, maxHeight: maxHeightClamped }]}>
+        <View className={isDark ? 'dark' : ''} style={[styles.dropdown, { left, top, width, maxHeight: maxHeightClamped }]}>
           {children}
         </View>
       ) : null}

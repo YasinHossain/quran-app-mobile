@@ -17,11 +17,20 @@ interface ThemeContextType {
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
-const THEME_STORAGE_KEY = 'quranAppThemePreference';
+export const THEME_STORAGE_KEY = 'quranAppThemePreference';
 
-export function AppThemeProvider({ children }: { children: React.ReactNode }): React.JSX.Element {
+export function AppThemeProvider({
+  children,
+  initialPreference = 'system',
+}: {
+  children: React.ReactNode;
+  initialPreference?: ThemePreference;
+}): React.JSX.Element {
   const systemScheme = (useSystemColorScheme() ?? 'light') as ResolvedTheme;
-  const [preference, setPreferenceState] = useState<ThemePreference>('system');
+  const [preference, setPreferenceState] = useState<ThemePreference>(() => {
+    colorScheme.set(initialPreference);
+    return initialPreference;
+  });
 
   useEffect(() => {
     colorScheme.set(preference);

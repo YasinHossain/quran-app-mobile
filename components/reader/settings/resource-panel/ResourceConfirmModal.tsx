@@ -1,6 +1,7 @@
 import { X } from 'lucide-react-native';
 import React from 'react';
 import { ActivityIndicator, Modal, Pressable, Text, View } from 'react-native';
+import { useAppTheme } from '@/providers/ThemeContext';
 
 export function ResourceConfirmModal({
   visible,
@@ -29,12 +30,13 @@ export function ResourceConfirmModal({
   onConfirm: () => void;
   onClose: () => void;
 }): React.JSX.Element {
+  const { isDark } = useAppTheme();
   const confirmClassName =
     confirmTone === 'danger' ? 'rounded-lg bg-error px-4 py-2 dark:bg-error-dark' : 'rounded-lg bg-accent px-4 py-2';
 
   return (
     <Modal transparent animationType="fade" visible={visible} onRequestClose={onClose}>
-      <View className="flex-1 items-center justify-center px-6">
+      <View className={`flex-1 items-center justify-center px-6 ${isDark ? 'dark' : ''}`}>
         <Pressable
           onPress={onClose}
           style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}

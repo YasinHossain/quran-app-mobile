@@ -7,6 +7,8 @@ import Animated, {
   useSharedValue,
   withSpring,
   LinearTransition,
+  FadeInUp,
+  FadeOutDown,
 } from 'react-native-reanimated';
 
 import Colors from '@/constants/Colors';
@@ -22,6 +24,18 @@ import { createPlannerCardViewModel } from './utils/plannerCard';
 import type { PlannerCardProps } from './PlannerCard.types';
 import type { PlannerCardViewModel } from './utils/plannerCard';
 
+import { Platform } from 'react-native';
+
+const cardShadow =
+  Platform.OS === 'android'
+    ? { shadowColor: 'transparent', elevation: 0 }
+    : {
+        shadowColor: '#000',
+        shadowOpacity: 0.04,
+        shadowRadius: 6,
+        shadowOffset: { width: 0, height: 2 },
+      };
+
 export function PlannerCard({
   surahId,
   plan,
@@ -36,6 +50,7 @@ export function PlannerCard({
 
   const [isExpanded, setIsExpanded] = React.useState(false);
   const rotateValue = useSharedValue(0);
+  const expandProgress = useSharedValue(0);
 
   React.useEffect(() => {
     rotateValue.value = withSpring(isExpanded ? 1 : 0, {
@@ -43,11 +58,43 @@ export function PlannerCard({
       stiffness: 180,
       mass: 0.8,
     });
-  }, [isExpanded, rotateValue]);
+    expandProgress.value = withSpring(isExpanded ? 1 : 0, {
+      damping: 22,
+      stiffness: 180,
+      mass: 0.8,
+    });
+  }, [isExpanded, rotateValue, expandProgress]);
 
   const animatedChevronStyle = useAnimatedStyle(() => {
     return {
       transform: [{ rotate: `${rotateValue.value * 180}deg` }],
+    };
+  });
+
+  const animatedProgressSectionStyle = useAnimatedStyle(() => {
+    const paddingH = expandProgress.value * 16;
+    const paddingV = expandProgress.value * 16;
+    const borderRadius = expandProgress.value * 12;
+
+    // Force opacity to rise faster (reaching 100% opacity when expandProgress is 0.5)
+    // so that the box borders and backgrounds are solid early during the opening slide.
+    const opacityMultiplier = Math.min(1, expandProgress.value * 2.0);
+
+    const bgColor = resolvedTheme === 'dark'
+      ? `rgba(15, 23, 42, ${opacityMultiplier * 0.4})`
+      : `rgba(247, 249, 249, ${opacityMultiplier * 0.6})`;
+
+    const borderColor = resolvedTheme === 'dark'
+      ? `rgba(51, 65, 85, ${opacityMultiplier * 0.5})`
+      : `rgba(229, 231, 235, ${opacityMultiplier * 0.6})`;
+
+    return {
+      paddingHorizontal: paddingH,
+      paddingVertical: paddingV,
+      borderRadius,
+      backgroundColor: bgColor,
+      borderColor,
+      borderWidth: expandProgress.value > 0 ? 1 : 0,
     };
   });
 
@@ -71,8 +118,8 @@ export function PlannerCard({
 
   return (
     <Animated.View
-      layout={LinearTransition.springify().damping(22).stiffness(180).mass(0.8)}
-      className="relative min-w-0 rounded-2xl border border-border/50 bg-surface px-5 py-5 shadow-sm dark:border-border-dark/40 dark:bg-surface-dark"
+      style={cardShadow}
+      className="relative min-w-0 rounded-2xl border border-border/50 bg-surface px-5 py-5 dark:border-border-dark/40 dark:bg-surface-dark"
     >
       <View className="gap-5">
         {/* Header Row */}
@@ -118,61 +165,70 @@ export function PlannerCard({
           </View>
         </View>
 
-        {/* Progress Info (Integrated directly into card view, no nested panel layout) */}
-        <View className="gap-2">
-          <View className="flex-row items-center justify-between">
-            <View className="flex-row items-center gap-2">
-              <Sparkles size={16} strokeWidth={2.25} color={palette.tint} />
-              <Text className="text-sm font-semibold text-muted dark:text-muted-dark">
-                Currently at
-              </Text>
-            </View>
-            <Text className="text-xs font-semibold text-muted dark:text-muted-dark">
-              {percentLabel}
-            </Text>
-          </View>
-
-          <View>
-            <Text className="text-base font-semibold text-foreground dark:text-foreground-dark">
-              {verseLine}
-            </Text>
-            {viewModel.progress.currentSecondaryText ? (
-              <Text className="mt-1 text-xs text-muted dark:text-muted-dark">
-                {viewModel.progress.currentSecondaryText}
-              </Text>
-            ) : null}
-          </View>
-
-          <View
-            accessibilityRole="progressbar"
-            accessibilityValue={{ now: viewModel.progress.percent, min: 0, max: 100 }}
-            className="mt-1 h-2 w-full overflow-hidden rounded-full bg-border/40 dark:bg-border-dark/40"
-          >
-            <View
-              className="h-full rounded-full bg-accent dark:bg-accent-dark"
-              style={{ width: `${Math.max(0, Math.min(100, viewModel.progress.percent))}%` }}
-            />
-          </View>
-        </View>
-
         {/* Expanded Focus & Stats */}
         {isExpanded ? (
-          <View className="gap-5">
+          <Animated.View
+            entering={FadeInUp.duration(300)}
+            exiting={FadeOutDown.duration(200)}
+            className="gap-5"
+          >
             <DailyFocusSection focus={viewModel.focus} />
             <PlannerStatsSection stats={viewModel.stats} />
-          </View>
+          </Animated.View>
         ) : null}
 
-        {/* Bottom Continue Reading Action */}
-        <Pressable
-          onPress={handleNavigate}
-          accessibilityRole="button"
-          accessibilityLabel="Continue reading"
-          className="w-full items-center justify-center rounded-xl bg-accent px-4 py-3"
-          style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
+        {/* Progress & Action Section (Animated transition from flat to boxed container) */}
+        <Animated.View
+          style={animatedProgressSectionStyle}
+          className="gap-4"
         >
-          <Text className="text-sm font-semibold text-on-accent">Continue reading</Text>
-        </Pressable>
+          <View className="gap-2">
+            <View className="flex-row items-center justify-between">
+              <View className="flex-row items-center gap-2">
+                <Sparkles size={16} strokeWidth={2.25} color={palette.tint} />
+                <Text className="text-sm font-semibold text-muted dark:text-muted-dark">
+                  Currently at
+                </Text>
+              </View>
+              <Text className="text-xs font-semibold text-muted dark:text-muted-dark">
+                {percentLabel}
+              </Text>
+            </View>
+
+            <View>
+              <Text className="text-base font-semibold text-foreground dark:text-foreground-dark">
+                {verseLine}
+              </Text>
+              {viewModel.progress.currentSecondaryText ? (
+                <Text className="mt-1 text-xs text-muted dark:text-muted-dark">
+                  {viewModel.progress.currentSecondaryText}
+                </Text>
+              ) : null}
+            </View>
+
+            <View
+              accessibilityRole="progressbar"
+              accessibilityValue={{ now: viewModel.progress.percent, min: 0, max: 100 }}
+              className="mt-1 h-2 w-full overflow-hidden rounded-full bg-border/40 dark:bg-border-dark/40"
+            >
+              <View
+                className="h-full rounded-full bg-accent dark:bg-accent-dark"
+                style={{ width: `${Math.max(0, Math.min(100, viewModel.progress.percent))}%` }}
+              />
+            </View>
+          </View>
+
+          {/* Continue Reading Action */}
+          <Pressable
+            onPress={handleNavigate}
+            accessibilityRole="button"
+            accessibilityLabel="Continue reading"
+            className="w-full items-center justify-center rounded-xl bg-accent px-4 py-3"
+            style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
+          >
+            <Text className="text-sm font-semibold text-on-accent">Continue reading</Text>
+          </Pressable>
+        </Animated.View>
       </View>
     </Animated.View>
   );

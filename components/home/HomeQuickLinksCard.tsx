@@ -159,7 +159,7 @@ export function HomeQuickLinksCard(): React.JSX.Element {
   const activeShadow = React.useMemo(
     () =>
       Platform.OS === 'android'
-        ? { elevation: 2 }
+        ? { elevation: 0 }
         : {
             shadowColor: '#000',
             shadowOpacity: 0.1,
@@ -359,10 +359,9 @@ function AddQuickLinkModal({
       onRequestClose={onClose}
       animationType="fade"
       statusBarTranslucent
-      hardwareAccelerated
       {...(Platform.OS === 'ios' ? { presentationStyle: 'overFullScreen' as const } : {})}
     >
-      <View style={styles.modalRoot}>
+      <View className={isDark ? 'dark' : ''} style={styles.modalRoot}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose}>
           <View style={styles.overlay} />
         </Pressable>

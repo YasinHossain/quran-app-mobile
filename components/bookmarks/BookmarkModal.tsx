@@ -123,9 +123,8 @@ export function BookmarkModal({
       animationType="none"
       {...(Platform.OS === 'ios' ? { presentationStyle: 'overFullScreen' as const } : {})}
       statusBarTranslucent
-      hardwareAccelerated
     >
-      <View style={styles.root}>
+      <View className={isDark ? 'dark' : ''} style={styles.root}>
         <Pressable style={StyleSheet.absoluteFill} onPress={handleOverlayPress}>
           <Animated.View style={[styles.overlay, { opacity: progress }]} />
         </Pressable>

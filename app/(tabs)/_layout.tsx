@@ -50,72 +50,75 @@ export default function TabLayout() {
   const bottomPadding = Math.max(insets.bottom, 12);
 
   return (
-    <Tabs
-      tabBar={(props) => <ReportingTabBar {...props} />}
-      screenOptions={{
-        tabBarActiveTintColor: palette.tint,
-        tabBarInactiveTintColor: palette.tabIconDefault,
-        sceneStyle: {
-          backgroundColor: palette.background,
-        },
-        tabBarStyle: {
-          backgroundColor: palette.surface,
-          borderTopColor: 'transparent',
-          borderTopWidth: 0,
-          borderTopLeftRadius: 24,
-          borderTopRightRadius: 24,
-          elevation: 10,
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: -4 },
-          shadowOpacity: 0.05,
-          shadowRadius: 10,
-          height: 54 + bottomPadding,
-          paddingBottom: bottomPadding,
-          paddingTop: 8,
-        },
-        tabBarLabelStyle: { fontSize: 10, fontWeight: '500' },
-        headerShown: false,
-        headerStyle: { backgroundColor: palette.background },
-        headerTitleStyle: { color: palette.text },
-        headerTintColor: palette.text,
-        animation: 'shift',
-        transitionSpec: {
-          animation: 'timing',
-          config: {
-            duration: 180,
-            easing: Easing.out(Easing.cubic),
+    <View style={{ flex: 1, backgroundColor: palette.background }}>
+      <Tabs
+        tabBar={(props) => <ReportingTabBar {...props} />}
+        screenOptions={{
+          tabBarActiveTintColor: palette.tint,
+          tabBarInactiveTintColor: palette.tabIconDefault,
+          sceneStyle: {
+            backgroundColor: palette.background,
+            overflow: 'hidden',
           },
-        },
-      }}>
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: 'Home',
-          tabBarIcon: ({ color }) => <TabBarIcon Icon={Home} color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="search"
-        options={{
-          title: 'Search',
-          href: null,
-          tabBarIcon: ({ color }) => <TabBarIcon Icon={Search} color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="bookmarks"
-        options={{
-          title: 'Bookmarks',
-          tabBarIcon: ({ color }) => <TabBarIcon Icon={Bookmark} color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="planner"
-        options={{
-          title: 'Planner',
-          tabBarIcon: ({ color }) => <TabBarIcon Icon={Calendar} color={color} />,
-        }}
-      />
-    </Tabs>
+          tabBarStyle: {
+            backgroundColor: palette.surface,
+            borderTopColor: 'transparent',
+            borderTopWidth: 0,
+            borderTopLeftRadius: 24,
+            borderTopRightRadius: 24,
+            elevation: 10,
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: -4 },
+            shadowOpacity: 0.05,
+            shadowRadius: 10,
+            height: 54 + bottomPadding,
+            paddingBottom: bottomPadding,
+            paddingTop: 8,
+          },
+          tabBarLabelStyle: { fontSize: 10, fontWeight: '500' },
+          headerShown: false,
+          headerStyle: { backgroundColor: palette.background },
+          headerTitleStyle: { color: palette.text },
+          headerTintColor: palette.text,
+          animation: 'shift',
+          transitionSpec: {
+            animation: 'timing',
+            config: {
+              duration: 200,
+              easing: Easing.out(Easing.cubic),
+            },
+          },
+        }}>
+        <Tabs.Screen
+          name="index"
+          options={{
+            title: 'Home',
+            tabBarIcon: ({ color }) => <TabBarIcon Icon={Home} color={color} />,
+          }}
+        />
+        <Tabs.Screen
+          name="search"
+          options={{
+            title: 'Search',
+            href: null,
+            tabBarIcon: ({ color }) => <TabBarIcon Icon={Search} color={color} />,
+          }}
+        />
+        <Tabs.Screen
+          name="bookmarks"
+          options={{
+            title: 'Bookmarks',
+            tabBarIcon: ({ color }) => <TabBarIcon Icon={Bookmark} color={color} />,
+          }}
+        />
+        <Tabs.Screen
+          name="planner"
+          options={{
+            title: 'Planner',
+            tabBarIcon: ({ color }) => <TabBarIcon Icon={Calendar} color={color} />,
+          }}
+        />
+      </Tabs>
+    </View>
   );
 }
