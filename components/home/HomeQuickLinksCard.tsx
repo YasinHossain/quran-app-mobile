@@ -159,7 +159,7 @@ export function HomeQuickLinksCard(): React.JSX.Element {
   const activeShadow = React.useMemo(
     () =>
       Platform.OS === 'android'
-        ? { elevation: 2 }
+        ? { elevation: 0 }
         : {
             shadowColor: '#000',
             shadowOpacity: 0.1,
@@ -350,7 +350,7 @@ function AddQuickLinkModal({
 
   const canSubmit = typeof selectedSurah === 'number' && typeof selectedVerse === 'number';
   const maxHeight = Math.max(0, Math.round(windowHeight * 0.72));
-  const minHeight = Math.min(maxHeight, Math.max(310, Math.round(windowHeight * 0.36)));
+  const minHeight = Math.min(maxHeight, 240);
 
   return (
     <Modal
@@ -359,10 +359,9 @@ function AddQuickLinkModal({
       onRequestClose={onClose}
       animationType="fade"
       statusBarTranslucent
-      hardwareAccelerated
       {...(Platform.OS === 'ios' ? { presentationStyle: 'overFullScreen' as const } : {})}
     >
-      <View style={styles.modalRoot}>
+      <View className={isDark ? 'dark' : ''} style={styles.modalRoot}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose}>
           <View style={styles.overlay} />
         </Pressable>
@@ -407,6 +406,7 @@ function AddQuickLinkModal({
                   selectedVerse={selectedVerse}
                   onSelectSurah={handleSelectSurah}
                   onSelectVerse={setSelectedVerse}
+                  dropdownVisualOffset={1}
                 />
               </View>
 

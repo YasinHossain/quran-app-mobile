@@ -6,7 +6,7 @@ import Colors from '@/constants/Colors';
 import { sideSheetTransform, useModalTransition } from '@/components/motion/modalTransition';
 import { useAppTheme } from '@/providers/ThemeContext';
 
-import { SettingsSidebarContent } from './SettingsSidebarContent';
+import { SettingsSidebarContent, type PanelType } from './SettingsSidebarContent';
 
 import type { SettingsTab } from './SettingsTabToggle';
 
@@ -18,6 +18,7 @@ export function SettingsSidebar({
   pageType,
   activeTab,
   onTabChange,
+  initialPanel,
 }: {
   isOpen: boolean;
   onClose: () => void;
@@ -26,6 +27,7 @@ export function SettingsSidebar({
   pageType?: 'verse' | 'tafsir' | 'bookmarks';
   activeTab?: SettingsTab;
   onTabChange?: (tab: SettingsTab) => void;
+  initialPanel?: PanelType;
 }): React.JSX.Element {
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -33,9 +35,9 @@ export function SettingsSidebar({
   const palette = Colors[resolvedTheme];
   const sheetWidth = Math.min(390, Math.round(width * 0.92));
   const hiddenTranslateX = sheetWidth + 12;
-  const { visible, progress } = useModalTransition(isOpen, {
-    openDuration: 270,
-    closeDuration: 190,
+  const { visible, progress, onModalShow } = useModalTransition(isOpen, {
+    openDuration: 220,
+    closeDuration: 160,
     onAfterClose,
   });
 
@@ -43,13 +45,13 @@ export function SettingsSidebar({
     <Modal
       transparent
       visible={visible}
+      onShow={onModalShow}
       onRequestClose={onClose}
       animationType="none"
-      hardwareAccelerated
       statusBarTranslucent
       {...(Platform.OS === 'ios' ? { presentationStyle: 'overFullScreen' as const } : {})}
     >
-      <View style={styles.root}>
+      <View className={isDark ? 'dark' : ''} style={styles.root}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose}>
           <Animated.View style={[styles.overlay, { opacity: progress }]} />
         </Pressable>
@@ -73,14 +75,17 @@ export function SettingsSidebar({
             }}
           >
             <View className={isDark ? 'flex-1 dark' : 'flex-1'}>
-              <SettingsSidebarContent
-                onClose={onClose}
-                showTafsirSetting={showTafsirSetting}
-                pageType={pageType}
-                activeTabOverride={activeTab}
-                onTabChange={onTabChange}
-                containerWidth={sheetWidth}
-              />
+              {visible && (
+                <SettingsSidebarContent
+                  onClose={onClose}
+                  showTafsirSetting={showTafsirSetting}
+                  pageType={pageType}
+                  activeTabOverride={activeTab}
+                  onTabChange={onTabChange}
+                  containerWidth={sheetWidth}
+                  initialPanel={initialPanel}
+                />
+              )}
             </View>
           </View>
         </Animated.View>

@@ -10,6 +10,14 @@ type ApiVerse = {
   verse_key: string;
   text_uthmani?: string;
   translations?: Array<{ resource_id: number; text: string }>;
+  words?: Array<{
+    id: number;
+    position?: number;
+    char_type_name?: string;
+    text_uthmani?: string;
+    text?: string;
+    translation?: { text?: string } | null;
+  }>;
 };
 
 type ApiVersesResponse = {
@@ -26,21 +34,25 @@ function toPositiveInt(value: number): number {
 export class QuranComTranslationDownloadRepository implements ITranslationDownloadRepository {
   async getChapterVersesPage(params: {
     chapterNumber: number;
-    translationId: number;
+    translationId?: number;
     page: number;
     perPage: number;
+    wordLang?: string;
   }): Promise<ChapterTranslationVersesPage> {
     const chapterNumber = toPositiveInt(params.chapterNumber);
-    const translationId = toPositiveInt(params.translationId);
+    const translationId = params.translationId ? toPositiveInt(params.translationId) : undefined;
     const page = Math.max(1, toPositiveInt(params.page));
     const perPage = Math.max(1, toPositiveInt(params.perPage));
+    const wordLang = params.wordLang || 'en';
 
     const response = await apiFetch<ApiVersesResponse>(
       `/verses/by_chapter/${chapterNumber}`,
       {
-        language: 'en',
-        words: 'false',
-        translations: String(translationId),
+        language: wordLang,
+        words: 'true',
+        word_fields: 'text_uthmani,char_type_name,position',
+        word_translation_language: wordLang,
+        ...(translationId ? { translations: String(translationId) } : {}),
         fields: 'text_uthmani',
         per_page: String(perPage),
         page: String(page),
@@ -51,14 +63,32 @@ export class QuranComTranslationDownloadRepository implements ITranslationDownlo
     const verses = (response.verses ?? [])
       .map((verse) => {
         const translations = verse.translations ?? [];
-        const matching = translations.find((t) => t.resource_id === translationId);
+        const matching = translationId ? translations.find((t) => t.resource_id === translationId) : undefined;
         const text = matching?.text ?? translations[0]?.text ?? '';
+
+        const rawWords = verse.words ?? [];
+        const normalizedWords = rawWords
+          .filter((w) => w && w.char_type_name !== 'end')
+          .map((w) => {
+            const uthmani = (w.text_uthmani ?? w.text ?? '').trim();
+            return {
+              id: w.id,
+              uthmani,
+              translationText: w.translation?.text || undefined,
+              charTypeName: w.char_type_name || undefined,
+              position: typeof w.position === 'number' ? w.position : undefined,
+            };
+          })
+          .filter((w) => w.uthmani.length > 0);
+
+        const wordsJson = normalizedWords.length ? JSON.stringify(normalizedWords) : undefined;
 
         return {
           verseKey: verse.verse_key,
           ayahNumber: verse.verse_number,
           arabicUthmani: verse.text_uthmani ?? '',
           translationText: text,
+          wordsJson,
         };
       })
       .filter((verse) => verse.verseKey && verse.ayahNumber > 0);

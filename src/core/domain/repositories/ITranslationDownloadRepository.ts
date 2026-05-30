@@ -3,6 +3,7 @@ export type ChapterTranslationVerse = {
   ayahNumber: number;
   arabicUthmani: string;
   translationText: string;
+  wordsJson?: string;
 };
 
 export type ChapterTranslationVersesPage = {
@@ -17,9 +18,10 @@ export type ChapterTranslationVersesPage = {
 export interface ITranslationDownloadRepository {
   getChapterVersesPage(params: {
     chapterNumber: number;
-    translationId: number;
+    translationId?: number;
     page: number;
     perPage: number;
+    wordLang?: string;
   }): Promise<ChapterTranslationVersesPage>;
 }
 

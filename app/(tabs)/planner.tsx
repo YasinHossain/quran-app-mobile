@@ -54,22 +54,16 @@ export default function PlannerScreen(): React.JSX.Element {
 
   return (
     <View className="flex-1 bg-background dark:bg-background-dark">
-      <Stack.Screen
-        options={{
-          header: () => (
-            <AppHeader
-              title="Planner"
-              right={
-                <HeaderActionButton
-                  accessibilityLabel="Scroll to planner cards"
-                  onPress={handleScrollToTop}
-                >
-                  <ChevronUp color={palette.text} size={22} strokeWidth={2.25} />
-                </HeaderActionButton>
-              }
-            />
-          ),
-        }}
+      <AppHeader
+        title="Planner"
+        right={
+          <HeaderActionButton
+            accessibilityLabel="Scroll to planner cards"
+            onPress={handleScrollToTop}
+          >
+            <ChevronUp color={palette.text} size={22} strokeWidth={2.25} />
+          </HeaderActionButton>
+        }
       />
 
       {!isHydrated ? (

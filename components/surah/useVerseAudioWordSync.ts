@@ -50,12 +50,12 @@ export type VerseAudioWordSync = {
   seekToWord: (params: { verseKey: string; wordPosition: number }) => void;
 };
 
-export function useVerseAudioWordSync(): VerseAudioWordSync {
+export function useVerseAudioWordSync(chapterId?: number | null): VerseAudioWordSync {
   const audio = useAudioPlayer();
 
   const activeChapterId = React.useMemo(
-    () => parseChapterIdFromVerseKey(audio.activeVerseKey),
-    [audio.activeVerseKey]
+    () => chapterId ?? parseChapterIdFromVerseKey(audio.activeVerseKey),
+    [chapterId, audio.activeVerseKey]
   );
 
   const { audioFile } = useQdcAudioFile(audio.reciter.id, activeChapterId, true);
@@ -173,13 +173,15 @@ export function useVerseAudioWordSync(): VerseAudioWordSync {
 
       const canSeekImmediately =
         audio.activeVerseKey === normalizedVerseKey &&
-        audio.isPlaying &&
         !audio.isLoading &&
         typeof relativeSec === 'number' &&
         Number.isFinite(relativeSec);
 
       if (canSeekImmediately) {
         audio.seekRelative(relativeSec);
+        if (!audio.isPlaying) {
+          audio.togglePlay();
+        }
         return;
       }
 
@@ -192,6 +194,7 @@ export function useVerseAudioWordSync(): VerseAudioWordSync {
       audio.isPlaying,
       audio.playVerse,
       audio.seekRelative,
+      audio.togglePlay,
       isSeekEnabled,
       verseTimingIndex,
     ]

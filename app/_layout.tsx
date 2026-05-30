@@ -17,7 +17,9 @@ import { AudioPlayerProvider } from '@/providers/AudioPlayerContext';
 import { LayoutMetricsProvider } from '@/providers/LayoutMetricsContext';
 import { SettingsProvider } from '@/providers/SettingsContext';
 import { StartupResourcePrefetch } from '@/providers/StartupResourcePrefetch';
-import { AppThemeProvider, useAppTheme } from '@/providers/ThemeContext';
+import { StatusBar } from 'expo-status-bar';
+import { AppThemeProvider, useAppTheme, THEME_STORAGE_KEY, ThemePreference } from '@/providers/ThemeContext';
+import { getItem } from '@/lib/storage/appStorage';
 import { initializeAudioModeAsync } from '@/src/core/infrastructure/audio/audioMode';
 import { initializeAppDbAsync } from '@/src/core/infrastructure/db';
 import { STARTUP_FONT_ASSETS } from '@/src/core/infrastructure/fonts/arabicFonts';
@@ -39,17 +41,30 @@ void SplashScreen.preventAutoHideAsync();
 export default function RootLayout() {
   const [loaded, error] = useFonts(STARTUP_FONT_ASSETS);
   const [isBootstrapped, setIsBootstrapped] = useState(false);
+  const [initialThemePreference, setInitialThemePreference] = useState<ThemePreference>('system');
+  const [isThemeLoaded, setIsThemeLoaded] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
 
     async function bootstrapAsync(): Promise<void> {
       try {
-        await Promise.all([
+        const [,,, stored] = await Promise.all([
           initializeAudioModeAsync(),
           initializeAppDbAsync(),
           bootstrapBundledMushafPacksAsync(),
+          getItem(THEME_STORAGE_KEY),
         ]);
+        if (!cancelled) {
+          if (stored === 'light' || stored === 'dark' || stored === 'system') {
+            setInitialThemePreference(stored);
+          }
+          setIsThemeLoaded(true);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setIsThemeLoaded(true);
+        }
       } finally {
         if (!cancelled) {
           setIsBootstrapped(true);
@@ -70,18 +85,18 @@ export default function RootLayout() {
   }, [error]);
 
   useEffect(() => {
-    if (loaded && isBootstrapped) {
+    if (loaded && isBootstrapped && isThemeLoaded) {
       void SplashScreen.hideAsync();
     }
-  }, [loaded, isBootstrapped]);
+  }, [loaded, isBootstrapped, isThemeLoaded]);
 
-  if (!loaded || !isBootstrapped) {
+  if (!loaded || !isBootstrapped || !isThemeLoaded) {
     return null;
   }
 
   return (
     <SafeAreaProvider initialMetrics={initialWindowMetrics}>
-      <AppThemeProvider>
+      <AppThemeProvider initialPreference={initialThemePreference}>
         <SettingsProvider>
           <StartupResourcePrefetch />
           <ChaptersProvider>
@@ -119,8 +134,9 @@ function RootLayoutNav() {
 
   return (
     <ThemeProvider value={theme}>
+      <StatusBar style={isDark ? 'light' : 'dark'} />
       <View className={isDark ? 'flex-1 dark' : 'flex-1'} style={{ backgroundColor: palette.background }}>
-        <Stack screenOptions={{ contentStyle: { backgroundColor: palette.background } }}>
+        <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: palette.background } }}>
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
         </Stack>

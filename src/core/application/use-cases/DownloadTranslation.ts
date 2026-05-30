@@ -73,7 +73,7 @@ export class DownloadTranslationUseCase {
     private readonly translationPackRepository?: ITranslationPackRepository
   ) {}
 
-  async execute(translationId: number): Promise<void> {
+  async execute(translationId: number, wordLang?: string): Promise<void> {
     const normalizedTranslationId = normalizeId(translationId);
     if (normalizedTranslationId <= 0) {
       throw new Error('translationId must be a positive integer');
@@ -144,6 +144,7 @@ export class DownloadTranslationUseCase {
         await this.downloadSurahTranslation({
           surahId,
           translationId: normalizedTranslationId,
+          wordLang,
         });
 
         throwIfCanceled(normalizedTranslationId);
@@ -204,9 +205,11 @@ export class DownloadTranslationUseCase {
   private async downloadSurahTranslation(params: {
     surahId: number;
     translationId: number;
+    wordLang?: string;
   }): Promise<void> {
     const surahId = normalizeId(params.surahId);
     const translationId = normalizeId(params.translationId);
+    const { wordLang } = params;
 
     if (surahId <= 0 || translationId <= 0) return;
 
@@ -220,6 +223,7 @@ export class DownloadTranslationUseCase {
         translationId,
         page,
         perPage: DEFAULT_PER_PAGE,
+        wordLang,
       });
 
       throwIfCanceled(translationId);
@@ -229,6 +233,7 @@ export class DownloadTranslationUseCase {
         surahId,
         ayahNumber: verse.ayahNumber,
         arabicUthmani: verse.arabicUthmani,
+        wordsJson: verse.wordsJson,
       }));
 
       const translationRows: OfflineTranslationRowInput[] = response.verses.map((verse) => ({

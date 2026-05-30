@@ -20,7 +20,7 @@ import { TafsirHtml } from './TafsirHtml';
 
 const MAX_TAFSIR_TABS = 3;
 const TAB_SCROLL_MARGIN = 12;
-const SLIDE_DURATION_MS = 220;
+const SLIDE_DURATION_MS = 120;
 
 type TafsirTab = {
   id: number;
@@ -382,6 +382,13 @@ export function TafsirTabPanels({
   const animatedIndex = React.useRef(new Animated.Value(activeIndex >= 0 ? activeIndex : 0)).current;
   const lastAnimatedIndexRef = React.useRef(activeIndex >= 0 ? activeIndex : 0);
 
+  const lastVerseKeyRef = React.useRef(verseKey);
+  if (lastVerseKeyRef.current !== verseKey) {
+    lastVerseKeyRef.current = verseKey;
+    animatedIndex.setValue(activeIndex >= 0 ? activeIndex : 0);
+    lastAnimatedIndexRef.current = activeIndex >= 0 ? activeIndex : 0;
+  }
+
   const activeMeasuredHeight =
     typeof resolvedActiveTafsirId === 'number' ? panelHeightsById[resolvedActiveTafsirId] ?? 0 : 0;
   const panelViewportHeight = isActivePanelLoading
@@ -508,6 +515,11 @@ export function TafsirTabPanels({
         {panelWidth <= 0
           ? renderPanelContent(resolvedActiveTafsirId)
           : resolvedTafsirIds.map((tafsirId, index) => {
+              const shouldRender = index === activeIndex || index === lastAnimatedIndexRef.current;
+              if (!shouldRender) {
+                return null;
+              }
+
               const translateX = Animated.multiply(
                 Animated.subtract(animatedIndex, index),
                 -panelWidth

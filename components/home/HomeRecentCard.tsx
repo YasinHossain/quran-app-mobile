@@ -32,7 +32,7 @@ export function HomeRecentCard(): React.JSX.Element {
   const activeShadow = React.useMemo(
     () =>
       Platform.OS === 'android'
-        ? { elevation: 2 }
+        ? { elevation: 0 }
         : {
             shadowColor: '#000',
             shadowOpacity: 0.1,

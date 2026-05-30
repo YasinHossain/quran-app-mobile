@@ -254,7 +254,7 @@ export function AddToPlannerModal({
     verseSurahId,
   ]);
 
-  const { visible, progress, dismissEnabledRef } = useModalTransition(isOpen);
+  const { visible, progress, dismissEnabledRef, onModalShow } = useModalTransition(isOpen);
 
   const handleOverlayPress = React.useCallback(() => {
     if (!dismissEnabledRef.current) return;
@@ -270,13 +270,13 @@ export function AddToPlannerModal({
     <Modal
       transparent
       visible={visible}
+      onShow={onModalShow}
       onRequestClose={onClose}
       animationType="none"
       {...(Platform.OS === 'ios' ? { presentationStyle: 'overFullScreen' as const } : {})}
       statusBarTranslucent
-      hardwareAccelerated
     >
-      <View style={styles.root}>
+      <View className={isDark ? 'dark' : ''} style={styles.root}>
         <Pressable style={StyleSheet.absoluteFill} onPress={handleOverlayPress}>
           <Animated.View style={[styles.overlay, { opacity: progress }]} />
         </Pressable>
@@ -288,12 +288,17 @@ export function AddToPlannerModal({
           <Animated.View
             style={[
               styles.sheet,
-              { maxHeight: maxDialogHeight, minHeight: minDialogHeight },
+              {
+                maxHeight: maxDialogHeight,
+                minHeight: minDialogHeight,
+                backgroundColor: palette.surface,
+                borderColor: palette.border,
+              },
               dialogTransform(progress),
             ]}
-            className="bg-surface dark:bg-surface-dark border border-border/30 dark:border-border-dark/20"
+            className="border"
           >
-            <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
+            <View style={styles.safeArea}>
               <View className={isDark ? 'dark' : ''} style={styles.inner}>
                 <View className="px-5 pt-5 pb-4 border-b border-border/40 dark:border-border-dark/20">
                   <View className="flex-row items-start justify-between gap-4">
@@ -366,7 +371,7 @@ export function AddToPlannerModal({
                   </Pressable>
                 </View>
               </View>
-            </SafeAreaView>
+            </View>
           </Animated.View>
         </KeyboardAvoidingView>
       </View>
@@ -390,7 +395,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     alignSelf: 'center',
   },
-  safeArea: { flex: 1 },
-  inner: { flex: 1 },
+  safeArea: { flexShrink: 1 },
+  inner: { flexShrink: 1 },
   scrollContent: { paddingBottom: 10 },
 });

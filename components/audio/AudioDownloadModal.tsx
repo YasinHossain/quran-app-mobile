@@ -206,7 +206,7 @@ export function AudioDownloadModal({
     );
   }, [audio.reciter, reciters]);
 
-  const { visible, progress, dismissEnabledRef } = useModalTransition(isOpen);
+  const { visible, progress, dismissEnabledRef, onModalShow } = useModalTransition(isOpen);
 
   const prevIsOpenRef = React.useRef(false);
   React.useEffect(() => {
@@ -406,6 +406,7 @@ export function AudioDownloadModal({
     <Modal
       transparent
       visible={visible}
+      onShow={onModalShow}
       onRequestClose={() => {
         if (downloadBusy) return;
         onClose();
@@ -413,9 +414,8 @@ export function AudioDownloadModal({
       animationType="none"
       {...(Platform.OS === 'ios' ? { presentationStyle: 'overFullScreen' as const } : {})}
       statusBarTranslucent
-      hardwareAccelerated
     >
-      <View style={styles.root}>
+      <View className={isDark ? 'dark' : ''} style={styles.root}>
         <Pressable style={StyleSheet.absoluteFill} onPress={handleOverlayPress}>
           <Animated.View style={[styles.overlay, { opacity: progress }]} />
         </Pressable>
@@ -432,7 +432,7 @@ export function AudioDownloadModal({
             ]}
             className="bg-surface dark:bg-surface-dark border border-border/30 dark:border-border-dark/20"
           >
-            <SafeAreaView edges={['top', 'bottom']} style={styles.dialogSafeArea}>
+            <View style={styles.dialogSafeArea}>
               <View className={isDark ? 'dark' : ''} style={styles.inner}>
                 <View className="px-4 pt-4 pb-3 border-b border-border/30 dark:border-border-dark/20">
                   <View className="flex-row items-center justify-between gap-3">
@@ -734,7 +734,7 @@ export function AudioDownloadModal({
                   </Pressable>
                 </View>
               </View>
-            </SafeAreaView>
+            </View>
           </Animated.View>
         </KeyboardAvoidingView>
       </View>
@@ -749,8 +749,19 @@ function DownloadScopeToggle({
   value: DownloadScope;
   onChange: (scope: DownloadScope) => void;
 }): React.JSX.Element {
+  const { resolvedTheme } = useAppTheme();
+  const palette = Colors[resolvedTheme];
+
   return (
-    <View className="flex-row items-center rounded-full bg-interactive dark:bg-interactive-dark p-1">
+    <View
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        borderRadius: 9999,
+        backgroundColor: palette.interactive,
+        padding: 4,
+      }}
+    >
       <DownloadScopeToggleButton
         label="Verse"
         isActive={value === 'verse'}
@@ -779,6 +790,9 @@ function DownloadScopeToggleButton({
   isActive: boolean;
   onPress: () => void;
 }): React.JSX.Element {
+  const { resolvedTheme } = useAppTheme();
+  const palette = Colors[resolvedTheme];
+
   const activeShadow =
     Platform.OS === 'android'
       ? { elevation: 2 }
@@ -794,20 +808,21 @@ function DownloadScopeToggleButton({
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={label}
-      className={[
-        'h-10 flex-1 items-center justify-center rounded-full px-2',
-        isActive ? 'bg-surface dark:bg-surface-dark' : '',
-      ].join(' ')}
-      style={({ pressed }) => [isActive ? activeShadow : null, { opacity: pressed ? 0.9 : 1 }]}
+      className="h-10 flex-1 items-center justify-center rounded-full px-2"
+      style={({ pressed }) => [
+        isActive ? activeShadow : null,
+        {
+          opacity: pressed ? 0.9 : 1,
+          backgroundColor: isActive ? palette.surface : 'transparent',
+        },
+      ]}
     >
       <Text
         numberOfLines={1}
-        className={[
-          'text-xs font-semibold',
-          isActive
-            ? 'text-foreground dark:text-foreground-dark'
-            : 'text-muted dark:text-muted-dark',
-        ].join(' ')}
+        style={{
+          color: isActive ? palette.text : palette.muted,
+        }}
+        className="text-xs font-semibold"
       >
         {label}
       </Text>
@@ -839,14 +854,14 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   dialogSafeArea: {
-    flex: 1,
+    flexShrink: 1,
   },
   inner: {
-    flex: 1,
+    flexShrink: 1,
     width: '100%',
   },
   content: {
-    flex: 1,
+    flexShrink: 1,
     minHeight: 0,
   },
   scrollContent: {

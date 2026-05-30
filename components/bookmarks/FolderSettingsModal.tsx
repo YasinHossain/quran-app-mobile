@@ -45,7 +45,28 @@ export function FolderSettingsModal({
   const [selectedColor, setSelectedColor] = React.useState<string>(DEFAULT_FOLDER_COLOR);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
 
-  const { visible, progress, dismissEnabledRef } = useModalTransition(shouldRender);
+  const { visible, progress, dismissEnabledRef, onModalShow } = useModalTransition(shouldRender);
+  const inputRef = React.useRef<TextInput | null>(null);
+  const focusTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  React.useEffect(() => {
+    if (shouldRender && mode === 'create') {
+      focusTimeoutRef.current = setTimeout(() => {
+        inputRef.current?.focus();
+      }, 320);
+    } else {
+      if (focusTimeoutRef.current) {
+        clearTimeout(focusTimeoutRef.current);
+        focusTimeoutRef.current = null;
+      }
+    }
+    return () => {
+      if (focusTimeoutRef.current) {
+        clearTimeout(focusTimeoutRef.current);
+        focusTimeoutRef.current = null;
+      }
+    };
+  }, [shouldRender, mode]);
 
   React.useEffect(() => {
     if (!shouldRender) return;
@@ -86,22 +107,19 @@ export function FolderSettingsModal({
   }, [createFolder, folder, mode, name, onClose, renameFolder, selectedColor]);
 
   const maxDialogHeight = Math.max(0, Math.round(windowHeight * 0.92));
-  const minDialogHeight = Math.min(
-    maxDialogHeight,
-    Math.max(360, Math.min(520, Math.round(windowHeight * 0.5)))
-  );
+  const minDialogHeight = Math.min(maxDialogHeight, 440);
 
   return (
     <Modal
       transparent
       visible={visible}
+      onShow={onModalShow}
       onRequestClose={onClose}
       animationType="none"
       {...(Platform.OS === 'ios' ? { presentationStyle: 'overFullScreen' as const } : {})}
       statusBarTranslucent
-      hardwareAccelerated
     >
-      <View style={styles.root}>
+      <View className={isDark ? 'dark' : ''} style={styles.root}>
         <Pressable style={StyleSheet.absoluteFill} onPress={handleOverlayPress}>
           <Animated.View style={[styles.overlay, { opacity: progress }]} />
         </Pressable>
@@ -118,7 +136,7 @@ export function FolderSettingsModal({
             ]}
             className="bg-surface dark:bg-surface-dark border border-border/30 dark:border-border-dark/20"
           >
-            <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
+            <View style={styles.safeArea}>
               <View className={isDark ? 'dark' : ''} style={styles.inner}>
                 <View className="px-5 py-5">
                   <View className="flex-row items-center justify-between">
@@ -149,12 +167,12 @@ export function FolderSettingsModal({
                     </Text>
                     <View className="rounded-xl border border-border dark:border-border-dark bg-surface dark:bg-surface-dark px-3 py-3">
                       <TextInput
+                        ref={inputRef}
                         value={name}
                         onChangeText={setName}
                         placeholder="Folder name"
                         placeholderTextColor={palette.muted}
                         maxLength={30}
-                        autoFocus={mode === 'create'}
                         returnKeyType="done"
                         onSubmitEditing={handleSubmit}
                         className="text-base text-foreground dark:text-foreground-dark"
@@ -232,7 +250,7 @@ export function FolderSettingsModal({
                   </View>
                 </View>
               </View>
-            </SafeAreaView>
+            </View>
           </Animated.View>
         </KeyboardAvoidingView>
       </View>
@@ -264,13 +282,13 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   safeArea: {
-    flex: 1,
+    flexShrink: 1,
   },
   inner: {
-    flex: 1,
+    flexShrink: 1,
   },
   flex: {
-    flex: 1,
+    flexShrink: 1,
   },
   scrollContent: {
     paddingBottom: 16,

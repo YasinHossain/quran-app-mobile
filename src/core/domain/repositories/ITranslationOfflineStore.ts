@@ -3,6 +3,7 @@ export type OfflineVerseRowInput = {
   surahId: number;
   ayahNumber: number;
   arabicUthmani: string;
+  wordsJson?: string;
 };
 
 export type OfflineTranslationRowInput = {
@@ -17,6 +18,7 @@ export type OfflineVerseWithTranslations = {
   ayahNumber: number;
   arabicUthmani: string;
   translations: Array<{ translationId: number; text: string }>;
+  wordsJson?: string;
 };
 
 export interface ITranslationOfflineStore {
@@ -38,4 +40,6 @@ export interface ITranslationOfflineStore {
   }): Promise<OfflineVerseWithTranslations[]>;
 
   deleteTranslation(translationId: number): Promise<void>;
+
+  deleteWordTranslation(): Promise<void>;
 }

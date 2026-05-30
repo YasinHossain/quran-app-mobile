@@ -174,7 +174,7 @@ export function PlaybackOptionsModal({
     );
   }, [audio.reciter, reciters]);
 
-  const { visible, progress, dismissEnabledRef } = useModalTransition(isOpen);
+  const { visible, progress, dismissEnabledRef, onModalShow } = useModalTransition(isOpen);
 
   const maxDialogHeight = Math.max(0, Math.round(windowHeight * 0.85));
   const minDialogHeight = Math.min(maxDialogHeight, Math.max(420, Math.round(windowHeight * 0.7)));
@@ -305,13 +305,13 @@ export function PlaybackOptionsModal({
     <Modal
       transparent
       visible={visible}
+      onShow={onModalShow}
       onRequestClose={onClose}
       animationType="none"
       {...(Platform.OS === 'ios' ? { presentationStyle: 'overFullScreen' as const } : {})}
       statusBarTranslucent
-      hardwareAccelerated
     >
-      <View style={styles.root}>
+      <View className={isDark ? 'dark' : ''} style={styles.root}>
         <Pressable style={StyleSheet.absoluteFill} onPress={handleOverlayPress}>
           <Animated.View style={[styles.overlay, { opacity: progress }]} />
         </Pressable>
@@ -328,7 +328,7 @@ export function PlaybackOptionsModal({
             ]}
             className="bg-surface dark:bg-surface-dark border border-border/30 dark:border-border-dark/20"
           >
-            <SafeAreaView edges={['top', 'bottom']} style={styles.dialogSafeArea}>
+            <View style={styles.dialogSafeArea}>
               <View className={isDark ? 'dark' : ''} style={styles.inner}>
                 <View className="px-4 pt-4 pb-3 border-b border-border/30 dark:border-border-dark/20">
                   <View className="flex-row items-center justify-between gap-3">
@@ -497,7 +497,7 @@ export function PlaybackOptionsModal({
                   </View>
                 </View>
               </View>
-            </SafeAreaView>
+            </View>
           </Animated.View>
         </KeyboardAvoidingView>
       </View>
@@ -936,20 +936,28 @@ function TabButton({
   onPress: () => void;
   icon: React.ReactNode;
 }): React.JSX.Element {
+  const { resolvedTheme } = useAppTheme();
+  const palette = Colors[resolvedTheme];
+
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={label}
-      className={[
-        'px-3 py-2 rounded-xl',
-        isActive ? 'bg-accent' : 'bg-interactive dark:bg-interactive-dark',
-      ].join(' ')}
-      style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
+      className="px-3 py-2 rounded-xl"
+      style={({ pressed }) => ({
+        opacity: pressed ? 0.9 : 1,
+        backgroundColor: isActive ? palette.accent : palette.interactive,
+      })}
     >
       <View className="flex-row items-center gap-2">
         {icon}
-        <Text className={isActive ? 'text-sm font-semibold text-on-accent' : 'text-sm font-semibold text-foreground dark:text-foreground-dark'}>
+        <Text
+          style={{
+            color: isActive ? palette.onAccent : palette.text,
+          }}
+          className="text-sm font-semibold"
+        >
           {label}
         </Text>
       </View>
@@ -981,14 +989,14 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   dialogSafeArea: {
-    flex: 1,
+    flexShrink: 1,
   },
   inner: {
-    flex: 1,
+    flexShrink: 1,
     width: '100%',
   },
   content: {
-    flex: 1,
+    flexShrink: 1,
     minHeight: 0,
   },
   scrollContent: {

@@ -1,6 +1,8 @@
 import React from 'react';
 import { Pressable, Text, View } from 'react-native';
 
+import Colors from '@/constants/Colors';
+import { useAppTheme } from '@/providers/ThemeContext';
 import type { VerseWord } from '@/types';
 
 import type { RegisterWordHighlight } from './useVerseAudioWordSync';
@@ -34,9 +36,24 @@ function WordToken({
   arabicFontFamily: string;
   showTranslations: boolean;
   pressBehavior: WordPressBehavior;
-  onWordPress?: ((params: { word: VerseWord; wordPosition: number }) => void) | undefined;
+  onWordPress?:
+    | ((params: {
+        word: VerseWord;
+        wordPosition: number;
+        measurement?: {
+          x: number;
+          y: number;
+          width: number;
+          height: number;
+          pageX: number;
+          pageY: number;
+        };
+      }) => void)
+    | undefined;
   registerWordHighlight?: RegisterWordHighlight | undefined;
 }): React.JSX.Element {
+  const { resolvedTheme } = useAppTheme();
+  const palette = Colors[resolvedTheme];
   const [isHighlighted, setHighlighted] = React.useState(false);
   const wordPosition = React.useMemo(
     () => normalizeWordPosition(word, fallbackPosition),
@@ -77,12 +94,8 @@ function WordToken({
   const content = (
     <>
       <Text
-        className={
-          isHighlighted
-            ? 'text-accent dark:text-accent-dark'
-            : 'text-foreground dark:text-foreground-dark'
-        }
         style={{
+          color: isHighlighted ? palette.tint : palette.text,
           fontSize: arabicFontSize,
           lineHeight: arabicLineHeight,
           fontFamily: arabicFontFamily,
@@ -111,13 +124,31 @@ function WordToken({
     </>
   );
 
+  const pressableRef = React.useRef<View>(null);
+
+  const handlePress = React.useCallback(() => {
+    if (!onWordPress) return;
+    if (pressableRef.current) {
+      pressableRef.current.measure((x, y, width, height, pageX, pageY) => {
+        onWordPress({
+          word,
+          wordPosition,
+          measurement: { x, y, width, height, pageX, pageY },
+        });
+      });
+    } else {
+      onWordPress({ word, wordPosition });
+    }
+  }, [onWordPress, word, wordPosition]);
+
   if (!isPressable) {
     return <View style={wrapperStyle}>{content}</View>;
   }
 
   return (
     <Pressable
-      onPress={() => onWordPress?.({ word, wordPosition })}
+      ref={pressableRef}
+      onPress={handlePress}
       accessibilityRole="button"
       accessibilityLabel={pressBehavior === 'seek' ? 'Seek audio to word' : 'Show word translation'}
       style={({ pressed }) => [{ opacity: pressed ? 0.65 : 1 }, wrapperStyle]}
@@ -143,7 +174,20 @@ export function WordByWordVerse({
   arabicFontFamily: string;
   showTranslations: boolean;
   pressBehavior?: WordPressBehavior | undefined;
-  onWordPress?: ((params: { word: VerseWord; wordPosition: number }) => void) | undefined;
+  onWordPress?:
+    | ((params: {
+        word: VerseWord;
+        wordPosition: number;
+        measurement?: {
+          x: number;
+          y: number;
+          width: number;
+          height: number;
+          pageX: number;
+          pageY: number;
+        };
+      }) => void)
+    | undefined;
   registerWordHighlight?: RegisterWordHighlight | undefined;
 }): React.JSX.Element {
   const filteredWords = React.useMemo(

@@ -41,31 +41,61 @@ type ActionHandlerMap = {
 
 const actionHandlers = {
   SET_SETTINGS: (_state, action) => action.value,
-  SET_SHOW_BY_WORDS: (state, action) => ({ ...state, showByWords: action.value }),
-  SET_TAJWEED: (state, action) => ({ ...state, tajweed: action.value }),
-  SET_WORD_LANG: (state, action) => ({ ...state, wordLang: action.value }),
-  SET_WORD_TRANSLATION_ID: (state, action) => ({ ...state, wordTranslationId: action.value }),
-  SET_TAFSIR_IDS: (state, action) => ({ ...state, tafsirIds: normalizeIdList(action.value) }),
+  SET_SHOW_BY_WORDS: (state, action) =>
+    state.showByWords === action.value ? state : { ...state, showByWords: action.value },
+  SET_TAJWEED: (state, action) =>
+    state.tajweed === action.value ? state : { ...state, tajweed: action.value },
+  SET_WORD_LANG: (state, action) =>
+    state.wordLang === action.value ? state : { ...state, wordLang: action.value },
+  SET_WORD_TRANSLATION_ID: (state, action) =>
+    state.wordTranslationId === action.value ? state : { ...state, wordTranslationId: action.value },
+  SET_TAFSIR_IDS: (state, action) => {
+    const normalized = normalizeIdList(action.value);
+    const current = state.tafsirIds ?? [];
+    if (
+      current.length === normalized.length &&
+      current.every((id, idx) => id === normalized[idx])
+    ) {
+      return state;
+    }
+    return { ...state, tafsirIds: normalized };
+  },
   SET_TRANSLATION_IDS: (state, action) => {
     const normalized = normalizeIdList(action.value);
     const [primaryTranslationId] = normalized;
+    const targetPrimaryId = primaryTranslationId ?? state.translationId;
+    const current = state.translationIds ?? [];
+
+    if (
+      current.length === normalized.length &&
+      current.every((id, idx) => id === normalized[idx]) &&
+      state.translationId === targetPrimaryId
+    ) {
+      return state;
+    }
 
     return {
       ...state,
       translationIds: normalized,
-      translationId: primaryTranslationId ?? state.translationId,
+      translationId: targetPrimaryId,
     };
   },
-  SET_ARABIC_FONT_SIZE: (state, action) => ({ ...state, arabicFontSize: action.value }),
-  SET_TRANSLATION_FONT_SIZE: (state, action) => ({ ...state, translationFontSize: action.value }),
-  SET_TAFSIR_FONT_SIZE: (state, action) => ({ ...state, tafsirFontSize: action.value }),
-  SET_ARABIC_FONT_FACE: (state, action) => ({ ...state, arabicFontFace: action.value }),
-  SET_MUSHAF_ID: (state, action) => ({ ...state, mushafId: action.value }),
-  SET_MUSHAF_SCALE_STEP: (state, action) => ({
-    ...state,
-    mushafScaleStep: clampMushafScaleStep(action.value),
-  }),
-  SET_CONTENT_LANGUAGE: (state, action) => ({ ...state, contentLanguage: action.value }),
+  SET_ARABIC_FONT_SIZE: (state, action) =>
+    state.arabicFontSize === action.value ? state : { ...state, arabicFontSize: action.value },
+  SET_TRANSLATION_FONT_SIZE: (state, action) =>
+    state.translationFontSize === action.value ? state : { ...state, translationFontSize: action.value },
+  SET_TAFSIR_FONT_SIZE: (state, action) =>
+    state.tafsirFontSize === action.value ? state : { ...state, tafsirFontSize: action.value },
+  SET_ARABIC_FONT_FACE: (state, action) =>
+    state.arabicFontFace === action.value ? state : { ...state, arabicFontFace: action.value },
+  SET_MUSHAF_ID: (state, action) =>
+    state.mushafId === action.value ? state : { ...state, mushafId: action.value },
+  SET_MUSHAF_SCALE_STEP: (state, action) => {
+    const clamped = clampMushafScaleStep(action.value);
+    return state.mushafScaleStep === clamped ? state : { ...state, mushafScaleStep: clamped };
+  },
+  SET_CONTENT_LANGUAGE: (state, action) =>
+    state.contentLanguage === action.value ? state : { ...state, contentLanguage: action.value },
 } satisfies ActionHandlerMap;
 
 export function settingsReducer(state: Settings, action: SettingsAction): Settings {

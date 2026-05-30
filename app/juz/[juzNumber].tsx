@@ -8,7 +8,7 @@ export default function JuzScreen(): React.JSX.Element {
 
   return (
     <View className="flex-1 bg-background dark:bg-background-dark px-4 py-6">
-      <Stack.Screen options={{ title: juzNumber ? `Juz ${juzNumber}` : 'Juz' }} />
+      <Stack.Screen options={{ headerShown: true, title: juzNumber ? `Juz ${juzNumber}` : 'Juz' }} />
 
       <Text className="text-2xl font-bold text-foreground dark:text-foreground-dark">
         {juzNumber ? `Juz ${juzNumber}` : 'Juz'}

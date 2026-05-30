@@ -210,7 +210,7 @@ export function ComprehensiveSearchModal({
     perPage: 10,
   });
 
-  const { visible, progress, dismissEnabledRef } = useModalTransition(isOpen, {
+  const { visible, progress, dismissEnabledRef, onModalShow } = useModalTransition(isOpen, {
     openDuration: 230,
     closeDuration: 160,
   });
@@ -317,13 +317,13 @@ export function ComprehensiveSearchModal({
     <Modal
       transparent
       visible={visible}
+      onShow={onModalShow}
       onRequestClose={closeAndReset}
       animationType="none"
       statusBarTranslucent
-      hardwareAccelerated
       {...(Platform.OS === 'ios' ? { presentationStyle: 'overFullScreen' as const } : {})}
     >
-      <View style={styles.root}>
+      <View className={isDark ? 'dark' : ''} style={styles.root}>
         <Pressable style={StyleSheet.absoluteFill} onPress={handleOverlayPress}>
           <Animated.View style={[styles.overlay, { opacity: progress }]} />
         </Pressable>
@@ -384,6 +384,7 @@ export function ComprehensiveSearchModal({
                       title="Go To"
                       buttonLabel="Go"
                       variant="card"
+                      dropdownVisualOffset={1}
                     />
                   </ScrollView>
                 ) : (

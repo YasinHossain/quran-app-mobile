@@ -28,13 +28,13 @@ import { ComprehensiveSearchDropdown } from '@/components/search/ComprehensiveSe
 import { HeaderActionButton } from '@/components/search/HeaderSearchBar';
 import { useChapters } from '@/hooks/useChapters';
 import { useAppTheme } from '@/providers/ThemeContext';
+import { IndexScrubber, type IndexScrubberHandle } from '@/components/reader/IndexScrubber';
 import juzData from '../../src/data/juz.json';
 
 import type { Chapter } from '@/types';
 
 const LIST_HORIZONTAL_PADDING = 0;
 const TABS_BAR_HORIZONTAL_PADDING = 12;
-const HOME_SCROLLBAR_Z_INDEX = 101;
 const HOME_TABS_BAR_ESTIMATED_HEIGHT = 64;
 const HOME_INTRO_ESTIMATED_HEIGHT = 476;
 const HOME_NAV_CARD_HEIGHT = 72;
@@ -42,10 +42,6 @@ const HOME_GRID_ROW_BOTTOM_GAP = 10;
 const HOME_GRID_ROW_HEIGHT = HOME_NAV_CARD_HEIGHT + HOME_GRID_ROW_BOTTOM_GAP;
 const HOME_MESSAGE_ROW_HEIGHT = 52;
 const HOME_CONTENT_BOTTOM_PADDING = 24;
-const HOME_SCROLLBAR_WIDTH = 26;
-const HOME_SCROLLBAR_VISIBLE_WIDTH = 5;
-const HOME_SCROLLBAR_MIN_THUMB_HEIGHT = 48;
-const HOME_SCROLLBAR_HIDE_DELAY_MS = 650;
 
 function clampNumber(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
@@ -309,227 +305,7 @@ function HomeListMessage({
   );
 }
 
-function HomeScrollBar({
-  contentHeight,
-  getCurrentScrollOffset,
-  onScrollToOffset,
-  scrollY,
-  topInset,
-  viewportHeight,
-}: {
-  contentHeight: number;
-  getCurrentScrollOffset: () => number;
-  onScrollToOffset: (offset: number) => void;
-  scrollY: Animated.Value;
-  topInset: number;
-  viewportHeight: number;
-}): React.JSX.Element | null {
-  const { isDark } = useAppTheme();
-  const trackHeight = Math.max(0, viewportHeight - topInset - 8);
-  const maxScrollOffset = Math.max(0, contentHeight - viewportHeight);
-  const isScrollable = maxScrollOffset > 1 && trackHeight > HOME_SCROLLBAR_MIN_THUMB_HEIGHT;
-  const thumbHeight = isScrollable
-    ? clampNumber(
-        (viewportHeight / contentHeight) * trackHeight,
-        HOME_SCROLLBAR_MIN_THUMB_HEIGHT,
-        trackHeight
-      )
-    : 0;
-  const maxThumbOffset = Math.max(0, trackHeight - thumbHeight);
-  const dragStartOffsetRef = React.useRef(0);
-  const dragStartYRef = React.useRef(0);
-  const pendingScrollOffsetRef = React.useRef<number | null>(null);
-  const scrollFrameRef = React.useRef<number | null>(null);
-  const hideTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const opacity = React.useRef(new Animated.Value(0)).current;
 
-  const thumbTranslateY = React.useMemo(
-    () =>
-      scrollY.interpolate({
-        inputRange: [0, Math.max(maxScrollOffset, 1)],
-        outputRange: [0, Math.max(maxThumbOffset, 1)],
-        extrapolate: 'clamp',
-      }),
-    [maxScrollOffset, maxThumbOffset, scrollY]
-  );
-
-  const flushPendingScrollOffset = React.useCallback(() => {
-    if (scrollFrameRef.current !== null) {
-      cancelAnimationFrame(scrollFrameRef.current);
-      scrollFrameRef.current = null;
-    }
-
-    const pendingOffset = pendingScrollOffsetRef.current;
-    pendingScrollOffsetRef.current = null;
-    if (pendingOffset !== null) {
-      onScrollToOffset(pendingOffset);
-    }
-  }, [onScrollToOffset]);
-
-  const clearHideTimer = React.useCallback(() => {
-    if (hideTimerRef.current !== null) {
-      clearTimeout(hideTimerRef.current);
-      hideTimerRef.current = null;
-    }
-  }, []);
-
-  const fadeScrollBarOut = React.useCallback(() => {
-    Animated.timing(opacity, {
-      toValue: 0,
-      duration: 180,
-      useNativeDriver: true,
-    }).start();
-  }, [opacity]);
-
-  const showScrollBar = React.useCallback(() => {
-    clearHideTimer();
-    Animated.timing(opacity, {
-      toValue: 1,
-      duration: 90,
-      useNativeDriver: true,
-    }).start();
-
-    hideTimerRef.current = setTimeout(() => {
-      hideTimerRef.current = null;
-      fadeScrollBarOut();
-    }, HOME_SCROLLBAR_HIDE_DELAY_MS);
-  }, [clearHideTimer, fadeScrollBarOut, opacity]);
-
-  const scheduleScrollToOffset = React.useCallback(
-    (offset: number) => {
-      pendingScrollOffsetRef.current = offset;
-      if (scrollFrameRef.current !== null) return;
-
-      scrollFrameRef.current = requestAnimationFrame(() => {
-        scrollFrameRef.current = null;
-        const pendingOffset = pendingScrollOffsetRef.current;
-        pendingScrollOffsetRef.current = null;
-        if (pendingOffset !== null) {
-          onScrollToOffset(pendingOffset);
-        }
-      });
-    },
-    [onScrollToOffset]
-  );
-
-  const scrollToDragPageY = React.useCallback(
-    (pageY: number) => {
-      const dragDeltaY = pageY - dragStartYRef.current;
-      const scrollDelta = (dragDeltaY / Math.max(maxThumbOffset, 1)) * maxScrollOffset;
-      scheduleScrollToOffset(
-        clampNumber(dragStartOffsetRef.current + scrollDelta, 0, maxScrollOffset)
-      );
-    },
-    [maxScrollOffset, maxThumbOffset, scheduleScrollToOffset]
-  );
-
-  React.useEffect(
-    () => () => {
-      if (scrollFrameRef.current !== null) {
-        cancelAnimationFrame(scrollFrameRef.current);
-      }
-      clearHideTimer();
-    },
-    [clearHideTimer]
-  );
-
-  React.useEffect(() => {
-    if (!isScrollable) {
-      opacity.setValue(0);
-      return undefined;
-    }
-
-    const listenerId = scrollY.addListener(() => {
-      showScrollBar();
-    });
-
-    return () => {
-      scrollY.removeListener(listenerId);
-    };
-  }, [isScrollable, opacity, scrollY, showScrollBar]);
-
-  const hideScrollBarSoon = React.useCallback(() => {
-    clearHideTimer();
-    hideTimerRef.current = setTimeout(() => {
-      hideTimerRef.current = null;
-      fadeScrollBarOut();
-    }, HOME_SCROLLBAR_HIDE_DELAY_MS);
-  }, [clearHideTimer, fadeScrollBarOut]);
-
-  const finishDrag = React.useCallback(() => {
-    flushPendingScrollOffset();
-    hideScrollBarSoon();
-  }, [flushPendingScrollOffset, hideScrollBarSoon]);
-
-  const handleResponderGrant = React.useCallback(
-    (event: GestureResponderEvent) => {
-      showScrollBar();
-      dragStartOffsetRef.current = clampNumber(getCurrentScrollOffset(), 0, maxScrollOffset);
-      dragStartYRef.current = event.nativeEvent.pageY;
-    },
-    [getCurrentScrollOffset, maxScrollOffset, showScrollBar]
-  );
-
-  const handleResponderMove = React.useCallback(
-    (event: GestureResponderEvent) => {
-      showScrollBar();
-      scrollToDragPageY(event.nativeEvent.pageY);
-    },
-    [scrollToDragPageY, showScrollBar]
-  );
-
-  if (!isScrollable) return null;
-
-  const thumbColor = isDark ? 'rgba(226, 232, 240, 0.62)' : 'rgba(47, 55, 68, 0.48)';
-
-  return (
-    <Animated.View
-      pointerEvents="box-none"
-      style={{
-        position: 'absolute',
-        top: topInset,
-        right: 0,
-        bottom: 8,
-        width: HOME_SCROLLBAR_WIDTH,
-        opacity,
-        zIndex: HOME_SCROLLBAR_Z_INDEX,
-        ...(Platform.OS === 'android'
-          ? { elevation: HOME_SCROLLBAR_Z_INDEX, shadowColor: 'transparent' }
-          : {}),
-      }}
-    >
-      <Animated.View
-        onStartShouldSetResponder={() => isScrollable}
-        onMoveShouldSetResponder={() => isScrollable}
-        onResponderGrant={handleResponderGrant}
-        onResponderMove={handleResponderMove}
-        onResponderRelease={finishDrag}
-        onResponderTerminate={finishDrag}
-        onResponderTerminationRequest={() => false}
-        style={{
-          position: 'absolute',
-          top: 0,
-          right: 0,
-          width: HOME_SCROLLBAR_WIDTH,
-          height: thumbHeight,
-          transform: [{ translateY: thumbTranslateY }],
-        }}
-      >
-        <View
-          style={{
-            position: 'absolute',
-            top: 0,
-            right: 8,
-            bottom: 0,
-            width: HOME_SCROLLBAR_VISIBLE_WIDTH,
-            borderRadius: 999,
-            backgroundColor: thumbColor,
-          }}
-        />
-      </Animated.View>
-    </Animated.View>
-  );
-}
 
 function buildHomeListData({
   activeTab,
@@ -608,6 +384,11 @@ export default function ReadScreen(): React.JSX.Element {
   const { width } = useWindowDimensions();
   const numColumns = React.useMemo(() => getNumColumns(width), [width]);
 
+  const insets = useSafeAreaInsets();
+  const scrubberRef = React.useRef<IndexScrubberHandle | null>(null);
+  const [currentScrubIndex, setCurrentScrubIndex] = React.useState(1);
+  const isScrubbingRef = React.useRef(false);
+
   const listData = React.useMemo(
     () => buildHomeListData({ activeTab, errorMessage, isLoading, pageNumbers, surahs, numColumns }),
     [activeTab, errorMessage, isLoading, pageNumbers, surahs, numColumns]
@@ -638,6 +419,7 @@ export default function ReadScreen(): React.JSX.Element {
     (tab: HomeTab) => {
       if (tab === activeTab) return;
       setActiveTab(tab);
+      setCurrentScrubIndex(1);
     },
     [activeTab]
   );
@@ -655,10 +437,45 @@ export default function ReadScreen(): React.JSX.Element {
     );
   }, []);
 
-  const handleListScroll = React.useCallback((event: { nativeEvent: { contentOffset: { y: number } } }) => {
-    const offset = event.nativeEvent.contentOffset.y;
-    listScrollOffsetRef.current = offset;
+  const handleScrubStateChange = React.useCallback((isScrubbing: boolean) => {
+    isScrubbingRef.current = isScrubbing;
   }, []);
+
+  const updateCurrentIndexFromScroll = React.useCallback(
+    (offset: number) => {
+      if (isScrubbingRef.current) return;
+
+      const gridStartOffset = effectiveHomeIntroHeight + tabsBarHeight;
+      if (offset < gridStartOffset) {
+        setCurrentScrubIndex((prev) => (prev === 1 ? prev : 1));
+        return;
+      }
+
+      const row = rowLayouts.find((r) => r.offset + r.length > offset);
+      if (row && row.index >= 2) {
+        const gridRowIdx = row.index - 2;
+        const firstItemIdx = gridRowIdx * numColumns + 1;
+
+        let maxItems = 604;
+        if (activeTab === 'surah') maxItems = surahs.length;
+        else if (activeTab === 'juz') maxItems = 30;
+
+        const clampedIndex = clampNumber(firstItemIdx, 1, maxItems);
+        setCurrentScrubIndex((prev) => (prev === clampedIndex ? prev : clampedIndex));
+      }
+    },
+    [effectiveHomeIntroHeight, tabsBarHeight, rowLayouts, numColumns, activeTab, surahs.length]
+  );
+
+  const handleListScroll = React.useCallback(
+    (event: { nativeEvent: { contentOffset: { y: number } } }) => {
+      const offset = event.nativeEvent.contentOffset.y;
+      listScrollOffsetRef.current = offset;
+      updateCurrentIndexFromScroll(offset);
+      scrubberRef.current?.show();
+    },
+    [updateCurrentIndexFromScroll]
+  );
 
   const handleAnimatedListScroll = React.useMemo(
     () =>
@@ -684,7 +501,36 @@ export default function ReadScreen(): React.JSX.Element {
     listRef.current?.scrollToOffset({ offset: nextOffset, animated: false });
   }, [listContentHeight, listViewportHeight, scrollY]);
 
-  const getCurrentScrollOffset = React.useCallback(() => listScrollOffsetRef.current, []);
+  const handleScrubToIndex = React.useCallback(
+    (index: number) => {
+      const itemIndex = index - 1;
+      const rowIdx = Math.floor(itemIndex / numColumns);
+      const flatListRowIdx = 2 + rowIdx;
+
+      const layout = rowLayouts[flatListRowIdx];
+      if (layout) {
+        listScrollOffsetRef.current = layout.offset;
+        scrollY.setValue(layout.offset);
+        listRef.current?.scrollToOffset({ offset: layout.offset, animated: false });
+        setCurrentScrubIndex(index);
+      }
+    },
+    [numColumns, rowLayouts, scrollY]
+  );
+
+  const formatScrubberLabel = React.useCallback(
+    (index: number) => {
+      if (activeTab === 'surah') {
+        const surah = surahs[index - 1];
+        return surah ? surah.name : `Surah ${index}`;
+      }
+      if (activeTab === 'juz') {
+        return `Juz ${index}`;
+      }
+      return `Page ${index}`;
+    },
+    [activeTab, surahs]
+  );
 
   React.useEffect(() => {
     if (listViewportHeight <= 0) return;
@@ -769,18 +615,12 @@ export default function ReadScreen(): React.JSX.Element {
 
   return (
     <View className="flex-1 bg-background dark:bg-background-dark">
-      <Stack.Screen
-        options={{
-          header: () => (
-            <HomeSearchHeader
-              headerSearchInputRef={headerSearch.inputRef}
-              headerSearchQuery={headerSearch.query}
-              onQueryChange={headerSearch.updateQuery}
-              onFocus={() => headerSearch.setIsOpen(true)}
-              onSubmit={() => headerSearch.navigateToSearch()}
-            />
-          ),
-        }}
+      <HomeSearchHeader
+        headerSearchInputRef={headerSearch.inputRef}
+        headerSearchQuery={headerSearch.query}
+        onQueryChange={headerSearch.updateQuery}
+        onFocus={() => headerSearch.setIsOpen(true)}
+        onSubmit={() => headerSearch.navigateToSearch()}
       />
 
       <View className="flex-1">
@@ -808,13 +648,21 @@ export default function ReadScreen(): React.JSX.Element {
           extraData={listExtraData}
           style={{ flex: 1 }}
         />
-        <HomeScrollBar
-          contentHeight={listContentHeight}
-          getCurrentScrollOffset={getCurrentScrollOffset}
-          onScrollToOffset={scrollToHomeOffset}
-          scrollY={scrollY}
-          topInset={8}
-          viewportHeight={listViewportHeight}
+        <IndexScrubber
+          ref={scrubberRef}
+          bottomInset={8}
+          topInset={insets.top + 8}
+          currentIndex={currentScrubIndex}
+          itemCount={
+            activeTab === 'surah'
+              ? surahs.length
+              : activeTab === 'juz'
+              ? 30
+              : 604
+          }
+          formatLabel={formatScrubberLabel}
+          onScrubStateChange={handleScrubStateChange}
+          onScrubToIndex={handleScrubToIndex}
         />
       </View>
 

@@ -12,6 +12,7 @@ import {
 import Colors from '@/constants/Colors';
 import { HeaderSearchInput } from '@/components/search/HeaderSearchInput';
 import { useDownloadIndexItems } from '@/hooks/useDownloadIndexItems';
+import { useSettings } from '@/providers/SettingsContext';
 import { useAppTheme } from '@/providers/ThemeContext';
 import { DeleteTranslationUseCase } from '@/src/core/application/use-cases/DeleteTranslation';
 import {
@@ -339,6 +340,7 @@ export function ManageTranslationsPanel({
   isActive?: boolean;
 }): React.JSX.Element {
   const { resolvedTheme, isDark } = useAppTheme();
+  const { settings } = useSettings();
   const palette = Colors[resolvedTheme];
   const [isReordering, setIsReordering] = React.useState(false);
   const [searchTerm, setSearchTerm] = React.useState('');
@@ -359,6 +361,11 @@ export function ManageTranslationsPanel({
   const latestSelectionRef = React.useRef(localOrderedSelection);
   const commitTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const commitRevisionRef = React.useRef(0);
+  const orderedSelectionRef = React.useRef(orderedSelection);
+
+  React.useEffect(() => {
+    orderedSelectionRef.current = orderedSelection;
+  }, [orderedSelection]);
 
   React.useEffect(() => {
     latestSelectionRef.current = localOrderedSelection;
@@ -393,6 +400,8 @@ export function ManageTranslationsPanel({
 
         InteractionManager.runAfterInteractions(() => {
           if (scheduledRevision !== commitRevisionRef.current) return;
+          if (areSelectionsEqual(idsToCommit, orderedSelectionRef.current)) return;
+
           if (typeof React.startTransition === 'function') {
             React.startTransition(() => {
               onChangeSelection(idsToCommit);
@@ -413,7 +422,10 @@ export function ManageTranslationsPanel({
         clearTimeout(commitTimeoutRef.current);
         commitTimeoutRef.current = null;
       }
-      onChangeSelection([...latestSelectionRef.current]);
+      const finalSelection = latestSelectionRef.current;
+      if (!areSelectionsEqual(finalSelection, orderedSelectionRef.current)) {
+        onChangeSelection([...finalSelection]);
+      }
     },
     [onChangeSelection]
   );
@@ -457,7 +469,7 @@ export function ManageTranslationsPanel({
           container.getTranslationPackRepository()
         );
 
-        await useCase.execute(translationId);
+        await useCase.execute(translationId, settings.wordLang);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         Alert.alert('Download failed', message);

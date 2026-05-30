@@ -87,6 +87,15 @@ const APP_DB_MIGRATIONS: AppDbMigration[] = [
       `,
     ],
   },
+  {
+    version: 5,
+    statements: [
+      `
+      ALTER TABLE offline_verses
+      ADD COLUMN words_json TEXT;
+      `,
+    ],
+  },
 ];
 
 export const APP_DB_LATEST_SCHEMA_VERSION =

@@ -219,7 +219,6 @@ export default function SurahScreen(): React.JSX.Element {
   const readerHeader = useCollapsibleReaderHeader();
   const { chapters } = useChapters();
   const audio = useAudioPlayer();
-  const verseAudioWordSync = useVerseAudioWordSync();
   const { audioPlayerBarHeight } = useLayoutMetrics();
   const listContentContainerStyle = React.useMemo(
     () => ({
@@ -233,6 +232,7 @@ export default function SurahScreen(): React.JSX.Element {
   const { settings, isHydrated } = useSettings();
   const { isPinned, setLastRead } = useBookmarks();
   const chapterNumber = surahId ? Number(surahId) : NaN;
+  const verseAudioWordSync = useVerseAudioWordSync(chapterNumber);
   const selectedMushafId = settings.mushafId ?? DEFAULT_MUSHAF_ID;
   const selectedMushafOption = findMushafOption(selectedMushafId);
   const selectedMushafVersion = selectedMushafOption?.version ?? 'unknown';
@@ -713,6 +713,7 @@ export default function SurahScreen(): React.JSX.Element {
       audioActiveVerseKey: audio.activeVerseKey,
       audioIsVisible: audio.isVisible,
       pagesSignature,
+      verseAudioWordSync,
     }),
     [
       pagesSignature,
@@ -722,6 +723,7 @@ export default function SurahScreen(): React.JSX.Element {
       settings.translationFontSize,
       audio.activeVerseKey,
       audio.isVisible,
+      verseAudioWordSync,
     ]
   );
 
@@ -1013,12 +1015,17 @@ export default function SurahScreen(): React.JSX.Element {
     visibleVerseNumberRef.current = visibleVerseNumber;
   }, [visibleVerseNumber]);
 
-  React.useEffect(() => {
+  const [prevSurahId, setPrevSurahId] = React.useState(surahId);
+  const [prevNormalizedStartVerse, setPrevNormalizedStartVerse] = React.useState(normalizedStartVerse);
+
+  if (surahId !== prevSurahId || normalizedStartVerse !== prevNormalizedStartVerse) {
+    setPrevSurahId(surahId);
+    setPrevNormalizedStartVerse(normalizedStartVerse);
     lastReadReportedRef.current = null;
     visibleVerseKeyRef.current = null;
     visibleVerseNumberRef.current = normalizedStartVerse ?? 1;
     setVisibleVerseNumber(normalizedStartVerse ?? 1);
-  }, [normalizedStartVerse, surahId]);
+  }
 
   const viewabilityConfig = React.useRef({ itemVisiblePercentThreshold: 60 }).current;
   const visibleRangeRef = React.useRef<{ first: number; last: number } | null>(null);
@@ -1457,7 +1464,7 @@ export default function SurahScreen(): React.JSX.Element {
                   <VerseCardPlaceholder verseKey={`${chapterNumber}:${item}`} />
                 )}
                 contentContainerStyle={listContentContainerStyle}
-                ListHeaderComponent={chapter ? <SurahHeaderCard chapter={chapter} /> : null}
+                ListHeaderComponent={resolvedChapter ? <SurahHeaderCard chapter={resolvedChapter} /> : null}
                 scrollEnabled={false}
               />
             ) : verseCount <= 0 ? (
@@ -1483,7 +1490,7 @@ export default function SurahScreen(): React.JSX.Element {
                 viewabilityConfig={viewabilityConfig}
                 onViewableItemsChanged={onViewableItemsChanged}
                 showsVerticalScrollIndicator={false}
-                ListHeaderComponent={chapter ? <SurahHeaderCard chapter={chapter} /> : null}
+                ListHeaderComponent={resolvedChapter ? <SurahHeaderCard chapter={resolvedChapter} /> : null}
                 ListFooterComponent={
                   isLoadingMore || (errorMessage && hasLoadedContent) ? (
                     <View className="mt-2 flex-row items-center gap-3">
@@ -1515,7 +1522,7 @@ export default function SurahScreen(): React.JSX.Element {
                 viewabilityConfig={viewabilityConfig}
                 onViewableItemsChanged={onViewableItemsChanged}
                 showsVerticalScrollIndicator={false}
-                ListHeaderComponent={chapter ? <SurahHeaderCard chapter={chapter} /> : null}
+                ListHeaderComponent={resolvedChapter ? <SurahHeaderCard chapter={resolvedChapter} /> : null}
                 ListFooterComponent={
                   isLoadingMore || (errorMessage && hasLoadedContent) ? (
                     <View className="mt-2 flex-row items-center gap-3">

@@ -60,14 +60,9 @@ export function SurahVerseSelectorRow({
   const disabledVersePlaceholder = isLoading ? 'Loading…' : 'Select Surah first';
   const verseSelectorRef = React.useRef<VerseSelectorHandle>(null);
   const shouldAdvanceToVerseRef = React.useRef(false);
-  const openVerseAnimationFrameRef = React.useRef<number | null>(null);
   const openVerseTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const clearScheduledVerseOpen = React.useCallback(() => {
-    if (openVerseAnimationFrameRef.current !== null) {
-      cancelAnimationFrame(openVerseAnimationFrameRef.current);
-      openVerseAnimationFrameRef.current = null;
-    }
     if (openVerseTimeoutRef.current !== null) {
       clearTimeout(openVerseTimeoutRef.current);
       openVerseTimeoutRef.current = null;
@@ -76,14 +71,11 @@ export function SurahVerseSelectorRow({
 
   const scheduleVerseOpen = React.useCallback(() => {
     clearScheduledVerseOpen();
-    openVerseAnimationFrameRef.current = requestAnimationFrame(() => {
-      openVerseAnimationFrameRef.current = null;
-      verseSelectorRef.current?.openDropdown();
-    });
+    // Wait for the Surah selector modal to fully close and layout to settle before measuring
     openVerseTimeoutRef.current = setTimeout(() => {
       openVerseTimeoutRef.current = null;
       verseSelectorRef.current?.openDropdown();
-    }, 80);
+    }, 180);
   }, [clearScheduledVerseOpen]);
 
   const handleSurahSelectionComplete = React.useCallback(
