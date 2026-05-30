@@ -14,6 +14,7 @@ export const HeaderSearchInput = React.forwardRef(
       onFocus,
       onSubmitEditing,
       onClear,
+      editable = true,
     }: {
       value: string;
       onChangeText: (value: string) => void;
@@ -21,6 +22,7 @@ export const HeaderSearchInput = React.forwardRef(
       onFocus?: () => void;
       onSubmitEditing?: () => void;
       onClear?: () => void;
+      editable?: boolean;
     },
     ref: React.ForwardedRef<TextInput>
   ): React.JSX.Element {
@@ -49,6 +51,7 @@ export const HeaderSearchInput = React.forwardRef(
             autoCorrect={false}
             returnKeyType="search"
             onSubmitEditing={onSubmitEditing}
+            editable={editable}
             style={{ paddingVertical: 0 }}
             className="flex-1 text-sm text-foreground dark:text-foreground-dark"
           />

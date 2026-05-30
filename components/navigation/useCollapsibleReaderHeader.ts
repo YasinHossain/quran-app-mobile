@@ -155,6 +155,9 @@ export function useCollapsibleReaderHeader() {
   const isHidden = React.useCallback(() => isHiddenRef.current, []);
 
   const resetHeader = React.useCallback(() => {
+    if (Date.now() < suppressScrollUntilRef.current) {
+      return;
+    }
     hiddenProgress.stopAnimation();
     hiddenProgress.setValue(0);
     isHiddenRef.current = false;
@@ -176,11 +179,21 @@ export function useCollapsibleReaderHeader() {
     [hiddenProgress]
   );
 
+  const translateY = React.useMemo(
+    () =>
+      hiddenProgress.interpolate({
+        inputRange: [0, 0.999, 1],
+        outputRange: [0, 0, -headerHeight],
+      }),
+    [hiddenProgress, headerHeight]
+  );
+
   const headerAnimatedStyle = React.useMemo(
     () => ({
       opacity,
+      transform: [{ translateY }],
     }),
-    [opacity]
+    [opacity, translateY]
   );
 
   const suppressScroll = React.useCallback((durationMs: number) => {

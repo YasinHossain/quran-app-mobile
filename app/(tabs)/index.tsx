@@ -1,4 +1,5 @@
 import { Stack } from 'expo-router';
+import { useScrollToTop } from '@react-navigation/native';
 import React from 'react';
 import {
   Animated,
@@ -372,6 +373,7 @@ export default function ReadScreen(): React.JSX.Element {
   const [activeTab, setActiveTab] = React.useState<HomeTab>('surah');
   const headerSearch = useHeaderSearch();
   const listRef = React.useRef<FlatList<HomeListRow> | null>(null);
+  useScrollToTop(listRef);
   const scrollY = React.useRef(new Animated.Value(0)).current;
   const homeIntroHeightRef = React.useRef(0);
   const listScrollOffsetRef = React.useRef(0);
@@ -388,6 +390,7 @@ export default function ReadScreen(): React.JSX.Element {
   const scrubberRef = React.useRef<IndexScrubberHandle | null>(null);
   const [currentScrubIndex, setCurrentScrubIndex] = React.useState(1);
   const isScrubbingRef = React.useRef(false);
+  const lastScrubScrollIndexRef = React.useRef<number | null>(null);
 
   const listData = React.useMemo(
     () => buildHomeListData({ activeTab, errorMessage, isLoading, pageNumbers, surahs, numColumns }),
@@ -439,6 +442,9 @@ export default function ReadScreen(): React.JSX.Element {
 
   const handleScrubStateChange = React.useCallback((isScrubbing: boolean) => {
     isScrubbingRef.current = isScrubbing;
+    if (!isScrubbing) {
+      lastScrubScrollIndexRef.current = null;
+    }
   }, []);
 
   const updateCurrentIndexFromScroll = React.useCallback(
@@ -502,17 +508,25 @@ export default function ReadScreen(): React.JSX.Element {
   }, [listContentHeight, listViewportHeight, scrollY]);
 
   const handleScrubToIndex = React.useCallback(
-    (index: number) => {
+    (index: number, options?: { isFinal?: boolean }) => {
+      const isFinal = Boolean(options?.isFinal);
       const itemIndex = index - 1;
       const rowIdx = Math.floor(itemIndex / numColumns);
       const flatListRowIdx = 2 + rowIdx;
+
+      if (!isFinal && lastScrubScrollIndexRef.current === index) {
+        return;
+      }
+      lastScrubScrollIndexRef.current = index;
 
       const layout = rowLayouts[flatListRowIdx];
       if (layout) {
         listScrollOffsetRef.current = layout.offset;
         scrollY.setValue(layout.offset);
         listRef.current?.scrollToOffset({ offset: layout.offset, animated: false });
-        setCurrentScrubIndex(index);
+        if (isFinal) {
+          setCurrentScrubIndex(index);
+        }
       }
     },
     [numColumns, rowLayouts, scrollY]
@@ -651,7 +665,7 @@ export default function ReadScreen(): React.JSX.Element {
         <IndexScrubber
           ref={scrubberRef}
           bottomInset={8}
-          topInset={insets.top + 8}
+          topInset={0}
           currentIndex={currentScrubIndex}
           itemCount={
             activeTab === 'surah'

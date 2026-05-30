@@ -144,6 +144,7 @@ export function TafsirTabs({
   onActiveTafsirChange,
   onTabsTouchStart,
   onTabsTouchEnd,
+  hideTopBorder = false,
 }: {
   tafsirIds: number[];
   activeTafsirId?: number;
@@ -151,6 +152,7 @@ export function TafsirTabs({
   onActiveTafsirChange?: (tafsirId: number) => void;
   onTabsTouchStart?: () => void;
   onTabsTouchEnd?: () => void;
+  hideTopBorder?: boolean;
 }): React.JSX.Element {
   const { resolvedTheme } = useAppTheme();
   const palette = Colors[resolvedTheme];
@@ -248,7 +250,12 @@ export function TafsirTabs({
   const showAddButton = Boolean(onAddTafsir);
 
   return (
-    <View className="border-y border-border/60 bg-background dark:border-border-dark/30 dark:bg-background-dark">
+    <View
+      className={[
+        hideTopBorder ? 'border-b' : 'border-y',
+        'border-border/60 bg-background dark:border-border-dark/30 dark:bg-background-dark',
+      ].join(' ')}
+    >
       {errorMessage ? (
         <Text className="px-4 pb-2 pt-3 text-sm text-error dark:text-error-dark">{errorMessage}</Text>
       ) : null}

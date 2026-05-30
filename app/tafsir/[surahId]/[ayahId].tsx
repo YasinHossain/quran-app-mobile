@@ -12,6 +12,7 @@ import {
   useWindowDimensions,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
+  type LayoutChangeEvent,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -34,7 +35,7 @@ import { VerseCard } from '@/components/surah/VerseCard';
 import { AddToPlannerModal, type VerseSummaryDetails } from '@/components/verse-planner-modal';
 import Colors from '@/constants/Colors';
 import { useChapters } from '@/hooks/useChapters';
-import { useSurahVerses } from '@/hooks/useSurahVerses';
+import { useSurahVerses, type SurahVerse } from '@/hooks/useSurahVerses';
 import { useTafsirResources } from '@/hooks/useTafsirResources';
 import { useTranslationResources } from '@/hooks/useTranslationResources';
 import {
@@ -382,6 +383,383 @@ function buildOfflineFirstPageState(params: {
     errorMessage: params.existing?.errorMessage ?? null,
     tafsirById,
   };
+}
+
+type TafsirPageProps = {
+  item: VerseTarget;
+  pageWidth: number;
+  viewportHeight: number;
+  insets: ReturnType<typeof useSafeAreaInsets>;
+  pageSignature: string;
+  pageStateByKey: Record<string, PageState>;
+  chapters: SurahHeaderChapter[];
+  currentSurahId: number | undefined;
+  showTranslationAttribution: boolean;
+  translationsById: Map<number, { name: string }>;
+  translationIds: number[];
+  currentSurahVerseErrorMessage: string | null;
+  isCurrentSurahVersesLoading: boolean;
+  getCurrentSurahVerseByNumber: (ayahId: number) => SurahVerse | undefined;
+  settings: any;
+  verseRenderSignal: number;
+  openVerseActions: (params: {
+    title: string;
+    surahId: number;
+    verseKey: string;
+    arabicText: string;
+    translationTexts: string[];
+  }) => void;
+  pageScrollRefsRef: React.MutableRefObject<Record<string, ScrollView | null>>;
+  pageScrollOffsetsRef: React.MutableRefObject<Record<string, number>>;
+  readerHeader: ReturnType<typeof useCollapsibleReaderHeader>;
+  tafsirSkeletonMinHeight: number;
+  tafsirIds: number[];
+  activeTafsirId: number | undefined;
+  activeTafsirName: string;
+  setActiveTafsirTabId: (id: number) => void;
+  setIsSettingsOpen: (open: boolean) => void;
+  setSettingsInitialPanel: (panel: PanelType | undefined) => void;
+  setIsPagerScrollEnabled: (enabled: boolean) => void;
+  setIsVerticalScrollEnabled: (enabled: boolean) => void;
+  isVerticalScrollEnabled: boolean;
+};
+
+function TafsirPage({
+  item,
+  pageWidth,
+  viewportHeight,
+  insets,
+  pageSignature,
+  pageStateByKey,
+  chapters,
+  currentSurahId,
+  showTranslationAttribution,
+  translationsById,
+  translationIds,
+  currentSurahVerseErrorMessage,
+  isCurrentSurahVersesLoading,
+  getCurrentSurahVerseByNumber,
+  settings,
+  verseRenderSignal,
+  openVerseActions,
+  pageScrollRefsRef,
+  pageScrollOffsetsRef,
+  readerHeader,
+  tafsirSkeletonMinHeight,
+  tafsirIds,
+  activeTafsirId,
+  activeTafsirName,
+  setActiveTafsirTabId,
+  setIsSettingsOpen,
+  setSettingsInitialPanel,
+  setIsPagerScrollEnabled,
+  setIsVerticalScrollEnabled,
+  isVerticalScrollEnabled,
+}: TafsirPageProps): React.JSX.Element {
+  const scrollY = React.useRef(new Animated.Value(0)).current;
+  const [aboveHeight, setAboveHeight] = React.useState(0);
+  const [isStuck, setIsStuck] = React.useState(false);
+  const { resolvedTheme } = useAppTheme();
+
+  const handleAboveContentLayout = React.useCallback((event: LayoutChangeEvent) => {
+    const height = Math.round(event.nativeEvent.layout.height);
+    if (height > 0) {
+      setAboveHeight(height);
+    }
+  }, []);
+
+  const verseKey = getVerseKey(item);
+  const storedPageState = pageStateByKey[verseKey];
+  const pageState =
+    storedPageState?.signature === pageSignature
+      ? storedPageState
+      : {
+          signature: pageSignature,
+          chapter: getChapterById(chapters, item.surahId),
+          verse: peekVersePreview(verseKey),
+          isLoading: true,
+          errorMessage: null,
+          tafsirById: {},
+        };
+  const pageTitle = pageState.chapter?.name_simple ?? `Surah ${item.surahId}`;
+  const linkedSurahVerse =
+    item.surahId === currentSurahId ? getCurrentSurahVerseByNumber(item.ayahId) : undefined;
+  const translationItems = linkedSurahVerse
+    ? (showTranslationAttribution
+        ? (linkedSurahVerse.translationItems ?? []).map((translation: any) => {
+            if (translation.resourceName) return translation;
+            const fallbackName =
+              typeof translation.resourceId === 'number'
+                ? translationsById.get(translation.resourceId)?.name ??
+                  `Translation ${translation.resourceId}`
+                : undefined;
+            return { ...translation, resourceName: fallbackName };
+          })
+        : linkedSurahVerse.translationItems ?? [])
+    : buildTranslationItems({
+        verse: pageState.verse,
+        translationIds,
+        showTranslationAttribution,
+        translationsById,
+      });
+  const translationTexts = translationItems.map((translation) => translation.text);
+  const displayVerseKey = linkedSurahVerse?.verse_key ?? pageState.verse?.verse_key ?? verseKey;
+  const displayArabicText = linkedSurahVerse?.text_uthmani ?? pageState.verse?.text_uthmani ?? '';
+  const verseErrorMessage =
+    item.surahId === currentSurahId
+      ? !linkedSurahVerse && !pageState.verse
+        ? currentSurahVerseErrorMessage ?? pageState.errorMessage
+        : null
+      : pageState.errorMessage;
+  const showVerseSkeleton =
+    item.surahId === currentSurahId
+      ? !linkedSurahVerse && !pageState.verse && isCurrentSurahVersesLoading
+      : pageState.isLoading;
+  const currentTafsirState =
+    typeof activeTafsirId === 'number' ? pageState.tafsirById[activeTafsirId] : undefined;
+  const isMultiTafsir = tafsirIds.length > 1;
+
+  const overlap = React.useMemo(
+    () => Math.max(0, readerHeader.headerHeight - insets.top),
+    [readerHeader.headerHeight, insets.top]
+  );
+
+  const paddingTop = React.useMemo(
+    () => Math.max(0, readerHeader.headerHeight - insets.top),
+    [readerHeader.headerHeight, insets.top]
+  );
+
+  const stickyThreshold = React.useMemo(() => {
+    return aboveHeight + paddingTop;
+  }, [aboveHeight, paddingTop]);
+
+  const absoluteOpacity = React.useMemo(() => {
+    return scrollY.interpolate({
+      inputRange: [Math.max(0, stickyThreshold - 1), Math.max(1, stickyThreshold)],
+      outputRange: [0, 1],
+      extrapolate: 'clamp',
+    });
+  }, [stickyThreshold, scrollY]);
+
+  const translateY = React.useMemo(() => {
+    return readerHeader.hiddenProgress.interpolate({
+      inputRange: [0, 1],
+      outputRange: [Math.max(0, overlap - 1.5), 0],
+    });
+  }, [readerHeader.hiddenProgress, overlap]);
+
+  const handleActiveTafsirChange = React.useCallback(
+    (id: number) => {
+      setActiveTafsirTabId(id);
+      readerHeader.suppressScroll(1000);
+    },
+    [setActiveTafsirTabId, readerHeader]
+  );
+
+  return (
+    <View style={{ width: pageWidth }}>
+      <Animated.ScrollView
+        key={`${verseKey}-${pageSignature}`}
+        ref={(ref) => {
+          pageScrollRefsRef.current[verseKey] = ref as any;
+        }}
+        contentContainerStyle={{
+          paddingHorizontal: 16,
+          paddingTop,
+          paddingBottom: 28,
+          minHeight: Math.max(1, viewportHeight - 120),
+        }}
+        keyboardShouldPersistTaps="handled"
+        removeClippedSubviews={false}
+        nestedScrollEnabled
+        scrollEnabled={isVerticalScrollEnabled}
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+          {
+            useNativeDriver: true,
+            listener: (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+              const y = event.nativeEvent.contentOffset.y;
+              pageScrollOffsetsRef.current[verseKey] = y;
+              readerHeader.handleScroll(event);
+
+              const stuck = y >= stickyThreshold;
+              if (stuck !== isStuck) {
+                setIsStuck(stuck);
+              }
+            },
+          }
+        )}
+        scrollEventThrottle={16}
+      >
+        <View onLayout={handleAboveContentLayout}>
+          <View>
+            {verseErrorMessage ? (
+              <Text className="text-sm text-error dark:text-error-dark">{verseErrorMessage}</Text>
+            ) : null}
+          </View>
+
+          <View className={verseErrorMessage ? 'mt-4' : ''} collapsable={false}>
+            {linkedSurahVerse || pageState.verse ? (
+              <VerseCard
+                verseKey={displayVerseKey}
+                arabicText={displayArabicText}
+                translationTexts={translationTexts}
+                translationItems={translationItems}
+                showTranslationAttribution={showTranslationAttribution}
+                arabicFontSize={settings.arabicFontSize}
+                arabicFontFace={settings.arabicFontFace}
+                translationFontSize={settings.translationFontSize}
+                showByWords={settings.showByWords}
+                renderSignal={verseRenderSignal}
+                onOpenActions={() =>
+                  openVerseActions({
+                    title: pageTitle,
+                    surahId: item.surahId,
+                    verseKey: displayVerseKey,
+                    arabicText: displayArabicText,
+                    translationTexts,
+                  })
+                }
+              />
+            ) : showVerseSkeleton ? (
+              <VerseCardSkeleton verseKey={verseKey} />
+            ) : (
+              <Text className="text-sm text-muted dark:text-muted-dark">Verse not found.</Text>
+            )}
+          </View>
+        </View>
+
+        <View
+          collapsable={false}
+          className={isMultiTafsir ? 'bg-background dark:bg-background-dark' : ''}
+          style={
+            isMultiTafsir
+              ? {
+                  elevation: 0,
+                  marginHorizontal: -16,
+                  zIndex: 12,
+                }
+              : undefined
+          }
+        >
+          {isMultiTafsir ? (
+            <TafsirTabs
+              tafsirIds={tafsirIds}
+              activeTafsirId={activeTafsirId}
+              onActiveTafsirChange={handleActiveTafsirChange}
+              onAddTafsir={() => {
+                setSettingsInitialPanel('tafsir');
+                setIsSettingsOpen(true);
+              }}
+              onTabsTouchStart={() => {
+                setIsPagerScrollEnabled(false);
+                setIsVerticalScrollEnabled(false);
+                readerHeader.suppressScroll(1000);
+              }}
+              onTabsTouchEnd={() => {
+                setIsPagerScrollEnabled(true);
+                setIsVerticalScrollEnabled(true);
+              }}
+            />
+          ) : null}
+        </View>
+
+        <View>
+          {isMultiTafsir ? (
+            <TafsirTabPanels
+              verseKey={verseKey}
+              tafsirIds={tafsirIds}
+              activeTafsirId={activeTafsirId}
+              contentByTafsirId={pageState.tafsirById}
+            />
+          ) : tafsirIds.length === 1 ? (
+            <View className="mt-4">
+              <View className="mb-4 items-center gap-3">
+                <Text className="text-center text-lg font-bold text-foreground dark:text-foreground-dark">
+                  {activeTafsirName}
+                </Text>
+                <Pressable
+                  onPress={() => {
+                    setSettingsInitialPanel('tafsir');
+                    setIsSettingsOpen(true);
+                  }}
+                  className="rounded-lg border border-border bg-surface px-3 py-2 dark:bg-surface-dark"
+                  style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}
+                  accessibilityRole="button"
+                  accessibilityLabel="Add tafsir"
+                >
+                  <Text className="text-sm font-semibold text-foreground dark:text-foreground-dark">
+                    Add tafsir
+                  </Text>
+                </Pressable>
+              </View>
+
+              {currentTafsirState?.error ? (
+                <Text className="text-sm text-muted dark:text-muted-dark">
+                  {currentTafsirState.error}
+                </Text>
+              ) : (currentTafsirState?.isLoading ?? true) ? (
+                <TafsirLoadingSkeleton minHeight={tafsirSkeletonMinHeight} />
+              ) : (
+                <TafsirHtml
+                  html={currentTafsirState?.html ?? ''}
+                  fontSize={settings.tafsirFontSize || 18}
+                  contentKey={`${verseKey}-${activeTafsirId ?? 'none'}`}
+                />
+              )}
+            </View>
+          ) : (
+            <View className="mt-4">
+              <Text className="text-sm text-muted dark:text-muted-dark">
+                Please select a tafsir from the settings panel to view commentary.
+              </Text>
+            </View>
+          )}
+        </View>
+      </Animated.ScrollView>
+
+      {isMultiTafsir ? (
+        <Animated.View
+          pointerEvents={isStuck ? 'auto' : 'none'}
+          className="bg-background dark:bg-background-dark"
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            zIndex: 100,
+            elevation: 0,
+            opacity: absoluteOpacity,
+            transform: [{ translateY }],
+          }}
+          onTouchStart={() => {
+            setIsPagerScrollEnabled(false);
+            setIsVerticalScrollEnabled(false);
+            readerHeader.suppressScroll(1000);
+          }}
+          onTouchEnd={() => {
+            setIsPagerScrollEnabled(true);
+            setIsVerticalScrollEnabled(true);
+          }}
+          onTouchCancel={() => {
+            setIsPagerScrollEnabled(true);
+            setIsVerticalScrollEnabled(true);
+          }}
+        >
+          <TafsirTabs
+            tafsirIds={tafsirIds}
+            activeTafsirId={activeTafsirId}
+            onActiveTafsirChange={handleActiveTafsirChange}
+            onAddTafsir={() => {
+              setSettingsInitialPanel('tafsir');
+              setIsSettingsOpen(true);
+            }}
+            hideTopBorder={false}
+          />
+        </Animated.View>
+      ) : null}
+    </View>
+  );
 }
 
 export default function TafsirScreen(): React.JSX.Element {
@@ -1173,233 +1551,64 @@ export default function TafsirScreen(): React.JSX.Element {
 
   const renderPagerItem = React.useCallback(
     ({ item }: { item: VerseTarget }) => {
-      const verseKey = getVerseKey(item);
-      const storedPageState = pageStateByKey[verseKey];
-      const pageState =
-        storedPageState?.signature === pageSignature
-          ? storedPageState
-          : {
-              signature: pageSignature,
-              chapter: getChapterById(chapters, item.surahId),
-              verse: peekVersePreview(verseKey),
-              isLoading: true,
-              errorMessage: null,
-              tafsirById: {},
-            };
-      const pageTitle = pageState.chapter?.name_simple ?? `Surah ${item.surahId}`;
-      const linkedSurahVerse =
-        item.surahId === currentSurahId ? getCurrentSurahVerseByNumber(item.ayahId) : undefined;
-      const translationItems = linkedSurahVerse
-        ? (showTranslationAttribution
-            ? (linkedSurahVerse.translationItems ?? []).map((translation) => {
-                if (translation.resourceName) return translation;
-                const fallbackName =
-                  typeof translation.resourceId === 'number'
-                    ? translationsById.get(translation.resourceId)?.name ??
-                      `Translation ${translation.resourceId}`
-                    : undefined;
-                return { ...translation, resourceName: fallbackName };
-              })
-            : linkedSurahVerse.translationItems ?? [])
-        : buildTranslationItems({
-            verse: pageState.verse,
-            translationIds,
-            showTranslationAttribution,
-            translationsById,
-          });
-      const translationTexts = translationItems.map((translation) => translation.text);
-      const displayVerseKey = linkedSurahVerse?.verse_key ?? pageState.verse?.verse_key ?? verseKey;
-      const displayArabicText = linkedSurahVerse?.text_uthmani ?? pageState.verse?.text_uthmani ?? '';
-      const verseErrorMessage =
-        item.surahId === currentSurahId
-          ? !linkedSurahVerse && !pageState.verse
-            ? currentSurahVerseErrorMessage ?? pageState.errorMessage
-            : null
-          : pageState.errorMessage;
-      const showVerseSkeleton =
-        item.surahId === currentSurahId
-          ? !linkedSurahVerse && !pageState.verse && isCurrentSurahVersesLoading
-          : pageState.isLoading;
-      const currentTafsirState =
-        typeof activeTafsirId === 'number' ? pageState.tafsirById[activeTafsirId] : undefined;
-      const isMultiTafsir = tafsirIds.length > 1;
-
       return (
-        <View style={{ width: pageWidth }}>
-          <ScrollView
-            key={`${verseKey}-${pageSignature}`}
-            ref={(ref) => {
-              pageScrollRefsRef.current[verseKey] = ref;
-            }}
-            contentContainerStyle={{
-              paddingHorizontal: 16,
-              paddingTop: Math.max(0, readerHeader.headerHeight - insets.top),
-              paddingBottom: 28,
-              minHeight: Math.max(1, viewportHeight - 120),
-            }}
-            keyboardShouldPersistTaps="handled"
-            removeClippedSubviews={false}
-            nestedScrollEnabled
-            scrollEnabled={isVerticalScrollEnabled}
-            stickyHeaderIndices={isMultiTafsir ? [2] : undefined}
-            onScroll={(event) => {
-              pageScrollOffsetsRef.current[verseKey] = event.nativeEvent.contentOffset.y;
-              readerHeader.handleScroll(event);
-            }}
-            scrollEventThrottle={16}
-          >
-            <View>
-              {verseErrorMessage ? (
-                <Text className="text-sm text-error dark:text-error-dark">{verseErrorMessage}</Text>
-              ) : null}
-            </View>
-
-            <View className={verseErrorMessage ? 'mt-4' : ''} collapsable={false}>
-              {linkedSurahVerse || pageState.verse ? (
-                <VerseCard
-                  verseKey={displayVerseKey}
-                  arabicText={displayArabicText}
-                  translationTexts={translationTexts}
-                  translationItems={translationItems}
-                  showTranslationAttribution={showTranslationAttribution}
-                  arabicFontSize={settings.arabicFontSize}
-                  arabicFontFace={settings.arabicFontFace}
-                  translationFontSize={settings.translationFontSize}
-                  showByWords={settings.showByWords}
-                  renderSignal={verseRenderSignal}
-                  onOpenActions={() =>
-                    openVerseActions({
-                      title: pageTitle,
-                      surahId: item.surahId,
-                      verseKey: displayVerseKey,
-                      arabicText: displayArabicText,
-                      translationTexts,
-                    })
-                  }
-                />
-              ) : showVerseSkeleton ? (
-                <VerseCardSkeleton verseKey={verseKey} />
-              ) : (
-                <Text className="text-sm text-muted dark:text-muted-dark">Verse not found.</Text>
-              )}
-            </View>
-
-            <View
-              collapsable={false}
-              className={isMultiTafsir ? 'bg-background dark:bg-background-dark' : ''}
-              style={
-                isMultiTafsir
-                  ? {
-                      elevation: 10,
-                      marginHorizontal: -16,
-                      zIndex: 12,
-                    }
-                  : undefined
-              }
-            >
-              {isMultiTafsir ? (
-                <TafsirTabs
-                  tafsirIds={tafsirIds}
-                  activeTafsirId={activeTafsirId}
-                  onActiveTafsirChange={setActiveTafsirTabId}
-                  onAddTafsir={() => {
-                    setSettingsInitialPanel('tafsir');
-                    setIsSettingsOpen(true);
-                  }}
-                  onTabsTouchStart={() => {
-                    setIsPagerScrollEnabled(false);
-                    setIsVerticalScrollEnabled(false);
-                  }}
-                  onTabsTouchEnd={() => {
-                    setIsPagerScrollEnabled(true);
-                    setIsVerticalScrollEnabled(true);
-                  }}
-                />
-              ) : null}
-            </View>
-
-            <View>
-              {isMultiTafsir ? (
-                <TafsirTabPanels
-                  verseKey={verseKey}
-                  tafsirIds={tafsirIds}
-                  activeTafsirId={activeTafsirId}
-                  contentByTafsirId={pageState.tafsirById}
-                />
-              ) : tafsirIds.length === 1 ? (
-                <View className="mt-4">
-                <View className="mb-4 items-center gap-3">
-                  <Text className="text-center text-lg font-bold text-foreground dark:text-foreground-dark">
-                    {activeTafsirName}
-                  </Text>
-                  <Pressable
-                    onPress={() => {
-                      setSettingsInitialPanel('tafsir');
-                      setIsSettingsOpen(true);
-                    }}
-                    className="rounded-lg border border-border bg-surface px-3 py-2 dark:bg-surface-dark"
-                    style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}
-                    accessibilityRole="button"
-                    accessibilityLabel="Add tafsir"
-                  >
-                    <Text className="text-sm font-semibold text-foreground dark:text-foreground-dark">
-                      Add tafsir
-                    </Text>
-                  </Pressable>
-                </View>
-
-                {currentTafsirState?.error ? (
-                  <Text className="text-sm text-muted dark:text-muted-dark">
-                    {currentTafsirState.error}
-                  </Text>
-                ) : (currentTafsirState?.isLoading ?? true) ? (
-                  <TafsirLoadingSkeleton minHeight={tafsirSkeletonMinHeight} />
-                ) : (
-                  <TafsirHtml
-                    html={currentTafsirState?.html ?? ''}
-                    fontSize={settings.tafsirFontSize || 18}
-                    contentKey={`${verseKey}-${activeTafsirId ?? 'none'}`}
-                  />
-                )}
-                </View>
-              ) : (
-                <View className="mt-4">
-                <Text className="text-sm text-muted dark:text-muted-dark">
-                  Please select a tafsir from the settings panel to view commentary.
-                </Text>
-                </View>
-              )}
-            </View>
-          </ScrollView>
-        </View>
+        <TafsirPage
+          item={item}
+          pageWidth={pageWidth}
+          viewportHeight={viewportHeight}
+          insets={insets}
+          pageSignature={pageSignature}
+          pageStateByKey={pageStateByKey}
+          chapters={chapters}
+          currentSurahId={currentSurahId}
+          showTranslationAttribution={showTranslationAttribution}
+          translationsById={translationsById}
+          translationIds={translationIds}
+          currentSurahVerseErrorMessage={currentSurahVerseErrorMessage}
+          isCurrentSurahVersesLoading={isCurrentSurahVersesLoading}
+          getCurrentSurahVerseByNumber={getCurrentSurahVerseByNumber}
+          settings={settings}
+          verseRenderSignal={verseRenderSignal}
+          openVerseActions={openVerseActions}
+          pageScrollRefsRef={pageScrollRefsRef}
+          pageScrollOffsetsRef={pageScrollOffsetsRef}
+          readerHeader={readerHeader}
+          tafsirSkeletonMinHeight={tafsirSkeletonMinHeight}
+          tafsirIds={tafsirIds}
+          activeTafsirId={activeTafsirId}
+          activeTafsirName={activeTafsirName}
+          setActiveTafsirTabId={setActiveTafsirTabId}
+          setIsSettingsOpen={setIsSettingsOpen}
+          setSettingsInitialPanel={setSettingsInitialPanel}
+          setIsPagerScrollEnabled={setIsPagerScrollEnabled}
+          setIsVerticalScrollEnabled={setIsVerticalScrollEnabled}
+          isVerticalScrollEnabled={isVerticalScrollEnabled}
+        />
       );
     },
     [
-      activeTafsirId,
-      activeTafsirName,
+      pageWidth,
+      viewportHeight,
+      insets,
+      pageSignature,
+      pageStateByKey,
       chapters,
       currentSurahId,
-      currentSurahVerseErrorMessage,
-      getCurrentSurahVerseByNumber,
-      isCurrentSurahVersesLoading,
-      openVerseActions,
-      pageStateByKey,
-      pageSignature,
-      pageWidth,
-      readerHeader.handleScroll,
-      readerHeader.headerHeight,
-      settings.arabicFontFace,
-      settings.arabicFontSize,
-      settings.showByWords,
-      settings.tafsirFontSize,
-      settings.translationFontSize,
       showTranslationAttribution,
-      tafsirIds,
-      tafsirSkeletonMinHeight,
-      translationIds,
       translationsById,
+      translationIds,
+      currentSurahVerseErrorMessage,
+      isCurrentSurahVersesLoading,
+      getCurrentSurahVerseByNumber,
+      settings,
       verseRenderSignal,
-      viewportHeight,
+      openVerseActions,
+      readerHeader,
+      tafsirSkeletonMinHeight,
+      tafsirIds,
+      activeTafsirId,
+      activeTafsirName,
+      isVerticalScrollEnabled,
     ]
   );
 
@@ -1470,9 +1679,10 @@ export default function TafsirScreen(): React.JSX.Element {
         <ReaderOverlayHeader
           onLayout={readerHeader.handleHeaderLayout}
           pointerEvents={readerHeader.headerPointerEvents}
-          style={readerHeader.headerAnimatedStyle}
+          style={[readerHeader.headerAnimatedStyle, { elevation: 0 }]}
         >
           <AppSearchHeader
+            editable={readerHeader.headerPointerEvents !== 'none'}
             left={
               <HeaderActionButton accessibilityLabel="Go back" onPress={() => router.back()}>
                 <ArrowLeft color={palette.text} size={22} strokeWidth={2.25} />

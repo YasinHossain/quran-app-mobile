@@ -88,6 +88,7 @@ export function AppSearchHeader({
   right,
   style,
   value,
+  editable = true,
 }: {
   inputRef?: React.Ref<TextInput>;
   left: React.ReactNode;
@@ -99,6 +100,7 @@ export function AppSearchHeader({
   right: React.ReactNode;
   style?: StyleProp<ViewStyle>;
   value: string;
+  editable?: boolean;
 }): React.JSX.Element {
   return (
     <HeaderShell onLayout={onLayout} style={style}>
@@ -112,6 +114,7 @@ export function AppSearchHeader({
             placeholder={placeholder}
             onFocus={onFocus}
             onSubmitEditing={onSubmitEditing}
+            editable={editable}
           />
         </View>
         {right}

@@ -1392,6 +1392,7 @@ export default function SurahScreen(): React.JSX.Element {
         style={readerHeader.headerAnimatedStyle}
       >
         <AppSearchHeader
+          editable={readerHeader.headerPointerEvents !== 'none'}
           left={
             <HeaderActionButton accessibilityLabel="Go back" onPress={() => router.back()}>
               <ArrowLeft color={palette.text} size={22} strokeWidth={2.25} />
