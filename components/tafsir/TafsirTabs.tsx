@@ -137,21 +137,21 @@ function TafsirLoadingSkeleton({ minHeight }: { minHeight: number }): React.JSX.
   );
 }
 
-export function TafsirTabs({
+export const TafsirTabs = React.memo(function TafsirTabs({
   tafsirIds,
   activeTafsirId,
   onAddTafsir,
   onActiveTafsirChange,
-  onTabsTouchStart,
-  onTabsTouchEnd,
+  onTabsDragStart,
+  onTabsDragEnd,
   hideTopBorder = false,
 }: {
   tafsirIds: number[];
   activeTafsirId?: number;
   onAddTafsir?: () => void;
   onActiveTafsirChange?: (tafsirId: number) => void;
-  onTabsTouchStart?: () => void;
-  onTabsTouchEnd?: () => void;
+  onTabsDragStart?: () => void;
+  onTabsDragEnd?: () => void;
   hideTopBorder?: boolean;
 }): React.JSX.Element {
   const { resolvedTheme } = useAppTheme();
@@ -268,12 +268,9 @@ export function TafsirTabs({
           contentContainerStyle={{ alignItems: 'stretch', paddingHorizontal: 2 }}
           nestedScrollEnabled
           directionalLockEnabled
-          onTouchStart={() => onTabsTouchStart?.()}
-          onTouchEnd={() => onTabsTouchEnd?.()}
-          onTouchCancel={() => onTabsTouchEnd?.()}
-          onScrollBeginDrag={() => onTabsTouchStart?.()}
-          onScrollEndDrag={() => onTabsTouchEnd?.()}
-          onMomentumScrollEnd={() => onTabsTouchEnd?.()}
+          onScrollBeginDrag={() => onTabsDragStart?.()}
+          onScrollEndDrag={() => onTabsDragEnd?.()}
+          onMomentumScrollEnd={() => onTabsDragEnd?.()}
           onScroll={handleTabsScroll}
           onContentSizeChange={handleTabsContentSizeChange}
           scrollEventThrottle={16}
@@ -286,7 +283,7 @@ export function TafsirTabs({
               <React.Fragment key={tab.id}>
                 <Pressable
                   onLayout={(event) => handleTabLayout(tab.id, event)}
-                  onPress={() => onActiveTafsirChange?.(tab.id)}
+                  onPressIn={() => onActiveTafsirChange?.(tab.id)}
                   className="relative justify-center px-4 pb-3 pt-4"
                   style={({ pressed }) => ({
                     minHeight: 56,
@@ -342,9 +339,9 @@ export function TafsirTabs({
       </View>
     </View>
   );
-}
+});
 
-export function TafsirTabPanels({
+export const TafsirTabPanels = React.memo(function TafsirTabPanels({
   verseKey,
   tafsirIds,
   activeTafsirId,
@@ -557,4 +554,4 @@ export function TafsirTabPanels({
       </View>
     </View>
   );
-}
+});

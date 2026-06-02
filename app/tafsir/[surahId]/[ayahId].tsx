@@ -556,6 +556,26 @@ function TafsirPage({
     [setActiveTafsirTabId, readerHeader]
   );
 
+  const handleOpenSettings = React.useCallback(() => {
+    setSettingsInitialPanel('tafsir');
+    setIsSettingsOpen(true);
+  }, [setIsSettingsOpen, setSettingsInitialPanel]);
+
+  const handleTabsDragStart = React.useCallback(() => {
+    setIsPagerScrollEnabled(false);
+    setIsVerticalScrollEnabled(false);
+  }, [setIsPagerScrollEnabled, setIsVerticalScrollEnabled]);
+
+  const handleTabsDragEnd = React.useCallback(() => {
+    setIsPagerScrollEnabled(true);
+    setIsVerticalScrollEnabled(true);
+  }, [setIsPagerScrollEnabled, setIsVerticalScrollEnabled]);
+
+  const handleHeaderTouchStart = React.useCallback(() => {
+    // Pure ref mutation — no setState, so no re-render that would cancel the tap.
+    readerHeader.suppressScroll(1200);
+  }, [readerHeader]);
+
   return (
     <View style={{ width: pageWidth }}>
       <Animated.ScrollView
@@ -647,19 +667,9 @@ function TafsirPage({
               tafsirIds={tafsirIds}
               activeTafsirId={activeTafsirId}
               onActiveTafsirChange={handleActiveTafsirChange}
-              onAddTafsir={() => {
-                setSettingsInitialPanel('tafsir');
-                setIsSettingsOpen(true);
-              }}
-              onTabsTouchStart={() => {
-                setIsPagerScrollEnabled(false);
-                setIsVerticalScrollEnabled(false);
-                readerHeader.suppressScroll(1000);
-              }}
-              onTabsTouchEnd={() => {
-                setIsPagerScrollEnabled(true);
-                setIsVerticalScrollEnabled(true);
-              }}
+              onAddTafsir={handleOpenSettings}
+              onTabsDragStart={handleTabsDragStart}
+              onTabsDragEnd={handleTabsDragEnd}
             />
           ) : null}
         </View>
@@ -732,28 +742,15 @@ function TafsirPage({
             opacity: absoluteOpacity,
             transform: [{ translateY }],
           }}
-          onTouchStart={() => {
-            setIsPagerScrollEnabled(false);
-            setIsVerticalScrollEnabled(false);
-            readerHeader.suppressScroll(1000);
-          }}
-          onTouchEnd={() => {
-            setIsPagerScrollEnabled(true);
-            setIsVerticalScrollEnabled(true);
-          }}
-          onTouchCancel={() => {
-            setIsPagerScrollEnabled(true);
-            setIsVerticalScrollEnabled(true);
-          }}
+          onTouchStart={handleHeaderTouchStart}
         >
           <TafsirTabs
             tafsirIds={tafsirIds}
             activeTafsirId={activeTafsirId}
             onActiveTafsirChange={handleActiveTafsirChange}
-            onAddTafsir={() => {
-              setSettingsInitialPanel('tafsir');
-              setIsSettingsOpen(true);
-            }}
+            onAddTafsir={handleOpenSettings}
+            onTabsDragStart={handleTabsDragStart}
+            onTabsDragEnd={handleTabsDragEnd}
             hideTopBorder={false}
           />
         </Animated.View>
@@ -1312,74 +1309,6 @@ export default function TafsirScreen(): React.JSX.Element {
       void loadPage(target);
     });
   }, [loadPage, prefetchTargets]);
-
-  React.useEffect(() => {
-    if (typeof activeTafsirId !== 'number') return;
-    if (!currentSurahId || currentSurahVerseKeys.length === 0) return;
-
-    const generation = generationRef.current;
-
-    void (async () => {
-      try {
-        const tafsirByVerseKey = await getOfflineTafsirSurahCached({
-          surahId: currentSurahId,
-          tafsirId: activeTafsirId,
-          verseKeys: currentSurahVerseKeys,
-        });
-
-        if (generation !== generationRef.current) return;
-
-        setPageStateByKey((previous) => {
-          let didChange = false;
-          const nextState = { ...previous };
-
-          for (const verseKey of currentSurahVerseKeys) {
-            const existing = previous[verseKey];
-            const existingMatchesSignature = existing?.signature === pageSignature;
-            const html = tafsirByVerseKey.get(verseKey) ?? null;
-            const activeTafsirState = buildTafsirStateFromHtml(html);
-            const nextTafsirById: Partial<Record<number, TafsirTabContentState>> = {
-              ...(existingMatchesSignature ? existing?.tafsirById : {}),
-              [activeTafsirId]: activeTafsirState,
-            };
-
-            const existingVerse =
-              existing?.verse ??
-              getVerseDetailsSnapshot(verseKey, translationIds) ??
-              peekVersePreview(verseKey);
-
-            const nextPageState: PageState = {
-              signature: pageSignature,
-              chapter: existing?.chapter ?? getChapterById(chapters, currentSurahId),
-              verse: existingVerse,
-              isLoading: existing?.isLoading ?? (existingVerse == null),
-              errorMessage: existing?.errorMessage ?? null,
-              tafsirById: nextTafsirById,
-            };
-
-            if (
-              existing?.signature === nextPageState.signature &&
-              existing?.chapter?.id === nextPageState.chapter?.id &&
-              existing?.errorMessage === nextPageState.errorMessage &&
-              existing?.isLoading === nextPageState.isLoading &&
-              existing?.tafsirById?.[activeTafsirId]?.html === activeTafsirState.html &&
-              existing?.tafsirById?.[activeTafsirId]?.error === activeTafsirState.error &&
-              existing?.tafsirById?.[activeTafsirId]?.isLoading === activeTafsirState.isLoading
-            ) {
-              continue;
-            }
-
-            nextState[verseKey] = nextPageState;
-            didChange = true;
-          }
-
-          return didChange ? nextState : previous;
-        });
-      } catch {
-        // Ignore background whole-surah offline hydration failures.
-      }
-    })();
-  }, [activeTafsirId, chapters, currentSurahId, currentSurahVerseKeys, pageSignature]);
 
   React.useEffect(() => {
     if (tafsirIds.length === 0 || prefetchTargets.length === 0) return;
