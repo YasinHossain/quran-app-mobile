@@ -347,12 +347,17 @@ export const TafsirTabPanels = React.memo(function TafsirTabPanels({
   activeTafsirId,
   contentByTafsirId,
   renderErrorState,
+  pageMinHeight = 0,
 }: {
   verseKey: string;
   tafsirIds: number[];
   activeTafsirId?: number;
   contentByTafsirId: Partial<Record<number, TafsirTabContentState>>;
   renderErrorState?: (params: { tafsirId: number; error: string }) => React.ReactNode;
+  // Minimum height of the tafsir panel — caller passes (viewportHeight - stickyTabBarHeight - bottomInset).
+  // This makes the panel behave like a page: even a one-line tafsir fills the space from
+  // the sticky tab bar to the bottom of the screen.
+  pageMinHeight?: number;
 }): React.JSX.Element {
   const { height: viewportHeight } = useWindowDimensions();
   const skeletonMinHeight = React.useMemo(
@@ -382,7 +387,6 @@ export const TafsirTabPanels = React.memo(function TafsirTabPanels({
 
   const [panelWidth, setPanelWidth] = React.useState(0);
   const [panelHeightsById, setPanelHeightsById] = React.useState<Record<number, number>>({});
-  const [lastStableHeight, setLastStableHeight] = React.useState(0);
   const animatedIndex = React.useRef(new Animated.Value(activeIndex >= 0 ? activeIndex : 0)).current;
   const lastAnimatedIndexRef = React.useRef(activeIndex >= 0 ? activeIndex : 0);
 
@@ -391,18 +395,19 @@ export const TafsirTabPanels = React.memo(function TafsirTabPanels({
     lastVerseKeyRef.current = verseKey;
     animatedIndex.setValue(activeIndex >= 0 ? activeIndex : 0);
     lastAnimatedIndexRef.current = activeIndex >= 0 ? activeIndex : 0;
+    // Reset measured heights when switching verses so old sizes don't carry over
+    setPanelHeightsById({});
   }
 
+  // The minimum height for the panel viewport:
+  // - At least pageMinHeight (viewport minus sticky tab bar minus bottom inset) so it
+  //   always fills the screen below the tab bar — no matter how short the tafsir text is.
+  // - At least the skeleton height while loading.
+  // - At least the actual rendered content height once measured.
   const activeMeasuredHeight =
     typeof resolvedActiveTafsirId === 'number' ? panelHeightsById[resolvedActiveTafsirId] ?? 0 : 0;
-  const panelViewportHeight = isActivePanelLoading
-    ? Math.max(skeletonMinHeight, lastStableHeight)
-    : Math.max(activeMeasuredHeight || lastStableHeight || 0, 1);
-
-  React.useEffect(() => {
-    if (activeMeasuredHeight <= 0 || isActivePanelLoading) return;
-    setLastStableHeight((current) => (current === activeMeasuredHeight ? current : activeMeasuredHeight));
-  }, [activeMeasuredHeight, isActivePanelLoading]);
+  const effectiveMinHeight = Math.max(pageMinHeight, isActivePanelLoading ? skeletonMinHeight : 1);
+  const panelViewportHeight = Math.max(activeMeasuredHeight, effectiveMinHeight);
 
   React.useEffect(() => {
     const targetIndex = activeIndex >= 0 ? activeIndex : 0;
@@ -446,10 +451,6 @@ export const TafsirTabPanels = React.memo(function TafsirTabPanels({
         if (current[tafsirId] === nextHeight) return current;
         return { ...current, [tafsirId]: nextHeight };
       });
-
-      if (tafsirId === resolvedActiveTafsirId) {
-        setLastStableHeight((current) => (current === nextHeight ? current : nextHeight));
-      }
     },
     [resolvedActiveTafsirId]
   );
@@ -473,7 +474,7 @@ export const TafsirTabPanels = React.memo(function TafsirTabPanels({
               <Text className="text-sm text-error dark:text-error-dark">{error}</Text>
             )
           ) : isLoading ? (
-            <TafsirLoadingSkeleton minHeight={Math.max(skeletonMinHeight, lastStableHeight)} />
+            <TafsirLoadingSkeleton minHeight={Math.max(skeletonMinHeight, pageMinHeight)} />
           ) : (
             <TafsirHtml
               html={html}
@@ -487,7 +488,7 @@ export const TafsirTabPanels = React.memo(function TafsirTabPanels({
     [
       contentByTafsirId,
       handlePanelLayout,
-      lastStableHeight,
+      pageMinHeight,
       panelWidth,
       renderErrorState,
       settings.tafsirFontSize,

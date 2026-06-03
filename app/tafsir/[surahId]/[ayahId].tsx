@@ -458,6 +458,7 @@ function TafsirPage({
 }: TafsirPageProps): React.JSX.Element {
   const scrollY = React.useRef(new Animated.Value(0)).current;
   const [aboveHeight, setAboveHeight] = React.useState(0);
+  const [tabsHeight, setTabsHeight] = React.useState(58);
   const [isStuck, setIsStuck] = React.useState(false);
   const { resolvedTheme } = useAppTheme();
 
@@ -466,6 +467,11 @@ function TafsirPage({
     if (height > 0) {
       setAboveHeight(height);
     }
+  }, []);
+
+  const handleTabsHeightLayout = React.useCallback((event: LayoutChangeEvent) => {
+    const height = Math.round(event.nativeEvent.layout.height);
+    if (height > 0) setTabsHeight(height);
   }, []);
 
   const verseKey = getVerseKey(item);
@@ -533,6 +539,18 @@ function TafsirPage({
     return aboveHeight + paddingTop;
   }, [aboveHeight, paddingTop]);
 
+  // Minimum height of the tafsir content panel — fills from the sticky tab bar to the
+  // bottom of the screen. Acts like a page: even a short tafsir occupies the full space.
+  //
+  // tabsHeight is measured live via onLayout so it's pixel-perfect on every device.
+  //   16px  = pt-4 padding at top of TafsirTabPanels' outer wrapper
+  //    8px  = sub-pixel / border rounding correction (empirically tuned)
+  //   28px  = paddingBottom of the ScrollView contentContainerStyle
+  const tafsirPageMinHeight = React.useMemo(
+    () => Math.max(0, viewportHeight - tabsHeight - 16 - 24 - insets.bottom - 28),
+    [viewportHeight, tabsHeight, insets.bottom]
+  );
+
   const absoluteOpacity = React.useMemo(() => {
     return scrollY.interpolate({
       inputRange: [Math.max(0, stickyThreshold - 1), Math.max(1, stickyThreshold)],
@@ -547,6 +565,46 @@ function TafsirPage({
       outputRange: [Math.max(0, overlap - 1.5), 0],
     });
   }, [readerHeader.hiddenProgress, overlap]);
+
+  const lastActiveTafsirIdRef = React.useRef(activeTafsirId);
+  const tafsirScrollPositionsRef = React.useRef<Record<number, number>>({});
+  const lastPageSignatureRef = React.useRef(pageSignature);
+
+  if (lastPageSignatureRef.current !== pageSignature) {
+    lastPageSignatureRef.current = pageSignature;
+    tafsirScrollPositionsRef.current = {};
+  }
+
+  React.useEffect(() => {
+    if (
+      lastActiveTafsirIdRef.current !== undefined &&
+      activeTafsirId !== undefined &&
+      lastActiveTafsirIdRef.current !== activeTafsirId
+    ) {
+      const currentScrollOffset = pageScrollOffsetsRef.current[verseKey] ?? 0;
+
+      // Save scroll offset of the tab we are leaving
+      tafsirScrollPositionsRef.current[lastActiveTafsirIdRef.current] = currentScrollOffset;
+
+      // Determine target offset for the tab we are entering
+      const targetThreshold = aboveHeight + paddingTop;
+      const savedOffset = tafsirScrollPositionsRef.current[activeTafsirId];
+      let targetOffset: number;
+      if (currentScrollOffset > targetThreshold) {
+        targetOffset = savedOffset !== undefined ? Math.max(targetThreshold, savedOffset) : targetThreshold;
+      } else {
+        targetOffset = savedOffset !== undefined ? savedOffset : currentScrollOffset;
+      }
+
+      if (currentScrollOffset !== targetOffset) {
+        const ref = pageScrollRefsRef.current[verseKey];
+        if (ref) {
+          ref.scrollTo({ y: targetOffset, animated: false });
+        }
+      }
+    }
+    lastActiveTafsirIdRef.current = activeTafsirId;
+  }, [activeTafsirId, aboveHeight, paddingTop, verseKey, pageScrollRefsRef, pageScrollOffsetsRef]);
 
   const handleActiveTafsirChange = React.useCallback(
     (id: number) => {
@@ -651,6 +709,7 @@ function TafsirPage({
 
         <View
           collapsable={false}
+          onLayout={handleTabsHeightLayout}
           className={isMultiTafsir ? 'bg-background dark:bg-background-dark' : ''}
           style={
             isMultiTafsir
@@ -681,6 +740,7 @@ function TafsirPage({
               tafsirIds={tafsirIds}
               activeTafsirId={activeTafsirId}
               contentByTafsirId={pageState.tafsirById}
+              pageMinHeight={tafsirPageMinHeight}
             />
           ) : tafsirIds.length === 1 ? (
             <View className="mt-4">
