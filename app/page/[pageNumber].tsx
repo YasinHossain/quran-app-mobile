@@ -1,186 +1,46 @@
-import { FlashList, type FlashListRef } from '@shopify/flash-list';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { Settings } from 'lucide-react-native';
 import React from 'react';
+import { ArrowLeft, Settings } from 'lucide-react-native';
+import { FlashList, type FlashListRef } from '@shopify/flash-list';
 import {
   ActivityIndicator,
+  FlatList,
+  Platform,
   Pressable,
   Share,
+  StyleSheet,
   Text,
   View,
-  useWindowDimensions,
-  type ViewToken,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
 } from 'react-native';
 
-import { BookmarkModal } from '@/components/bookmarks/BookmarkModal';
-import { MushafNativePage } from '@/components/mushaf/MushafNativePage';
-import {
-  resolveMushafVerseKey,
-  type MushafSelectionPayload,
-  type MushafWordPressPayload,
-} from '@/components/mushaf/mushafWordPayload';
-import {
-  estimateMushafWebViewPageHeight,
-  MushafWebViewPage,
-  MushafWebViewPagePlaceholder,
-} from '@/components/mushaf/MushafWebViewPage';
-import {
-  MushafSingleDocumentReader,
-  type MushafSingleDocumentReaderHandle,
-} from '@/components/mushaf/MushafSingleDocumentReader';
-import { IndexScrubber, type IndexScrubberHandle } from '@/components/reader/IndexScrubber';
+import { ComprehensiveSearchDropdown } from '@/components/search/ComprehensiveSearchDropdown';
+import { AppSearchHeader, ReaderOverlayHeader } from '@/components/navigation/AppHeader';
+import { useCollapsibleReaderHeader } from '@/components/navigation/useCollapsibleReaderHeader';
+import { useHeaderSearch } from '@/components/navigation/useHeaderSearch';
+import { HeaderActionButton } from '@/components/search/HeaderSearchBar';
 import { SettingsSidebar } from '@/components/reader/settings/SettingsSidebar';
+import { BookmarkModal } from '@/components/bookmarks/BookmarkModal';
 import { VerseActionsSheet } from '@/components/surah/VerseActionsSheet';
+import { VerseCard } from '@/components/surah/VerseCard';
+import { VerseScrubber, type VerseScrubberHandle } from '@/components/surah/VerseScrubber';
+import { useVerseAudioWordSync } from '@/components/surah/useVerseAudioWordSync';
 import { AddToPlannerModal, type VerseSummaryDetails } from '@/components/verse-planner-modal';
 import Colors from '@/constants/Colors';
-import { DEFAULT_MUSHAF_ID, findMushafOption } from '@/data/mushaf/options';
 import { useChapters } from '@/hooks/useChapters';
-import { useMushafPageData } from '@/hooks/useMushafPageData';
+import { usePageVerses } from '@/hooks/usePageVerses';
 import { preloadOfflineTafsirSurah } from '@/lib/tafsir/tafsirCache';
+import { useTranslationResources } from '@/hooks/useTranslationResources';
 import { primeVerseDetailsCache } from '@/lib/verse/verseDetailsCache';
-import { useAudioPlayer } from '@/providers/AudioPlayerContext';
 import { useBookmarks } from '@/providers/BookmarkContext';
+import { useAudioPlayer } from '@/providers/AudioPlayerContext';
 import { useLayoutMetrics } from '@/providers/LayoutMetricsContext';
 import { useSettings } from '@/providers/SettingsContext';
 import { useAppTheme } from '@/providers/ThemeContext';
-import { container } from '@/src/core/infrastructure/di/container';
+import { getBundledMushafPack } from '@/src/core/infrastructure/mushaf/bundledPacks';
 
-import type { Bookmark, MushafPackId, MushafScaleStep, MushafVerse } from '@/types';
-import { mushafScaleStepToFontSize } from '@/types';
-
-const FALLBACK_TOTAL_PAGES = 604;
-const ENABLE_MUSHAF_QCF_DEV_LOGS = __DEV__;
-const EXACT_ACTIVE_PAGE_WINDOW_PADDING = 2;
-const EXACT_HEIGHT_CACHE_EPSILON_PX = 1;
-const EXACT_PAGE_HEIGHT_CACHE_MAX_ENTRIES = 96;
-const INITIAL_LOCKED_EXACT_WINDOW_PADDING = 1;
-const MUSHAF_NATIVE_LINE_GAP_PX = 2;
-const MUSHAF_WEBVIEW_PAGE_MAX_WIDTH = 720;
-
-const exactPageHeightCache = new Map<string, number>();
-let activeExactPageHeightCacheIdentity: string | null = null;
-
-function nowMs(): number {
-  return globalThis.performance?.now?.() ?? Date.now();
-}
-
-function logMushafQcfDev(event: string, details: Record<string, unknown>): void {
-  if (!ENABLE_MUSHAF_QCF_DEV_LOGS) {
-    return;
-  }
-
-  console.log(`[mushaf-qcf][page-route] ${event}`, details);
-}
-
-function getMushafWebViewViewportSignature(viewportWidth: number, viewportHeight: number): string {
-  const pageWidth = Math.min(Math.max(viewportWidth - 8, 280), MUSHAF_WEBVIEW_PAGE_MAX_WIDTH);
-  return `${Math.round(pageWidth)}x${Math.round(viewportHeight)}`;
-}
-
-function buildExactPageHeightCacheKey({
-  packId,
-  version,
-  pageNumber,
-  mushafScaleStep,
-  viewportSignature,
-}: {
-  packId: MushafPackId;
-  version: string;
-  pageNumber: number;
-  mushafScaleStep: MushafScaleStep;
-  viewportSignature: string;
-}): string {
-  return `${packId}:${version}:${pageNumber}:${mushafScaleStep}:${viewportSignature}`;
-}
-
-function getPackVersionCacheIdentity(packId: MushafPackId, version: string): string {
-  return `${packId}@${version.trim()}`;
-}
-
-function readExactPageHeightCache(cacheKey: string | null): number | null {
-  if (!cacheKey) {
-    return null;
-  }
-
-  return exactPageHeightCache.get(cacheKey) ?? null;
-}
-
-function writeExactPageHeightCache(cacheKey: string, height: number): void {
-  if (exactPageHeightCache.has(cacheKey)) {
-    exactPageHeightCache.delete(cacheKey);
-  }
-
-  exactPageHeightCache.set(cacheKey, height);
-
-  while (exactPageHeightCache.size > EXACT_PAGE_HEIGHT_CACHE_MAX_ENTRIES) {
-    const oldestCacheKey = exactPageHeightCache.keys().next().value;
-    if (!oldestCacheKey) {
-      break;
-    }
-
-    exactPageHeightCache.delete(oldestCacheKey);
-  }
-}
-
-function syncExactPageHeightCacheIdentity(packId: MushafPackId, version: string): boolean {
-  const nextIdentity = getPackVersionCacheIdentity(packId, version);
-  if (activeExactPageHeightCacheIdentity === nextIdentity) {
-    return false;
-  }
-
-  activeExactPageHeightCacheIdentity = nextIdentity;
-
-  if (exactPageHeightCache.size === 0) {
-    return false;
-  }
-
-  exactPageHeightCache.clear();
-  return true;
-}
-
-type ExactPageWindow = {
-  firstPageNumber: number;
-  lastPageNumber: number;
-};
-
-function buildExactPageWindow({
-  firstPageNumber,
-  lastPageNumber,
-  totalPages,
-  paddingPages = EXACT_ACTIVE_PAGE_WINDOW_PADDING,
-}: {
-  firstPageNumber: number;
-  lastPageNumber: number;
-  totalPages: number;
-  paddingPages?: number;
-}): ExactPageWindow {
-  return {
-    firstPageNumber: Math.max(1, firstPageNumber - Math.max(0, paddingPages)),
-    lastPageNumber: Math.min(totalPages, lastPageNumber + Math.max(0, paddingPages)),
-  };
-}
-
-function areExactPageWindowsEqual(left: ExactPageWindow, right: ExactPageWindow): boolean {
-  return (
-    left.firstPageNumber === right.firstPageNumber &&
-    left.lastPageNumber === right.lastPageNumber
-  );
-}
-
-type ActiveMushafVerse = {
-  title: string;
-  surahId: number;
-  verseKey: string;
-  verseApiId?: number;
-  arabicText: string;
-  translationTexts: string[];
-  wordPosition: number;
-};
-
-function clampPageNumber(value: number | null): number {
-  if (value === null || !Number.isInteger(value)) return 1;
-  return Math.min(Math.max(value, 1), FALLBACK_TOTAL_PAGES);
-}
+import type { Bookmark } from '@/types';
 
 function parseVerseKeyNumbers(
   verseKey: string | null
@@ -190,906 +50,294 @@ function parseVerseKeyNumbers(
   const surahId = Number.parseInt(surahRaw ?? '', 10);
   const verseNumber = Number.parseInt(verseRaw ?? '', 10);
   if (!Number.isFinite(surahId) || !Number.isFinite(verseNumber)) return null;
-  const normalizedSurahId = Math.trunc(surahId);
-  const normalizedVerseNumber = Math.trunc(verseNumber);
-  if (normalizedSurahId <= 0 || normalizedVerseNumber <= 0) return null;
-  return { surahId: normalizedSurahId, verseNumber: normalizedVerseNumber };
+  const normalizedSurah = Math.trunc(surahId);
+  const normalizedVerse = Math.trunc(verseNumber);
+  if (normalizedSurah <= 0 || normalizedVerse <= 0) return null;
+  return { surahId: normalizedSurah, verseNumber: normalizedVerse };
 }
 
-function resolveMushafVerseText(verse: MushafVerse): string {
-  const directText = verse.textUthmani ?? verse.textIndopak ?? '';
-  if (directText.trim()) {
-    return directText.trim();
-  }
-
-  return verse.words
-    .map((word) => word.textUthmani ?? word.textIndopak ?? word.textQpcHafs ?? '')
-    .filter((wordText) => wordText.trim().length > 0)
-    .join(' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function resolveHighlightVerseFirstLineNumber(
-  data: { pageLines: { lines: Array<{ lineNumber: number; words: Array<{ verseKey?: string; location?: string }> }> } },
-  highlightVerseKey: string
-): number | null {
-  let firstLineNumber = Number.POSITIVE_INFINITY;
-
-  for (const line of data.pageLines.lines) {
-    const lineHasVerse = line.words.some((word) => resolveMushafVerseKey(word) === highlightVerseKey);
-    if (!lineHasVerse) {
-      continue;
-    }
-
-    firstLineNumber = Math.min(firstLineNumber, line.lineNumber);
-  }
-
-  return Number.isFinite(firstLineNumber) ? firstLineNumber : null;
-}
-
-function buildNativeHighlightAnchor({
-  data,
-  highlightVerseKey,
-  mushafScaleStep,
-}: {
-  data: {
-    pack: { lines: number };
-    pageLines: { lines: Array<{ lineNumber: number; words: Array<{ verseKey?: string; location?: string }> }> };
-  };
-  highlightVerseKey: string;
-  mushafScaleStep: MushafScaleStep;
-}): { height: number; offsetY: number; pageHeight: number; verseKey: string } | null {
-  const firstLineNumber = resolveHighlightVerseFirstLineNumber(data, highlightVerseKey);
-  if (firstLineNumber === null) {
-    return null;
-  }
-
-  const fontSize = mushafScaleStepToFontSize(mushafScaleStep);
-  const lineHeight = Math.round(fontSize * 1.72);
-  const verticalPadding = Math.max(6, Math.round(fontSize * 0.18));
-  const normalizedLineIndex = Math.max(0, Math.min(data.pack.lines - 1, firstLineNumber - 1));
-  const pageHeight =
-    verticalPadding * 2 +
-    data.pack.lines * lineHeight +
-    Math.max(0, data.pack.lines - 1) * MUSHAF_NATIVE_LINE_GAP_PX;
-
-  return {
-    height: lineHeight,
-    offsetY: verticalPadding + normalizedLineIndex * (lineHeight + MUSHAF_NATIVE_LINE_GAP_PX),
-    pageHeight,
-    verseKey: highlightVerseKey,
-  };
-}
-
-function LoadingState({
-  label,
-  color,
-}: {
-  label: string;
-  color: string;
-}): React.JSX.Element {
+function VerseCardPlaceholder({ verseKey }: { verseKey: string }): React.JSX.Element {
   return (
-    <View className="flex-1 items-center justify-center gap-4 px-6">
-      <ActivityIndicator color={color} />
-      <Text className="text-center text-sm text-muted dark:text-muted-dark">{label}</Text>
-    </View>
-  );
-}
-
-function ErrorState({ message }: { message: string }): React.JSX.Element {
-  return (
-    <View className="flex-1 items-center justify-center px-6">
-      <Text className="text-center text-sm leading-6 text-muted dark:text-muted-dark">
-        {message}
-      </Text>
-    </View>
-  );
-}
-
-function MushafFeedPlaceholder({
-  color,
-  height,
-}: {
-  color: string;
-  height: number;
-}): React.JSX.Element {
-  return (
-    <View
-      className="items-center justify-center"
-      style={{ height: Math.max(320, height) }}
-    >
-      <ActivityIndicator color={color} />
-    </View>
-  );
-}
-
-function MushafFeedPageRow({
-  pageNumber,
-  packId,
-  expectedVersion,
-  exactHeightCacheKey,
-  cachedExactHeight,
-  isExactRenderer,
-  isInExactRenderWindow,
-  mushafScaleStep,
-  estimatedHeight,
-  chapterNamesById,
-  isInitialTargetPage,
-  loadingColor,
-  highlightVerseKey,
-  onHighlightAnchorResolved,
-  onExactHeightResolved,
-  onExactPageFirstHeight,
-  onSelectionChange,
-  onVersePress,
-}: {
-  pageNumber: number;
-  packId: MushafPackId;
-  expectedVersion?: string;
-  exactHeightCacheKey: string | null;
-  cachedExactHeight: number | null;
-  isExactRenderer: boolean;
-  isInExactRenderWindow: boolean;
-  mushafScaleStep: MushafScaleStep;
-  estimatedHeight: number;
-  chapterNamesById: Map<number, string>;
-  isInitialTargetPage: boolean;
-  loadingColor: string;
-  highlightVerseKey?: string;
-  onHighlightAnchorResolved?: (payload: {
-    height: number;
-    offsetY: number;
-    pageHeight: number;
-    verseKey: string;
-  }) => void;
-  onExactHeightResolved: (payload: { cacheKey: string; height: number; pageNumber: number }) => void;
-  onExactPageFirstHeight: (payload: { pageNumber: number; height: number; durationMs: number }) => void;
-  onSelectionChange: (payload: MushafSelectionPayload) => void;
-  onVersePress: (verse: ActiveMushafVerse) => void;
-}): React.JSX.Element {
-  const { data, isLoading, errorMessage } = useMushafPageData({
-    packId,
-    pageNumber,
-    expectedVersion,
-    enabled: !isExactRenderer || isInExactRenderWindow,
-  });
-
-  const versesByKey = React.useMemo(
-    () => new Map((data?.verses ?? []).map((verse) => [verse.verseKey, verse] as const)),
-    [data?.verses]
-  );
-  const nativeHighlightAnchor = React.useMemo(() => {
-    if (!data || data.pack.renderer !== 'text' || !highlightVerseKey) {
-      return null;
-    }
-
-    return buildNativeHighlightAnchor({
-      data,
-      highlightVerseKey,
-      mushafScaleStep,
-    });
-  }, [data, highlightVerseKey, mushafScaleStep]);
-
-  React.useEffect(() => {
-    if (!nativeHighlightAnchor || !onHighlightAnchorResolved) {
-      return;
-    }
-
-    onHighlightAnchorResolved(nativeHighlightAnchor);
-  }, [nativeHighlightAnchor, onHighlightAnchorResolved]);
-
-  const handleWordPress = React.useCallback(
-    (payload: MushafWordPressPayload) => {
-      const verseKey = resolveMushafVerseKey(payload);
-      if (!verseKey) return;
-
-      const verse = versesByKey.get(verseKey);
-      if (!verse) return;
-
-      const parsed = parseVerseKeyNumbers(verseKey);
-      if (!parsed) return;
-
-      onVersePress({
-        title: chapterNamesById.get(parsed.surahId) ?? `Surah ${parsed.surahId}`,
-        surahId: parsed.surahId,
-        verseKey,
-        ...(typeof verse.id === 'number' && Number.isFinite(verse.id) && verse.id > 0
-          ? { verseApiId: verse.id }
-          : {}),
-        arabicText: resolveMushafVerseText(verse),
-        translationTexts: [],
-        wordPosition:
-          typeof payload.wordPosition === 'number' && Number.isFinite(payload.wordPosition)
-            ? Math.trunc(payload.wordPosition)
-            : 0,
-      });
-    },
-    [chapterNamesById, onVersePress, versesByKey]
-  );
-
-  let content: React.JSX.Element;
-  const resolvedExactHeight = cachedExactHeight ?? estimatedHeight;
-
-  if (isExactRenderer && !isInExactRenderWindow) {
-    content = <MushafWebViewPagePlaceholder estimatedHeight={resolvedExactHeight} />;
-  } else if (errorMessage) {
-    content = (
-      <View className="px-6 py-6">
-        <Text className="text-center text-sm text-muted dark:text-muted-dark">{errorMessage}</Text>
-      </View>
-    );
-  } else if (isLoading || !data) {
-    content = isExactRenderer ? (
-      <MushafWebViewPagePlaceholder
-        estimatedHeight={resolvedExactHeight}
-        showLoadingIndicator={false}
-      />
-    ) : (
-      <MushafFeedPlaceholder color={loadingColor} height={estimatedHeight} />
-    );
-  } else {
-    content =
-      data.pack.renderer === 'text' ? (
-        <MushafNativePage
-          data={data}
-          mushafScaleStep={mushafScaleStep}
-          highlightVerseKey={highlightVerseKey}
-          onWordPress={handleWordPress}
-        />
-      ) : (
-        <MushafWebViewPage
-          data={data}
-          mushafScaleStep={mushafScaleStep}
-          highlightVerseKey={highlightVerseKey}
-          initialHeightOverride={cachedExactHeight ?? undefined}
-          onHighlightAnchorResolved={onHighlightAnchorResolved}
-          onFirstContentHeight={
-            isInitialTargetPage
-              ? ({ height, durationMs }) =>
-                  onExactPageFirstHeight({ durationMs, height, pageNumber })
-              : undefined
-          }
-          onHeightResolved={
-            exactHeightCacheKey
-              ? ({ height }) =>
-                  onExactHeightResolved({
-                    cacheKey: exactHeightCacheKey,
-                    height,
-                    pageNumber,
-                  })
-              : undefined
-          }
-          onSelectionChange={onSelectionChange}
-          onWordPress={handleWordPress}
-        />
-      );
-  }
-
-  return (
-    <View>
-      {content}
-      <View className="items-center px-3 pt-3">
-        <View className="w-full max-w-[220px] flex-row items-center justify-center gap-3">
-          <View className="h-px flex-1 bg-border/55 dark:bg-border-dark/40" />
-          <Text className="text-xs font-medium text-muted dark:text-muted-dark">
-            Page {pageNumber}
-          </Text>
-          <View className="h-px flex-1 bg-border/55 dark:bg-border-dark/40" />
+    <View className="border-b border-border/40 py-4 dark:border-border-dark/30">
+      <View className="gap-4">
+        <Text className="text-sm font-semibold text-accent dark:text-accent-dark">{verseKey}</Text>
+        <View className="h-12 rounded-2xl bg-surface dark:bg-surface-dark" />
+        <View className="gap-3">
+          <View className="h-4 rounded-full bg-surface dark:bg-surface-dark" />
+          <View className="h-4 w-5/6 rounded-full bg-surface dark:bg-surface-dark" />
+          <View className="h-4 w-2/3 rounded-full bg-surface dark:bg-surface-dark" />
         </View>
       </View>
     </View>
   );
 }
 
+const cardShadow =
+  Platform.OS === 'android'
+    ? { shadowColor: 'transparent', elevation: 0 }
+    : {
+        shadowColor: '#000',
+        shadowOpacity: 0.06,
+        shadowRadius: 6,
+        shadowOffset: { width: 0, height: 2 },
+      };
+
+function PageHeaderCard({ pageNumber, surahRange }: { pageNumber: number; surahRange: string }): React.JSX.Element {
+  const { resolvedTheme } = useAppTheme();
+  const isDark = resolvedTheme === 'dark';
+  const bgColor = isDark ? '#182333' : '#FFFFFF';
+
+  return (
+    <View
+      className="mb-4 flex-row items-center justify-between px-4 py-3"
+      style={[
+        cardShadow,
+        {
+          borderRadius: 12,
+          borderWidth: 0,
+          backgroundColor: bgColor,
+        },
+      ]}
+    >
+      <Text className="text-base font-bold text-content-primary dark:text-content-primary-dark">
+        Page {pageNumber}
+      </Text>
+      {surahRange ? (
+        <View className="rounded-full bg-accent/10 px-3 py-1">
+          <Text className="text-xs font-semibold text-accent dark:text-accent-dark">
+            {surahRange}
+          </Text>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  contentStage: {
+    flex: 1,
+    overflow: 'hidden',
+  },
+  contentLayer: {
+    ...StyleSheet.absoluteFillObject,
+  },
+});
+
+const INITIAL_PLACEHOLDER_VERSE_KEYS = ['1:1', '1:2', '1:3', '1:4'];
+
+function clampPageNumber(value: number | null): number {
+  if (value === null || !Number.isInteger(value)) return 1;
+  return Math.min(Math.max(value, 1), 604);
+}
+
 export default function PageScreen(): React.JSX.Element {
   const params = useLocalSearchParams<{
     pageNumber?: string | string[];
-    focusVerse?: string | string[];
+    startVerse?: string | string[];
   }>();
   const router = useRouter();
-  const { width, height } = useWindowDimensions();
-  const { resolvedTheme } = useAppTheme();
-  const { audioPlayerBarHeight } = useLayoutMetrics();
-  const palette = Colors[resolvedTheme];
-  const pageNumberParam = Array.isArray(params.pageNumber)
-    ? params.pageNumber[0]
-    : params.pageNumber;
-  const focusVerseParam = Array.isArray(params.focusVerse) ? params.focusVerse[0] : params.focusVerse;
-  const parsedPageNumber = Number.parseInt(pageNumberParam ?? '', 10);
-  const initialPageNumber = clampPageNumber(
-    Number.isInteger(parsedPageNumber) ? parsedPageNumber : null
-  );
-  const arrivalHighlightVerseKey = React.useMemo(() => {
-    const parsed = parseVerseKeyNumbers(focusVerseParam ?? null);
-    return parsed ? `${parsed.surahId}:${parsed.verseNumber}` : null;
-  }, [focusVerseParam]);
+  const pageNumberParam = Array.isArray(params.pageNumber) ? params.pageNumber[0] : params.pageNumber;
+  const startVerseParam = Array.isArray(params.startVerse) ? params.startVerse[0] : params.startVerse;
 
-  const [isVerseActionsOpen, setIsVerseActionsOpen] = React.useState(false);
+  const pageNumber = clampPageNumber(pageNumberParam ? Number(pageNumberParam) : 1);
+  const startVerse = startVerseParam ? Number(startVerseParam) : NaN;
+
   const [isSettingsOpen, setIsSettingsOpen] = React.useState(false);
+  const [isVerseActionsOpen, setIsVerseActionsOpen] = React.useState(false);
   const [isBookmarkModalOpen, setIsBookmarkModalOpen] = React.useState(false);
   const [isAddToPlannerOpen, setIsAddToPlannerOpen] = React.useState(false);
-  const [plannerVerseSummary, setPlannerVerseSummary] =
-    React.useState<VerseSummaryDetails | null>(null);
-  const [activeVerse, setActiveVerse] = React.useState<ActiveMushafVerse | null>(null);
+  const [plannerVerseSummary, setPlannerVerseSummary] = React.useState<VerseSummaryDetails | null>(
+    null
+  );
+  const [activeVerse, setActiveVerse] = React.useState<{
+    verseKey: string;
+    verseApiId?: number;
+    arabicText: string;
+    translationTexts: string[];
+  } | null>(null);
 
-  const selectionMetadataRef = React.useRef<MushafSelectionPayload | null>(null);
-
-  const { settings, isHydrated } = useSettings();
+  const { resolvedTheme } = useAppTheme();
+  const palette = Colors[resolvedTheme];
+  const readerHeader = useCollapsibleReaderHeader();
+  const headerSearch = useHeaderSearch();
   const { chapters } = useChapters();
-  const { isPinned } = useBookmarks();
   const audio = useAudioPlayer();
+  const { audioPlayerBarHeight } = useLayoutMetrics();
+
+  const listContentContainerStyle = React.useMemo(
+    () => ({
+      paddingHorizontal: 16,
+      paddingTop: readerHeader.headerHeight + 16,
+      paddingBottom: 24 + audioPlayerBarHeight,
+    }),
+    [audioPlayerBarHeight, readerHeader.headerHeight]
+  );
+
+  const { settings } = useSettings();
+  const { isPinned, setLastRead } = useBookmarks();
+
+  const chapterNamesById = React.useMemo(
+    () => new Map(chapters.map((item) => [item.id, item.name_simple] as const)),
+    [chapters]
+  );
+
+  const surahRange = React.useMemo(() => {
+    if (chapters.length === 0) return '';
+    const pack = getBundledMushafPack('unicode-uthmani-v1');
+    const lookup = pack?.payload.lookup[String(pageNumber)];
+    if (!lookup) return '';
+
+    const startParsed = parseVerseKeyNumbers(lookup.firstVerseKey || lookup.from);
+    const endParsed = parseVerseKeyNumbers(lookup.lastVerseKey || lookup.to);
+    if (!startParsed || !endParsed) return '';
+
+    const startName = chapterNamesById.get(startParsed.surahId) || '';
+    const endName = chapterNamesById.get(endParsed.surahId) || '';
+
+    if (startParsed.surahId === endParsed.surahId) {
+      return startName;
+    }
+
+    return `${startName} - ${endName}`;
+  }, [pageNumber, chapters, chapterNamesById]);
+
+  const activeChapterNumber = React.useMemo(() => {
+    if (audio.activeVerseKey) {
+      const parsed = parseVerseKeyNumbers(audio.activeVerseKey);
+      return parsed?.surahId ?? 1;
+    }
+    const pack = getBundledMushafPack('unicode-uthmani-v1');
+    const lookup = pack?.payload.lookup[String(pageNumber)];
+    if (lookup) {
+      const parsed = parseVerseKeyNumbers(lookup.firstVerseKey || lookup.from);
+      return parsed?.surahId ?? 1;
+    }
+    return 1;
+  }, [audio.activeVerseKey, pageNumber]);
+
+  const verseAudioWordSync = useVerseAudioWordSync(activeChapterNumber);
+
   const translationIds = React.useMemo(() => {
     const ids = Array.isArray(settings.translationIds)
       ? settings.translationIds
       : [settings.translationId ?? 20];
     return ids.filter((id) => Number.isFinite(id) && id > 0);
   }, [settings.translationId, settings.translationIds]);
-  const tafsirIds = React.useMemo(() => {
-    const ids = Array.isArray(settings.tafsirIds) ? settings.tafsirIds : [];
-    return ids.filter((id) => Number.isFinite(id) && id > 0);
-  }, [settings.tafsirIds]);
 
-  const selectedMushafId = settings.mushafId ?? DEFAULT_MUSHAF_ID;
-  const selectedMushafOption = findMushafOption(selectedMushafId);
-  const selectedMushafVersion = selectedMushafOption?.version ?? 'unknown';
-  const exactViewportSignature = React.useMemo(
-    () => getMushafWebViewViewportSignature(width, height),
-    [height, width]
-  );
-  const exactLoadBaselineStartRef = React.useRef<number | null>(null);
-  const hasReportedInitialExactPageRef = React.useRef(false);
-  const [exactHeightCacheVersion, bumpExactHeightCacheVersion] = React.useReducer(
-    (value) => value + 1,
-    0
-  );
+  const showTranslationAttribution = translationIds.length > 1;
 
-  const initialPageProbe = useMushafPageData({
-    packId: selectedMushafId,
-    pageNumber: initialPageNumber,
-    expectedVersion: selectedMushafVersion,
-    enabled: isHydrated,
+  React.useEffect(() => {
+    readerHeader.resetHeader();
+  }, [pageNumber, readerHeader.resetHeader]);
+
+  const { translationsById } = useTranslationResources({
+    enabled: showTranslationAttribution,
+    language: settings.contentLanguage,
   });
-  const resolvedMushafRenderer =
-    initialPageProbe.data?.pack.renderer ?? selectedMushafOption?.renderer ?? 'text';
-  const isExactRenderer = resolvedMushafRenderer === 'webview';
-  const shouldShowQpcTextPageScrubber =
-    selectedMushafId === 'qpc-uthmani-hafs' && !isExactRenderer;
-  const activeMushafVersion = initialPageProbe.data?.pack.version ?? selectedMushafVersion;
-  const canSyncActivePageCacheIdentity =
-    initialPageProbe.data !== null || selectedMushafOption?.channel === 'bundled';
 
-  React.useEffect(() => {
-    if (!canSyncActivePageCacheIdentity) {
-      return;
-    }
+  const {
+    verseKeys,
+    hasLoadedContent,
+    getVerseByKey,
+    isLoading,
+    errorMessage,
+    offlineNotInstalled,
+    refresh,
+    retry,
+  } = usePageVerses({
+    pageNumber,
+    translationIds,
+    wordLang: settings.wordLang,
+    enabled: true,
+  });
 
-    container.getMushafPageRepository().setActivePageCacheIdentity({
-      packId: selectedMushafId,
-      version: activeMushafVersion,
-    });
+  const [visibleVerseNumber, setVisibleVerseNumber] = React.useState(1);
+  const visibleVerseNumberRef = React.useRef(visibleVerseNumber);
+  const isVerseScrubbingRef = React.useRef(false);
+  const lastScrubScrollVerseRef = React.useRef<number | null>(null);
+  const queuedScrubScrollVerseRef = React.useRef<number | null>(null);
+  const scrubScrollInFlightRef = React.useRef(false);
+  const scrubScrollRequestIdRef = React.useRef(0);
 
-    const didClearExactHeightCache = syncExactPageHeightCacheIdentity(
-      selectedMushafId,
-      activeMushafVersion
-    );
-    if (!didClearExactHeightCache) {
-      return;
-    }
+  const flashListRef = React.useRef<FlashListRef<string> | null>(null);
+  const flatListRef = React.useRef<FlatList<string> | null>(null);
+  const verseScrubberRef = React.useRef<VerseScrubberHandle | null>(null);
 
-    bumpExactHeightCacheVersion();
-    logMushafQcfDev('exact-height-cache-reset', {
-      packId: selectedMushafId,
-      version: activeMushafVersion,
-    });
-  }, [activeMushafVersion, canSyncActivePageCacheIdentity, selectedMushafId]);
+  const viewabilityConfig = React.useRef({
+    itemVisiblePercentThreshold: 30,
+    minimumViewTime: 50,
+  }).current;
 
-  const chapterNamesById = React.useMemo(
-    () => new Map(chapters.map((chapter) => [chapter.id, chapter.name_simple] as const)),
-    [chapters]
-  );
-
-  const totalPages = initialPageProbe.data?.pack.totalPages ?? FALLBACK_TOTAL_PAGES;
-  const pageNumbers = React.useMemo(
-    () => Array.from({ length: totalPages }, (_value, index) => index + 1),
-    [totalPages]
-  );
-  const exactReaderBackgroundPageNumbers = React.useMemo(() => {
-    const pageSet = new Set<number>();
-    for (let pageNumber = initialPageNumber - 2; pageNumber <= initialPageNumber + 2; pageNumber += 1) {
-      if (pageNumber >= 1 && pageNumber <= totalPages) {
-        pageSet.add(pageNumber);
-      }
-    }
-
-    const parsedHighlight = parseVerseKeyNumbers(arrivalHighlightVerseKey);
-    const chapterPages =
-      parsedHighlight === null
-        ? null
-        : chapters.find((chapter) => chapter.id === parsedHighlight.surahId)?.pages ?? null;
-
-    if (chapterPages) {
-      const [firstPage, lastPage] = chapterPages;
-      for (let pageNumber = firstPage; pageNumber <= lastPage; pageNumber += 1) {
-        if (pageNumber >= 1 && pageNumber <= totalPages) {
-          pageSet.add(pageNumber);
-        }
-      }
-    } else {
-      for (let pageNumber = initialPageNumber - 6; pageNumber <= initialPageNumber + 6; pageNumber += 1) {
-        if (pageNumber >= 1 && pageNumber <= totalPages) {
-          pageSet.add(pageNumber);
-        }
-      }
-    }
-
-    return Array.from(pageSet).sort((left, right) => {
-      const leftDistance = Math.abs(left - initialPageNumber);
-      const rightDistance = Math.abs(right - initialPageNumber);
-      if (leftDistance !== rightDistance) {
-        return leftDistance - rightDistance;
-      }
-      return left - right;
-    });
-  }, [arrivalHighlightVerseKey, chapters, initialPageNumber, totalPages]);
-  const shouldLockInitialExactWindow = Boolean(isExactRenderer && arrivalHighlightVerseKey);
-  const initialExactPageWindow = React.useMemo(
-    () =>
-      buildExactPageWindow({
-        firstPageNumber: initialPageNumber,
-        lastPageNumber: initialPageNumber,
-        paddingPages: shouldLockInitialExactWindow
-          ? INITIAL_LOCKED_EXACT_WINDOW_PADDING
-          : EXACT_ACTIVE_PAGE_WINDOW_PADDING,
-        totalPages,
-      }),
-    [initialPageNumber, shouldLockInitialExactWindow, totalPages]
-  );
-  const [activeExactPageWindow, setActiveExactPageWindow] =
-    React.useState<ExactPageWindow>(initialExactPageWindow);
-  const [isInitialExactWindowLocked, setIsInitialExactWindowLocked] =
-    React.useState(shouldLockInitialExactWindow);
-  const totalPagesRef = React.useRef(FALLBACK_TOTAL_PAGES);
-  const isExactRendererRef = React.useRef(isExactRenderer);
-  const shouldShowQpcTextPageScrubberRef = React.useRef(shouldShowQpcTextPageScrubber);
-  const isInitialExactWindowLockedRef = React.useRef(shouldLockInitialExactWindow);
-  const feedListRef = React.useRef<FlashListRef<number> | null>(null);
-  const exactReaderRef = React.useRef<MushafSingleDocumentReaderHandle | null>(null);
-  const exactPageScrubberRef = React.useRef<IndexScrubberHandle | null>(null);
-  const initialPageNumberRef = React.useRef(initialPageNumber);
-  const [activeExactPageNumber, setActiveExactPageNumber] = React.useState(initialPageNumber);
-  const activeExactPageNumberRef = React.useRef(initialPageNumber);
-  const isExactPageScrubbingRef = React.useRef(false);
-  const initialPageViewOffsetRef = React.useRef(0);
-  const lastAppliedInitialScrollSignatureRef = React.useRef<string | null>(null);
-  const didScrollToInitialPageRef = React.useRef(false);
-  const [initialPageViewOffset, setInitialPageViewOffset] = React.useState(0);
-  const [initialPageScrollTick, bumpInitialPageScrollTick] = React.useReducer(
-    (value) => value + 1,
-    0
-  );
-  const initialPageScrollRetryCountRef = React.useRef(0);
-  const initialPageScrollRetryTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(
-    null
-  );
-  const initialPageIndex = Math.min(Math.max(initialPageNumber - 1, 0), pageNumbers.length - 1);
-  const initialExactHeightCacheKey = React.useMemo(
-    () =>
-      isExactRenderer
-        ? buildExactPageHeightCacheKey({
-            packId: selectedMushafId,
-            version: activeMushafVersion,
-            pageNumber: initialPageNumber,
-            mushafScaleStep: settings.mushafScaleStep,
-            viewportSignature: exactViewportSignature,
-          })
-        : null,
-    [
-      exactViewportSignature,
-      initialPageNumber,
-      isExactRenderer,
-      selectedMushafId,
-      activeMushafVersion,
-      settings.mushafScaleStep,
-    ]
-  );
-  const initialExactCachedHeight = React.useMemo(
-    () => readExactPageHeightCache(initialExactHeightCacheKey),
-    [exactHeightCacheVersion, initialExactHeightCacheKey]
-  );
-  const arrivalFocusTopInset = React.useMemo(
-    () => Math.round(Math.min(Math.max(height * 0.18, 72), 136)),
-    [height]
-  );
-  const estimatedItemSize = React.useMemo(() => {
-    if (!isExactRenderer && initialPageProbe.data?.pack.renderer === 'text') {
-      const fontSize = mushafScaleStepToFontSize(settings.mushafScaleStep);
-      return Math.round(fontSize * 1.72 * initialPageProbe.data.pack.lines + fontSize * 2);
-    }
-
-    if (initialExactCachedHeight !== null) {
-      return initialExactCachedHeight;
-    }
-
-    if (isExactRenderer) {
-      return estimateMushafWebViewPageHeight({
-        packId: selectedMushafId,
-        lines: initialPageProbe.data?.pack.lines ?? selectedMushafOption?.lines ?? 15,
-        mushafScaleStep: settings.mushafScaleStep,
-        viewportHeight: height,
-        viewportWidth: width,
-      });
-    }
-
-    return Math.round(Math.max(height * 0.9, 620));
-  }, [
-    height,
-    initialExactCachedHeight,
-    initialPageProbe.data,
-    isExactRenderer,
-    selectedMushafId,
-    selectedMushafOption?.lines,
-    settings.mushafScaleStep,
-    width,
-  ]);
-  const listContentContainerStyle = React.useMemo(
-    () => ({ paddingTop: 12, paddingBottom: 24 + audioPlayerBarHeight }),
-    [audioPlayerBarHeight]
-  );
-  const listExtraData = React.useMemo(
-    () => ({
-      activeExactPageWindowFirst: activeExactPageWindow.firstPageNumber,
-      activeExactPageWindowLast: activeExactPageWindow.lastPageNumber,
-      arrivalHighlightVerseKey,
-      exactHeightCacheVersion,
-      exactViewportSignature,
-      isExactRenderer,
-      mushafScaleStep: settings.mushafScaleStep,
-      selectedMushafId,
-    }),
-    [
-      activeExactPageWindow,
-      arrivalHighlightVerseKey,
-      exactHeightCacheVersion,
-      exactViewportSignature,
-      isExactRenderer,
-      selectedMushafId,
-      settings.mushafScaleStep,
-    ]
-  );
-  const viewabilityConfig = React.useRef({ itemVisiblePercentThreshold: 20 }).current;
-
-  React.useEffect(() => {
-    totalPagesRef.current = totalPages;
-  }, [totalPages]);
-
-  React.useEffect(() => {
-    isExactRendererRef.current = isExactRenderer;
-  }, [isExactRenderer]);
-
-  React.useEffect(() => {
-    shouldShowQpcTextPageScrubberRef.current = shouldShowQpcTextPageScrubber;
-  }, [shouldShowQpcTextPageScrubber]);
-
-  React.useEffect(() => {
-    isInitialExactWindowLockedRef.current = isInitialExactWindowLocked;
-  }, [isInitialExactWindowLocked]);
-
-  React.useEffect(() => {
-    initialPageNumberRef.current = initialPageNumber;
-    activeExactPageNumberRef.current = initialPageNumber;
-    isExactPageScrubbingRef.current = false;
-    setActiveExactPageNumber(initialPageNumber);
-  }, [initialPageNumber]);
-
-  const updateInitialPageViewOffset = React.useCallback((nextOffset: number) => {
-    const normalizedOffset = Math.max(0, Math.round(nextOffset));
-    if (Math.abs(initialPageViewOffsetRef.current - normalizedOffset) <= EXACT_HEIGHT_CACHE_EPSILON_PX) {
-      return;
-    }
-
-    initialPageViewOffsetRef.current = normalizedOffset;
-    setInitialPageViewOffset(normalizedOffset);
-  }, []);
-
-  React.useEffect(() => {
-    setIsVerseActionsOpen(false);
-    setIsSettingsOpen(false);
-    setIsBookmarkModalOpen(false);
-    setIsAddToPlannerOpen(false);
-    setPlannerVerseSummary(null);
-    setActiveVerse(null);
-    selectionMetadataRef.current = null;
-  }, [initialPageNumber, selectedMushafId]);
-
-  React.useEffect(() => {
-    setIsInitialExactWindowLocked(shouldLockInitialExactWindow);
-    isInitialExactWindowLockedRef.current = shouldLockInitialExactWindow;
-    didScrollToInitialPageRef.current = false;
-    initialPageScrollRetryCountRef.current = 0;
-    lastAppliedInitialScrollSignatureRef.current = null;
-    initialPageViewOffsetRef.current = 0;
-    setInitialPageViewOffset(0);
-
-    if (initialPageScrollRetryTimeoutRef.current) {
-      clearTimeout(initialPageScrollRetryTimeoutRef.current);
-      initialPageScrollRetryTimeoutRef.current = null;
-    }
-  }, [arrivalHighlightVerseKey, initialPageNumber, selectedMushafId, shouldLockInitialExactWindow]);
-
-  React.useEffect(() => {
-    return () => {
-      if (initialPageScrollRetryTimeoutRef.current) {
-        clearTimeout(initialPageScrollRetryTimeoutRef.current);
-        initialPageScrollRetryTimeoutRef.current = null;
-      }
-    };
-  }, []);
-
-  React.useEffect(() => {
-    hasReportedInitialExactPageRef.current = false;
-
-    if (!isHydrated || !isExactRenderer) {
-      exactLoadBaselineStartRef.current = null;
-      return;
-    }
-
-    exactLoadBaselineStartRef.current = nowMs();
-    logMushafQcfDev('exact-load-baseline-start', {
-      initialPageNumber,
-      packId: selectedMushafId,
-    });
-  }, [initialPageNumber, isExactRenderer, isHydrated, selectedMushafId]);
-
-  React.useEffect(() => {
-    setActiveExactPageWindow(initialExactPageWindow);
-
-    if (isExactRenderer) {
-      logMushafQcfDev('exact-render-window-reset', {
-        firstPageNumber: initialExactPageWindow.firstPageNumber,
-        lastPageNumber: initialExactPageWindow.lastPageNumber,
-        packId: selectedMushafId,
-      });
-    }
-  }, [initialExactPageWindow, isExactRenderer, selectedMushafId]);
-
+  const visibleVerseKeyRef = React.useRef<string | null>(null);
   const onViewableItemsChanged = React.useRef(
-    ({ viewableItems }: { viewableItems: Array<ViewToken> }) => {
-      let firstVisiblePageNumber = Number.POSITIVE_INFINITY;
-      let lastVisiblePageNumber = -1;
-
-      for (const token of viewableItems) {
-        if (!token.isViewable) continue;
-        const pageNumber =
-          typeof token.item === 'number'
-            ? token.item
-            : Number.parseInt(String(token.item ?? ''), 10);
-        if (!Number.isFinite(pageNumber)) continue;
-
-        firstVisiblePageNumber = Math.min(firstVisiblePageNumber, pageNumber);
-        lastVisiblePageNumber = Math.max(lastVisiblePageNumber, pageNumber);
-      }
-
-      if (!Number.isFinite(firstVisiblePageNumber) || lastVisiblePageNumber < 1) {
-        return;
-      }
-
-      const targetInitialPageNumber = initialPageNumberRef.current;
-      if (
-        targetInitialPageNumber >= firstVisiblePageNumber &&
-        targetInitialPageNumber <= lastVisiblePageNumber
-      ) {
-        didScrollToInitialPageRef.current = true;
-        initialPageScrollRetryCountRef.current = 0;
-        if (initialPageScrollRetryTimeoutRef.current) {
-          clearTimeout(initialPageScrollRetryTimeoutRef.current);
-          initialPageScrollRetryTimeoutRef.current = null;
-        }
-      }
-
-      if (shouldShowQpcTextPageScrubberRef.current && !isExactPageScrubbingRef.current) {
-        activeExactPageNumberRef.current = firstVisiblePageNumber;
-        setActiveExactPageNumber((currentPageNumber) =>
-          currentPageNumber === firstVisiblePageNumber ? currentPageNumber : firstVisiblePageNumber
-        );
-      }
-
-      if (!isExactRendererRef.current) {
-        return;
-      }
-
-      if (isInitialExactWindowLockedRef.current) {
-        return;
-      }
-
-      const nextWindow = buildExactPageWindow({
-        firstPageNumber: firstVisiblePageNumber,
-        lastPageNumber: lastVisiblePageNumber,
-        totalPages: totalPagesRef.current,
-      });
-
-      setActiveExactPageWindow((currentWindow) => {
-        if (areExactPageWindowsEqual(currentWindow, nextWindow)) {
-          return currentWindow;
+    (info: { viewableItems: Array<{ item: string; index: number | null }> }) => {
+      const first = info.viewableItems[0];
+      if (first && first.index !== null) {
+        visibleVerseKeyRef.current = first.item;
+        const verseIdx = first.index + 1;
+        if (!isVerseScrubbingRef.current && !scrubScrollInFlightRef.current) {
+          setVisibleVerseNumber(verseIdx);
+          visibleVerseNumberRef.current = verseIdx;
         }
 
-        logMushafQcfDev('exact-render-window-updated', {
-          firstPageNumber: nextWindow.firstPageNumber,
-          lastPageNumber: nextWindow.lastPageNumber,
-          visibleFirstPageNumber: firstVisiblePageNumber,
-          visibleLastPageNumber: lastVisiblePageNumber,
-        });
-        return nextWindow;
-      });
+        const parsed = parseVerseKeyNumbers(first.item);
+        if (parsed) {
+          const verseObj = getVerseByKey(first.item);
+          setLastRead(
+            String(parsed.surahId),
+            parsed.verseNumber,
+            first.item,
+            verseObj?.id
+          );
+        }
+      }
     }
   ).current;
 
-  const handleMushafScrollBegin = React.useCallback(() => {
-    if (!isInitialExactWindowLockedRef.current) {
-      return;
-    }
-
-    isInitialExactWindowLockedRef.current = false;
-    setIsInitialExactWindowLocked(false);
-  }, []);
-
-  const handleExactActivePageChange = React.useCallback(
-    (pageNumber: number) => {
-      if (!Number.isFinite(pageNumber)) return;
-      if (isExactPageScrubbingRef.current) return;
-      const normalizedPageNumber = Math.min(
-        Math.max(Math.trunc(pageNumber), 1),
-        Math.max(1, totalPagesRef.current)
-      );
-      activeExactPageNumberRef.current = normalizedPageNumber;
-      setActiveExactPageNumber((currentPageNumber) =>
-        currentPageNumber === normalizedPageNumber ? currentPageNumber : normalizedPageNumber
-      );
+  const openVerseActions = React.useCallback(
+    (params: {
+      verseKey: string;
+      verseApiId?: number;
+      arabicText: string;
+      translationTexts: string[];
+    }) => {
+      setActiveVerse(params);
+      setIsVerseActionsOpen(true);
     },
     []
   );
-
-  const handleExactScrollActivity = React.useCallback(() => {
-    exactPageScrubberRef.current?.show();
-  }, []);
-
-  const handleMushafFeedScroll = React.useCallback(() => {
-    if (!shouldShowQpcTextPageScrubberRef.current) return;
-    exactPageScrubberRef.current?.show();
-  }, []);
-
-  const handleExactPageScrubStateChange = React.useCallback((isScrubbing: boolean) => {
-    isExactPageScrubbingRef.current = isScrubbing;
-  }, []);
-
-  const handleScrubToExactPage = React.useCallback((pageNumber: number) => {
-    if (!Number.isFinite(pageNumber)) return;
-    const normalizedPageNumber = Math.min(
-      Math.max(Math.trunc(pageNumber), 1),
-      Math.max(1, totalPagesRef.current)
-    );
-    activeExactPageNumberRef.current = normalizedPageNumber;
-    setActiveExactPageNumber((currentPageNumber) =>
-      currentPageNumber === normalizedPageNumber ? currentPageNumber : normalizedPageNumber
-    );
-    if (isExactRendererRef.current) {
-      exactReaderRef.current?.scrollToPage(normalizedPageNumber);
-      return;
-    }
-
-    try {
-      void feedListRef.current?.scrollToIndex({
-        index: normalizedPageNumber - 1,
-        animated: false,
-        viewPosition: 0,
-      });
-    } catch {}
-  }, []);
-
-  React.useEffect(() => {
-    if (!isHydrated || isExactRenderer) return;
-
-    const scrollSignature = `${initialPageIndex}:${initialPageViewOffset}`;
-    if (
-      didScrollToInitialPageRef.current &&
-      lastAppliedInitialScrollSignatureRef.current === scrollSignature
-    ) {
-      return;
-    }
-
-    const scheduleRetry = () => {
-      if (
-        didScrollToInitialPageRef.current &&
-        lastAppliedInitialScrollSignatureRef.current === scrollSignature
-      ) {
-        return;
-      }
-      if (initialPageScrollRetryCountRef.current >= 10) return;
-      if (initialPageScrollRetryTimeoutRef.current) return;
-      initialPageScrollRetryCountRef.current += 1;
-      initialPageScrollRetryTimeoutRef.current = setTimeout(() => {
-        initialPageScrollRetryTimeoutRef.current = null;
-        bumpInitialPageScrollTick();
-      }, 140);
-    };
-
-    const list = feedListRef.current;
-    if (!list) {
-      scheduleRetry();
-      return;
-    }
-
-    try {
-      void list.scrollToIndex({
-        index: initialPageIndex,
-        animated: false,
-        viewOffset: initialPageViewOffset,
-        viewPosition: 0,
-      });
-      lastAppliedInitialScrollSignatureRef.current = scrollSignature;
-    } catch {}
-
-    scheduleRetry();
-  }, [
-    initialPageIndex,
-    initialPageViewOffset,
-    initialPageScrollTick,
-    initialPageNumber,
-    isExactRenderer,
-    isHydrated,
-    selectedMushafId,
-  ]);
-
-  const handleInitialHighlightAnchorResolved = React.useCallback(
-    ({
-      height: anchorHeight,
-      offsetY,
-      pageHeight,
-      verseKey,
-    }: {
-      height: number;
-      offsetY: number;
-      pageHeight: number;
-      verseKey: string;
-    }) => {
-      if (!arrivalHighlightVerseKey || verseKey !== arrivalHighlightVerseKey) {
-        return;
-      }
-
-      const nextViewOffset = Math.max(
-        0,
-        Math.min(
-          Math.round(offsetY - arrivalFocusTopInset),
-          Math.max(0, Math.round(pageHeight - anchorHeight))
-        )
-      );
-      updateInitialPageViewOffset(nextViewOffset);
-    },
-    [arrivalFocusTopInset, arrivalHighlightVerseKey, updateInitialPageViewOffset]
-  );
-
-  const openVerseActions = React.useCallback((nextVerse: ActiveMushafVerse) => {
-    setActiveVerse(nextVerse);
-    setIsVerseActionsOpen(true);
-  }, []);
 
   const closeVerseActions = React.useCallback(() => {
     setIsVerseActionsOpen(false);
   }, []);
 
-  const handleMushafSelectionChange = React.useCallback((payload: MushafSelectionPayload) => {
-    selectionMetadataRef.current = payload.isCollapsed ? null : payload;
+  const openTranslationSettings = React.useCallback(() => {
+    setIsSettingsOpen(true);
   }, []);
 
-  const handleVersePress = React.useCallback(
-    (nextVerse: ActiveMushafVerse) => {
-      if (selectionMetadataRef.current && !selectionMetadataRef.current.isCollapsed) {
-        return;
-      }
+  const closeSettingsSidebar = React.useCallback(() => {
+    setIsSettingsOpen(false);
+  }, []);
 
-      openVerseActions(nextVerse);
-    },
-    [openVerseActions]
+  const listExtraData = React.useMemo(
+    () => ({
+      arabicFontSize: settings.arabicFontSize,
+      translationFontSize: settings.translationFontSize,
+      arabicFontFace: settings.arabicFontFace,
+      showByWords: settings.showByWords,
+      audioActiveVerseKey: audio.activeVerseKey,
+      audioIsVisible: audio.isVisible,
+      verseAudioWordSync,
+    }),
+    [
+      settings.arabicFontFace,
+      settings.arabicFontSize,
+      settings.showByWords,
+      settings.translationFontSize,
+      audio.activeVerseKey,
+      audio.isVisible,
+      verseAudioWordSync,
+    ]
   );
 
   const handlePlayPause = React.useCallback(() => {
@@ -1112,166 +360,229 @@ export default function PageScreen(): React.JSX.Element {
   const handleOpenTafsir = React.useCallback(() => {
     const verseKey = activeVerse?.verseKey;
     if (!verseKey) return;
-    const parsed = parseVerseKeyNumbers(verseKey);
-    if (!parsed) return;
-
+    const [surah, ayah] = verseKey.split(':');
+    if (!surah || !ayah) return;
+    const surahNumber = Number(surah);
     primeVerseDetailsCache({
       verseKey,
       arabicText: activeVerse?.arabicText,
       translationIds,
       translationTexts: activeVerse?.translationTexts,
     });
-
-    void preloadOfflineTafsirSurah({ surahId: parsed.surahId, tafsirIds });
-
-    router.push({
-      pathname: '/tafsir/[surahId]/[ayahId]',
-      params: {
-        surahId: String(parsed.surahId),
-        ayahId: String(parsed.verseNumber),
-      },
-    });
+    if (Number.isFinite(surahNumber) && surahNumber > 0) {
+      const tafsirIds = Array.isArray(settings.tafsirIds) ? settings.tafsirIds : [];
+      void preloadOfflineTafsirSurah({ surahId: surahNumber, tafsirIds });
+    }
+    router.push({ pathname: '/tafsir/[surahId]/[ayahId]', params: { surahId: surah, ayahId: ayah } });
   }, [
     activeVerse?.arabicText,
     activeVerse?.translationTexts,
     activeVerse?.verseKey,
     router,
-    tafsirIds,
+    settings.tafsirIds,
     translationIds,
   ]);
 
   const handleAddToPlan = React.useCallback(() => {
     const verseKey = activeVerse?.verseKey;
     if (!verseKey) return;
-
+    const parsed = parseVerseKeyNumbers(verseKey);
     setPlannerVerseSummary({
       verseKey,
-      surahId: activeVerse?.surahId,
+      ...(parsed ? { surahId: parsed.surahId } : {}),
       arabicText: activeVerse?.arabicText,
       translationText: activeVerse?.translationTexts?.[0],
     });
     setIsAddToPlannerOpen(true);
-  }, [activeVerse]);
+  }, [activeVerse?.arabicText, activeVerse?.translationTexts, activeVerse?.verseKey]);
 
   const handleShare = React.useCallback(async () => {
     if (!activeVerse) return;
-
+    const parsed = parseVerseKeyNumbers(activeVerse.verseKey);
+    const surahName = parsed ? (chapterNamesById.get(parsed.surahId) ?? '') : '';
+    const title = surahName ? `${surahName} ${activeVerse.verseKey}` : activeVerse.verseKey;
     const lines = [
-      activeVerse.title ? `${activeVerse.title} ${activeVerse.verseKey}` : activeVerse.verseKey,
+      title,
       '',
       activeVerse.arabicText,
       '',
       ...(activeVerse.translationTexts?.length ? [activeVerse.translationTexts[0]!] : []),
     ];
-
     try {
       await Share.share({ message: lines.join('\n') });
     } catch {
-      // Ignore share failures.
+      // Ignore
     }
-  }, [activeVerse]);
+  }, [activeVerse, chapterNamesById]);
+
+  const handleScrubToVerse = React.useCallback(
+    (targetVerseNumber: number, options?: { isFinal?: boolean }) => {
+      const isFinal = Boolean(options?.isFinal);
+      const targetIndex = Math.min(Math.max(targetVerseNumber - 1, 0), verseKeys.length - 1);
+
+      visibleVerseNumberRef.current = targetVerseNumber;
+      if (isFinal) {
+        setVisibleVerseNumber((currentVerseNumber) =>
+          currentVerseNumber === targetVerseNumber ? currentVerseNumber : targetVerseNumber
+        );
+      }
+
+      const list = Platform.OS === 'web' ? flatListRef.current : flashListRef.current;
+      if (!list) return;
+
+      if (!isFinal && scrubScrollInFlightRef.current) {
+        queuedScrubScrollVerseRef.current = targetVerseNumber;
+        return;
+      }
+
+      queuedScrubScrollVerseRef.current = null;
+      lastScrubScrollVerseRef.current = targetVerseNumber;
+
+      try {
+        const scrollResult = list.scrollToIndex({
+          index: targetIndex,
+          animated: false,
+          viewPosition: 0,
+        });
+        if (scrollResult && typeof (scrollResult as Promise<void>).catch === 'function') {
+          scrubScrollInFlightRef.current = true;
+          const requestId = ++scrubScrollRequestIdRef.current;
+          void (scrollResult as Promise<void>)
+            .catch(() => {})
+            .finally(() => {
+              if (requestId !== scrubScrollRequestIdRef.current) return;
+              scrubScrollInFlightRef.current = false;
+              const queuedVerseNumber = queuedScrubScrollVerseRef.current;
+              queuedScrubScrollVerseRef.current = null;
+              if (queuedVerseNumber !== null) {
+                handleScrubToVerse(queuedVerseNumber);
+              }
+            });
+        }
+      } catch {
+        // Ignore
+      }
+    },
+    [verseKeys]
+  );
+
+  const handleScrubStateChange = React.useCallback((isScrubbing: boolean) => {
+    isVerseScrubbingRef.current = isScrubbing;
+    if (!isScrubbing) {
+      lastScrubScrollVerseRef.current = null;
+      queuedScrubScrollVerseRef.current = null;
+      scrubScrollInFlightRef.current = false;
+      scrubScrollRequestIdRef.current += 1;
+    }
+  }, []);
+
+  const handleSurahListScroll = React.useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    readerHeader.handleScroll(event);
+    verseScrubberRef.current?.show();
+  }, [readerHeader]);
 
   const activeVersePinned = React.useMemo(() => {
     if (!activeVerse) return false;
-    const apiId =
-      typeof activeVerse.verseApiId === 'number' ? String(activeVerse.verseApiId) : null;
+    const apiId = typeof activeVerse.verseApiId === 'number' ? String(activeVerse.verseApiId) : null;
     return Boolean((apiId && isPinned(apiId)) || isPinned(activeVerse.verseKey));
   }, [activeVerse, isPinned]);
 
   const activeVerseBookmarkMetadata = React.useMemo(() => {
     if (!activeVerse) return undefined;
+    const verseApiId =
+      typeof activeVerse.verseApiId === 'number' &&
+      Number.isFinite(activeVerse.verseApiId) &&
+      activeVerse.verseApiId > 0
+        ? activeVerse.verseApiId
+        : undefined;
+
+    const parsed = parseVerseKeyNumbers(activeVerse.verseKey);
+    const surahName = parsed ? (chapterNamesById.get(parsed.surahId) ?? '') : '';
 
     const metadata: Partial<Bookmark> = {
       verseKey: activeVerse.verseKey,
-      ...(typeof activeVerse.verseApiId === 'number'
-        ? { verseApiId: activeVerse.verseApiId }
-        : {}),
+      ...(typeof verseApiId === 'number' ? { verseApiId } : {}),
       ...(activeVerse.arabicText ? { verseText: activeVerse.arabicText } : {}),
-      ...(activeVerse.title ? { surahName: activeVerse.title } : {}),
-      ...(activeVerse.translationTexts?.[0]
-        ? { translation: activeVerse.translationTexts[0] }
-        : {}),
+      ...(surahName ? { surahName } : {}),
+      ...(activeVerse.translationTexts?.[0] ? { translation: activeVerse.translationTexts[0] } : {}),
     };
-
     return metadata;
-  }, [activeVerse]);
+  }, [activeVerse, chapterNamesById]);
 
-  const handleExactPageFirstHeight = React.useCallback(
-    ({ pageNumber, height: measuredHeight, durationMs }: { pageNumber: number; height: number; durationMs: number }) => {
-      if (hasReportedInitialExactPageRef.current) {
-        return;
+  const renderVerseItem = React.useCallback(
+    ({ item }: { item: string }) => {
+      const verse = getVerseByKey(item);
+      if (!verse) {
+        return <VerseCardPlaceholder verseKey={item} />;
       }
 
-      hasReportedInitialExactPageRef.current = true;
-      const baselineDurationMs =
-        exactLoadBaselineStartRef.current === null
-          ? null
-          : Math.round(nowMs() - exactLoadBaselineStartRef.current);
+      const parsed = parseVerseKeyNumbers(item);
+      const showTranslation = verse.translationItems.length > 0;
+      const showBismillah = parsed?.verseNumber === 1 && parsed.surahId !== 9 && parsed.surahId !== 1;
+      const surahName = parsed ? chapterNamesById.get(parsed.surahId) : undefined;
 
-      logMushafQcfDev('exact-load-baseline-ready', {
-        baselineDurationMs,
-        firstHeightDurationMs: durationMs,
-        initialPageNumber,
-        measuredHeight,
-        packId: selectedMushafId,
-        reportedPageNumber: pageNumber,
-      });
+      const translationTexts = verse.translationTexts ?? [];
+      const translationItems = showTranslationAttribution
+        ? (verse.translationItems ?? []).map((t) => {
+            if (t.resourceName) return t;
+            const fallbackName =
+              typeof t.resourceId === 'number'
+                ? translationsById.get(t.resourceId)?.name ?? `Translation ${t.resourceId}`
+                : undefined;
+            return { ...t, resourceName: fallbackName };
+          })
+        : verse.translationItems ?? [];
+
+      return (
+        <View>
+          {parsed?.verseNumber === 1 ? (
+            <View className="mb-4 mt-6 items-center">
+              <View className="rounded-full bg-surface-navigation px-4 py-1.5 dark:bg-surface-navigation-dark">
+                <Text className="text-xs font-bold text-accent dark:text-accent-dark">
+                  {surahName ?? `Surah ${parsed.surahId}`}
+                </Text>
+              </View>
+              {showBismillah ? (
+                <Text className="mt-4 text-center text-xl font-normal text-content-primary dark:text-content-primary-dark">
+                  بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ
+                </Text>
+              ) : null}
+            </View>
+          ) : null}
+          <VerseCard
+            verseKey={verse.verse_key}
+            arabicText={verse.text_uthmani ?? ''}
+            words={verse.words}
+            translationTexts={translationTexts}
+            translationItems={translationItems}
+            showTranslationAttribution={showTranslationAttribution}
+            isAudioActive={Boolean(audio.isVisible && audio.activeVerseKey === verse.verse_key)}
+            audioWordSync={verseAudioWordSync}
+            arabicFontSize={settings.arabicFontSize}
+            arabicFontFace={settings.arabicFontFace}
+            translationFontSize={settings.translationFontSize}
+            showByWords={settings.showByWords}
+            onOpenActions={() =>
+              openVerseActions({
+                verseKey: verse.verse_key,
+                verseApiId: verse.id,
+                arabicText: verse.text_uthmani ?? '',
+                translationTexts,
+              })
+            }
+          />
+        </View>
+      );
     },
-    [initialPageNumber, selectedMushafId]
-  );
-
-  const handleExactHeightResolved = React.useCallback(
-    ({ cacheKey, height: measuredHeight, pageNumber }: { cacheKey: string; height: number; pageNumber: number }) => {
-      const currentHeight = readExactPageHeightCache(cacheKey);
-      const previousRenderedHeight = currentHeight ?? estimatedItemSize;
-      if (
-        currentHeight !== null &&
-        Math.abs(currentHeight - measuredHeight) <= EXACT_HEIGHT_CACHE_EPSILON_PX
-      ) {
-        return;
-      }
-
-      writeExactPageHeightCache(cacheKey, measuredHeight);
-      bumpExactHeightCacheVersion();
-
-      if (
-        isInitialExactWindowLockedRef.current &&
-        pageNumber < initialPageNumberRef.current &&
-        Math.abs(measuredHeight - previousRenderedHeight) > EXACT_HEIGHT_CACHE_EPSILON_PX
-      ) {
-        const list = feedListRef.current;
-        const currentOffset = list?.getAbsoluteLastScrollOffset();
-        if (list && typeof currentOffset === 'number' && Number.isFinite(currentOffset)) {
-          list.scrollToOffset({
-            animated: false,
-            offset: Math.max(0, currentOffset + (measuredHeight - previousRenderedHeight)),
-          });
-        }
-      }
-
-      logMushafQcfDev('exact-height-cache-store', {
-        cacheKey,
-        height: measuredHeight,
-        pageNumber,
-      });
-    },
-    [estimatedItemSize]
-  );
-
-  const getExactHeightCacheKeyForPage = React.useCallback(
-    (pageNumber: number) =>
-      buildExactPageHeightCacheKey({
-        packId: selectedMushafId,
-        version: activeMushafVersion,
-        pageNumber,
-        mushafScaleStep: settings.mushafScaleStep,
-        viewportSignature: exactViewportSignature,
-      }),
     [
-      activeMushafVersion,
-      exactViewportSignature,
-      selectedMushafId,
-      settings.mushafScaleStep,
+      getVerseByKey,
+      chapterNamesById,
+      settings,
+      showTranslationAttribution,
+      translationsById,
+      audio,
+      verseAudioWordSync,
+      openVerseActions,
     ]
   );
 
@@ -1279,176 +590,198 @@ export default function PageScreen(): React.JSX.Element {
     <View className="flex-1 bg-background dark:bg-background-dark">
       <Stack.Screen
         options={{
-          headerShown: true,
-          title: 'Mushaf',
-          headerTitleAlign: 'center',
-          headerShadowVisible: false,
-          headerRight: () => (
-            <Pressable
-              onPress={() => setIsSettingsOpen(true)}
-              hitSlop={10}
-              accessibilityRole="button"
-              accessibilityLabel="Open reader settings"
-              style={({ pressed }) => ({
-                opacity: pressed ? 0.55 : 1,
-                marginRight: 12,
-              })}
-            >
-              <Settings color={palette.text} size={20} strokeWidth={2.25} />
-            </Pressable>
-          ),
+          headerShown: false,
         }}
       />
 
-      {!isHydrated ? (
-        <LoadingState label="Loading local mushaf settings…" color={palette.text} />
-      ) : initialPageProbe.errorMessage ? (
-        <ErrorState message={initialPageProbe.errorMessage} />
-      ) : isExactRenderer ? (
-        <>
-          <MushafSingleDocumentReader
-            ref={exactReaderRef}
-            backgroundPageNumbers={exactReaderBackgroundPageNumbers}
-            chapterNamesById={chapterNamesById}
-            expectedVersion={activeMushafVersion}
-            focusTopInsetPx={arrivalFocusTopInset}
-            highlightVerseKey={arrivalHighlightVerseKey}
-            initialPageData={initialPageProbe.data}
-            initialPageNumber={initialPageNumber}
-            mushafScaleStep={settings.mushafScaleStep}
-            onActivePageChange={handleExactActivePageChange}
-            onScrollActivity={handleExactScrollActivity}
-            onSelectionChange={handleMushafSelectionChange}
-            onVersePress={handleVersePress}
-            packId={selectedMushafId}
-            totalPages={totalPages}
-          />
-          {totalPages > 1 ? (
-            <IndexScrubber
-              ref={exactPageScrubberRef}
-              bottomInset={audioPlayerBarHeight}
-              currentIndex={activeExactPageNumber}
-              displayPrefix="Page"
-              itemCount={totalPages}
-              onScrubStateChange={handleExactPageScrubStateChange}
-              onScrubToIndex={handleScrubToExactPage}
-            />
-          ) : null}
-        </>
-      ) : (
-        <>
-          <FlashList
-            ref={feedListRef}
-            key={`mushaf-feed:${selectedMushafId}:${initialPageNumber}`}
-            data={pageNumbers}
-            keyExtractor={(item) => `mushaf-page:${selectedMushafId}:${item}`}
-            renderItem={({ item }) => {
-              const exactHeightCacheKey = isExactRenderer
-                ? getExactHeightCacheKeyForPage(item)
-                : null;
-              const cachedExactHeight =
-                exactHeightCacheKey === null ? null : readExactPageHeightCache(exactHeightCacheKey);
+      <ReaderOverlayHeader
+        onLayout={readerHeader.handleHeaderLayout}
+        pointerEvents={readerHeader.headerPointerEvents}
+        style={readerHeader.headerAnimatedStyle}
+      >
+        <AppSearchHeader
+          editable={readerHeader.headerPointerEvents !== 'none'}
+          left={
+            <HeaderActionButton accessibilityLabel="Go back" onPress={() => router.back()}>
+              <ArrowLeft color={palette.text} size={22} strokeWidth={2.25} />
+            </HeaderActionButton>
+          }
+          inputRef={headerSearch.inputRef}
+          value={headerSearch.query}
+          onChangeText={headerSearch.updateQuery}
+          placeholder="Search…"
+          onFocus={() => {
+            readerHeader.showHeader();
+            headerSearch.setIsOpen(true);
+          }}
+          onSubmitEditing={() => headerSearch.navigateToSearch()}
+          right={
+            <HeaderActionButton accessibilityLabel="Open settings" onPress={openTranslationSettings}>
+              <Settings color={palette.text} size={22} strokeWidth={2.25} />
+            </HeaderActionButton>
+          }
+        />
+      </ReaderOverlayHeader>
 
-              return (
-                <MushafFeedPageRow
-                  pageNumber={item}
-                  packId={selectedMushafId}
-                  expectedVersion={activeMushafVersion}
-                  exactHeightCacheKey={exactHeightCacheKey}
-                  cachedExactHeight={cachedExactHeight}
-                  isExactRenderer={isExactRenderer}
-                  isInExactRenderWindow={
-                    !isExactRenderer ||
-                    (item >= activeExactPageWindow.firstPageNumber &&
-                      item <= activeExactPageWindow.lastPageNumber)
-                  }
-                  mushafScaleStep={settings.mushafScaleStep}
-                  estimatedHeight={estimatedItemSize}
-                  chapterNamesById={chapterNamesById}
-                  isInitialTargetPage={item === initialPageNumber}
-                  loadingColor={palette.text}
-                  highlightVerseKey={
-                    item === initialPageNumber ? arrivalHighlightVerseKey ?? undefined : undefined
-                  }
-                  onHighlightAnchorResolved={
-                    item === initialPageNumber && arrivalHighlightVerseKey
-                      ? handleInitialHighlightAnchorResolved
-                      : undefined
-                  }
-                  onExactHeightResolved={handleExactHeightResolved}
-                  onExactPageFirstHeight={handleExactPageFirstHeight}
-                  onSelectionChange={handleMushafSelectionChange}
-                  onVersePress={handleVersePress}
-                />
-              );
-            }}
-            extraData={listExtraData}
-            initialScrollIndex={initialPageIndex}
-            drawDistance={Math.max(estimatedItemSize * 2, 1200)}
-            ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
-            contentContainerStyle={listContentContainerStyle}
-            viewabilityConfig={viewabilityConfig}
-            onViewableItemsChanged={onViewableItemsChanged}
-            onScroll={handleMushafFeedScroll}
-            onScrollBeginDrag={handleMushafScrollBegin}
-            scrollEventThrottle={16}
-            showsVerticalScrollIndicator={false}
-          />
-          {shouldShowQpcTextPageScrubber && totalPages > 1 ? (
-            <IndexScrubber
-              ref={exactPageScrubberRef}
+      <View style={styles.contentStage}>
+        <View style={styles.contentLayer} pointerEvents="auto">
+          {!hasLoadedContent && offlineNotInstalled ? (
+            <View className="flex-1 px-4" style={{ paddingTop: readerHeader.headerHeight + 16 }}>
+              <View className="mt-2 gap-3">
+                <Text className="text-sm text-muted dark:text-muted-dark">
+                  You’re offline and this translation isn’t downloaded yet.
+                </Text>
+                <Pressable
+                  onPress={openTranslationSettings}
+                  accessibilityRole="button"
+                  accessibilityLabel="Open translation settings"
+                  className="self-start rounded-lg bg-accent px-4 py-2"
+                  style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
+                >
+                  <Text className="text-sm font-semibold text-on-accent">
+                    Open translation settings
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+          ) : !hasLoadedContent && errorMessage ? (
+            <View className="flex-1 px-4" style={{ paddingTop: readerHeader.headerHeight + 16 }}>
+              <View className="mt-2 gap-3">
+                <Text className="text-sm text-error dark:text-error-dark">{errorMessage}</Text>
+                <Pressable
+                  onPress={retry}
+                  accessibilityRole="button"
+                  accessibilityLabel="Retry loading verses"
+                  className="self-start rounded-lg bg-number-badge px-4 py-2 dark:bg-number-badge-dark"
+                  style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}
+                >
+                  <Text className="text-sm font-semibold text-accent dark:text-accent-dark">
+                    Retry
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+          ) : !hasLoadedContent && verseKeys.length > 0 ? (
+            <FlatList
+              data={INITIAL_PLACEHOLDER_VERSE_KEYS}
+              keyExtractor={(item) => `placeholder:${pageNumber}:${item}`}
+              renderItem={({ item }) => (
+                <VerseCardPlaceholder verseKey={item} />
+              )}
+              contentContainerStyle={listContentContainerStyle}
+              ListHeaderComponent={<PageHeaderCard pageNumber={pageNumber} surahRange={surahRange} />}
+              scrollEnabled={false}
+            />
+          ) : verseKeys.length <= 0 ? (
+            <View className="flex-1 px-4" style={{ paddingTop: readerHeader.headerHeight + 16 }}>
+              <Text className="mt-2 text-sm text-muted dark:text-muted-dark">
+                No verses found for this Page.
+              </Text>
+            </View>
+          ) : Platform.OS === 'web' ? (
+            <FlatList
+              ref={(node) => {
+                flatListRef.current = node;
+              }}
+              data={verseKeys}
+              keyExtractor={(item) => item}
+              extraData={listExtraData}
+              renderItem={renderVerseItem}
+              contentContainerStyle={listContentContainerStyle}
+              refreshing={isLoading}
+              onRefresh={refresh}
+              onScroll={handleSurahListScroll}
+              scrollEventThrottle={16}
+              viewabilityConfig={viewabilityConfig}
+              onViewableItemsChanged={onViewableItemsChanged}
+              showsVerticalScrollIndicator={false}
+              ListHeaderComponent={<PageHeaderCard pageNumber={pageNumber} surahRange={surahRange} />}
+            />
+          ) : (
+            <FlashList
+              ref={(node) => {
+                flashListRef.current = node;
+              }}
+              data={verseKeys}
+              keyExtractor={(item) => item}
+              extraData={listExtraData}
+              renderItem={renderVerseItem}
+              drawDistance={Platform.OS === 'android' ? 1200 : 800}
+              contentContainerStyle={listContentContainerStyle}
+              refreshing={isLoading}
+              onRefresh={refresh}
+              onScroll={handleSurahListScroll}
+              scrollEventThrottle={16}
+              viewabilityConfig={viewabilityConfig}
+              onViewableItemsChanged={onViewableItemsChanged}
+              showsVerticalScrollIndicator={false}
+              ListHeaderComponent={<PageHeaderCard pageNumber={pageNumber} surahRange={surahRange} />}
+            />
+          )}
+          {hasLoadedContent && verseKeys.length > 1 ? (
+            <VerseScrubber
+              ref={verseScrubberRef}
               bottomInset={audioPlayerBarHeight}
-              currentIndex={activeExactPageNumber}
-              displayPrefix="Page"
-              itemCount={totalPages}
-              onScrubStateChange={handleExactPageScrubStateChange}
-              onScrubToIndex={handleScrubToExactPage}
+              currentVerseNumber={visibleVerseNumber}
+              onScrubStateChange={handleScrubStateChange}
+              onScrubToVerse={handleScrubToVerse}
+              topInset={0}
+              verseCount={verseKeys.length}
             />
           ) : null}
-        </>
-      )}
+        </View>
+      </View>
 
       <SettingsSidebar
         isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
-        activeTab="mushaf"
+        onClose={closeSettingsSidebar}
       />
 
       <VerseActionsSheet
         isOpen={isVerseActionsOpen}
         onClose={closeVerseActions}
-        title={activeVerse?.title ?? 'Surah'}
+        title={activeVerse ? (chapterNamesById.get(parseVerseKeyNumbers(activeVerse.verseKey)?.surahId ?? 1) ?? '') : ''}
         verseKey={activeVerse?.verseKey ?? ''}
-        isPlaying={Boolean(audio.isPlaying && audio.activeVerseKey === activeVerse?.verseKey)}
         isBookmarked={activeVersePinned}
+        isPlaying={audio.activeVerseKey === activeVerse?.verseKey && audio.isPlaying}
         onPlayPause={handlePlayPause}
-        onOpenTafsir={handleOpenTafsir}
         onBookmark={handleBookmark}
+        onOpenTafsir={handleOpenTafsir}
         onAddToPlan={handleAddToPlan}
-        onShare={activeVerse ? handleShare : undefined}
+        onShare={handleShare}
       />
 
-      <BookmarkModal
-        isOpen={isBookmarkModalOpen}
-        onClose={() => setIsBookmarkModalOpen(false)}
-        verseId={
-          typeof activeVerse?.verseApiId === 'number' &&
-          Number.isFinite(activeVerse.verseApiId) &&
-          activeVerse.verseApiId > 0
-            ? String(activeVerse.verseApiId)
-            : (activeVerse?.verseKey ?? '')
-        }
-        verseKey={activeVerse?.verseKey ?? ''}
-        metadata={activeVerseBookmarkMetadata}
-      />
+      {activeVerseBookmarkMetadata ? (
+        <BookmarkModal
+          isOpen={isBookmarkModalOpen}
+          onClose={() => setIsBookmarkModalOpen(false)}
+          verseId={activeVerse?.verseApiId ? String(activeVerse.verseApiId) : activeVerse?.verseKey ?? ''}
+          metadata={activeVerseBookmarkMetadata}
+        />
+      ) : null}
 
       {plannerVerseSummary ? (
         <AddToPlannerModal
           isOpen={isAddToPlannerOpen}
-          onClose={() => setIsAddToPlannerOpen(false)}
+          onClose={() => {
+            setIsAddToPlannerOpen(false);
+            setPlannerVerseSummary(null);
+          }}
           verseSummary={plannerVerseSummary}
         />
       ) : null}
+
+      <ComprehensiveSearchDropdown
+        isOpen={headerSearch.isOpen}
+        query={headerSearch.query}
+        onQueryChange={headerSearch.updateQuery}
+        onClose={() => headerSearch.close({ clearQuery: false })}
+        onNavigateToSurahVerse={headerSearch.navigateToSurahVerse}
+        onNavigateToJuz={headerSearch.navigateToJuz}
+        onNavigateToPage={headerSearch.navigateToPage}
+        onNavigateToSearch={headerSearch.navigateToSearch}
+        topInset={readerHeader.headerHeight}
+      />
     </View>
   );
 }

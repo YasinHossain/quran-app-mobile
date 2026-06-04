@@ -59,7 +59,7 @@ function PageCardComponent({ pageNumber }: { pageNumber: number }): React.JSX.El
               numberOfLines={1}
               className="mt-0.5 text-xs text-content-secondary dark:text-content-secondary-dark"
             >
-              Open mushaf reader
+              Read page-by-page translation
             </Text>
           </View>
         </View>
