@@ -4,6 +4,7 @@ import {
   Bookmark as BookmarkIcon,
   ChevronUp,
   Clock,
+  MoreHorizontal,
   Pin,
   Plus,
   SlidersHorizontal,
@@ -550,26 +551,13 @@ export default function BookmarksScreen(): React.JSX.Element {
 
                   <View className="flex-row items-center gap-2">
                     <Pressable
-                      onPress={() => openEditFolderModal(selectedFolder)}
+                      onPress={() => openFolderActionsSheet(selectedFolder)}
                       accessibilityRole="button"
-                      accessibilityLabel="Edit Folder"
+                      accessibilityLabel="Folder options"
                       className="h-10 w-10 items-center justify-center rounded-xl bg-interactive dark:bg-interactive-dark"
                       style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
                     >
-                      <SlidersHorizontal size={18} strokeWidth={2.25} color={palette.muted} />
-                    </Pressable>
-                    <Pressable
-                      onPress={() => openDeleteFolderModal(selectedFolder)}
-                      accessibilityRole="button"
-                      accessibilityLabel="Delete Folder"
-                      className="h-10 w-10 items-center justify-center rounded-xl bg-error/10 border border-error/20"
-                      style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
-                    >
-                      <Trash2
-                        size={18}
-                        strokeWidth={2.25}
-                        color={isDark ? '#F87171' : '#DC2626'}
-                      />
+                      <MoreHorizontal size={18} strokeWidth={2.25} color={palette.muted} />
                     </Pressable>
                   </View>
                 </View>
@@ -721,23 +709,27 @@ export default function BookmarksScreen(): React.JSX.Element {
         onConfirmDelete={handleConfirmDeleteFolder}
       />
 
-      {folderForActions ? (
-        <FolderActionsSheet
-          isOpen={isFolderActionsOpen}
-          onClose={closeFolderActionsSheet}
-          folderName={folderForActions.name}
-          onEdit={() => {
-            const folder = folderForActions;
-            closeFolderActionsSheet();
-            setTimeout(() => openEditFolderModal(folder), 0);
-          }}
-          onDelete={() => {
-            const folder = folderForActions;
-            closeFolderActionsSheet();
-            setTimeout(() => openDeleteFolderModal(folder), 0);
-          }}
-        />
-      ) : null}
+      <FolderActionsSheet
+        isOpen={isFolderActionsOpen}
+        onClose={closeFolderActionsSheet}
+        folderName={folderForActions?.name ?? ''}
+        onEdit={
+          folderForActions
+            ? () => {
+                const folder = folderForActions;
+                openEditFolderModal(folder);
+              }
+            : () => {}
+        }
+        onDelete={
+          folderForActions
+            ? () => {
+                const folder = folderForActions;
+                openDeleteFolderModal(folder);
+              }
+            : () => {}
+        }
+      />
       {plannerVerseSummary ? (
         <AddToPlannerModal
           isOpen={isAddToPlannerOpen}

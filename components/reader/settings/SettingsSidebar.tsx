@@ -36,8 +36,8 @@ export function SettingsSidebar({
   const sheetWidth = Math.min(390, Math.round(width * 0.92));
   const hiddenTranslateX = sheetWidth + 12;
   const { visible, progress, onModalShow } = useModalTransition(isOpen, {
-    openDuration: 220,
-    closeDuration: 160,
+    openDuration: 380,
+    closeDuration: 300,
     onAfterClose,
   });
 

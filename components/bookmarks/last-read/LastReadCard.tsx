@@ -61,7 +61,7 @@ export function LastReadCard({
       onPress={handleNavigate}
       accessibilityRole="button"
       accessibilityLabel={`Continue reading ${surahName} at verse ${verseNumber}`}
-      className="relative min-w-0 rounded-lg border border-border/50 bg-surface px-4 py-4 shadow-sm dark:border-border-dark/40 dark:bg-surface-dark"
+      className="relative min-w-0 rounded-lg border border-border/50 bg-surface px-4 py-4 dark:border-border-dark/40 dark:bg-surface-dark"
       style={({ pressed }) => ({
         minHeight: 168,
         opacity: pressed ? 0.92 : 1,

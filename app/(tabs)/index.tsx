@@ -5,6 +5,7 @@ import {
   Animated,
   FlatList,
   Platform, Linking, Modal, Pressable,
+  StyleSheet,
   Text,
   TextInput,
   View,
@@ -30,6 +31,7 @@ import { HeaderActionButton } from '@/components/search/HeaderSearchBar';
 import { useChapters } from '@/hooks/useChapters';
 import { useAppTheme } from '@/providers/ThemeContext';
 import { IndexScrubber, type IndexScrubberHandle } from '@/components/reader/IndexScrubber';
+import { sideSheetTransform, useModalTransition } from '@/components/motion/modalTransition';
 import juzData from '../../src/data/juz.json';
 
 import type { Chapter } from '@/types';
@@ -136,40 +138,19 @@ function HomeSearchHeader({
 }): React.JSX.Element {
   const insets = useSafeAreaInsets();
   const [isMenuOpen, setIsMenuOpen] = React.useState(false);
-  const slideAnim = React.useRef(new Animated.Value(-300)).current;
-  const fadeAnim = React.useRef(new Animated.Value(0)).current;
+  const { width } = useWindowDimensions();
+  const menuWidth = Math.min(280, Math.round(width * 0.8));
+  const hiddenTranslateX = -menuWidth;
+
+  const { visible, progress, onModalShow } = useModalTransition(isMenuOpen, {
+    openDuration: 380,
+    closeDuration: 300,
+  });
+
   const { isDark, setDarkModeEnabled } = useAppTheme();
 
-  const openMenu = () => {
-    setIsMenuOpen(true);
-    Animated.parallel([
-      Animated.timing(slideAnim, {
-        toValue: 0,
-        duration: 250,
-        useNativeDriver: true,
-      }),
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 250,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  };
-
-  const closeMenu = () => {
-    Animated.parallel([
-      Animated.timing(slideAnim, {
-        toValue: -300,
-        duration: 250,
-        useNativeDriver: true,
-      }),
-      Animated.timing(fadeAnim, {
-        toValue: 0,
-        duration: 250,
-        useNativeDriver: true,
-      }),
-    ]).start(() => setIsMenuOpen(false));
-  };
+  const openMenu = () => setIsMenuOpen(true);
+  const closeMenu = () => setIsMenuOpen(false);
 
   return (
     <AppSearchHeader
@@ -178,20 +159,41 @@ function HomeSearchHeader({
       left={
         <View>
           <HeaderActionButton accessibilityLabel="Open menu" onPress={openMenu}>
-          <Menu size={24} color={isDark ? '#E5E5E5' : '#2F3744'} />
+            <Menu size={24} color={isDark ? '#E5E5E5' : '#2F3744'} />
           </HeaderActionButton>
 
-          <Modal transparent visible={isMenuOpen} onRequestClose={closeMenu}>
-            <Animated.View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', opacity: fadeAnim }}>
-              <Pressable style={{ flex: 1, position: 'absolute', width: '100%', height: '100%' }} onPress={closeMenu} />
+          <Modal
+            transparent
+            visible={visible}
+            onShow={onModalShow}
+            onRequestClose={closeMenu}
+            animationType="none"
+            statusBarTranslucent
+            {...(Platform.OS === 'ios' ? { presentationStyle: 'overFullScreen' as const } : {})}
+          >
+            <View style={styles.menuRoot}>
+              <Pressable style={StyleSheet.absoluteFill} onPress={closeMenu}>
+                <Animated.View
+                  style={[
+                    styles.menuOverlay,
+                    {
+                      opacity: progress,
+                    },
+                  ]}
+                />
+              </Pressable>
+
               <Animated.View
-                style={{
-                  width: 280,
-                  height: '100%',
-                  backgroundColor: isDark ? '#1E293B' : '#FFFFFF',
-                  transform: [{ translateX: slideAnim }],
-                  paddingTop: insets.top,
-                }}
+                style={[
+                  styles.menuSheet,
+                  {
+                    width: menuWidth,
+                    backgroundColor: isDark ? '#1E293B' : '#FFFFFF',
+                    paddingTop: insets.top,
+                  },
+                  sideSheetTransform(progress, hiddenTranslateX),
+                ]}
+                className="border-r border-border/30 dark:border-border-dark/20"
               >
                 <View className="px-5 py-6 border-b border-border dark:border-border-dark">
                   <Text className="text-xl font-bold text-foreground dark:text-foreground-dark">Quran</Text>
@@ -206,7 +208,7 @@ function HomeSearchHeader({
                   <Text className="text-base font-semibold text-content-primary dark:text-content-primary-dark">appquran.com</Text>
                 </Pressable>
               </Animated.View>
-            </Animated.View>
+            </View>
           </Modal>
         </View>
       }
@@ -702,3 +704,22 @@ export default function ReadScreen(): React.JSX.Element {
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  menuRoot: {
+    flex: 1,
+    backgroundColor: 'transparent',
+    overflow: 'hidden',
+  },
+  menuOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+  },
+  menuSheet: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    overflow: 'hidden',
+  },
+});
