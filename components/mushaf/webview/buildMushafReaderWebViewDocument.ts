@@ -1,6 +1,7 @@
 import type { MushafPackId, MushafPageData, MushafScaleStep } from '@/types';
 
 import { getMushafWebViewLayoutConfig } from '@/components/mushaf/mushafLayoutPresets';
+import { getJuzByPage } from '@/lib/utils/surah-navigation';
 
 type MushafReaderWebViewTheme = 'light' | 'dark';
 
@@ -71,6 +72,7 @@ function buildPageShells(
   const pageShells: string[] = [];
 
   for (const pageNumber of pageNumbers) {
+    const juzNumber = getJuzByPage(pageNumber);
     pageShells.push(`
       <article class="reader-page loading" data-page-number="${pageNumber}">
         <div class="page-content"${compactPageLines ? '' : ` style="min-height: ${pageMinHeight}px;"`}>
@@ -78,7 +80,7 @@ function buildPageShells(
           <div class="reflow-view"></div>
         </div>
         <footer class="page-footer" aria-hidden="true">
-          <span></span><b>Page ${pageNumber}</b><span></span>
+          <span></span><b>Page ${pageNumber} • Juz ${juzNumber}</b><span></span>
         </footer>
       </article>
     `);

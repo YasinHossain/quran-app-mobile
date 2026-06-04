@@ -1,4 +1,5 @@
 import { getAppDbAsync } from '@/src/core/infrastructure/db';
+import juzData from '../../../data/juz.json';
 
 import type {
   ITranslationOfflineStore,
@@ -281,6 +282,139 @@ export class TranslationOfflineStore implements ITranslationOfflineStore {
       ORDER BY v.ayah ASC, t.translation_id ASC;
       `,
       [normalizedSurahId, normalizedPerPage, offset, ...resolvedTranslationIds]
+    );
+
+    return mapJoinedRowsToOfflineVerses(rows, resolvedTranslationIds);
+  }
+
+  async getJuzVersesPageWithTranslations(params: {
+    juzId: number;
+    translationIds: number[];
+    page: number;
+    perPage: number;
+  }): Promise<OfflineVerseWithTranslations[]> {
+    const db = await getAppDbAsync();
+    const resolvedTranslationIds = normalizeTranslationIds(params.translationIds);
+    const normalizedJuzId =
+      Number.isFinite(params.juzId) && params.juzId > 0 ? Math.trunc(params.juzId) : 0;
+    const normalizedPage =
+      Number.isFinite(params.page) && params.page > 0 ? Math.trunc(params.page) : 0;
+    const normalizedPerPage =
+      Number.isFinite(params.perPage) && params.perPage > 0 ? Math.trunc(params.perPage) : 0;
+
+    if (normalizedJuzId <= 0 || normalizedPage <= 0 || normalizedPerPage <= 0) {
+      return [];
+    }
+
+    const juz = (juzData as any[]).find((j: any) => j.number === normalizedJuzId);
+    if (!juz) return [];
+
+    const offset = (normalizedPage - 1) * normalizedPerPage;
+
+    if (resolvedTranslationIds.length === 0) {
+      const rows = await db.getAllAsync<{
+        verse_key: string;
+        surah: number;
+        ayah: number;
+        arabic_uthmani: string;
+        words_json: string | null;
+      }>(
+        `
+        SELECT verse_key, surah, ayah, arabic_uthmani, words_json
+        FROM offline_verses
+        WHERE (surah > ? AND surah < ?)
+           OR (surah = ? AND ? = ? AND ayah BETWEEN ? AND ?)
+           OR (surah = ? AND ? < ? AND ayah >= ?)
+           OR (surah = ? AND ? < ? AND ayah <= ?)
+        ORDER BY surah ASC, ayah ASC
+        LIMIT ? OFFSET ?;
+        `,
+        [
+          juz.startSurahId,
+          juz.endSurahId,
+          juz.startSurahId,
+          juz.startSurahId,
+          juz.endSurahId,
+          juz.startAyah,
+          juz.endAyah,
+          juz.startSurahId,
+          juz.startSurahId,
+          juz.endSurahId,
+          juz.startAyah,
+          juz.endSurahId,
+          juz.startSurahId,
+          juz.endSurahId,
+          juz.endAyah,
+          normalizedPerPage,
+          offset,
+        ]
+      );
+
+      return rows.map((row) => ({
+        verseKey: row.verse_key,
+        surahId: row.surah,
+        ayahNumber: row.ayah,
+        arabicUthmani: row.arabic_uthmani,
+        wordsJson: row.words_json || undefined,
+        translations: [],
+      }));
+    }
+
+    const placeholders = resolvedTranslationIds.map(() => '?').join(', ');
+    const rows = await db.getAllAsync<{
+      verse_key: string;
+      surah: number;
+      ayah: number;
+      arabic_uthmani: string;
+      translation_id: number | null;
+      translation_text: string | null;
+      words_json: string | null;
+    }>(
+      `
+      WITH verse_page AS (
+        SELECT verse_key, surah, ayah, arabic_uthmani, words_json
+        FROM offline_verses
+        WHERE (surah > ? AND surah < ?)
+           OR (surah = ? AND ? = ? AND ayah BETWEEN ? AND ?)
+           OR (surah = ? AND ? < ? AND ayah >= ?)
+           OR (surah = ? AND ? < ? AND ayah <= ?)
+        ORDER BY surah ASC, ayah ASC
+        LIMIT ? OFFSET ?
+      )
+      SELECT
+        v.verse_key AS verse_key,
+        v.surah AS surah,
+        v.ayah AS ayah,
+        v.arabic_uthmani AS arabic_uthmani,
+        v.words_json AS words_json,
+        t.translation_id AS translation_id,
+        t.text AS translation_text
+      FROM verse_page v
+      LEFT JOIN offline_translations t
+        ON t.verse_key = v.verse_key
+        AND t.translation_id IN (${placeholders})
+      ORDER BY v.surah ASC, v.ayah ASC, t.translation_id ASC;
+      `,
+      [
+        juz.startSurahId,
+        juz.endSurahId,
+        juz.startSurahId,
+        juz.startSurahId,
+        juz.endSurahId,
+        juz.startAyah,
+        juz.endAyah,
+        juz.startSurahId,
+        juz.startSurahId,
+        juz.endSurahId,
+        juz.startAyah,
+        juz.endSurahId,
+        juz.startSurahId,
+        juz.endSurahId,
+        juz.endAyah,
+        normalizedPerPage,
+        offset,
+        ...resolvedTranslationIds,
+      ]
     );
 
     return mapJoinedRowsToOfflineVerses(rows, resolvedTranslationIds);

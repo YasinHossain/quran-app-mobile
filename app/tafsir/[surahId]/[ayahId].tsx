@@ -28,6 +28,7 @@ import {
   TafsirTabs,
   type TafsirTabContentState,
 } from '@/components/tafsir/TafsirTabs';
+import { IndexScrubber, type IndexScrubberHandle } from '@/components/reader/IndexScrubber';
 import { SettingsSidebar } from '@/components/reader/settings/SettingsSidebar';
 import type { PanelType } from '@/components/reader/settings/SettingsSidebarContent';
 import { VerseActionsSheet } from '@/components/surah/VerseActionsSheet';
@@ -462,6 +463,13 @@ function TafsirPage({
   const [isStuck, setIsStuck] = React.useState(false);
   const { resolvedTheme } = useAppTheme();
 
+  const scrubberRef = React.useRef<IndexScrubberHandle | null>(null);
+  const [contentHeight, setContentHeight] = React.useState(0);
+  const [scrollViewHeight, setScrollViewHeight] = React.useState(0);
+  const [currentScrubIndex, setCurrentScrubIndex] = React.useState(1);
+  const isScrubbingRef = React.useRef(false);
+  const maxScrollOffset = Math.max(0, contentHeight - scrollViewHeight);
+
   const handleAboveContentLayout = React.useCallback((event: LayoutChangeEvent) => {
     const height = Math.round(event.nativeEvent.layout.height);
     if (height > 0) {
@@ -565,15 +573,7 @@ function TafsirPage({
       outputRange: [Math.max(0, overlap - 1.5), 0],
     });
   }, [readerHeader.hiddenProgress, overlap]);
-
   const lastActiveTafsirIdRef = React.useRef(activeTafsirId);
-  const tafsirScrollPositionsRef = React.useRef<Record<number, number>>({});
-  const lastPageSignatureRef = React.useRef(pageSignature);
-
-  if (lastPageSignatureRef.current !== pageSignature) {
-    lastPageSignatureRef.current = pageSignature;
-    tafsirScrollPositionsRef.current = {};
-  }
 
   React.useEffect(() => {
     if (
@@ -582,29 +582,33 @@ function TafsirPage({
       lastActiveTafsirIdRef.current !== activeTafsirId
     ) {
       const currentScrollOffset = pageScrollOffsetsRef.current[verseKey] ?? 0;
-
-      // Save scroll offset of the tab we are leaving
-      tafsirScrollPositionsRef.current[lastActiveTafsirIdRef.current] = currentScrollOffset;
-
-      // Determine target offset for the tab we are entering
       const targetThreshold = aboveHeight + paddingTop;
-      const savedOffset = tafsirScrollPositionsRef.current[activeTafsirId];
+
       let targetOffset: number;
       if (currentScrollOffset > targetThreshold) {
-        targetOffset = savedOffset !== undefined ? Math.max(targetThreshold, savedOffset) : targetThreshold;
+        // If we are scrolled past the threshold (tab bar stuck at top),
+        // we reset the scroll offset of the new tafsir to the beginning of its text,
+        // which is exactly at targetThreshold.
+        targetOffset = targetThreshold;
       } else {
-        targetOffset = savedOffset !== undefined ? savedOffset : currentScrollOffset;
+        // If the Verse Card is still visible, we don't scroll at all,
+        // which leaves the Verse Card and tabs in place, and the new tafsir text
+        // starts at the beginning naturally.
+        targetOffset = currentScrollOffset;
       }
 
       if (currentScrollOffset !== targetOffset) {
         const ref = pageScrollRefsRef.current[verseKey];
         if (ref) {
-          ref.scrollTo({ y: targetOffset, animated: false });
+          setTimeout(() => {
+            ref.scrollTo({ y: targetOffset, animated: false });
+          }, 50);
         }
       }
     }
     lastActiveTafsirIdRef.current = activeTafsirId;
   }, [activeTafsirId, aboveHeight, paddingTop, verseKey, pageScrollRefsRef, pageScrollOffsetsRef]);
+
 
   const handleActiveTafsirChange = React.useCallback(
     (id: number) => {
@@ -634,12 +638,45 @@ function TafsirPage({
     readerHeader.suppressScroll(1200);
   }, [readerHeader]);
 
+  const handleScrubToIndex = React.useCallback(
+    (index: number, options?: { isFinal?: boolean }) => {
+      const maxOffset = contentHeight - scrollViewHeight;
+      if (maxOffset <= 0) return;
+      const targetOffset = ((index - 1) / 99) * maxOffset;
+
+      const ref = pageScrollRefsRef.current[verseKey];
+      if (ref) {
+        ref.scrollTo({ y: targetOffset, animated: false });
+      }
+
+      if (options?.isFinal) {
+        setCurrentScrubIndex(index);
+      }
+    },
+    [contentHeight, scrollViewHeight, verseKey, pageScrollRefsRef]
+  );
+
+  const handleScrubStateChange = React.useCallback(
+    (isScrubbing: boolean) => {
+      isScrubbingRef.current = isScrubbing;
+      setIsPagerScrollEnabled(!isScrubbing);
+    },
+    [setIsPagerScrollEnabled]
+  );
+
   return (
     <View style={{ width: pageWidth }}>
       <Animated.ScrollView
         key={`${verseKey}-${pageSignature}`}
         ref={(ref) => {
           pageScrollRefsRef.current[verseKey] = ref as any;
+        }}
+        showsVerticalScrollIndicator={false}
+        onContentSizeChange={(_w, h) => {
+          setContentHeight(h);
+        }}
+        onLayout={(event) => {
+          setScrollViewHeight(event.nativeEvent.layout.height);
         }}
         contentContainerStyle={{
           paddingHorizontal: 16,
@@ -664,6 +701,17 @@ function TafsirPage({
               if (stuck !== isStuck) {
                 setIsStuck(stuck);
               }
+
+              // Update scrollbar scrubber position
+              const maxOffset = contentHeight - scrollViewHeight;
+              if (!isScrubbingRef.current && maxOffset > 0) {
+                const percentage = Math.round((y / maxOffset) * 99) + 1;
+                const clamped = Math.max(1, Math.min(100, percentage));
+                setCurrentScrubIndex((prev) => (prev === clamped ? prev : clamped));
+              }
+
+              // Show scrubber temporarily
+              scrubberRef.current?.show();
             },
           }
         )}
@@ -787,6 +835,19 @@ function TafsirPage({
           )}
         </View>
       </Animated.ScrollView>
+
+      {maxScrollOffset > 0 ? (
+        <IndexScrubber
+          ref={scrubberRef}
+          bottomInset={insets.bottom + 8}
+          topInset={paddingTop}
+          currentIndex={currentScrubIndex}
+          itemCount={100}
+          formatLabel={(index) => `${index}%`}
+          onScrubStateChange={handleScrubStateChange}
+          onScrubToIndex={handleScrubToIndex}
+        />
+      ) : null}
 
       {isMultiTafsir ? (
         <Animated.View

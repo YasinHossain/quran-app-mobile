@@ -125,12 +125,14 @@ function HomeSearchHeader({
   onQueryChange,
   onFocus,
   onSubmit,
+  onLayout,
 }: {
   headerSearchInputRef: React.RefObject<TextInput | null>;
   headerSearchQuery: string;
   onQueryChange: (value: string) => void;
   onFocus: () => void;
   onSubmit: () => void;
+  onLayout?: (event: any) => void;
 }): React.JSX.Element {
   const insets = useSafeAreaInsets();
   const [isMenuOpen, setIsMenuOpen] = React.useState(false);
@@ -171,6 +173,8 @@ function HomeSearchHeader({
 
   return (
     <AppSearchHeader
+      onLayout={onLayout}
+      style={{ zIndex: 50, elevation: 0 }}
       left={
         <View>
           <HeaderActionButton accessibilityLabel="Open menu" onPress={openMenu}>
@@ -371,6 +375,7 @@ function buildHomeListData({
 
 export default function ReadScreen(): React.JSX.Element {
   const [activeTab, setActiveTab] = React.useState<HomeTab>('surah');
+  const [searchHeaderHeight, setSearchHeaderHeight] = React.useState(0);
   const headerSearch = useHeaderSearch();
   const listRef = React.useRef<FlatList<HomeListRow> | null>(null);
   useScrollToTop(listRef);
@@ -635,6 +640,9 @@ export default function ReadScreen(): React.JSX.Element {
         onQueryChange={headerSearch.updateQuery}
         onFocus={() => headerSearch.setIsOpen(true)}
         onSubmit={() => headerSearch.navigateToSearch()}
+        onLayout={(event) => {
+          setSearchHeaderHeight(event.nativeEvent.layout.height);
+        }}
       />
 
       <View className="flex-1">
@@ -689,6 +697,7 @@ export default function ReadScreen(): React.JSX.Element {
         onNavigateToJuz={headerSearch.navigateToJuz}
         onNavigateToPage={headerSearch.navigateToPage}
         onNavigateToSearch={headerSearch.navigateToSearch}
+        topInset={searchHeaderHeight}
       />
     </View>
   );

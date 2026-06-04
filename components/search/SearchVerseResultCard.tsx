@@ -1,5 +1,6 @@
 import React from 'react';
 import { Pressable, Text, View } from 'react-native';
+import { MoreHorizontal } from 'lucide-react-native';
 
 import Colors from '@/constants/Colors';
 import { highlightMissingQueryWords, isArabicQuery } from '@/lib/utils/searchHighlight';
@@ -36,6 +37,8 @@ export function SearchVerseResultCard({
   arabicFontSize,
   arabicFontFace,
   translationFontSize,
+  isAudioActive,
+  onOpenActions,
   onPress,
 }: {
   verse: SearchVerseResult;
@@ -43,6 +46,8 @@ export function SearchVerseResultCard({
   arabicFontSize: number;
   arabicFontFace?: string;
   translationFontSize: number;
+  isAudioActive?: boolean;
+  onOpenActions?: () => void;
   onPress: () => void;
 }): React.JSX.Element {
   const { resolvedTheme } = useAppTheme();
@@ -59,18 +64,25 @@ export function SearchVerseResultCard({
     [arabicFontFace, verse.textArabic]
   );
 
-  const arabicLineHeight = Math.max(arabicFontSize + 6, Math.round(arabicFontSize * 1.55));
+  const arabicLineHeight = Math.max(arabicFontSize + 14, Math.round(arabicFontSize * 2.2));
   const translationLineHeight = Math.max(
-    translationFontSize + 6,
-    Math.round(translationFontSize * 1.55)
+    translationFontSize + 8,
+    Math.round(translationFontSize * 1.7)
   );
+
+  const containerClassName = [
+    'border-b border-border/40 py-5 dark:border-border-dark/30',
+    isAudioActive ? 'bg-accent/5 rounded-xl' : null,
+  ]
+    .filter(Boolean)
+    .join(' ');
 
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={`Go to ${verse.verseKey}`}
-      className="border-b border-border/40 py-5 dark:border-border-dark/30"
+      className={containerClassName}
       style={({ pressed }) => ({ opacity: pressed ? 0.96 : 1 })}
     >
       <View className="gap-4">
@@ -78,11 +90,25 @@ export function SearchVerseResultCard({
           <Text className="text-sm font-semibold text-accent dark:text-accent-dark">
             {verse.verseKey}
           </Text>
-          {verse.translationName ? (
-            <Text numberOfLines={1} className="flex-1 text-right text-xs text-muted dark:text-muted-dark">
-              {verse.translationName}
-            </Text>
-          ) : null}
+          <View className="flex-1 flex-row items-center justify-end gap-2">
+            {verse.translationName ? (
+              <Text numberOfLines={1} className="text-xs text-muted dark:text-muted-dark">
+                {verse.translationName}
+              </Text>
+            ) : null}
+            {onOpenActions ? (
+              <Pressable
+                onPress={onOpenActions}
+                hitSlop={10}
+                accessibilityRole="button"
+                accessibilityLabel="Open verse actions"
+                className="h-8 w-8 items-center justify-center rounded-full"
+                style={({ pressed }) => ({ opacity: pressed ? 0.65 : 1 })}
+              >
+                <MoreHorizontal color={palette.muted} size={18} strokeWidth={2.25} />
+              </Pressable>
+            ) : null}
+          </View>
         </View>
 
         {!arabic ? (

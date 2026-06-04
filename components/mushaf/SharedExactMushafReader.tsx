@@ -15,6 +15,7 @@ import {
 } from '@/components/mushaf/mushafWordPayload';
 import { MushafWebViewPage, MushafWebViewPagePlaceholder } from '@/components/mushaf/MushafWebViewPage';
 import { useMushafPageData } from '@/hooks/useMushafPageData';
+import { getJuzByPage } from '@/lib/utils/surah-navigation';
 import { container } from '@/src/core/infrastructure/di/container';
 
 import type { MushafPackId, MushafPageData, MushafScaleStep, MushafVerse } from '@/types';
@@ -71,11 +72,14 @@ function createCollapsedSelectionPayload(pageNumber: number): MushafSelectionPay
 }
 
 function ExactPageFooter({ pageNumber }: { pageNumber: number }): React.JSX.Element {
+  const juzNumber = getJuzByPage(pageNumber);
   return (
     <View className="items-center px-3 pt-3">
       <View className="w-full max-w-[220px] flex-row items-center justify-center gap-3">
         <View className="h-px flex-1 bg-border/55 dark:bg-border-dark/40" />
-        <Text className="text-xs font-medium text-muted dark:text-muted-dark">Page {pageNumber}</Text>
+        <Text className="text-xs font-medium text-muted dark:text-muted-dark">
+          Page {pageNumber} • Juz {juzNumber}
+        </Text>
         <View className="h-px flex-1 bg-border/55 dark:bg-border-dark/40" />
       </View>
     </View>

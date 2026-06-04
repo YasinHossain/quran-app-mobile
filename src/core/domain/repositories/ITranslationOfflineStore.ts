@@ -39,6 +39,13 @@ export interface ITranslationOfflineStore {
     perPage: number;
   }): Promise<OfflineVerseWithTranslations[]>;
 
+  getJuzVersesPageWithTranslations(params: {
+    juzId: number;
+    translationIds: number[];
+    page: number;
+    perPage: number;
+  }): Promise<OfflineVerseWithTranslations[]>;
+
   deleteTranslation(translationId: number): Promise<void>;
 
   deleteWordTranslation(): Promise<void>;
