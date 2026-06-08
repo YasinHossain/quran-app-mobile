@@ -576,6 +576,7 @@ export function ManageTafsirsPanel({
       return base;
     }
 
+    base.push({ type: 'section', language: activeFilter });
     resourcesToRender.forEach((item) => base.push({ type: 'resource', item }));
     return base;
   }, [activeFilter, isLoading, resourcesToRender, sectionsToRender, tafsirs.length]);

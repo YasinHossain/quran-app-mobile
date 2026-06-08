@@ -1,7 +1,7 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react-native';
 import React from 'react';
 import type { LayoutChangeEvent, NativeScrollEvent, NativeSyntheticEvent } from 'react-native';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { Keyboard, Pressable, ScrollView, Text, View } from 'react-native';
 
 import Colors from '@/constants/Colors';
 import { useAppTheme } from '@/providers/ThemeContext';
@@ -21,7 +21,7 @@ function NavButton({
 }): React.JSX.Element {
   return (
     <Pressable
-      onPress={onPress}
+      onPressIn={onPress}
       disabled={disabled}
       className={['rounded-full p-1', disabled ? 'opacity-40' : ''].join(' ')}
       style={({ pressed }) => ({ opacity: disabled ? 0.4 : pressed ? 0.8 : 1 })}
@@ -43,7 +43,7 @@ function Tab({
 }): React.JSX.Element {
   return (
     <Pressable
-      onPress={onPress}
+      onPressIn={onPress}
       className={[
         'flex-shrink-0 px-3 py-1 border-b-2',
         active
@@ -141,13 +141,18 @@ export function ResourceTabs({
         scrollEventThrottle={16}
         onContentSizeChange={onContentSizeChange}
         contentContainerStyle={{ alignItems: 'center' }}
+        nestedScrollEnabled
+        keyboardShouldPersistTaps="handled"
       >
         {languages.map((lang) => (
           <Tab
             key={lang}
             label={lang}
             active={activeFilter === lang}
-            onPress={() => onTabPress(lang)}
+            onPress={() => {
+              Keyboard.dismiss();
+              onTabPress(lang);
+            }}
           />
         ))}
       </ScrollView>

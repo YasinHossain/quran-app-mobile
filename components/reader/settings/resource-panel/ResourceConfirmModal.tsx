@@ -1,6 +1,18 @@
 import { X } from 'lucide-react-native';
 import React from 'react';
-import { ActivityIndicator, Modal, Pressable, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Animated,
+  Modal,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from 'react-native';
+
+import { dialogTransform, useModalTransition } from '@/components/motion/modalTransition';
 import { useAppTheme } from '@/providers/ThemeContext';
 
 export function ResourceConfirmModal({
@@ -31,21 +43,43 @@ export function ResourceConfirmModal({
   onClose: () => void;
 }): React.JSX.Element {
   const { isDark } = useAppTheme();
+  const { height: windowHeight } = useWindowDimensions();
+
+  const { visible: isModalVisible, progress, dismissEnabledRef, onModalShow } = useModalTransition(visible);
+
+  const handleOverlayPress = React.useCallback(() => {
+    if (!dismissEnabledRef.current) return;
+    onClose();
+  }, [dismissEnabledRef, onClose]);
+
   const confirmClassName =
-    confirmTone === 'danger' ? 'rounded-lg bg-error px-4 py-2 dark:bg-error-dark' : 'rounded-lg bg-accent px-4 py-2';
+    confirmTone === 'danger'
+      ? 'rounded-lg bg-error px-4 py-2 dark:bg-error-dark'
+      : 'rounded-lg bg-accent px-4 py-2';
+
+  const maxDialogHeight = Math.max(0, Math.round(windowHeight * 0.92));
 
   return (
-    <Modal transparent animationType="fade" visible={visible} onRequestClose={onClose}>
-      <View className={`flex-1 items-center justify-center px-6 ${isDark ? 'dark' : ''}`}>
-        <Pressable
-          onPress={onClose}
-          style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}
-        >
-          <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.55)' }} />
+    <Modal
+      transparent
+      animationType="none"
+      visible={isModalVisible}
+      onShow={onModalShow}
+      onRequestClose={onClose}
+      {...(Platform.OS === 'ios' ? { presentationStyle: 'overFullScreen' as const } : {})}
+      statusBarTranslucent
+    >
+      <View className={isDark ? 'dark' : ''} style={styles.root}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={handleOverlayPress}>
+          <Animated.View style={[styles.overlay, { opacity: progress }]} />
         </Pressable>
 
-        <View
-          style={{ width: '100%', maxWidth: 420 }}
+        <Animated.View
+          style={[
+            styles.dialog,
+            { maxHeight: maxDialogHeight },
+            dialogTransform(progress),
+          ]}
           className="rounded-2xl border border-border/50 bg-surface px-5 py-5 dark:border-border-dark/40 dark:bg-surface-dark"
         >
           <View className="flex-row items-center justify-between">
@@ -102,8 +136,25 @@ export function ResourceConfirmModal({
               <Text className="text-sm font-semibold text-on-accent">{confirmLabel}</Text>
             </Pressable>
           </View>
-        </View>
+        </Animated.View>
       </View>
     </Modal>
   );
 }
+
+const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+  },
+  dialog: {
+    width: '100%',
+    maxWidth: 420,
+    alignSelf: 'center',
+  },
+});

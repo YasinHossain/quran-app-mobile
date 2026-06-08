@@ -4,6 +4,7 @@ import {
   ActivityIndicator,
   Animated,
   Easing,
+  Keyboard,
   Pressable,
   ScrollView,
   Text,
@@ -274,6 +275,7 @@ export const TafsirTabs = React.memo(function TafsirTabs({
           onScroll={handleTabsScroll}
           onContentSizeChange={handleTabsContentSizeChange}
           scrollEventThrottle={16}
+          keyboardShouldPersistTaps="handled"
         >
           {tabs.map((tab, index) => {
             const isActive = tab.id === resolvedActiveTafsirId;
@@ -283,7 +285,10 @@ export const TafsirTabs = React.memo(function TafsirTabs({
               <React.Fragment key={tab.id}>
                 <Pressable
                   onLayout={(event) => handleTabLayout(tab.id, event)}
-                  onPressIn={() => onActiveTafsirChange?.(tab.id)}
+                  onPressIn={() => {
+                    Keyboard.dismiss();
+                    onActiveTafsirChange?.(tab.id);
+                  }}
                   className="relative justify-center px-4 pb-3 pt-4"
                   style={({ pressed }) => ({
                     minHeight: 56,
