@@ -1,5 +1,5 @@
-import { Stack } from 'expo-router';
-import { useScrollToTop } from '@react-navigation/native';
+import { Stack, router } from 'expo-router';
+import { useScrollToTop } from "expo-router/react-navigation";
 import React from 'react';
 import {
   Animated,
@@ -13,7 +13,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Menu, Moon, Sun } from 'lucide-react-native';
+import { Menu, Moon, Sun, Download } from 'lucide-react-native';
 
 import { HomeRecentCard } from '@/components/home/HomeRecentCard';
 import { HomeQuickLinksCard } from '@/components/home/HomeQuickLinksCard';
@@ -201,9 +201,19 @@ function HomeSearchHeader({
                 <Pressable
                   onPress={() => {
                     closeMenu();
+                    router.push('/downloads');
+                  }}
+                  className="px-5 py-4 active:bg-interactive dark:active:bg-interactive-dark flex-row items-center gap-3"
+                >
+                  <Download size={20} color={isDark ? '#E5E5E5' : '#2F3744'} strokeWidth={2} />
+                  <Text className="text-base font-semibold text-content-primary dark:text-content-primary-dark">Downloads</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => {
+                    closeMenu();
                     Linking.openURL('https://appquran.com').catch(() => {});
                   }}
-                  className="px-5 py-4 active:bg-interactive dark:active:bg-interactive-dark"
+                  className="px-5 py-4 active:bg-interactive dark:active:bg-interactive-dark flex-row items-center gap-3"
                 >
                   <Text className="text-base font-semibold text-content-primary dark:text-content-primary-dark">appquran.com</Text>
                 </Pressable>

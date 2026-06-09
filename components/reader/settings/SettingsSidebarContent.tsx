@@ -1,5 +1,6 @@
-import { ArrowLeft, BookOpenText, Globe, Type, Wand2, X } from 'lucide-react-native';
+import { ArrowLeft, BookOpenText, Globe, Type, Wand2, X, Download } from 'lucide-react-native';
 import React from 'react';
+import { router } from 'expo-router';
 import { Alert, Animated, Easing, FlatList, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
 import { DEFAULT_MUSHAF_ID, TAJWEED_MUSHAF_ID, findMushafOption } from '@/data/mushaf/options';
@@ -977,8 +978,24 @@ export function SettingsSidebarContent({
                         </CollapsibleSection>
 
                         <Pressable
+                          onPress={() => {
+                            onClose?.();
+                            router.push('/downloads');
+                          }}
+                          className="flex-row items-center justify-between gap-3 rounded-2xl px-2 py-3 mt-1"
+                          style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
+                        >
+                          <View className="flex-row items-center gap-3">
+                            <Download color={palette.tint} size={20} strokeWidth={2.25} />
+                            <Text className="text-base font-semibold text-foreground dark:text-foreground-dark">
+                              Manage Downloads
+                            </Text>
+                          </View>
+                        </Pressable>
+
+                        <Pressable
                           onPress={() => openPanel('ui-language')}
-                          className="flex-row items-center justify-between gap-3 rounded-2xl px-2 py-3"
+                          className="flex-row items-center justify-between gap-3 rounded-2xl px-2 py-3 mt-1"
                           style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
                         >
                           <View className="flex-row items-center gap-3">
@@ -1064,7 +1081,7 @@ const styles = StyleSheet.create({
     opacity: 0.72,
   },
   subPanel: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   hidden: {
     display: 'none',

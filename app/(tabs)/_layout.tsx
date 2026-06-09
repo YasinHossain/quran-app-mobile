@@ -2,7 +2,7 @@ import React from 'react';
 import { Bookmark, Home, Calendar, Search } from 'lucide-react-native';
 import { Tabs } from 'expo-router';
 import { Easing, View, type LayoutChangeEvent } from 'react-native';
-import { BottomTabBar, type BottomTabBarProps } from '@react-navigation/bottom-tabs';
+import { BottomTabBar, type BottomTabBarProps } from "expo-router/js-tabs";
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import Colors from '@/constants/Colors';
@@ -14,8 +14,8 @@ function TabBarIcon({
   Icon,
   color,
 }: {
-  Icon: React.ComponentType<{ color?: string; size?: number; strokeWidth?: number }>;
-  color: string;
+  Icon: React.ComponentType<{ color?: any; size?: number; strokeWidth?: number }>;
+  color: any;
 }) {
   return (
     <Icon 
@@ -26,7 +26,7 @@ function TabBarIcon({
   );
 }
 
-function ReportingTabBar(props: BottomTabBarProps): React.JSX.Element {
+function ReportingTabBar(props: any): React.JSX.Element {
   const { setBottomTabBarHeight } = useLayoutMetrics();
   const insets = useSafeAreaInsets();
   const bottomPadding = Math.max(insets.bottom, 12);

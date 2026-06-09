@@ -62,6 +62,13 @@ function patchDeprecatedReactNativeSafeAreaViewTs(contents) {
   return next;
 }
 
+function patchReactNativeGradlePluginFoojay(contents) {
+  return contents.replace(
+    /id\("org\.gradle\.toolchains\.foojay-resolver-convention"\)\.version\("0\.5\.0"\)/,
+    'id("org.gradle.toolchains.foojay-resolver-convention").version("1.0.0")'
+  );
+}
+
 async function main() {
   const results = [];
 
@@ -77,12 +84,18 @@ async function main() {
       patchDeprecatedReactNativeSafeAreaViewTs
     )
   );
+  results.push(
+    await patchFile(
+      'node_modules/@react-native/gradle-plugin/settings.gradle.kts',
+      patchReactNativeGradlePluginFoojay
+    )
+  );
 
   const patched = results.filter((r) => r.status === 'patched');
   if (patched.length === 0) return;
 
   console.log(
-    `postinstall: patched deprecated react-native SafeAreaView usage in ${patched
+    `postinstall: patched files: ${patched
       .map((r) => r.relativePath)
       .join(', ')}`
   );

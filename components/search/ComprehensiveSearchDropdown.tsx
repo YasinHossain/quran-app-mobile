@@ -437,7 +437,7 @@ export function ComprehensiveSearchDropdown({
 
 const styles = StyleSheet.create({
   root: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     justifyContent: 'flex-start',
     paddingHorizontal: 16,
     paddingTop: 8,

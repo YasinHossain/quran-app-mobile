@@ -119,7 +119,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   contentLayer: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
 });
 

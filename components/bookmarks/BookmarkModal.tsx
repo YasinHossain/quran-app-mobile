@@ -39,12 +39,15 @@ import type { Bookmark, Folder as BookmarkFolder } from '@/types';
 
 type BookmarkModalTab = 'pin' | 'bookmark';
 
+const isFabric = !!(globalThis as any).nativeFabricUIManager;
 if (
   Platform.OS === 'android' &&
+  !isFabric &&
   UIManager.setLayoutAnimationEnabledExperimental
 ) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
+
 
 function BookmarkModalTabToggle({
   activeTab,

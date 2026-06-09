@@ -60,6 +60,8 @@ function ensureLayoutAnimationEnabled(): void {
   if (layoutAnimationEnabled) return;
   layoutAnimationEnabled = true;
   if (Platform.OS !== 'android') return;
+  const isFabric = !!(globalThis as any).nativeFabricUIManager;
+  if (isFabric) return;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (UIManager as any).setLayoutAnimationEnabledExperimental?.(true);
 }
