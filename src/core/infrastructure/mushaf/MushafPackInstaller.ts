@@ -94,6 +94,8 @@ const PAGE_ADDRESSABLE_LOOKUP_FILE = 'page-data/lookup.json';
 const PAGE_ADDRESSABLE_PAGES_DIRECTORY = 'page-data/pages';
 const PAGE_DATA_FETCH_TIMEOUT_MS = 20000;
 const PAGE_DATA_FETCH_RETRY_COUNT = 2;
+const HOSTED_DOWNLOAD_CONCURRENCY = 8;
+const HOSTED_PROGRESS_PERSIST_STEP = 8;
 const CANCELED_ERROR_CODE = 'mushaf_pack_install_canceled';
 const canceledInstallKeys = new Set<string>();
 const activeInstallAbortControllers = new Map<string, AbortController>();
@@ -719,10 +721,15 @@ export class MushafPackInstaller {
     private readonly logger?: ILogger
   ) {}
 
+  clearPackInstallCancel(packId: MushafPackId, version: string): void {
+    canceledInstallKeys.delete(getInstallCancelKey(packId, version));
+  }
+
   async installHostedPackAsync(params: InstallHostedMushafPackParams): Promise<MushafPackInstall> {
     const entry = params.catalogEntry;
     const version = asNonEmptyString(entry.version);
     const content = toDownloadContent(entry.packId, version);
+    const installKey = getInstallCancelKey(entry.packId, version);
 
     const existing = await this.installRegistry.get(entry.packId, version);
     if (existing && (await this.fileStore.hasInstalledVersionAsync(entry.packId, version))) {
@@ -749,8 +756,11 @@ export class MushafPackInstaller {
       entry.packId,
       version
     );
+    const abortController = new AbortController();
+    activeInstallAbortControllers.set(installKey, abortController);
 
     try {
+      throwIfInstallCanceled(entry.packId, version, abortController.signal);
       await this.downloadIndexRepository.upsert(content, {
         status: 'downloading',
         progress: { kind: 'items', completed: 0, total: 1 },
@@ -759,11 +769,12 @@ export class MushafPackInstaller {
 
       const manifestUrl = resolveManifestUrl(entry);
       const temporaryManifestUri = `${temporaryDirectory}manifest.json`;
-      await downloadFileAsync(manifestUrl, temporaryManifestUri);
+      await downloadFileAsync(manifestUrl, temporaryManifestUri, undefined, abortController.signal);
       await verifyDownloadedFileAsync(temporaryManifestUri, {
         checksum: entry.manifestChecksum,
         sizeBytes: entry.manifestSizeBytes,
       });
+      throwIfInstallCanceled(entry.packId, version, abortController.signal);
 
       let manifest = JSON.parse(
         await FileSystem.readAsStringAsync(temporaryManifestUri)
@@ -773,6 +784,8 @@ export class MushafPackInstaller {
       const files = mergeRemoteFileDescriptors(manifest, entry, manifestUrl);
       const totalFiles = Math.max(1, files.length + 1);
       let completedFiles = 1;
+      let lastPersistedCompleted = completedFiles;
+      let progressWrite = Promise.resolve();
 
       await this.downloadIndexRepository.upsert(content, {
         status: 'downloading',
@@ -789,25 +802,52 @@ export class MushafPackInstaller {
         });
       };
 
-      for (const file of files) {
+      const persistProgressAsync = async (force = false): Promise<void> => {
+        if (
+          !force &&
+          completedFiles < totalFiles &&
+          completedFiles - lastPersistedCompleted < HOSTED_PROGRESS_PERSIST_STEP
+        ) {
+          return;
+        }
+
+        const completedSnapshot = completedFiles;
+        lastPersistedCompleted = completedSnapshot;
+        progressWrite = progressWrite.then(() =>
+          this.downloadIndexRepository.upsert(content, {
+            status: 'downloading',
+            progress: { kind: 'items', completed: completedSnapshot, total: totalFiles },
+            error: null,
+          }).then(() => undefined)
+        );
+        await progressWrite;
+      };
+
+      await runPromisePool(files, HOSTED_DOWNLOAD_CONCURRENCY, async (file) => {
+        throwIfInstallCanceled(entry.packId, version, abortController.signal);
         const temporaryFileUri = `${temporaryDirectory}${normalizeRelativePath(file.file)}`;
 
         notifyProgress(file.file, 0);
-        await downloadFileAsync(file.url, temporaryFileUri, (progress) => {
-          notifyProgress(file.file, progress.percent);
-        });
+        await downloadFileAsync(
+          file.url,
+          temporaryFileUri,
+          (progress) => {
+            notifyProgress(file.file, progress.percent);
+          },
+          abortController.signal
+        );
         await verifyDownloadedFileAsync(temporaryFileUri, {
           checksum: file.checksum,
           sizeBytes: file.sizeBytes,
         });
+        throwIfInstallCanceled(entry.packId, version, abortController.signal);
 
         completedFiles += 1;
-        await this.downloadIndexRepository.upsert(content, {
-          status: 'downloading',
-          progress: { kind: 'items', completed: completedFiles, total: totalFiles },
-          error: null,
-        });
-      }
+        notifyProgress(file.file, 100);
+        await persistProgressAsync();
+      });
+
+      await persistProgressAsync(true);
 
       manifest = await convertInstalledPayloadToPageAddressableFormatAsync(
         temporaryDirectory,
@@ -834,6 +874,15 @@ export class MushafPackInstaller {
 
       return installed;
     } catch (error) {
+      if (
+        isMushafPackInstallCanceledError(error) ||
+        abortController.signal.aborted ||
+        canceledInstallKeys.has(installKey)
+      ) {
+        await this.downloadIndexRepository.remove(content);
+        throw new MushafPackInstallCanceledError(entry.packId, version);
+      }
+
       await this.downloadIndexRepository.upsert(content, {
         status: 'failed',
         progress: null,
@@ -841,6 +890,8 @@ export class MushafPackInstaller {
       });
       throw error;
     } finally {
+      activeInstallAbortControllers.delete(installKey);
+      canceledInstallKeys.delete(installKey);
       try {
         await this.fileStore.deleteTemporaryVersionDirectoryAsync(temporaryDirectory);
       } catch (cleanupError) {
@@ -877,7 +928,6 @@ export class MushafPackInstaller {
     const version = asNonEmptyString(pack.version);
     const content = toDownloadContent(pack.packId, version);
     const installKey = getInstallCancelKey(pack.packId, version);
-    canceledInstallKeys.delete(installKey);
 
     const existing = await this.installRegistry.get(pack.packId, version);
     if (existing && (await this.fileStore.hasInstalledVersionAsync(pack.packId, version))) {

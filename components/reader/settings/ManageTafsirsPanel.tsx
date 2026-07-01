@@ -158,7 +158,7 @@ const TafsirResourceRow = React.memo(function TafsirResourceRow({
   onPressDelete: (tafsir: ResourceRecord) => void;
   onCancelDownload: (tafsirId: number) => void;
 }): React.JSX.Element {
-  const status = downloadItem?.status;
+  const status = downloadItem?.status ?? (isBusy ? 'queued' : undefined);
   const isDownloading = status === 'queued' || status === 'downloading';
   const isDeleting = status === 'deleting';
   const isInstalled = status === 'installed';
@@ -194,7 +194,7 @@ const TafsirResourceRow = React.memo(function TafsirResourceRow({
         trailingAction={
           <ResourceDownloadAction
             status={status}
-            progress={downloadItem?.progress}
+            progress={downloadItem?.progress ?? (isBusy ? { kind: 'items', completed: 0, total: 1 } : undefined)}
             isSelected={isSelected}
             isDark={isDark}
             tintColor={tintColor}
@@ -252,6 +252,7 @@ export function ManageTafsirsPanel({
   } = useDownloadIndexItems({
     enabled: isActive,
     pollIntervalMs: 800,
+    pollWhileEnabled: busyTafsirIds.size > 0,
   });
 
   const getTafsirDownloadItem = React.useCallback(

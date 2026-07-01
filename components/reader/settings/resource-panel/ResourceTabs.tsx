@@ -21,7 +21,7 @@ function NavButton({
 }): React.JSX.Element {
   return (
     <Pressable
-      onPressIn={onPress}
+      onPress={onPress}
       disabled={disabled}
       className={['rounded-full p-1', disabled ? 'opacity-40' : ''].join(' ')}
       style={({ pressed }) => ({ opacity: disabled ? 0.4 : pressed ? 0.8 : 1 })}
@@ -43,7 +43,7 @@ function Tab({
 }): React.JSX.Element {
   return (
     <Pressable
-      onPressIn={onPress}
+      onPress={onPress}
       className={[
         'flex-shrink-0 px-3 py-1 border-b-2',
         active

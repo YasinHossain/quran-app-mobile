@@ -12,8 +12,6 @@ import {
 import { router } from 'expo-router';
 import {
   ArrowLeft,
-  Trash2,
-  X,
   Download,
   AlertTriangle,
   ChevronDown,
@@ -30,6 +28,7 @@ import { ResourceConfirmModal } from '@/components/reader/settings/resource-pane
 import Colors from '@/constants/Colors';
 import { AppHeader } from '@/components/navigation/AppHeader';
 import { HeaderActionButton } from '@/components/search/HeaderSearchBar';
+import { ResourceDownloadAction } from '@/components/reader/settings/resource-panel/ResourceDownloadAction';
 import { useDownloadIndexItems } from '@/hooks/useDownloadIndexItems';
 import { useTranslationResources } from '@/hooks/useTranslationResources';
 import { useTafsirResources } from '@/hooks/useTafsirResources';
@@ -43,6 +42,7 @@ import { DeleteTranslationUseCase } from '@/src/core/application/use-cases/Delet
 import { DeleteTafsirUseCase } from '@/src/core/application/use-cases/DeleteTafsir';
 import { DeleteWordTranslationUseCase } from '@/src/core/application/use-cases/DeleteWordTranslation';
 import { requestTranslationDownloadCancel } from '@/src/core/application/use-cases/DownloadTranslation';
+import { requestTafsirDownloadCancel } from '@/src/core/application/use-cases/DownloadFullTafsir';
 import { requestWordDownloadCancel } from '@/src/core/application/use-cases/DownloadWordTranslation';
 
 import { container } from '@/src/core/infrastructure/di/container';
@@ -306,8 +306,19 @@ export default function DownloadsScreen(): React.JSX.Element {
     if (item.status === 'queued' || item.status === 'downloading') {
       if (item.content.kind === 'translation') {
         requestTranslationDownloadCancel(item.content.translationId);
+      } else if (item.content.kind === 'tafsir' && !('scope' in item.content)) {
+        requestTafsirDownloadCancel(item.content.tafsirId);
       } else if (item.content.kind === 'word-translation') {
         requestWordDownloadCancel(item.content.languageCode);
+      } else if (item.content.kind === 'audio') {
+        void container.getAudioDownloadManager().cancelSurahAudioDownload({
+          reciterId: item.content.reciterId,
+          surahId: item.content.surahId,
+        });
+      } else if (item.content.kind === 'mushaf-pack') {
+        void container
+          .getMushafPackInstaller()
+          .cancelDownloadablePackInstallAsync(item.content.packId, item.content.version);
       } else {
         void container.getDownloadIndexRepository().remove(item.content);
       }
@@ -334,14 +345,14 @@ export default function DownloadsScreen(): React.JSX.Element {
       if (progress?.kind === 'percent') {
         isProgress = true;
         percent = progress.percent;
-      } else if (progress?.kind === 'items') {
-        statusText = `Downloading (${progress.completed}/${progress.total})`;
       }
     } else if (status === 'failed') {
       statusText = 'Failed';
     } else if (isDeleting) {
       statusText = 'Deleting…';
     }
+
+    const actionStatus = isDeleting ? 'deleting' : status === 'failed' ? 'installed' : status;
 
     return (
       <View
@@ -386,23 +397,18 @@ export default function DownloadsScreen(): React.JSX.Element {
         <Pressable
           onPress={() => handleDeleteItem(dItem)}
           disabled={isDeleting}
-          className={[
-            'h-9 w-9 rounded-full items-center justify-center border',
-            status === 'queued' || status === 'downloading'
-              ? 'border-border/60 bg-interactive dark:border-border-dark/60 dark:bg-interactive-dark'
-              : 'border-error/40 bg-error/10 dark:bg-error-dark/10',
-            isDeleting ? 'opacity-40' : 'active:opacity-85',
-          ].join(' ')}
+          className={isDeleting ? 'opacity-40' : ''}
+          style={({ pressed }) => ({ opacity: isDeleting ? 0.4 : pressed ? 0.85 : 1 })}
           accessibilityRole="button"
           accessibilityLabel={status === 'queued' || status === 'downloading' ? 'Cancel download' : 'Delete download'}
         >
-          {status === 'queued' || status === 'downloading' ? (
-            <X size={16} color={palette.tint} strokeWidth={2.25} />
-          ) : isDeleting ? (
-            <ActivityIndicator size="small" color={palette.error} />
-          ) : (
-            <Trash2 size={16} color={palette.error} strokeWidth={2} />
-          )}
+          <ResourceDownloadAction
+            status={actionStatus}
+            progress={progress}
+            isSelected={false}
+            isDark={isDark}
+            tintColor={palette.tint}
+          />
         </Pressable>
       </View>
     );

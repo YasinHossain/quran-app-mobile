@@ -91,9 +91,11 @@ function areItemsEqual(
 export function useDownloadIndexItems({
   enabled = true,
   pollIntervalMs = 1000,
+  pollWhileEnabled = false,
 }: {
   enabled?: boolean;
   pollIntervalMs?: number;
+  pollWhileEnabled?: boolean;
 } = {}): {
   items: DownloadIndexItemWithKey[];
   itemsByKey: Map<DownloadKey, DownloadIndexItemWithKey>;
@@ -146,14 +148,14 @@ export function useDownloadIndexItems({
   React.useEffect(() => {
     if (!enabled) return;
     if (!pollIntervalMs || pollIntervalMs <= 0) return;
-    if (!hasActiveItems) return;
+    if (!hasActiveItems && !pollWhileEnabled) return;
 
     const intervalId = setInterval(() => {
       void load(false);
     }, pollIntervalMs);
 
     return () => clearInterval(intervalId);
-  }, [enabled, pollIntervalMs, hasActiveItems, load]);
+  }, [enabled, pollIntervalMs, hasActiveItems, load, pollWhileEnabled]);
 
   const refresh = React.useCallback(() => {
     return load(true);

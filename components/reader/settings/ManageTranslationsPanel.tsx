@@ -226,7 +226,7 @@ const TranslationResourceRow = React.memo(function TranslationResourceRow({
   onPressDelete: (translation: ResourceRecord) => void;
   onCancelDownload: (translationId: number) => void;
 }): React.JSX.Element {
-  const status = downloadItem?.status;
+  const status = downloadItem?.status ?? (isBusy ? 'queued' : undefined);
   const isDownloading = status === 'queued' || status === 'downloading';
   const isDeleting = status === 'deleting';
   const isInstalled = status === 'installed';
@@ -237,7 +237,7 @@ const TranslationResourceRow = React.memo(function TranslationResourceRow({
   const actionIcon = (
     <ResourceDownloadAction
       status={status}
-      progress={downloadItem?.progress}
+      progress={downloadItem?.progress ?? (isBusy ? { kind: 'items', completed: 0, total: 1 } : undefined)}
       isSelected={isSelected}
       isDark={isDark}
       tintColor={tintColor}
@@ -382,6 +382,7 @@ export function ManageTranslationsPanel({
   const { itemsByKey, refresh: refreshIndex } = useDownloadIndexItems({
     enabled: isActive,
     pollIntervalMs: 800,
+    pollWhileEnabled: busyTranslationIds.size > 0,
   });
 
   const scheduleSelectionCommit = React.useCallback(

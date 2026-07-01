@@ -29,6 +29,30 @@ function toAudioContent(params: { reciterId: number; surahId: number }): Downloa
   };
 }
 
+const AUDIO_DOWNLOAD_CANCELED_ERROR_CODE = 'audio_download_canceled';
+const canceledAudioDownloadKeys = new Set<string>();
+const activeAudioDownloadAbortControllers = new Map<string, AbortController>();
+
+class AudioDownloadCanceledError extends Error {
+  readonly code = AUDIO_DOWNLOAD_CANCELED_ERROR_CODE;
+
+  constructor(readonly key: string) {
+    super('Audio download canceled');
+    this.name = 'AudioDownloadCanceledError';
+  }
+}
+
+function isAudioDownloadCanceledError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  if ((error as { code?: unknown }).code === AUDIO_DOWNLOAD_CANCELED_ERROR_CODE) return true;
+  return error.name === 'AudioDownloadCanceledError';
+}
+
+function throwIfAudioDownloadCanceled(key: string, signal?: AbortSignal): void {
+  if (!signal?.aborted && !canceledAudioDownloadKeys.has(key)) return;
+  throw new AudioDownloadCanceledError(key);
+}
+
 export class AudioDownloadManager {
   private readonly inFlightByKey = new Map<string, Promise<void>>();
 
@@ -65,6 +89,7 @@ export class AudioDownloadManager {
 
     const existingPromise = this.inFlightByKey.get(key);
     if (existingPromise) return existingPromise;
+    canceledAudioDownloadKeys.delete(key);
 
     const work = (async (): Promise<void> => {
       const store = new AudioFileStore({ reciterId, surahId });
@@ -103,6 +128,8 @@ export class AudioDownloadManager {
       let allowProgressEnqueue = true;
 
       let writeQueue: Promise<void> = Promise.resolve();
+      const abortController = new AbortController();
+      activeAudioDownloadAbortControllers.set(key, abortController);
 
       const enqueueProgressPersist = (percent: number): void => {
         if (!allowProgressEnqueue) return;
@@ -133,10 +160,12 @@ export class AudioDownloadManager {
       }, 800);
 
       try {
+        throwIfAudioDownloadCanceled(key, abortController.signal);
         await store.download(audioUrl, (progress) => {
           if (progress.percent === null) return;
           latestPercent = clampNumber(progress.percent, 0, 100);
-        });
+        }, abortController.signal);
+        throwIfAudioDownloadCanceled(key, abortController.signal);
 
         clearInterval(intervalId);
         allowProgressEnqueue = false;
@@ -150,6 +179,24 @@ export class AudioDownloadManager {
         clearInterval(intervalId);
         allowProgressEnqueue = false;
         await writeQueue;
+
+        if (
+          isAudioDownloadCanceledError(error) ||
+          abortController.signal.aborted ||
+          canceledAudioDownloadKeys.has(key)
+        ) {
+          await this.downloadIndexRepository.remove(content);
+          try {
+            await store.delete();
+          } catch (cleanupError) {
+            logger.warn(
+              'Failed to clean up audio file after cancellation',
+              { reciterId, surahId },
+              cleanupError as Error
+            );
+          }
+          return;
+        }
 
         const message = error instanceof Error ? error.message : String(error);
         await this.downloadIndexRepository.upsert(content, {
@@ -169,6 +216,9 @@ export class AudioDownloadManager {
         }
 
         throw error;
+      } finally {
+        activeAudioDownloadAbortControllers.delete(key);
+        canceledAudioDownloadKeys.delete(key);
       }
     })().finally(() => {
       this.inFlightByKey.delete(key);
@@ -176,6 +226,19 @@ export class AudioDownloadManager {
 
     this.inFlightByKey.set(key, work);
     return work;
+  }
+
+  async cancelSurahAudioDownload(params: { reciterId: number; surahId: number }): Promise<void> {
+    const reciterId = normalizeId(params.reciterId);
+    const surahId = normalizeId(params.surahId);
+
+    if (reciterId <= 0 || surahId <= 0) return;
+
+    const content = toAudioContent({ reciterId, surahId });
+    const key = getDownloadKey(content);
+    canceledAudioDownloadKeys.add(key);
+    activeAudioDownloadAbortControllers.get(key)?.abort();
+    await this.downloadIndexRepository.remove(content);
   }
 
   async deleteSurahAudio(params: { reciterId: number; surahId: number }): Promise<void> {

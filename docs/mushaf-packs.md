@@ -10,22 +10,17 @@ Instead of building an exact mushaf pack on the phone by calling Quran.com for e
 dist/mushaf-packs/
   catalog.json
   mushafs/
-    qcf-madani-v1/
+    qpc-uthmani-hafs/
       v1/
         manifest.json
-        page-data/
-          lookup.json
-          pages/
-            1.json
-            ...
-            604.json
+        payload.json
         fonts/
-          p1.woff2
-          ...
-          p604.woff2
+          UthmanicHafs1Ver18.ttf
 ```
 
-The app reads `catalog.json`, downloads the listed files, verifies checksum/size when present, then installs the pack into the local mushaf-pack directory.
+The hosted payload contains the generated page data for the whole mushaf. The app reads `catalog.json`, downloads the listed files, verifies checksum/size when present, then splits `payload.json` into local page-addressable files during install.
+
+That keeps phones from calling the live Quran.com page API for hosted packs and avoids hundreds of tiny remote page downloads for Unicode/QPC/IndoPak packs.
 
 ## Configure The App
 
@@ -46,13 +41,14 @@ When you move to another storage provider later, only this catalog URL needs to 
 ## Generate Packs
 
 ```bash
-npm run generate:mushaf-packs -- --packs=qcf-madani-v1 --version=v1
+npm run generate:mushaf-packs -- --packs=all --base-url=https://yasinhossain.github.io/quran-app-mobile/mushaf-packs/
 ```
 
 Optional:
 
 - `--output=dist/mushaf-packs`
 - `--base-url=https://yasinhossain.github.io/quran-app-mobile/mushaf-packs/`
+- `--packs=qpc-uthmani-hafs` to generate only one pack during development.
 
 If `--base-url` is omitted, the catalog uses relative URLs. That is easiest when uploading the whole `dist/mushaf-packs` folder as-is.
 

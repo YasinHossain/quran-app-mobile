@@ -58,10 +58,12 @@ export class AudioFileStore {
 
   async download(
     url: string,
-    onProgress?: (progress: AudioFileDownloadProgress) => void
+    onProgress?: (progress: AudioFileDownloadProgress) => void,
+    signal?: AbortSignal
   ): Promise<string> {
     const resolvedUrl = url.trim();
     if (!resolvedUrl) throw new Error('url is required');
+    if (signal?.aborted) throw new Error('Download canceled');
 
     const { fileUri, parentDirUri } = buildAudioFileUri({
       reciterId: this.reciterId,
@@ -89,11 +91,21 @@ export class AudioFileStore {
       }
     );
 
-    const result = await downloadResumable.downloadAsync();
-    if (!result?.uri) {
-      throw new Error('Download failed');
+    const cancelDownload = (): void => {
+      void downloadResumable.cancelAsync().catch(() => undefined);
+    };
+
+    signal?.addEventListener('abort', cancelDownload, { once: true });
+
+    try {
+      const result = await downloadResumable.downloadAsync();
+      if (!result?.uri) {
+        throw new Error('Download failed');
+      }
+      return result.uri;
+    } finally {
+      signal?.removeEventListener('abort', cancelDownload);
     }
-    return result.uri;
   }
 
   async delete(): Promise<void> {
@@ -101,4 +113,3 @@ export class AudioFileStore {
     await FileSystem.deleteAsync(uri, { idempotent: true });
   }
 }
-

@@ -107,7 +107,7 @@ const WordLanguageResourceRow = React.memo(function WordLanguageResourceRow({
   onPressDelete: (code: string) => void;
   onCancelDownload: (code: string) => void;
 }) {
-  const status = downloadItem?.status;
+  const status = downloadItem?.status ?? (isBusy ? 'queued' : undefined);
   const isDownloading = status === 'queued' || status === 'downloading';
   const isDeleting = status === 'deleting';
   const isInstalled = status === 'installed';
@@ -121,7 +121,7 @@ const WordLanguageResourceRow = React.memo(function WordLanguageResourceRow({
   const actionIcon = isArabic ? null : (
     <ResourceDownloadAction
       status={status}
-      progress={downloadItem?.progress}
+      progress={downloadItem?.progress ?? (isBusy ? { kind: 'items', completed: 0, total: 1 } : undefined)}
       isSelected={isSelected}
       isDark={isDark}
       tintColor={tintColor}
@@ -226,12 +226,13 @@ export function SettingsSidebarContent({
     };
   }, [navProgress]);
 
+  const [busyWordLangCodes, setBusyWordLangCodes] = React.useState<Set<string>>(() => new Set());
+
   const { itemsByKey, refresh: refreshIndex } = useDownloadIndexItems({
     enabled: panel.type === 'word-language',
     pollIntervalMs: 800,
+    pollWhileEnabled: busyWordLangCodes.size > 0,
   });
-
-  const [busyWordLangCodes, setBusyWordLangCodes] = React.useState<Set<string>>(() => new Set());
 
   const handleDownloadWordLanguage = React.useCallback(async (code: string) => {
     if (busyWordLangCodes.has(code)) return;
@@ -834,9 +835,17 @@ export function SettingsSidebarContent({
               }
               renderItem={({ item }) => {
                 const hasActiveMushafJob = mushafPackEntries.some((entry) => entry.isBusy);
+                const effectiveMushafStatus =
+                  item.downloadItem?.status ??
+                  (item.isBusy ? (item.isInstalled ? 'deleting' : 'queued') : undefined);
+                const effectiveMushafProgress =
+                  item.downloadItem?.progress ??
+                  (effectiveMushafStatus === 'queued' || effectiveMushafStatus === 'downloading'
+                    ? { kind: 'items' as const, completed: 0, total: 1 }
+                    : undefined);
                 const isDownloading =
-                  item.downloadItem?.status === 'queued' ||
-                  item.downloadItem?.status === 'downloading';
+                  effectiveMushafStatus === 'queued' ||
+                  effectiveMushafStatus === 'downloading';
                 const isSelectable = item.isInstalled || item.isBundled;
                 const primaryAction = isSelectable
                   ? {
@@ -850,7 +859,7 @@ export function SettingsSidebarContent({
                     }
                   : item.isInstallImplemented
                     ? {
-                        label: item.downloadItem?.status === 'failed' ? 'Retry install' : 'Install',
+                        label: effectiveMushafStatus === 'failed' ? 'Retry install' : 'Install',
                         onPress: () => {
                           void handleInstallMushafPack(item.option.id);
                         },
@@ -885,8 +894,8 @@ export function SettingsSidebarContent({
                   <MushafPackOptionCard
                     packId={item.option.id}
                     title={item.option.name}
-                    downloadProgress={item.downloadItem?.progress ?? undefined}
-                    downloadStatus={item.downloadItem?.status}
+                    downloadProgress={effectiveMushafProgress}
+                    downloadStatus={effectiveMushafStatus}
                     description={item.option.description}
                     statusLabel={item.statusLabel}
                     progressLabel={item.progressLabel}

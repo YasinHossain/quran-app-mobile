@@ -352,7 +352,7 @@ function buildShellDocumentHtml({
         color: var(--text);
         direction: rtl;
         display: flex;
-        justify-content: space-between;
+        justify-content: center;
         line-height: var(--line-height);
         min-height: var(--line-height);
         white-space: nowrap;
@@ -396,9 +396,17 @@ function buildShellDocumentHtml({
         user-select: text;
       }
 
+      .word {
+        padding-inline: 0.04em;
+      }
+
       .word.qcf-word,
       .reflow-word.qcf-word {
         font-weight: 400;
+      }
+
+      .word.qcf-word {
+        padding-inline: 0;
       }
 
       .word.arrival-highlight,
@@ -415,7 +423,9 @@ function buildShellDocumentHtml({
       }
 
       .reflow-spacer {
+        display: inline-block;
         white-space: pre;
+        width: 0.14em;
       }
 
       .page-footer {

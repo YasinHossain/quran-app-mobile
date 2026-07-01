@@ -7,7 +7,11 @@ import type {
   DownloadProgress,
   DownloadStatus,
 } from '@/src/core/domain/entities/DownloadIndexItem';
-import { loadFontFamilyAsync } from '@/src/core/infrastructure/fonts/arabicFonts';
+import {
+  DEFAULT_ARABIC_FONT_FAMILY,
+  loadFontFamilyAsync,
+  type AppFontFamily,
+} from '@/src/core/infrastructure/fonts/arabicFonts';
 
 type ActionTone = 'default' | 'accent' | 'danger';
 
@@ -18,7 +22,12 @@ type MushafPackOptionAction = {
   tone?: ActionTone | undefined;
 };
 
-const getFontForPack = (packId: string): string => {
+type PreviewLineSegment = {
+  text: string;
+  isMarker?: boolean;
+};
+
+const getFontForPack = (packId: string): AppFontFamily => {
   if (packId.includes('indopak')) {
     return 'IndoPak';
   }
@@ -28,20 +37,144 @@ const getFontForPack = (packId: string): string => {
   return 'UthmanicHafs1Ver18';
 };
 
-const getPreviewTextForPack = (packId: string): string => {
+const line = (...segments: Array<string | PreviewLineSegment>): PreviewLineSegment[] =>
+  segments.map((segment) => (typeof segment === 'string' ? { text: segment } : segment));
+
+const marker = (text: string): PreviewLineSegment => ({ text, isMarker: true });
+
+const getPreviewLinesForPack = (packId: string): PreviewLineSegment[][] => {
   if (packId.includes('indopak')) {
     return [
-      'بِسْمِ اللهِ الرَّحْمٰنِ الرَّحِيْمِ',
-      'اَلْحَمْدُ لِلّٰهِ رَبِّ الْعٰلَمِيْنَ',
-      'الرَّحْمٰنِ الرَّحِيْمِ مٰلِكِ يَوْمِ الدِّيْنِ',
-    ].join('\n');
+      line('الٓمّٓ ', marker('﴿۱﴾'), ' اَللّٰهُ لَاۤ اِلٰهَ اِلَّا هُوَ الۡحَىُّ الۡقَيُّوۡمُ ', marker('﴿۲﴾')),
+      line('نَزَّلَ عَلَيۡكَ الۡكِتٰبَ بِالۡحَقِّ مُصَدِّقًا لِّمَا بَيۡنَ يَدَيۡهِ'),
+      line('وَاَنۡزَلَ التَّوۡرٰٮةَ وَالۡاِنۡجِيۡلَ ', marker('﴿۳﴾'), ' مِنۡ قَبۡلُ هُدًى لِّلنَّاسِ'),
+    ];
   }
   return [
-    'بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ',
-    'ٱلْحَمْدُ لِلَّهِ رَبِّ ٱلْعَٰلَمِينَ',
-    'ٱلرَّحْمَٰنِ ٱلرَّحِيمِ مَٰلِكِ يَوْمِ ٱلدِّينِ',
-  ].join('\n');
+    line('الٓمٓ ', marker('١'), ' ٱللَّهُ لَآ إِلَـٰهَ إِلَّا هُوَ ٱلْحَىُّ ٱلْقَيُّومُ ', marker('٢')),
+    line('نَزَّلَ عَلَيْكَ ٱلْكِتَـٰبَ بِٱلْحَقِّ مُصَدِّقًا لِّمَا بَيْنَ يَدَيْهِ'),
+    line('وَأَنزَلَ ٱلتَّوْرَىٰةَ وَٱلْإِنجِيلَ ', marker('٣'), ' مِن قَبْلُ هُدًى لِّلنَّاسِ'),
+  ];
 };
+
+const getPreviewTypographyForPack = (packId: string): { fontSize: number; lineHeight: number } => {
+  if (packId.includes('indopak')) {
+    return { fontSize: 18, lineHeight: 23 };
+  }
+  if (packId.includes('madani')) {
+    return { fontSize: 19, lineHeight: 22 };
+  }
+  return { fontSize: 19, lineHeight: 22 };
+};
+
+function isExactKingFahadPack(packId?: string): boolean {
+  return packId === 'qcf-madani-v1' || packId === 'qcf-madani-v2';
+}
+
+function ExactKingFahadPreview({
+  color,
+  fontFamily,
+  packId,
+}: {
+  color: string;
+  fontFamily: AppFontFamily;
+  packId?: string;
+}): React.JSX.Element {
+  const isV2 = packId === 'qcf-madani-v2';
+  const markerSize = isV2 ? 17 : 19;
+  const markerBorderWidth = isV2 ? 1.4 : 1.8;
+  const textSize = isV2 ? 14 : 13;
+  const rowGap = isV2 ? 4 : 3;
+  const rows = isV2
+    ? [
+        ['الٓمٓ', '١', 'ٱللَّهُ لَآ إِلَـٰهَ إِلَّا هُوَ', '٢'],
+        ['ٱلْحَىُّ ٱلْقَيُّومُ نَزَّلَ عَلَيْكَ ٱلْكِتَـٰبَ'],
+        ['بِٱلْحَقِّ مُصَدِّقًا لِّمَا بَيْنَ يَدَيْهِ'],
+        ['وَأَنزَلَ ٱلتَّوْرَىٰةَ وَٱلْإِنجِيلَ', '٣'],
+      ]
+    : [
+        ['الٓمٓ', '١', 'ٱللَّهُ لَآ إِلَـٰهَ إِلَّا هُوَ', '٢'],
+        ['ٱلْحَىُّ ٱلْقَيُّومُ نَزَّلَ عَلَيْكَ'],
+        ['ٱلْكِتَـٰبَ بِٱلْحَقِّ مُصَدِّقًا'],
+        ['لِّمَا بَيْنَ يَدَيْهِ وَأَنزَلَ ٱلتَّوْرَىٰةَ'],
+        ['وَٱلْإِنجِيلَ', '٣', 'مِن قَبْلُ هُدًى لِّلنَّاسِ'],
+      ];
+
+  return (
+    <View style={{ gap: rowGap }}>
+      {rows.map((row, rowIndex) => (
+        <View
+          key={`exact-preview-row-${rowIndex}`}
+          style={{
+            alignItems: 'center',
+            flexDirection: 'row-reverse',
+            justifyContent: 'center',
+            gap: isV2 ? 5 : 4,
+            minHeight: isV2 ? 16 : 14,
+          }}
+        >
+          {row.map((part, partIndex) => {
+            const isMarker = /^[١٢٣]$/.test(part);
+
+            if (isMarker) {
+              return (
+                <View
+                  key={`exact-preview-row-${rowIndex}-marker-${partIndex}`}
+                  style={{
+                    alignItems: 'center',
+                    borderColor: color,
+                    borderRadius: markerSize / 2,
+                    borderWidth: markerBorderWidth,
+                    height: markerSize,
+                    justifyContent: 'center',
+                    opacity: 0.9,
+                    width: markerSize,
+                  }}
+                >
+                  <Text
+                    allowFontScaling={false}
+                    style={{
+                      color,
+                      fontFamily: DEFAULT_ARABIC_FONT_FAMILY,
+                      fontSize: Math.max(9, markerSize - 9),
+                      includeFontPadding: false,
+                      lineHeight: markerSize - 3,
+                      textAlign: 'center',
+                    }}
+                  >
+                    {part}
+                  </Text>
+                </View>
+              );
+            }
+
+            return (
+              <Text
+                key={`exact-preview-row-${rowIndex}-text-${partIndex}`}
+                allowFontScaling={false}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.72}
+                style={{
+                  color,
+                  fontFamily,
+                  fontSize: textSize,
+                  includeFontPadding: false,
+                  lineHeight: isV2 ? 18 : 16,
+                  maxWidth: isV2 ? 360 : 320,
+                  textAlign: 'center',
+                  writingDirection: 'rtl',
+                }}
+              >
+                {part}
+              </Text>
+            );
+          })}
+        </View>
+      ))}
+    </View>
+  );
+}
 
 const cardShadow = {
   ...Platform.select({
@@ -89,12 +222,30 @@ export function MushafPackOptionCard({
   const isBundledUnicodePack = packId === 'unicode-uthmani-v1';
   const trailingAction = secondaryAction ?? (isBundledUnicodePack ? undefined : primaryAction);
   const hasTrailingAction = Boolean(trailingAction);
+  const requestedFontFamily = getFontForPack(packId || '');
+  const [loadedPreviewFontFamily, setLoadedPreviewFontFamily] =
+    React.useState<AppFontFamily | null>(null);
 
   React.useEffect(() => {
-    const font = getFontForPack(packId || '');
-    if (font === 'UthmanicHafs1Ver18') return;
-    void loadFontFamilyAsync(font as any).catch(() => {});
-  }, [packId]);
+    let isMounted = true;
+    setLoadedPreviewFontFamily(null);
+
+    void loadFontFamilyAsync(requestedFontFamily)
+      .then(() => {
+        if (isMounted) {
+          setLoadedPreviewFontFamily(requestedFontFamily);
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setLoadedPreviewFontFamily(DEFAULT_ARABIC_FONT_FAMILY);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [requestedFontFamily]);
 
   const handleCardPress = () => {
     if (isSelectable) {
@@ -102,8 +253,11 @@ export function MushafPackOptionCard({
     }
   };
 
-  const fontStyle = getFontForPack(packId || '');
-  const previewText = getPreviewTextForPack(packId || '');
+  const fontStyle = loadedPreviewFontFamily ?? DEFAULT_ARABIC_FONT_FAMILY;
+  const previewLines = getPreviewLinesForPack(packId || '');
+  const previewTypography = getPreviewTypographyForPack(packId || '');
+  const markerFontFamily = packId?.includes('indopak') ? fontStyle : DEFAULT_ARABIC_FONT_FAMILY;
+  const previewTextColor = resolvedTheme === 'dark' ? '#FFFFFF' : '#374151';
 
   // Theme background colors matching card surfaces to avoid blending with page background
   const bgColor = isSelected
@@ -184,26 +338,52 @@ export function MushafPackOptionCard({
 
         {/* Inset preview box: off-white/dark bg matching page background, borderless */}
         <View
-          className="rounded-md h-20 justify-center"
+          className="rounded-md h-24 justify-center"
           style={{
             backgroundColor: innerBgColor,
-            paddingHorizontal: 12,
-            paddingVertical: 8,
+            overflow: 'hidden',
+            paddingHorizontal: 14,
+            paddingVertical: 10,
           }}
         >
-          <Text
-            numberOfLines={3}
-            style={{
-              fontFamily: fontStyle,
-              fontSize: packId?.includes('indopak') ? 15 : 16,
-              lineHeight: packId?.includes('indopak') ? 23 : 24,
-              color: resolvedTheme === 'dark' ? '#FFFFFF' : '#374151',
-              textAlign: 'left',
-              writingDirection: 'ltr',
-            }}
-          >
-            {previewText}
-          </Text>
+          {isExactKingFahadPack(packId) ? (
+            <ExactKingFahadPreview color={previewTextColor} fontFamily={fontStyle} packId={packId} />
+          ) : previewLines.map((lineSegments, lineIndex) => (
+            <Text
+              key={`preview-line-${lineIndex}`}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.5}
+              style={{
+                fontFamily: fontStyle,
+                fontSize: previewTypography.fontSize,
+                lineHeight: previewTypography.lineHeight,
+                color: previewTextColor,
+                includeFontPadding: false,
+                textAlign: 'center',
+                writingDirection: 'rtl',
+                width: '100%',
+              }}
+            >
+              {lineSegments.map((segment, segmentIndex) => (
+                <Text
+                  key={`preview-line-${lineIndex}-segment-${segmentIndex}`}
+                  style={
+                    segment.isMarker
+                      ? {
+                          fontFamily: markerFontFamily,
+                          fontSize: previewTypography.fontSize,
+                          lineHeight: previewTypography.lineHeight,
+                          includeFontPadding: false,
+                        }
+                      : undefined
+                  }
+                >
+                  {segment.text}
+                </Text>
+              ))}
+            </Text>
+          ))}
         </View>
 
         {progressLabel ? (

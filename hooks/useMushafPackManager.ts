@@ -36,7 +36,7 @@ function formatItemsProgress(downloadItem: DownloadIndexItemWithKey | undefined)
   if (!progress) return null;
 
   if (progress.kind === 'items') {
-    return `${progress.completed} / ${progress.total} items`;
+    return null;
   }
 
   if (progress.kind === 'percent') {
@@ -48,6 +48,10 @@ function formatItemsProgress(downloadItem: DownloadIndexItemWithKey | undefined)
 
 function buildInstallKey(packId: MushafPackId, version: string): string {
   return `${packId}@${version}`;
+}
+
+function isHostedCatalogMissingError(error: unknown): boolean {
+  return error instanceof Error && /Failed to fetch mushaf pack catalog \(404\)/.test(error.message);
 }
 
 function getStatusLabel(args: {
@@ -111,6 +115,7 @@ export function useMushafPackManager({
     useDownloadIndexItems({
       enabled: true,
       pollIntervalMs: 1000,
+      pollWhileEnabled: busyInstallKeys.size > 0,
     });
 
   const loadInstalls = React.useCallback(async () => {
@@ -247,6 +252,7 @@ export function useMushafPackManager({
         throw new Error('Another mushaf pack install is already in progress.');
       }
 
+      installer.clearPackInstallCancel(option.packId, option.version);
       setBusy(installKey, true);
 
       try {
@@ -268,7 +274,8 @@ export function useMushafPackManager({
               didInstallHostedPack = true;
             }
           } catch (error) {
-            logger.warn(
+            const log = isHostedCatalogMissingError(error) ? logger.info : logger.warn;
+            log(
               'Failed to install hosted mushaf pack; falling back to live API installer',
               { packId: option.packId, version: option.version },
               error as Error

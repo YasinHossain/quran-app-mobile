@@ -5,7 +5,11 @@ const https = require('https');
 
 const API_BASE_URL = 'https://api.quran.com/api/v4';
 const DEFAULT_OUTPUT_DIR = path.join(__dirname, '..', 'dist', 'mushaf-packs');
+const DEFAULT_CACHE_DIR = path.join(__dirname, '..', 'dist', '.mushaf-pack-cache');
+const ASSETS_FONT_DIR = path.join(__dirname, '..', 'assets', 'fonts');
 const REQUEST_DELAY_MS = 80;
+const PAGE_FETCH_CONCURRENCY = 6;
+const FONT_FETCH_CONCURRENCY = 8;
 const PAGE_WORD_FIELDS = [
   'verse_key',
   'verse_id',
@@ -53,11 +57,59 @@ const PACKS = {
     sourceLabel: 'Quran.com official page-data API and Quran Foundation font CDN',
     pageFontBaseUrl: 'https://verses.quran.foundation/fonts/quran/hafs/v2/woff2',
   },
+  'qpc-uthmani-hafs': {
+    packId: 'qpc-uthmani-hafs',
+    version: 'v1',
+    renderer: 'webview',
+    script: 'uthmani',
+    lines: 15,
+    totalPages: 604,
+    apiMushafId: 5,
+    sourceLabel: 'Quran.com official page-data API',
+    sharedFontAsset: 'UthmanicHafs1Ver18.ttf',
+    sharedFontFile: 'fonts/UthmanicHafs1Ver18.ttf',
+  },
+  'unicode-indopak-15': {
+    packId: 'unicode-indopak-15',
+    version: 'v1',
+    renderer: 'webview',
+    script: 'indopak',
+    lines: 15,
+    totalPages: 604,
+    apiMushafId: 6,
+    sourceLabel: 'Quran.com official page-data API',
+    sharedFontAsset: 'indopak-nastaleeq-waqf-lazim-v4.2.1.ttf',
+    sharedFontFile: 'fonts/indopak-nastaleeq-waqf-lazim-v4.2.1.ttf',
+  },
+  'unicode-indopak-16': {
+    packId: 'unicode-indopak-16',
+    version: 'v1',
+    renderer: 'webview',
+    script: 'indopak',
+    lines: 16,
+    totalPages: 604,
+    apiMushafId: 7,
+    sourceLabel: 'Quran.com official page-data API',
+    sharedFontAsset: 'indopak-nastaleeq-waqf-lazim-v4.2.1.ttf',
+    sharedFontFile: 'fonts/indopak-nastaleeq-waqf-lazim-v4.2.1.ttf',
+  },
+  'qcf-tajweed-v4': {
+    packId: 'qcf-tajweed-v4',
+    version: 'v4',
+    renderer: 'webview',
+    script: 'tajweed',
+    lines: 15,
+    totalPages: 604,
+    apiMushafId: 19,
+    qcfVersion: 'v4',
+    sourceLabel: 'Quran.com official page-data API',
+  },
 };
 
 function parseArgs(argv) {
   const options = {
     outputDir: DEFAULT_OUTPUT_DIR,
+    cacheDir: DEFAULT_CACHE_DIR,
     packIds: ['qcf-madani-v1'],
     versionByPackId: new Map(),
     baseUrl: null,
@@ -66,10 +118,11 @@ function parseArgs(argv) {
   for (const arg of argv) {
     if (arg.startsWith('--packs=')) {
       const value = arg.slice('--packs='.length);
-      const packIds = value
-        .split(',')
-        .map((part) => part.trim())
-        .filter((packId) => Boolean(PACKS[packId]));
+      const requestedPackIds =
+        value.trim().toLowerCase() === 'all'
+          ? Object.keys(PACKS)
+          : value.split(',').map((part) => part.trim());
+      const packIds = requestedPackIds.filter((packId) => Boolean(PACKS[packId]));
       if (packIds.length > 0) {
         options.packIds = Array.from(new Set(packIds));
       }
@@ -79,6 +132,12 @@ function parseArgs(argv) {
     if (arg.startsWith('--output=')) {
       const value = arg.slice('--output='.length).trim();
       if (value) options.outputDir = path.resolve(process.cwd(), value);
+      continue;
+    }
+
+    if (arg.startsWith('--cache=')) {
+      const value = arg.slice('--cache='.length).trim();
+      if (value) options.cacheDir = path.resolve(process.cwd(), value);
       continue;
     }
 
@@ -169,9 +228,36 @@ function writeJsonFile(filePath, value, pretty = false) {
   fs.writeFileSync(filePath, pretty ? `${JSON.stringify(value, null, 2)}\n` : JSON.stringify(value));
 }
 
+function readJsonFile(filePath) {
+  return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+}
+
 function writeBufferFile(filePath, value) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, value);
+}
+
+async function runPromisePool(items, concurrency, worker) {
+  const results = new Array(items.length);
+  let cursor = 0;
+
+  const runners = Array.from({ length: Math.min(Math.max(1, concurrency), items.length) }, async () => {
+    while (true) {
+      const currentIndex = cursor;
+      cursor += 1;
+      if (currentIndex >= items.length) break;
+
+      results[currentIndex] = await worker(items[currentIndex], currentIndex);
+    }
+  });
+
+  await Promise.all(runners);
+  return results;
+}
+
+function copyFile(sourcePath, destinationPath) {
+  fs.mkdirSync(path.dirname(destinationPath), { recursive: true });
+  fs.copyFileSync(sourcePath, destinationPath);
 }
 
 function mapWord(word) {
@@ -207,6 +293,18 @@ function mapVerse(verse) {
   };
 }
 
+function buildLookupFromVerses(verses) {
+  const firstVerseKey = verses[0]?.verseKey ?? '';
+  const lastVerseKey = verses[verses.length - 1]?.verseKey ?? '';
+
+  return {
+    from: firstVerseKey,
+    to: lastVerseKey,
+    firstVerseKey,
+    lastVerseKey,
+  };
+}
+
 function buildPageUrl(pack, pageNumber) {
   return buildApiUrl(`/verses/by_page/${pageNumber}`, {
     words: 'true',
@@ -221,17 +319,10 @@ function buildPageUrl(pack, pageNumber) {
 async function fetchPage(pack, pageNumber) {
   const response = await fetchJson(buildPageUrl(pack, pageNumber));
   const verses = Array.isArray(response.verses) ? response.verses.map(mapVerse) : [];
-  const firstVerseKey = verses[0]?.verseKey ?? '';
-  const lastVerseKey = verses[verses.length - 1]?.verseKey ?? '';
 
   return {
     pageNumber,
-    lookup: {
-      from: firstVerseKey,
-      to: lastVerseKey,
-      firstVerseKey,
-      lastVerseKey,
-    },
+    lookup: buildLookupFromVerses(verses),
     verses,
   };
 }
@@ -253,60 +344,121 @@ function readExistingCatalog(outputDir) {
   }
 }
 
-async function generatePack({ pack, version, outputDir, baseUrl }) {
+async function generatePack({ pack, version, outputDir, cacheDir, baseUrl }) {
   const relativeDir = path.join('mushafs', pack.packId, version);
   const absoluteDir = path.join(outputDir, relativeDir);
-  const lookupRelativePath = 'page-data/lookup.json';
+  const cachePackDir = path.join(cacheDir, pack.packId, version);
+  const payloadRelativePath = 'payload.json';
   const generatedAt = new Date().toISOString();
   const lookup = {};
+  const pages = {};
   const assetFiles = [];
 
   console.log(`Generating mushaf pack ${pack.packId} (${version})`);
 
-  for (let pageNumber = 1; pageNumber <= pack.totalPages; pageNumber += 1) {
-    console.log(`  Page ${pageNumber}/${pack.totalPages}`);
-    const page = await fetchPage(pack, pageNumber);
-    lookup[String(pageNumber)] = page.lookup;
+  const pageNumbers = Array.from({ length: pack.totalPages }, (_value, index) => index + 1);
+  const pagePayloads = await runPromisePool(
+    pageNumbers,
+    PAGE_FETCH_CONCURRENCY,
+    async (pageNumber) => {
+      const relativePath = `page-data/pages/${pageNumber}.json`;
+      const filePath = path.join(cachePackDir, relativePath);
+      const legacyFilePath = path.join(absoluteDir, relativePath);
+      let page;
 
-    const relativePath = `page-data/pages/${pageNumber}.json`;
+      if (fs.existsSync(filePath)) {
+        const existingPage = readJsonFile(filePath);
+        page = {
+          pageNumber,
+          lookup: buildLookupFromVerses(Array.isArray(existingPage.verses) ? existingPage.verses : []),
+          verses: Array.isArray(existingPage.verses) ? existingPage.verses : [],
+        };
+        console.log(`  Page ${pageNumber}/${pack.totalPages} cached`);
+      } else if (fs.existsSync(legacyFilePath)) {
+        const existingPage = readJsonFile(legacyFilePath);
+        page = {
+          pageNumber,
+          lookup: buildLookupFromVerses(Array.isArray(existingPage.verses) ? existingPage.verses : []),
+          verses: Array.isArray(existingPage.verses) ? existingPage.verses : [],
+        };
+        writeJsonFile(filePath, existingPage);
+        console.log(`  Page ${pageNumber}/${pack.totalPages} cached`);
+      } else {
+        console.log(`  Page ${pageNumber}/${pack.totalPages}`);
+        page = await fetchPage(pack, pageNumber);
+        writeJsonFile(filePath, {
+          packId: pack.packId,
+          version,
+          pageNumber,
+          verses: page.verses,
+        });
+        await sleep(REQUEST_DELAY_MS);
+      }
+
+      return {
+        pageNumber,
+        lookup: page.lookup,
+        verses: page.verses,
+      };
+    }
+  );
+
+  for (const page of pagePayloads) {
+    lookup[String(page.pageNumber)] = page.lookup;
+    pages[String(page.pageNumber)] = page.verses;
+  }
+
+  const payloadPath = path.join(absoluteDir, payloadRelativePath);
+  fs.rmSync(path.join(absoluteDir, 'page-data'), { recursive: true, force: true });
+  writeJsonFile(payloadPath, {
+    packId: pack.packId,
+    version,
+    totalPages: pack.totalPages,
+    lookup,
+    pages,
+  });
+
+  if (pack.pageFontBaseUrl) {
+    const fontAssetFiles = await runPromisePool(
+      pageNumbers,
+      FONT_FETCH_CONCURRENCY,
+      async (pageNumber) => {
+      const relativePath = `fonts/p${pageNumber}.woff2`;
+      const filePath = path.join(absoluteDir, relativePath);
+
+        if (fs.existsSync(filePath)) {
+          console.log(`  Font ${pageNumber}/${pack.totalPages} cached`);
+        } else {
+          console.log(`  Font ${pageNumber}/${pack.totalPages}`);
+          const fontUrl = `${pack.pageFontBaseUrl}/p${pageNumber}.woff2`;
+          writeBufferFile(filePath, await requestBuffer(fontUrl));
+        }
+
+        return {
+        file: relativePath,
+        checksum: computeMd5(filePath),
+        sizeBytes: fs.statSync(filePath).size,
+        };
+      }
+    );
+    assetFiles.push(...fontAssetFiles);
+  }
+
+  if (pack.sharedFontAsset && pack.sharedFontFile) {
+    const sourcePath = path.join(ASSETS_FONT_DIR, pack.sharedFontAsset);
+    if (!fs.existsSync(sourcePath)) {
+      throw new Error(`Missing shared font asset for ${pack.packId}: ${sourcePath}`);
+    }
+
+    const relativePath = pack.sharedFontFile;
     const filePath = path.join(absoluteDir, relativePath);
-    writeJsonFile(filePath, {
-      packId: pack.packId,
-      version,
-      pageNumber,
-      verses: page.verses,
-    });
-
+    console.log(`  Font ${pack.sharedFontAsset}`);
+    copyFile(sourcePath, filePath);
     assetFiles.push({
       file: relativePath,
       checksum: computeMd5(filePath),
       sizeBytes: fs.statSync(filePath).size,
     });
-
-    await sleep(REQUEST_DELAY_MS);
-  }
-
-  const lookupPath = path.join(absoluteDir, lookupRelativePath);
-  writeJsonFile(lookupPath, {
-    packId: pack.packId,
-    version,
-    totalPages: pack.totalPages,
-    lookup,
-  });
-
-  if (pack.pageFontBaseUrl) {
-    for (let pageNumber = 1; pageNumber <= pack.totalPages; pageNumber += 1) {
-      console.log(`  Font ${pageNumber}/${pack.totalPages}`);
-      const relativePath = `fonts/p${pageNumber}.woff2`;
-      const filePath = path.join(absoluteDir, relativePath);
-      const fontUrl = `${pack.pageFontBaseUrl}/p${pageNumber}.woff2`;
-      writeBufferFile(filePath, await requestBuffer(fontUrl));
-      assetFiles.push({
-        file: relativePath,
-        checksum: computeMd5(filePath),
-        sizeBytes: fs.statSync(filePath).size,
-      });
-    }
   }
 
   const manifest = {
@@ -318,14 +470,9 @@ async function generatePack({ pack, version, outputDir, baseUrl }) {
     lines: pack.lines,
     totalPages: pack.totalPages,
     bundled: false,
-    payloadFile: lookupRelativePath,
-    payloadChecksum: computeMd5(lookupPath),
-    payloadSizeBytes: fs.statSync(lookupPath).size,
-    localPayload: {
-      format: 'page-json-v1',
-      lookupFile: lookupRelativePath,
-      pagesDirectory: 'page-data/pages',
-    },
+    payloadFile: payloadRelativePath,
+    payloadChecksum: computeMd5(payloadPath),
+    payloadSizeBytes: fs.statSync(payloadPath).size,
     assetFiles,
     generatedAt,
     source: [
@@ -346,7 +493,7 @@ async function generatePack({ pack, version, outputDir, baseUrl }) {
     script: pack.script,
     lines: pack.lines,
     totalPages: pack.totalPages,
-    downloadUrl: toCatalogUrl(path.posix.join(relativeDir.replace(/\\/g, '/'), lookupRelativePath), baseUrl),
+    downloadUrl: toCatalogUrl(path.posix.join(relativeDir.replace(/\\/g, '/'), payloadRelativePath), baseUrl),
     checksum: manifest.payloadChecksum,
     sizeBytes: manifest.payloadSizeBytes,
     manifestUrl: toCatalogUrl(path.posix.join(relativeDir.replace(/\\/g, '/'), 'manifest.json'), baseUrl),
@@ -374,6 +521,7 @@ async function main() {
         pack,
         version,
         outputDir: options.outputDir,
+        cacheDir: options.cacheDir,
         baseUrl: options.baseUrl,
       })
     );
