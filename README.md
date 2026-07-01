@@ -21,6 +21,20 @@ npm run android
 npm run verify
 ```
 
+## Android debugging
+
+Use the repo-local ADB helper to list devices, stream logs, capture screenshots, dump the UI tree, and send taps/keyboard events:
+
+```bash
+npm run emulator
+npm run debug:android:devices
+npm run debug:android:logs
+npm run debug:android:screenshot
+npm run debug:android:ui
+```
+
+See `docs/android-debug.md` for the full workflow.
+
 ## Type-check
 
 ```bash

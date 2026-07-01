@@ -1,5 +1,9 @@
 import React from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Platform, Pressable, Text, View } from 'react-native';
+import { Trash2 } from 'lucide-react-native';
+import Colors from '@/constants/Colors';
+import { useAppTheme } from '@/providers/ThemeContext';
+import { loadFontFamilyAsync } from '@/src/core/infrastructure/fonts/arabicFonts';
 
 type ActionTone = 'default' | 'accent' | 'danger';
 
@@ -10,58 +14,58 @@ type MushafPackOptionAction = {
   tone?: ActionTone | undefined;
 };
 
-function ActionButton({
-  action,
-}: {
-  action: MushafPackOptionAction;
-}): React.JSX.Element {
-  const tone = action.tone ?? 'default';
+const getFontForPack = (packId: string): string => {
+  if (packId.includes('indopak')) {
+    return 'IndoPak';
+  }
+  if (packId.includes('madani')) {
+    return 'KFGQ V2';
+  }
+  return 'UthmanicHafs1Ver18';
+};
 
-  return (
-    <Pressable
-      onPress={action.onPress}
-      disabled={action.disabled}
-      accessibilityRole="button"
-      className={[
-        'rounded-full px-4 py-2',
-        tone === 'accent'
-          ? 'bg-accent'
-          : tone === 'danger'
-            ? 'bg-error dark:bg-error-dark'
-            : 'bg-interactive dark:bg-interactive-dark',
-      ].join(' ')}
-      style={({ pressed }) => ({
-        opacity: action.disabled ? 0.45 : pressed ? 0.88 : 1,
-      })}
-    >
-      <Text
-        className={[
-          'text-xs font-semibold',
-          tone === 'accent' || tone === 'danger'
-            ? 'text-on-accent'
-            : 'text-foreground dark:text-foreground-dark',
-        ].join(' ')}
-      >
-        {action.label}
-      </Text>
-    </Pressable>
-  );
-}
+const getPreviewTextForPack = (packId: string): string => {
+  if (packId.includes('indopak')) {
+    return [
+      'بِسْمِ اللهِ الرَّحْمٰنِ الرَّحِيْمِ',
+      'اَلْحَمْدُ لِلّٰهِ رَبِّ الْعٰلَمِيْنَ',
+      'الرَّحْمٰنِ الرَّحِيْمِ مٰلِكِ يَوْمِ الدِّيْنِ',
+    ].join('\n');
+  }
+  return [
+    'بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ',
+    'ٱلْحَمْدُ لِلَّهِ رَبِّ ٱلْعَٰلَمِينَ',
+    'ٱلرَّحْمَٰنِ ٱلرَّحِيمِ مَٰلِكِ يَوْمِ ٱلدِّينِ',
+  ].join('\n');
+};
+
+const cardShadow = {
+  ...Platform.select({
+    ios: {
+      shadowColor: '#000',
+      shadowOpacity: 0.04,
+      shadowRadius: 6,
+      shadowOffset: { width: 0, height: 2 },
+    },
+    android: {
+      elevation: 1,
+    },
+  }),
+};
 
 export function MushafPackOptionCard({
+  packId,
   title,
-  description,
-  statusLabel,
   progressLabel,
   errorMessage,
-  sourceLabel,
   isSelected,
   primaryAction,
   secondaryAction,
 }: {
+  packId?: string;
   title: string;
-  description: string;
-  statusLabel: string;
+  description?: string;
+  statusLabel?: string;
   progressLabel?: string | null;
   errorMessage?: string | null;
   sourceLabel?: string | null;
@@ -69,65 +73,136 @@ export function MushafPackOptionCard({
   primaryAction?: MushafPackOptionAction | undefined;
   secondaryAction?: MushafPackOptionAction | undefined;
 }): React.JSX.Element {
+  const { resolvedTheme } = useAppTheme();
+  const isDark = resolvedTheme === 'dark';
+
+  const isSelectable = primaryAction && !primaryAction.disabled && !isSelected;
+
+  React.useEffect(() => {
+    const font = getFontForPack(packId || '');
+    if (font === 'UthmanicHafs1Ver18') return;
+    void loadFontFamilyAsync(font as any).catch(() => {});
+  }, [packId]);
+
+  const handleCardPress = () => {
+    if (isSelectable) {
+      primaryAction.onPress();
+    }
+  };
+
+  const fontStyle = getFontForPack(packId || '');
+  const previewText = getPreviewTextForPack(packId || '');
+
+  // Theme background colors matching card surfaces to avoid blending with page background
+  const bgColor = isSelected
+    ? (isDark ? '#14B8A6' : '#0D9488') // Emerald green when selected
+    : (isDark ? '#1E293B' : '#FFFFFF'); // Card surface bg when not selected (matching bg-surface)
+
+  const borderColor = isSelected
+    ? (isDark ? '#14B8A6' : '#0D9488')
+    : (isDark ? 'rgba(51, 65, 85, 0.4)' : 'rgba(229, 231, 235, 0.5)'); // border/50 equivalent
+
+  // Inner box background matches settings sidebar page background (off-white/dark)
+  const innerBgColor = isDark ? '#0F172A' : '#F7F9F9';
+
   return (
-    <View
-      className={[
-        'rounded-2xl border px-4 py-4',
-        isSelected
-          ? 'border-accent/60 bg-accent/10'
-          : 'border-border/30 bg-surface dark:border-border-dark/20 dark:bg-surface-dark',
-      ].join(' ')}
+    <Pressable
+      onPress={isSelectable ? handleCardPress : undefined}
+      disabled={!isSelectable}
+      style={({ pressed }) => ({
+        opacity: isSelectable && pressed ? 0.92 : 1,
+      })}
     >
-      <View className="flex-row items-start justify-between gap-3">
-        <View className="flex-1">
-          <Text className="text-sm font-semibold text-foreground dark:text-white">
-            {title}
-          </Text>
-          <Text className="mt-1 text-xs leading-5 text-muted dark:text-muted-dark">
-            {description}
-          </Text>
-        </View>
-        <View
-          className={[
-            'rounded-full px-3 py-1.5',
-            isSelected ? 'bg-accent' : 'bg-surface dark:bg-surface-dark',
-          ].join(' ')}
-        >
+      <View
+        className="rounded-xl"
+        style={[
+          cardShadow,
+          {
+            backgroundColor: bgColor,
+            borderColor: borderColor,
+            borderWidth: 1,
+            borderStyle: 'solid',
+            // Even thinner symmetrical padding on left, right, and bottom (8px)
+            paddingTop: 12,
+            paddingRight: 8,
+            paddingBottom: 8,
+            paddingLeft: 8,
+          },
+        ]}
+      >
+        <View className="flex-row items-center justify-between gap-3 mb-2" style={{ paddingHorizontal: 4 }}>
           <Text
             className={[
-              'text-[11px] font-semibold uppercase tracking-[0.3px]',
+              'text-base font-bold flex-1',
               isSelected
-                ? 'text-on-accent'
-                : 'text-foreground dark:text-foreground-dark',
+                ? 'text-on-accent dark:text-on-accent-dark'
+                : 'text-content-primary dark:text-content-primary-dark',
             ].join(' ')}
           >
-            {statusLabel}
+            {title}
+          </Text>
+          
+          {secondaryAction ? (
+            <Pressable
+              onPress={secondaryAction.onPress}
+              disabled={secondaryAction.disabled}
+              hitSlop={8}
+              style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
+            >
+              <Trash2
+                size={18}
+                color={isSelected ? '#FFFFFF' : '#EF4444'}
+              />
+            </Pressable>
+          ) : null}
+        </View>
+
+        {/* Inset preview box: off-white/dark bg matching page background, borderless */}
+        <View
+          className="rounded-md h-20 justify-center"
+          style={{
+            backgroundColor: innerBgColor,
+            paddingHorizontal: 12,
+            paddingVertical: 8,
+          }}
+        >
+          <Text
+            numberOfLines={3}
+            style={{
+              fontFamily: fontStyle,
+              fontSize: packId?.includes('indopak') ? 15 : 16,
+              lineHeight: packId?.includes('indopak') ? 23 : 24,
+              color: resolvedTheme === 'dark' ? '#FFFFFF' : '#374151',
+              textAlign: 'left',
+              writingDirection: 'ltr',
+            }}
+          >
+            {previewText}
           </Text>
         </View>
+
+        {progressLabel ? (
+          <Text
+            className={[
+              'mt-2 text-xs text-center font-medium',
+              isSelected ? 'text-on-accent/90' : 'text-muted dark:text-muted-dark',
+            ].join(' ')}
+          >
+            {progressLabel}
+          </Text>
+        ) : null}
+
+        {errorMessage ? (
+          <Text
+            className={[
+              'mt-2 text-xs text-center font-semibold',
+              isSelected ? 'text-white' : 'text-error dark:text-error-dark',
+            ].join(' ')}
+          >
+            {errorMessage}
+          </Text>
+        ) : null}
       </View>
-
-      {progressLabel ? (
-        <Text className="mt-3 text-xs text-muted dark:text-muted-dark">{progressLabel}</Text>
-      ) : null}
-
-      {sourceLabel ? (
-        <Text className="mt-2 text-xs leading-5 text-muted dark:text-muted-dark">
-          Source: {sourceLabel}
-        </Text>
-      ) : null}
-
-      {errorMessage ? (
-        <Text className="mt-3 text-xs leading-5 text-error dark:text-error-dark">
-          {errorMessage}
-        </Text>
-      ) : null}
-
-      {primaryAction || secondaryAction ? (
-        <View className="mt-4 flex-row flex-wrap gap-3">
-          {primaryAction ? <ActionButton action={primaryAction} /> : null}
-          {secondaryAction ? <ActionButton action={secondaryAction} /> : null}
-        </View>
-      ) : null}
-    </View>
+    </Pressable>
   );
 }

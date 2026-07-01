@@ -353,6 +353,49 @@ function hasTranslations(verse: ApiVerse | null | undefined, translationIds: num
   );
 }
 
+function hasRenderableVerseBody(verse: ApiVerse | null | undefined): boolean {
+  if (!verse) return false;
+  if (typeof verse.text_uthmani === 'string' && verse.text_uthmani.trim().length > 0) {
+    return true;
+  }
+
+  return (verse.translations ?? []).some((translation) => {
+    const text = typeof translation?.text === 'string' ? stripHtml(translation.text).trim() : '';
+    return text.length > 0;
+  });
+}
+
+function getVerseCompletenessScore(
+  verse: ApiVerse | null | undefined,
+  translationIds: number[]
+): number {
+  if (!verse) return -1;
+
+  let score = 0;
+  if (typeof verse.verse_key === 'string' && verse.verse_key.trim().length > 0) score += 1;
+  if (hasRenderableVerseBody(verse)) score += 10;
+  if (hasTranslations(verse, translationIds)) score += 20;
+  return score;
+}
+
+function selectBestVerse(
+  translationIds: number[],
+  ...candidates: Array<ApiVerse | null | undefined>
+): ApiVerse | null {
+  let bestVerse: ApiVerse | null = null;
+  let bestScore = -1;
+
+  for (const candidate of candidates) {
+    const score = getVerseCompletenessScore(candidate, translationIds);
+    if (score > bestScore) {
+      bestVerse = candidate ?? null;
+      bestScore = score;
+    }
+  }
+
+  return bestVerse;
+}
+
 function buildOfflineFirstPageState(params: {
   target: VerseTarget;
   chapters: SurahHeaderChapter[];
@@ -369,9 +412,12 @@ function buildOfflineFirstPageState(params: {
   // CRITICAL: Always reuse the existing verse (even on signature mismatch/hydration lag)
   // to prevent the verse card from disappearing/flickering. Wiping it causes layout shifts.
   const verse =
-    params.existing?.verse ??
-    getVerseDetailsSnapshot(verseKey, params.translationIds) ??
-    peekVersePreview(verseKey);
+    selectBestVerse(
+      params.translationIds,
+      getVerseDetailsSnapshot(verseKey, params.translationIds),
+      params.existing?.verse,
+      peekVersePreview(verseKey)
+    );
   const tafsirById = buildOfflineTafsirStates(verseKey, params.tafsirIds, existingTafsirById);
 
   return {
@@ -380,7 +426,7 @@ function buildOfflineFirstPageState(params: {
       params.existing?.chapter ??
       getChapterById(params.chapters, params.target.surahId),
     verse,
-    isLoading: verse == null,
+    isLoading: !hasRenderableVerseBody(verse),
     errorMessage: params.existing?.errorMessage ?? null,
     tafsirById,
   };
@@ -498,7 +544,7 @@ function TafsirPage({
   const pageTitle = pageState.chapter?.name_simple ?? `Surah ${item.surahId}`;
   const linkedSurahVerse =
     item.surahId === currentSurahId ? getCurrentSurahVerseByNumber(item.ayahId) : undefined;
-  const translationItems = linkedSurahVerse
+  const linkedTranslationItems = linkedSurahVerse
     ? (showTranslationAttribution
         ? (linkedSurahVerse.translationItems ?? []).map((translation: any) => {
             if (translation.resourceName) return translation;
@@ -510,25 +556,34 @@ function TafsirPage({
             return { ...translation, resourceName: fallbackName };
           })
         : linkedSurahVerse.translationItems ?? [])
-    : buildTranslationItems({
-        verse: pageState.verse,
-        translationIds,
-        showTranslationAttribution,
-        translationsById,
-      });
+    : [];
+  const pageStateTranslationItems = buildTranslationItems({
+    verse: pageState.verse,
+    translationIds,
+    showTranslationAttribution,
+    translationsById,
+  });
+  const translationItems = linkedTranslationItems.length
+    ? linkedTranslationItems
+    : pageStateTranslationItems;
   const translationTexts = translationItems.map((translation) => translation.text);
   const displayVerseKey = linkedSurahVerse?.verse_key ?? pageState.verse?.verse_key ?? verseKey;
-  const displayArabicText = linkedSurahVerse?.text_uthmani ?? pageState.verse?.text_uthmani ?? '';
+  const linkedArabicText =
+    typeof linkedSurahVerse?.text_uthmani === 'string' ? linkedSurahVerse.text_uthmani.trim() : '';
+  const pageStateArabicText =
+    typeof pageState.verse?.text_uthmani === 'string' ? pageState.verse.text_uthmani.trim() : '';
+  const displayArabicText = linkedArabicText || pageStateArabicText;
+  const hasDisplayVerseBody = displayArabicText.length > 0 || translationItems.length > 0;
   const verseErrorMessage =
     item.surahId === currentSurahId
-      ? !linkedSurahVerse && !pageState.verse
+      ? !hasDisplayVerseBody
         ? currentSurahVerseErrorMessage ?? pageState.errorMessage
         : null
       : pageState.errorMessage;
   const showVerseSkeleton =
     item.surahId === currentSurahId
-      ? !linkedSurahVerse && !pageState.verse && isCurrentSurahVersesLoading
-      : pageState.isLoading;
+      ? !hasDisplayVerseBody && (isCurrentSurahVersesLoading || pageState.isLoading)
+      : !hasDisplayVerseBody && pageState.isLoading;
   const currentTafsirState =
     typeof activeTafsirId === 'number' ? pageState.tafsirById[activeTafsirId] : undefined;
   const isMultiTafsir = tafsirIds.length > 1;
@@ -725,7 +780,7 @@ function TafsirPage({
           </View>
 
           <View className={verseErrorMessage ? 'mt-4' : ''} collapsable={false}>
-            {linkedSurahVerse || pageState.verse ? (
+            {hasDisplayVerseBody ? (
               <VerseCard
                 verseKey={displayVerseKey}
                 arabicText={displayArabicText}
@@ -1249,12 +1304,13 @@ export default function TafsirScreen(): React.JSX.Element {
       const existing = pageStateByKeyRef.current[verseKey];
       const existingMatchesSignature = existing?.signature === pageSignature;
       const previewVerse = peekVersePreview(verseKey);
-      const candidateVerse = existing?.verse ?? previewVerse ?? null;
+      const candidateVerse = selectBestVerse(translationIds, existing?.verse, previewVerse);
 
       // CRITICAL: Verify if candidateVerse has all requested translations. If it is already complete,
       // we can mark hasVerseReady = true, bypassing redundant network queries and layout flickers.
       const hasVerseReady =
         candidateVerse !== null &&
+        hasRenderableVerseBody(candidateVerse) &&
         hasTranslations(candidateVerse, translationIds);
       const hasTafsirReady =
         existingMatchesSignature &&
@@ -1305,11 +1361,10 @@ export default function TafsirScreen(): React.JSX.Element {
           [verseKey]: {
             signature: pageSignature,
             chapter,
-            verse: current?.verse ?? previewVerse ?? null,
+            verse: selectBestVerse(translationIds, current?.verse, previewVerse),
             isLoading:
               !hasVerseReady &&
-              !current?.verse &&
-              previewVerse == null,
+              !hasRenderableVerseBody(selectBestVerse(translationIds, current?.verse, previewVerse)),
             errorMessage: null,
             tafsirById: buildPendingTafsirStates(
               tafsirIds,
@@ -1339,7 +1394,12 @@ export default function TafsirScreen(): React.JSX.Element {
 
       setPageStateByKey((previous) => {
         const current = previous[verseKey];
-        const retainedVerse = current?.verse ?? previewVerse ?? verse ?? null;
+        const retainedVerse = selectBestVerse(
+          translationIds,
+          verse,
+          current?.verse,
+          previewVerse
+        );
 
         return {
           ...previous,
@@ -1348,7 +1408,7 @@ export default function TafsirScreen(): React.JSX.Element {
             chapter,
             verse: retainedVerse,
             isLoading: false,
-            errorMessage: retainedVerse ? null : verseError,
+            errorMessage: hasRenderableVerseBody(retainedVerse) ? null : verseError,
             tafsirById: current?.tafsirById ?? buildPendingTafsirStates(tafsirIds, {}, tafsirIdsToFetch),
           },
         };
@@ -1381,7 +1441,12 @@ export default function TafsirScreen(): React.JSX.Element {
           }
         }
 
-        const retainedVerse = current?.verse ?? previewVerse ?? verse ?? null;
+        const retainedVerse = selectBestVerse(
+          translationIds,
+          verse,
+          current?.verse,
+          previewVerse
+        );
 
         return {
           ...previous,
@@ -1390,7 +1455,7 @@ export default function TafsirScreen(): React.JSX.Element {
             chapter,
             verse: retainedVerse,
             isLoading: false,
-            errorMessage: retainedVerse ? null : verseError,
+            errorMessage: hasRenderableVerseBody(retainedVerse) ? null : verseError,
             tafsirById: nextTafsirById,
           },
         };
@@ -1483,17 +1548,21 @@ export default function TafsirScreen(): React.JSX.Element {
 
             if (!didChangeForVerse) continue;
 
-            const existingVerse =
-              existing?.verse ??
-              getVerseDetailsSnapshot(verseKey, translationIds) ??
-              previewVerse;
+            const existingVerse = selectBestVerse(
+              translationIds,
+              getVerseDetailsSnapshot(verseKey, translationIds),
+              existing?.verse,
+              previewVerse
+            );
 
             nextState[verseKey] = {
               signature: pageSignature,
               chapter: existing?.chapter ?? getChapterById(chapters, target.surahId),
               verse: existingVerse,
-              isLoading: existing?.isLoading ?? (existingVerse == null),
-              errorMessage: existing?.errorMessage ?? null,
+              isLoading: existing?.isLoading ?? !hasRenderableVerseBody(existingVerse),
+              errorMessage: hasRenderableVerseBody(existingVerse)
+                ? null
+                : existing?.errorMessage ?? null,
               tafsirById: nextTafsirById,
             };
             didChange = true;
@@ -1524,6 +1593,7 @@ export default function TafsirScreen(): React.JSX.Element {
         if (
           existing?.signature === pageSignature &&
           !existing.isLoading &&
+          hasRenderableVerseBody(existing.verse) &&
           tafsirIds.every((tafsirId) => hasLoadedTafsirState(existing.tafsirById[tafsirId]))
         ) {
           return previous;

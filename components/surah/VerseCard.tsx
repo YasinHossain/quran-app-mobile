@@ -285,8 +285,10 @@ function VerseCardComponent({
     </View>
   );
 
+  // Keep this wrapper content-sized. Adding flex-1 here can collapse the verse body
+  // inside tafsir's nested pager/ScrollView, leaving only the header/action row visible.
   const content = (
-    <View className="flex-1 gap-4">
+    <View className="gap-4">
         <View
           className={[
             'flex-row items-center',

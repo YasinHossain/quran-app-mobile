@@ -856,6 +856,7 @@ export function SettingsSidebarContent({
 
                 return (
                   <MushafPackOptionCard
+                    packId={item.option.id}
                     title={item.option.name}
                     description={item.option.description}
                     statusLabel={item.statusLabel}
