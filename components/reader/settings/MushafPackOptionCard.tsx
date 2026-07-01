@@ -1,8 +1,12 @@
 import React from 'react';
 import { Platform, Pressable, Text, View } from 'react-native';
-import { Trash2 } from 'lucide-react-native';
 import Colors from '@/constants/Colors';
 import { useAppTheme } from '@/providers/ThemeContext';
+import { ResourceDownloadAction } from '@/components/reader/settings/resource-panel/ResourceDownloadAction';
+import type {
+  DownloadProgress,
+  DownloadStatus,
+} from '@/src/core/domain/entities/DownloadIndexItem';
 import { loadFontFamilyAsync } from '@/src/core/infrastructure/fonts/arabicFonts';
 
 type ActionTone = 'default' | 'accent' | 'danger';
@@ -56,6 +60,8 @@ const cardShadow = {
 export function MushafPackOptionCard({
   packId,
   title,
+  downloadProgress,
+  downloadStatus,
   progressLabel,
   errorMessage,
   isSelected,
@@ -64,6 +70,8 @@ export function MushafPackOptionCard({
 }: {
   packId?: string;
   title: string;
+  downloadProgress?: DownloadProgress | undefined;
+  downloadStatus?: DownloadStatus | undefined;
   description?: string;
   statusLabel?: string;
   progressLabel?: string | null;
@@ -75,8 +83,12 @@ export function MushafPackOptionCard({
 }): React.JSX.Element {
   const { resolvedTheme } = useAppTheme();
   const isDark = resolvedTheme === 'dark';
+  const palette = Colors[resolvedTheme];
 
   const isSelectable = primaryAction && !primaryAction.disabled && !isSelected;
+  const isBundledUnicodePack = packId === 'unicode-uthmani-v1';
+  const trailingAction = secondaryAction ?? (isBundledUnicodePack ? undefined : primaryAction);
+  const hasTrailingAction = Boolean(trailingAction);
 
   React.useEffect(() => {
     const font = getFontForPack(packId || '');
@@ -142,16 +154,29 @@ export function MushafPackOptionCard({
             {title}
           </Text>
           
-          {secondaryAction ? (
+          {hasTrailingAction ? (
             <Pressable
-              onPress={secondaryAction.onPress}
-              disabled={secondaryAction.disabled}
+              accessibilityRole="button"
+              accessibilityLabel={trailingAction?.label}
+              onPress={trailingAction?.onPress}
+              disabled={trailingAction?.disabled}
               hitSlop={8}
-              style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
+              style={({ pressed }) => {
+                const isActiveProgress =
+                  downloadStatus === 'queued' ||
+                  downloadStatus === 'downloading' ||
+                  downloadStatus === 'deleting';
+                return {
+                  opacity: trailingAction?.disabled && !isActiveProgress ? 0.45 : pressed ? 0.7 : 1,
+                };
+              }}
             >
-              <Trash2
-                size={18}
-                color={isSelected ? '#FFFFFF' : '#EF4444'}
+              <ResourceDownloadAction
+                status={downloadStatus}
+                progress={downloadProgress}
+                isSelected={Boolean(isSelected)}
+                isDark={isDark}
+                tintColor={palette.tint}
               />
             </Pressable>
           ) : null}

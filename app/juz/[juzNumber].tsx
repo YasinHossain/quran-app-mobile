@@ -1136,7 +1136,7 @@ export default function JuzScreen(): React.JSX.Element {
             ) : resolvedMushafRenderer !== 'webview' ? (
               <MushafMessageState
                 color={palette.text}
-                message="Select a King Fahad Complex mushaf pack to use this surah Mushaf view."
+                message="Select an installed exact mushaf pack to use this Juz Mushaf view."
               />
             ) : initialMushafPageProbe.errorMessage ? (
               <MushafMessageState color={palette.text} message={initialMushafPageProbe.errorMessage} />

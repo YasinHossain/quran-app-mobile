@@ -144,7 +144,17 @@ export class MushafPackCatalogClient {
       throw new Error(`Failed to fetch mushaf pack catalog (${response.status})`);
     }
 
-    return normalizeHostedMushafPackCatalog(await response.json());
+    const catalog = normalizeHostedMushafPackCatalog(await response.json());
+    return {
+      ...catalog,
+      packs: catalog.packs.map((entry) => ({
+        ...entry,
+        downloadUrl: new URL(entry.downloadUrl, normalizedCatalogUrl).toString(),
+        ...(entry.manifestUrl
+          ? { manifestUrl: new URL(entry.manifestUrl, normalizedCatalogUrl).toString() }
+          : {}),
+      })),
+    };
   }
 
   async listPacks(catalogUrl: string): Promise<HostedMushafPackCatalogEntry[]> {

@@ -24,6 +24,8 @@ import {
   getDownloadableMushafPackDefinition,
   getExactPackPageFontFamily,
   getExactPackPageFontRelativePath,
+  getSharedPackFontFamily,
+  getSharedPackFontRelativePath,
 } from './downloadablePacks';
 import { MushafPackFileStore } from './MushafPackFileStore';
 import { mapVersesToPageLines } from './mushafPageMapping';
@@ -254,8 +256,21 @@ function buildRendererAssets(
   const packDirectoryUri = fileStore.getInstalledVersionDirectoryUri(manifest.packId, manifest.version);
 
   if (!packDefinition?.qcfVersion) {
+    const sharedFontRelativePath = getSharedPackFontRelativePath(manifest.packId);
+    const sharedFontFamily = getSharedPackFontFamily(manifest.packId);
+    const sharedFontFileUri =
+      sharedFontRelativePath && manifestIncludesAsset(manifest, sharedFontRelativePath)
+        ? fileStore.getInstalledFileUri(manifest.packId, manifest.version, sharedFontRelativePath)
+        : undefined;
+
     return {
       packDirectoryUri,
+      ...(sharedFontFileUri && sharedFontFamily
+        ? {
+            pageFontFileUri: sharedFontFileUri,
+            pageFontFamily: sharedFontFamily,
+          }
+        : {}),
     };
   }
 

@@ -8,6 +8,7 @@ import {
   getDownloadableMushafPackDefinition,
   type DownloadableMushafPackDefinition,
 } from '@/src/core/infrastructure/mushaf/downloadablePacks';
+import { getMushafPackCatalogUrl } from '@/src/core/infrastructure/mushaf/mushafPackCatalogConfig';
 import { logger } from '@/src/core/infrastructure/monitoring/logger';
 
 import { useDownloadIndexItems } from './useDownloadIndexItems';
@@ -97,6 +98,7 @@ export function useMushafPackManager({
   isLoading: boolean;
   errorMessage: string | null;
   installPack: (packId: MushafPackId) => Promise<void>;
+  cancelPackInstall: (packId: MushafPackId) => Promise<void>;
   deletePack: (packId: MushafPackId) => Promise<void>;
   refresh: () => void;
 } {
@@ -104,6 +106,7 @@ export function useMushafPackManager({
   const [isRegistryLoading, setIsRegistryLoading] = React.useState(true);
   const [registryErrorMessage, setRegistryErrorMessage] = React.useState<string | null>(null);
   const [busyInstallKeys, setBusyInstallKeys] = React.useState<Set<string>>(() => new Set());
+  const busyInstallKeysRef = React.useRef<Set<string>>(new Set());
   const { items, itemsByKey, isLoading: isDownloadIndexLoading, refresh: refreshDownloadIndex } =
     useDownloadIndexItems({
       enabled: true,
@@ -149,6 +152,19 @@ export function useMushafPackManager({
     );
   }, [installs]);
 
+  const activeDownloadInstallKey = React.useMemo(() => {
+    const activeItem = items.find(
+      (item) =>
+        item.content.kind === 'mushaf-pack' &&
+        (item.status === 'queued' ||
+          item.status === 'downloading' ||
+          item.status === 'deleting')
+    );
+    return activeItem?.content.kind === 'mushaf-pack'
+      ? buildInstallKey(activeItem.content.packId, activeItem.content.version)
+      : null;
+  }, [items]);
+
   const entries = React.useMemo<MushafPackManagerEntry[]>(() => {
     return MUSHAF_OPTIONS.map((option) => {
       const definition = getDownloadableMushafPackDefinition(option.packId);
@@ -192,6 +208,14 @@ export function useMushafPackManager({
   }, [busyInstallKeys, installsByKey, itemsByKey, selectedPackId]);
 
   const setBusy = React.useCallback((installKey: string, busy: boolean) => {
+    const nextRef = new Set(busyInstallKeysRef.current);
+    if (busy) {
+      nextRef.add(installKey);
+    } else {
+      nextRef.delete(installKey);
+    }
+    busyInstallKeysRef.current = nextRef;
+
     setBusyInstallKeys((current) => {
       const next = new Set(current);
       if (busy) {
@@ -212,14 +236,48 @@ export function useMushafPackManager({
 
       const installKey = buildInstallKey(option.packId, option.version);
       const installer = container.getMushafPackInstaller();
+      const localActiveInstallKeys = busyInstallKeysRef.current;
+      const hasAnotherLocalInstall =
+        localActiveInstallKeys.size > 0 && !localActiveInstallKeys.has(installKey);
+
+      if (
+        hasAnotherLocalInstall ||
+        (activeDownloadInstallKey !== null && activeDownloadInstallKey !== installKey)
+      ) {
+        throw new Error('Another mushaf pack install is already in progress.');
+      }
 
       setBusy(installKey, true);
 
       try {
-        if (packId === 'qcf-madani-v1') {
-          await installer.installQcfMadaniV1PackAsync({ activateOnInstall: true });
-        } else {
-          throw new Error('This mushaf download is not implemented yet.');
+        const catalogUrl = getMushafPackCatalogUrl();
+        let didInstallHostedPack = false;
+
+        if (catalogUrl) {
+          try {
+            const catalogEntry = await container.getMushafPackCatalogClient().getPack(catalogUrl, {
+              packId: option.packId,
+              version: option.version,
+            });
+
+            if (catalogEntry) {
+              await installer.installHostedPackAsync({
+                catalogEntry,
+                activateOnInstall: true,
+              });
+              didInstallHostedPack = true;
+            }
+          } catch (error) {
+            logger.warn(
+              'Failed to install hosted mushaf pack; falling back to live API installer',
+              { packId: option.packId, version: option.version },
+              error as Error
+            );
+          }
+        }
+
+        if (!didInstallHostedPack) {
+          await installer.installDownloadablePackAsync(packId, { activateOnInstall: true });
         }
       } finally {
         setBusy(installKey, false);
@@ -227,7 +285,7 @@ export function useMushafPackManager({
         refreshDownloadIndex();
       }
     },
-    [loadInstalls, refreshDownloadIndex, setBusy]
+    [activeDownloadInstallKey, loadInstalls, refreshDownloadIndex, setBusy]
   );
 
   const deletePack = React.useCallback(
@@ -253,6 +311,28 @@ export function useMushafPackManager({
     [loadInstalls, refreshDownloadIndex, setBusy]
   );
 
+  const cancelPackInstall = React.useCallback(
+    async (packId: MushafPackId): Promise<void> => {
+      const option = findMushafOption(packId);
+      if (!option) {
+        throw new Error(`Unknown mushaf pack: ${packId}`);
+      }
+
+      const installKey = buildInstallKey(option.packId, option.version);
+      setBusy(installKey, false);
+
+      try {
+        await container
+          .getMushafPackInstaller()
+          .cancelDownloadablePackInstallAsync(option.packId, option.version);
+      } finally {
+        await loadInstalls();
+        refreshDownloadIndex();
+      }
+    },
+    [loadInstalls, refreshDownloadIndex, setBusy]
+  );
+
   const refresh = React.useCallback(() => {
     refreshDownloadIndex();
     void loadInstalls();
@@ -263,6 +343,7 @@ export function useMushafPackManager({
     isLoading: isRegistryLoading || isDownloadIndexLoading,
     errorMessage: registryErrorMessage,
     installPack,
+    cancelPackInstall,
     deletePack,
     refresh,
   };

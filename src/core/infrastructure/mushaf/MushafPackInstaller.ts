@@ -1,4 +1,5 @@
 import * as FileSystem from 'expo-file-system/legacy';
+import { Asset } from 'expo-asset';
 
 import type { DownloadableContent, MushafPackInstall } from '@/src/core/domain/entities';
 import type { ILogger } from '@/src/core/domain/interfaces/ILogger';
@@ -20,9 +21,15 @@ import type {
 
 import {
   QCF_MADANI_V1_PACK,
+  getDownloadableMushafPackDefinition,
   getExactPackPageFontRelativePath,
+  getSharedPackFontRelativePath,
+  type DownloadableMushafPackDefinition,
 } from './downloadablePacks';
 import { MushafPackFileStore } from './MushafPackFileStore';
+
+const UTHMANIC_HAFS_FONT_ASSET = require('../../../../assets/fonts/UthmanicHafs1Ver18.ttf') as number;
+const INDOPAK_FONT_ASSET = require('../../../../assets/fonts/indopak-nastaleeq-waqf-lazim-v4.2.1.ttf') as number;
 
 type ResolvedRemoteFile = {
   file: string;
@@ -59,7 +66,9 @@ type QcfApiWordResponse = {
   location?: string | null;
   text_uthmani?: string | null;
   text_qpc_hafs?: string | null;
+  text_indopak?: string | null;
   code_v1?: string | null;
+  code_v2?: string | null;
   page_number?: number | null;
 };
 
@@ -72,6 +81,8 @@ type QcfApiVerseResponse = {
   hizb_number?: number | null;
   rub_el_hizb_number?: number | null;
   text_uthmani?: string | null;
+  text_indopak?: string | null;
+  text_uthmani_tajweed?: string | null;
   words?: QcfApiWordResponse[] | null;
 };
 
@@ -81,6 +92,26 @@ type QcfApiPageResponse = {
 
 const PAGE_ADDRESSABLE_LOOKUP_FILE = 'page-data/lookup.json';
 const PAGE_ADDRESSABLE_PAGES_DIRECTORY = 'page-data/pages';
+const PAGE_DATA_FETCH_TIMEOUT_MS = 20000;
+const PAGE_DATA_FETCH_RETRY_COUNT = 2;
+const CANCELED_ERROR_CODE = 'mushaf_pack_install_canceled';
+const canceledInstallKeys = new Set<string>();
+const activeInstallAbortControllers = new Map<string, AbortController>();
+
+export class MushafPackInstallCanceledError extends Error {
+  readonly code = CANCELED_ERROR_CODE;
+
+  constructor(readonly packId: MushafPackId, readonly version: string) {
+    super('Mushaf pack install canceled');
+    this.name = 'MushafPackInstallCanceledError';
+  }
+}
+
+export function isMushafPackInstallCanceledError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  if ((error as { code?: unknown }).code === CANCELED_ERROR_CODE) return true;
+  return error.name === 'MushafPackInstallCanceledError';
+}
 
 function asNonEmptyString(value: string): string {
   const normalized = value.trim();
@@ -123,6 +154,18 @@ function normalizeChecksum(checksum: string): string {
   throw new Error(`Unsupported checksum format: ${checksum}`);
 }
 
+function getInstallCancelKey(packId: MushafPackId, version: string): string {
+  return `${packId}@${version.trim()}`;
+}
+
+function throwIfInstallCanceled(packId: MushafPackId, version: string, signal?: AbortSignal): void {
+  if (!signal?.aborted && !canceledInstallKeys.has(getInstallCancelKey(packId, version))) {
+    return;
+  }
+
+  throw new MushafPackInstallCanceledError(packId, version);
+}
+
 function resolveUrl(baseUrl: string, value?: string): string {
   const normalizedValue = value?.trim();
   if (!normalizedValue) {
@@ -148,12 +191,21 @@ const QCF_V1_PAGE_WORD_FIELDS = [
   'line_number',
   'location',
   'text_uthmani',
+  'text_indopak',
   'text_qpc_hafs',
   'code_v1',
+  'code_v2',
   'char_type_name',
 ] as const;
 
-const QCF_V1_PAGE_FIELDS = ['chapter_id', 'hizb_number', 'rub_el_hizb_number', 'text_uthmani'] as const;
+const QCF_V1_PAGE_FIELDS = [
+  'chapter_id',
+  'hizb_number',
+  'rub_el_hizb_number',
+  'text_uthmani',
+  'text_indopak',
+  'text_uthmani_tajweed',
+] as const;
 
 function mapQcfV1Word(word: QcfApiWordResponse): MushafWord {
   return {
@@ -166,7 +218,9 @@ function mapQcfV1Word(word: QcfApiWordResponse): MushafWord {
     location: word.location ?? undefined,
     textUthmani: word.text_uthmani ?? undefined,
     textQpcHafs: word.text_qpc_hafs ?? undefined,
+    textIndopak: word.text_indopak ?? undefined,
     codeV1: word.code_v1 ?? undefined,
+    codeV2: word.code_v2 ?? undefined,
   };
 }
 
@@ -180,30 +234,73 @@ function mapQcfV1Verse(verse: QcfApiVerseResponse): MushafVerse {
     hizbNumber: verse.hizb_number ?? undefined,
     rubElHizbNumber: verse.rub_el_hizb_number ?? undefined,
     textUthmani: verse.text_uthmani ?? undefined,
+    textIndopak: verse.text_indopak ?? undefined,
+    textUthmaniTajweed: verse.text_uthmani_tajweed ?? undefined,
     words: Array.isArray(verse.words) ? verse.words.map(mapQcfV1Word) : [],
   };
 }
 
-async function fetchJsonAsync<T>(url: string): Promise<T> {
-  const response = await fetch(url, {
-    headers: {
-      Accept: 'application/json',
-      'x-client': 'quran-app-mobile-qcf-v1-installer',
-    },
-  });
+async function fetchJsonOnceAsync<T>(url: string, signal?: AbortSignal): Promise<T> {
+  const abortController = new AbortController();
+  const timeoutId = setTimeout(() => abortController.abort(), PAGE_DATA_FETCH_TIMEOUT_MS);
+  const abortFromParent = (): void => abortController.abort();
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Failed to fetch ${url} (${response.status}): ${errorText.slice(0, 240)}`);
+  if (signal?.aborted) {
+    abortController.abort();
+  } else {
+    signal?.addEventListener('abort', abortFromParent, { once: true });
   }
 
-  return (await response.json()) as T;
+  try {
+    const response = await fetch(url, {
+      headers: {
+        Accept: 'application/json',
+        'x-client': 'quran-app-mobile-qcf-v1-installer',
+      },
+      signal: abortController.signal,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to fetch ${url} (${response.status}): ${errorText.slice(0, 240)}`);
+    }
+
+    return (await response.json()) as T;
+  } finally {
+    clearTimeout(timeoutId);
+    signal?.removeEventListener('abort', abortFromParent);
+  }
 }
 
-function buildQcfV1PageUrl(pageNumber: number): string {
-  const baseUrl = QCF_MADANI_V1_PACK.pageDataApiBaseUrl;
+async function fetchJsonAsync<T>(url: string, signal?: AbortSignal): Promise<T> {
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt <= PAGE_DATA_FETCH_RETRY_COUNT; attempt += 1) {
+    if (signal?.aborted) {
+      throw lastError instanceof Error ? lastError : new Error('Request canceled');
+    }
+
+    try {
+      return await fetchJsonOnceAsync<T>(url, signal);
+    } catch (error) {
+      lastError = error;
+      if (signal?.aborted) {
+        break;
+      }
+      if (attempt >= PAGE_DATA_FETCH_RETRY_COUNT) {
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 400 * (attempt + 1)));
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error(`Failed to fetch ${url}`);
+}
+
+function buildPackPageUrl(pack: DownloadableMushafPackDefinition, pageNumber: number): string {
+  const baseUrl = pack.pageDataApiBaseUrl;
   if (!baseUrl) {
-    throw new Error('QCF Madani V1 page data API base URL is not configured');
+    throw new Error(`${pack.packId} page data API base URL is not configured`);
   }
 
   const url = new URL(`${baseUrl}/${pageNumber}`);
@@ -212,16 +309,23 @@ function buildQcfV1PageUrl(pageNumber: number): string {
   url.searchParams.set('filter_page_words', 'true');
   url.searchParams.set('word_fields', QCF_V1_PAGE_WORD_FIELDS.join(','));
   url.searchParams.set('fields', QCF_V1_PAGE_FIELDS.join(','));
-  url.searchParams.set('mushaf', '1');
+  url.searchParams.set('mushaf', String(pack.apiMushafId));
   return url.toString();
 }
 
-async function fetchQcfV1PageAsync(pageNumber: number): Promise<{
+async function fetchMushafPackPageAsync(
+  pack: DownloadableMushafPackDefinition,
+  pageNumber: number,
+  signal?: AbortSignal
+): Promise<{
   pageNumber: number;
   lookup: MushafPackPayload['lookup'][string];
   verses: MushafVerse[];
 }> {
-  const response = await fetchJsonAsync<QcfApiPageResponse>(buildQcfV1PageUrl(pageNumber));
+  const response = await fetchJsonAsync<QcfApiPageResponse>(
+    buildPackPageUrl(pack, pageNumber),
+    signal
+  );
   const verses = Array.isArray(response.verses) ? response.verses.map(mapQcfV1Verse) : [];
   const firstVerseKey = verses[0]?.verseKey ?? '';
   const lastVerseKey = verses[verses.length - 1]?.verseKey ?? '';
@@ -247,6 +351,32 @@ async function writeJsonFileAsync(fileUri: string, value: unknown): Promise<void
 async function readJsonFileAsync<T>(fileUri: string): Promise<T> {
   const raw = await FileSystem.readAsStringAsync(fileUri);
   return JSON.parse(raw) as T;
+}
+
+function getSharedPackFontAssetModule(packId: MushafPackId): number | null {
+  switch (packId) {
+    case 'qpc-uthmani-hafs':
+      return UTHMANIC_HAFS_FONT_ASSET;
+    case 'unicode-indopak-15':
+    case 'unicode-indopak-16':
+      return INDOPAK_FONT_ASSET;
+    default:
+      return null;
+  }
+}
+
+async function copyBundledAssetAsync(assetModule: number, destinationUri: string): Promise<void> {
+  const parentDirectory = destinationUri.slice(0, destinationUri.lastIndexOf('/') + 1);
+  await FileSystem.makeDirectoryAsync(parentDirectory, { intermediates: true });
+
+  const asset = Asset.fromModule(assetModule);
+  await asset.downloadAsync();
+  const sourceUri = asset.localUri ?? asset.uri;
+  if (!sourceUri) {
+    throw new Error('Bundled font asset is not available locally.');
+  }
+
+  await FileSystem.copyAsync({ from: sourceUri, to: destinationUri });
 }
 
 async function runPromisePool<TInput, TOutput>(
@@ -486,8 +616,13 @@ async function verifyDownloadedFileAsync(
 async function downloadFileAsync(
   url: string,
   fileUri: string,
-  onProgress?: ((progress: { percent: number | null }) => void) | undefined
+  onProgress?: ((progress: { percent: number | null }) => void) | undefined,
+  signal?: AbortSignal
 ): Promise<void> {
+  if (signal?.aborted) {
+    throw new Error('Download canceled');
+  }
+
   const parentDirectory = fileUri.slice(0, fileUri.lastIndexOf('/') + 1);
   await FileSystem.makeDirectoryAsync(parentDirectory, { intermediates: true });
 
@@ -502,10 +637,19 @@ async function downloadFileAsync(
 
     onProgress({ percent });
   });
+  const cancelDownload = (): void => {
+    void download.cancelAsync().catch(() => undefined);
+  };
 
-  const result = await download.downloadAsync();
-  if (!result?.uri) {
-    throw new Error(`Failed to download ${url}`);
+  signal?.addEventListener('abort', cancelDownload, { once: true });
+
+  try {
+    const result = await download.downloadAsync();
+    if (!result?.uri) {
+      throw new Error(`Failed to download ${url}`);
+    }
+  } finally {
+    signal?.removeEventListener('abort', cancelDownload);
   }
 }
 
@@ -715,9 +859,25 @@ export class MushafPackInstaller {
   async installQcfMadaniV1PackAsync(
     params: InstallQcfMadaniV1PackParams = {}
   ): Promise<MushafPackInstall> {
-    const pack = QCF_MADANI_V1_PACK;
+    return this.installDownloadablePackAsync(QCF_MADANI_V1_PACK.packId, params);
+  }
+
+  async installDownloadablePackAsync(
+    packId: MushafPackId,
+    params: InstallQcfMadaniV1PackParams = {}
+  ): Promise<MushafPackInstall> {
+    const pack = getDownloadableMushafPackDefinition(packId);
+    if (!pack) {
+      throw new Error(`Unknown downloadable mushaf pack: ${packId}`);
+    }
+    if (pack.support !== 'installable') {
+      throw new Error(`This mushaf download is not implemented yet: ${packId}`);
+    }
+
     const version = asNonEmptyString(pack.version);
     const content = toDownloadContent(pack.packId, version);
+    const installKey = getInstallCancelKey(pack.packId, version);
+    canceledInstallKeys.delete(installKey);
 
     const existing = await this.installRegistry.get(pack.packId, version);
     if (existing && (await this.fileStore.hasInstalledVersionAsync(pack.packId, version))) {
@@ -735,7 +895,15 @@ export class MushafPackInstaller {
     }
 
     const pageNumbers = Array.from({ length: pack.totalPages }, (_value, index) => index + 1);
-    const totalFiles = pageNumbers.length * 2 + 2;
+    const shouldInstallPageFonts = Boolean(pack.qcfVersion && pack.pageFontBaseUrl);
+    const sharedFontRelativePath = getSharedPackFontRelativePath(pack.packId);
+    const sharedFontAssetModule = getSharedPackFontAssetModule(pack.packId);
+    const shouldInstallSharedFont = Boolean(sharedFontRelativePath && sharedFontAssetModule);
+    const totalFiles =
+      pageNumbers.length +
+      (shouldInstallPageFonts ? pageNumbers.length : 0) +
+      (shouldInstallSharedFont ? 1 : 0) +
+      2;
     let completedFiles = 0;
     let lastPersistedCompleted = -1;
     let progressWrite = Promise.resolve();
@@ -776,8 +944,11 @@ export class MushafPackInstaller {
       pack.packId,
       version
     );
+    const abortController = new AbortController();
+    activeInstallAbortControllers.set(installKey, abortController);
 
     try {
+      throwIfInstallCanceled(pack.packId, version, abortController.signal);
       await this.downloadIndexRepository.upsert(content, {
         status: 'downloading',
         progress: { kind: 'items', completed: completedFiles, total: totalFiles },
@@ -786,10 +957,12 @@ export class MushafPackInstaller {
 
       const localPayload = buildPageAddressableLocalPayload();
       const pages = await runPromisePool(pageNumbers, 4, async (pageNumber) => {
+        throwIfInstallCanceled(pack.packId, version, abortController.signal);
         const relativePageFile = buildPageAddressablePageRelativePath(localPayload, pageNumber);
 
         emitProgress(relativePageFile, 0);
-        const page = await fetchQcfV1PageAsync(pageNumber);
+        const page = await fetchMushafPackPageAsync(pack, pageNumber, abortController.signal);
+        throwIfInstallCanceled(pack.packId, version, abortController.signal);
         await writeJsonFileAsync(
           `${temporaryDirectory}${relativePageFile}`,
           buildPagePayload(pack.packId, version, pageNumber, page.verses)
@@ -803,7 +976,8 @@ export class MushafPackInstaller {
         };
       });
 
-      const assetFiles = pageNumbers.map((pageNumber) => {
+      throwIfInstallCanceled(pack.packId, version, abortController.signal);
+      const assetFiles: MushafPackRemoteFile[] = shouldInstallPageFonts ? pageNumbers.map((pageNumber) => {
         const relativePath = getExactPackPageFontRelativePath(pack.packId, pageNumber);
         if (!relativePath) {
           throw new Error(`Missing local font path mapping for ${pack.packId} page ${pageNumber}`);
@@ -818,7 +992,11 @@ export class MushafPackInstaller {
           file: relativePath,
           url: `${fontBaseUrl}/p${pageNumber}.woff2`,
         };
-      });
+      }) : [];
+
+      if (shouldInstallSharedFont && sharedFontRelativePath && sharedFontAssetModule) {
+        assetFiles.push({ file: sharedFontRelativePath });
+      }
 
       const manifest: MushafPackManifest = {
         packId: pack.packId,
@@ -842,6 +1020,7 @@ export class MushafPackInstaller {
       };
 
       emitProgress(localPayload.lookupFile, 0);
+      throwIfInstallCanceled(pack.packId, version, abortController.signal);
       await writeJsonFileAsync(
         `${temporaryDirectory}${localPayload.lookupFile}`,
         buildPageLookupPayload(
@@ -856,28 +1035,38 @@ export class MushafPackInstaller {
       await persistProgressAsync(true);
 
       emitProgress('manifest.json', 0);
+      throwIfInstallCanceled(pack.packId, version, abortController.signal);
       await writeJsonFileAsync(`${temporaryDirectory}manifest.json`, manifest);
       completedFiles += 1;
       emitProgress('manifest.json', 100);
       await persistProgressAsync(true);
 
       await runPromisePool(assetFiles, 6, async (assetFile) => {
+        throwIfInstallCanceled(pack.packId, version, abortController.signal);
         const relativePath = normalizeRelativePath(assetFile.file);
         const assetUrl = assetFile.url?.trim();
-        if (!assetUrl) {
+        const bundledAssetModule =
+          relativePath === sharedFontRelativePath ? sharedFontAssetModule : null;
+        if (!assetUrl && !bundledAssetModule) {
           throw new Error(`Missing asset URL for ${relativePath}`);
         }
 
         const fileUri = `${temporaryDirectory}${relativePath}`;
         emitProgress(relativePath, 0);
-        await downloadFileAsync(assetUrl, fileUri, (progress) => {
-          emitProgress(relativePath, progress.percent);
-        });
+        if (bundledAssetModule) {
+          await copyBundledAssetAsync(bundledAssetModule, fileUri);
+        } else {
+          await downloadFileAsync(assetUrl as string, fileUri, (progress) => {
+            emitProgress(relativePath, progress.percent);
+          }, abortController.signal);
+        }
+        throwIfInstallCanceled(pack.packId, version, abortController.signal);
         completedFiles += 1;
         emitProgress(relativePath, 100);
         await persistProgressAsync();
       });
 
+      throwIfInstallCanceled(pack.packId, version, abortController.signal);
       await this.fileStore.promoteTemporaryVersionDirectoryAsync(temporaryDirectory, pack.packId, version);
 
       const installed = await this.installRegistry.upsert({
@@ -897,6 +1086,15 @@ export class MushafPackInstaller {
 
       return installed;
     } catch (error) {
+      if (
+        isMushafPackInstallCanceledError(error) ||
+        abortController.signal.aborted ||
+        canceledInstallKeys.has(installKey)
+      ) {
+        await this.downloadIndexRepository.remove(content);
+        throw new MushafPackInstallCanceledError(pack.packId, version);
+      }
+
       await this.downloadIndexRepository.upsert(content, {
         status: 'failed',
         progress: null,
@@ -904,6 +1102,8 @@ export class MushafPackInstaller {
       });
       throw error;
     } finally {
+      activeInstallAbortControllers.delete(installKey);
+      canceledInstallKeys.delete(installKey);
       try {
         await this.fileStore.deleteTemporaryVersionDirectoryAsync(temporaryDirectory);
       } catch (cleanupError) {
@@ -917,6 +1117,15 @@ export class MushafPackInstaller {
         );
       }
     }
+  }
+
+  async cancelDownloadablePackInstallAsync(packId: MushafPackId, version: string): Promise<void> {
+    const normalizedVersion = asNonEmptyString(version);
+    const installKey = getInstallCancelKey(packId, normalizedVersion);
+    canceledInstallKeys.add(installKey);
+    activeInstallAbortControllers.get(installKey)?.abort();
+
+    await this.downloadIndexRepository.remove(toDownloadContent(packId, normalizedVersion));
   }
 
   async deleteInstalledVersionAsync(packId: MushafPackId, version: string): Promise<void> {

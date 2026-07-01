@@ -63,7 +63,7 @@ This document lists reusable UI components currently available in the codebase s
 | Hook | Description | File Path |
 | --- | --- | --- |
 | `useMushafPageData` | Local-only mushaf page data hook that resolves the active installed pack version and returns page lookup, verse/word payload, and grouped page lines for the page route. | `hooks/useMushafPageData.ts` |
-| `useMushafPackManager` | Local mushaf pack manager hook used by reader settings; loads install state from the mushaf registry, merges download-index progress/errors, and exposes install/delete actions for exact packs like `qcf-madani-v1`. | `hooks/useMushafPackManager.ts` |
+| `useMushafPackManager` | Local mushaf pack manager hook used by reader settings; loads install state from the mushaf registry, merges download-index progress/errors, and exposes install/delete actions for downloadable mushaf packs like QCF V1/V2, QPC Hafs, IndoPak, and Tajweed. | `hooks/useMushafPackManager.ts` |
 
 ## Mushaf Reader Components
 

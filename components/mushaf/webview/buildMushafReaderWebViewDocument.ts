@@ -757,7 +757,6 @@ function buildShellDocumentHtml({
         async function loadQcfPageFontIfNeeded(rendererAssets) {
           if (
             !rendererAssets ||
-            !rendererAssets.qcfVersion ||
             !rendererAssets.pageFontFamily ||
             !rendererAssets.pageFontFileUri ||
             typeof FontFace === 'undefined'
@@ -866,6 +865,9 @@ function buildShellDocumentHtml({
             wordNode.style.fontFamily = "'" + String(qcfFontFamily).replace(/'/g, "\\\\'") + "', serif";
             wordNode.innerHTML = glyphCode;
           } else {
+            if (!qcfVersion && qcfFontFamily) {
+              wordNode.style.fontFamily = "'" + String(qcfFontFamily).replace(/'/g, "\\\\'") + "', serif";
+            }
             wordNode.textContent = wordText;
           }
 

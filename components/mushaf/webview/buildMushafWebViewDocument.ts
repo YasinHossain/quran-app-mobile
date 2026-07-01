@@ -616,6 +616,9 @@ function buildShellDocumentHtml({
             wordNode.classList.add('qcf-word');
             wordNode.innerHTML = glyphCode;
           } else {
+            if (!qcfVersion && qcfFontLoaded) {
+              wordNode.style.fontFamily = 'var(--qcf-font-family), serif';
+            }
             wordNode.textContent = wordText;
           }
 
@@ -727,7 +730,6 @@ function buildShellDocumentHtml({
         async function loadQcfPageFontIfNeeded(rendererAssets) {
           if (
             !rendererAssets ||
-            !rendererAssets.qcfVersion ||
             !rendererAssets.pageFontFamily ||
             !rendererAssets.pageFontFileUri ||
             typeof FontFace === 'undefined'

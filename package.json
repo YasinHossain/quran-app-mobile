@@ -12,6 +12,7 @@
     "sync:web-core": "node scripts/sync-web-core.js",
     "generate:translation-packs": "node scripts/generate-translation-packs.js",
     "generate:tafsir-packs": "node scripts/generate-tafsir-packs.js",
+    "generate:mushaf-packs": "node scripts/generate-mushaf-packs.js",
     "debug:android": "node scripts/android-debug.js",
     "debug:android:devices": "node scripts/android-debug.js devices",
     "debug:android:logs": "node scripts/android-debug.js logs",

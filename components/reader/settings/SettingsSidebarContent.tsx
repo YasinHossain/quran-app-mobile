@@ -29,6 +29,7 @@ import { DeleteWordTranslationUseCase } from '@/src/core/application/use-cases/D
 import { ResourceDownloadAction } from './resource-panel/ResourceDownloadAction';
 import { container } from '@/src/core/infrastructure/di/container';
 import { logger } from '@/src/core/infrastructure/monitoring/logger';
+import { isMushafPackInstallCanceledError } from '@/src/core/infrastructure/mushaf/MushafPackInstaller';
 
 import type { MushafPackId } from '@/types';
 import { clampMushafScaleStep, MUSHAF_SCALE_MAX, MUSHAF_SCALE_MIN } from '@/types';
@@ -401,6 +402,7 @@ export function SettingsSidebarContent({
     isLoading: isMushafPackManagerLoading,
     errorMessage: mushafPackManagerError,
     installPack,
+    cancelPackInstall,
     deletePack,
     refresh: refreshMushafPacks,
   } = useMushafPackManager({
@@ -521,11 +523,24 @@ export function SettingsSidebarContent({
       try {
         await installPack(packId);
       } catch (error) {
+        if (isMushafPackInstallCanceledError(error)) return;
         const message = error instanceof Error ? error.message : String(error);
         Alert.alert('Install failed', message);
       }
     },
     [installPack]
+  );
+
+  const handleCancelMushafPackInstall = React.useCallback(
+    async (packId: MushafPackId) => {
+      try {
+        await cancelPackInstall(packId);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        Alert.alert('Cancel failed', message);
+      }
+    },
+    [cancelPackInstall]
   );
 
   const handleDeleteMushafPack = React.useCallback(
@@ -818,6 +833,10 @@ export function SettingsSidebarContent({
                 </View>
               }
               renderItem={({ item }) => {
+                const hasActiveMushafJob = mushafPackEntries.some((entry) => entry.isBusy);
+                const isDownloading =
+                  item.downloadItem?.status === 'queued' ||
+                  item.downloadItem?.status === 'downloading';
                 const isSelectable = item.isInstalled || item.isBundled;
                 const primaryAction = isSelectable
                   ? {
@@ -835,7 +854,7 @@ export function SettingsSidebarContent({
                         onPress: () => {
                           void handleInstallMushafPack(item.option.id);
                         },
-                        disabled: item.isBusy,
+                        disabled: item.isBusy || hasActiveMushafJob,
                         tone: 'accent' as const,
                       }
                     : {
@@ -845,7 +864,15 @@ export function SettingsSidebarContent({
                       };
 
                 const secondaryAction =
-                  item.isInstalled && !item.isBundled
+                  isDownloading
+                    ? {
+                        label: 'Cancel install',
+                        onPress: () => {
+                          void handleCancelMushafPackInstall(item.option.id);
+                        },
+                        disabled: false,
+                      }
+                    : item.isInstalled && !item.isBundled
                     ? {
                         label: 'Delete',
                         onPress: () => handleDeleteMushafPack(item.option.id),
@@ -858,6 +885,8 @@ export function SettingsSidebarContent({
                   <MushafPackOptionCard
                     packId={item.option.id}
                     title={item.option.name}
+                    downloadProgress={item.downloadItem?.progress ?? undefined}
+                    downloadStatus={item.downloadItem?.status}
                     description={item.option.description}
                     statusLabel={item.statusLabel}
                     progressLabel={item.progressLabel}
