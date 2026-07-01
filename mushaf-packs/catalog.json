@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-01T17:26:37.356Z",
+  "generatedAt": "2026-07-01T18:17:00.529Z",
   "packs": [
     {
       "packId": "qcf-madani-v1",
@@ -8,12 +8,12 @@
       "script": "uthmani",
       "lines": 15,
       "totalPages": 604,
-      "downloadUrl": "https://yasinhossain.github.io/quran-app-mobile/mushaf-packs/mushafs/qcf-madani-v1/v1/page-data/lookup.json",
-      "checksum": "e5f406a61c3a81545e79ac00ca586cb0",
-      "sizeBytes": 49451,
+      "downloadUrl": "https://yasinhossain.github.io/quran-app-mobile/mushaf-packs/mushafs/qcf-madani-v1/v1/payload.json",
+      "checksum": "e1e86e13c0c42dd0552dfdc64eb069ac",
+      "sizeBytes": 28150512,
       "manifestUrl": "https://yasinhossain.github.io/quran-app-mobile/mushaf-packs/mushafs/qcf-madani-v1/v1/manifest.json",
-      "manifestChecksum": "0a06e65043f592a8b27f09a3893bfa4e",
-      "manifestSizeBytes": 157478,
+      "manifestChecksum": "fe7454b57fcf86fd64271cf0963773eb",
+      "manifestSizeBytes": 76506,
       "compatibility": {
         "qcfVersion": "v1",
         "sourceLabel": "Quran.com official page-data API and Quran Foundation font CDN"
@@ -26,12 +26,12 @@
       "script": "uthmani",
       "lines": 15,
       "totalPages": 604,
-      "downloadUrl": "https://yasinhossain.github.io/quran-app-mobile/mushaf-packs/mushafs/qcf-madani-v2/v2/page-data/lookup.json",
-      "checksum": "d36ecbdbe223f42b75baddfd3915353c",
-      "sizeBytes": 49451,
+      "downloadUrl": "https://yasinhossain.github.io/quran-app-mobile/mushaf-packs/mushafs/qcf-madani-v2/v2/payload.json",
+      "checksum": "3de757705ebbe5ccdefd7645bf2b2b3c",
+      "sizeBytes": 28150512,
       "manifestUrl": "https://yasinhossain.github.io/quran-app-mobile/mushaf-packs/mushafs/qcf-madani-v2/v2/manifest.json",
-      "manifestChecksum": "8d9b873b33651c40a32f6898ce2fb6dd",
-      "manifestSizeBytes": 158076,
+      "manifestChecksum": "0eb2747fab023b106d8f9dfad563a6d8",
+      "manifestSizeBytes": 77104,
       "compatibility": {
         "qcfVersion": "v2",
         "sourceLabel": "Quran.com official page-data API and Quran Foundation font CDN"
@@ -44,12 +44,12 @@
       "script": "tajweed",
       "lines": 15,
       "totalPages": 604,
-      "downloadUrl": "https://yasinhossain.github.io/quran-app-mobile/mushaf-packs/mushafs/qcf-tajweed-v4/v4/page-data/lookup.json",
-      "checksum": "0164aadc0f4974d011c069d5aad69298",
-      "sizeBytes": 49452,
+      "downloadUrl": "https://yasinhossain.github.io/quran-app-mobile/mushaf-packs/mushafs/qcf-tajweed-v4/v4/payload.json",
+      "checksum": "ab528ad54b4b5654879da955f6469d9e",
+      "sizeBytes": 28150513,
       "manifestUrl": "https://yasinhossain.github.io/quran-app-mobile/mushaf-packs/mushafs/qcf-tajweed-v4/v4/manifest.json",
-      "manifestChecksum": "4bd8c53432cf632f8f8de2eb9fd830d6",
-      "manifestSizeBytes": 81424,
+      "manifestChecksum": "822cc9ff6595bd71434e9d76634511a6",
+      "manifestSizeBytes": 450,
       "compatibility": {
         "qcfVersion": "v4",
         "sourceLabel": "Quran.com official page-data API"
@@ -62,12 +62,12 @@
       "script": "uthmani",
       "lines": 15,
       "totalPages": 604,
-      "downloadUrl": "https://yasinhossain.github.io/quran-app-mobile/mushaf-packs/mushafs/qpc-uthmani-hafs/v1/page-data/lookup.json",
-      "checksum": "24b24669c23faf0ef33d33a3b711531c",
-      "sizeBytes": 49454,
+      "downloadUrl": "https://yasinhossain.github.io/quran-app-mobile/mushaf-packs/mushafs/qpc-uthmani-hafs/v1/payload.json",
+      "checksum": "3d5ab377d2f9ec710094446c4def3881",
+      "sizeBytes": 28150515,
       "manifestUrl": "https://yasinhossain.github.io/quran-app-mobile/mushaf-packs/mushafs/qpc-uthmani-hafs/v1/manifest.json",
-      "manifestChecksum": "9353993561394c60a709f0245ad16d3e",
-      "manifestSizeBytes": 81564,
+      "manifestChecksum": "a38cff0a906039be52cc1fb3c59678c7",
+      "manifestSizeBytes": 592,
       "compatibility": {
         "sourceLabel": "Quran.com official page-data API"
       }
@@ -79,12 +79,12 @@
       "script": "indopak",
       "lines": 15,
       "totalPages": 604,
-      "downloadUrl": "https://yasinhossain.github.io/quran-app-mobile/mushaf-packs/mushafs/unicode-indopak-15/v1/page-data/lookup.json",
-      "checksum": "4d4c14d2942893302e5c562c51909d1b",
-      "sizeBytes": 49456,
+      "downloadUrl": "https://yasinhossain.github.io/quran-app-mobile/mushaf-packs/mushafs/unicode-indopak-15/v1/payload.json",
+      "checksum": "cca5b6a87450dd081182ee1e17bd6594",
+      "sizeBytes": 28150517,
       "manifestUrl": "https://yasinhossain.github.io/quran-app-mobile/mushaf-packs/mushafs/unicode-indopak-15/v1/manifest.json",
-      "manifestChecksum": "43700daa52c5d7ef32670e534d13ec1d",
-      "manifestSizeBytes": 81583,
+      "manifestChecksum": "869406b3a9d7c6f9413b278e02bcacbe",
+      "manifestSizeBytes": 611,
       "compatibility": {
         "sourceLabel": "Quran.com official page-data API"
       }
@@ -96,12 +96,12 @@
       "script": "indopak",
       "lines": 16,
       "totalPages": 604,
-      "downloadUrl": "https://yasinhossain.github.io/quran-app-mobile/mushaf-packs/mushafs/unicode-indopak-16/v1/page-data/lookup.json",
-      "checksum": "aad0bfac7abe4a9f72e06171a8b8c846",
-      "sizeBytes": 49456,
+      "downloadUrl": "https://yasinhossain.github.io/quran-app-mobile/mushaf-packs/mushafs/unicode-indopak-16/v1/payload.json",
+      "checksum": "8005251376bcc34ef56e31342164dd7c",
+      "sizeBytes": 28150517,
       "manifestUrl": "https://yasinhossain.github.io/quran-app-mobile/mushaf-packs/mushafs/unicode-indopak-16/v1/manifest.json",
-      "manifestChecksum": "d1b2043ea6b93809e732bfd7f66e17b0",
-      "manifestSizeBytes": 81583,
+      "manifestChecksum": "e1bbb41b55951d66e556409f9a029511",
+      "manifestSizeBytes": 611,
       "compatibility": {
         "sourceLabel": "Quran.com official page-data API"
       }
