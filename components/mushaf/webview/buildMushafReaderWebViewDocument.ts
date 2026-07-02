@@ -422,6 +422,17 @@ function buildShellDocumentHtml({
         border-radius: 0.15em;
       }
 
+      .indopak-verse-marker {
+        display: inline-block;
+        flex: none;
+        font-family: var(--qcf-font-family, serif);
+        font-size: 0.92em;
+        line-height: 1;
+        margin-inline: 0.04em;
+        unicode-bidi: isolate;
+        white-space: nowrap;
+      }
+
       .reflow-spacer {
         display: inline-block;
         white-space: pre;
@@ -583,6 +594,35 @@ function buildShellDocumentHtml({
           }
 
           return undefined;
+        }
+
+        function getVerseNumberFromWord(word) {
+          var verseKey = resolveVerseKey(word);
+          if (!verseKey) {
+            return undefined;
+          }
+
+          var parts = verseKey.split(':');
+          var verseNumber = parseInt(parts[1] || '', 10);
+          return Number.isFinite(verseNumber) && verseNumber > 0 ? verseNumber : undefined;
+        }
+
+        function toArabicIndicNumber(value) {
+          var digits = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
+          return String(value).replace(/[0-9]/g, function (digit) {
+            return digits[parseInt(digit, 10)] || digit;
+          });
+        }
+
+        function toExtendedArabicIndicNumber(value) {
+          var digits = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
+          return String(value).replace(/[0-9]/g, function (digit) {
+            return digits[parseInt(digit, 10)] || digit;
+          });
+        }
+
+        function formatIndopakVerseMarker(verseNumber) {
+          return '﴿' + toExtendedArabicIndicNumber(verseNumber) + '﴾';
         }
 
         function resolveWordText(pageData, word) {
@@ -832,6 +872,35 @@ function buildShellDocumentHtml({
           state.root.classList.toggle('reflow', state.reflowState);
         }
 
+        function createIndopakVerseMarkerNode(state, word, className, qcfFontFamily, verseKey) {
+          var verseNumber = getVerseNumberFromWord(word);
+          if (!verseNumber) {
+            return null;
+          }
+
+          var wordNode = document.createElement('span');
+          wordNode.className = className;
+          wordNode.dataset.mushafWord = 'true';
+          wordNode.dataset.interactive = 'true';
+          wordNode.dataset.copyText = toArabicIndicNumber(verseNumber);
+          wordNode.dataset.charType = String(word.charType || '');
+          wordNode.dataset.lineNumber = String(word.lineNumber || '');
+          wordNode.dataset.location = String(word.location || '');
+          wordNode.dataset.pageNumber = String(state.pageNumber);
+          if (verseKey) {
+            wordNode.dataset.verseKey = verseKey;
+          }
+          wordNode.dataset.wordPosition = String(word.position);
+          wordNode.setAttribute('aria-label', 'Verse ' + String(verseNumber));
+          wordNode.classList.add('indopak-verse-marker');
+          wordNode.setAttribute('dir', 'rtl');
+          if (qcfFontFamily) {
+            wordNode.style.fontFamily = "'" + String(qcfFontFamily).replace(/'/g, "\\\\'") + "', serif";
+          }
+          wordNode.textContent = formatIndopakVerseMarker(verseNumber);
+          return wordNode;
+        }
+
         function createWordNode(state, word, className, qcfFontFamily) {
           if (!state.data) {
             return null;
@@ -844,6 +913,14 @@ function buildShellDocumentHtml({
           var glyphCode = getGlyphCode(state.data, word);
           var shouldUseQcfGlyph = Boolean(qcfVersion && qcfFontFamily && glyphCode);
           var verseKey = resolveVerseKey(word);
+
+          if (
+            word.charType === 'end' &&
+            state.data.pack &&
+            state.data.pack.script === 'indopak'
+          ) {
+            return createIndopakVerseMarkerNode(state, word, className, qcfFontFamily, verseKey);
+          }
 
           if (!wordText && !shouldUseQcfGlyph) {
             return null;

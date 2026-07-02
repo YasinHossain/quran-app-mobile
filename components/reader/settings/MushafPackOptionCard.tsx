@@ -1,5 +1,6 @@
 import React from 'react';
 import { Platform, Pressable, Text, View } from 'react-native';
+import { WebView } from 'react-native-webview';
 import Colors from '@/constants/Colors';
 import { useAppTheme } from '@/providers/ThemeContext';
 import { ResourceDownloadAction } from '@/components/reader/settings/resource-panel/ResourceDownloadAction';
@@ -67,115 +68,127 @@ const getPreviewTypographyForPack = (packId: string): { fontSize: number; lineHe
   return { fontSize: 19, lineHeight: 22 };
 };
 
-function isExactKingFahadPack(packId?: string): boolean {
-  return packId === 'qcf-madani-v1' || packId === 'qcf-madani-v2';
+type ExactPreviewPackId = 'qcf-madani-v1' | 'qcf-madani-v2' | 'qcf-tajweed-v4';
+
+function isExactPreviewPack(packId?: string): packId is ExactPreviewPackId {
+  return packId === 'qcf-madani-v1' || packId === 'qcf-madani-v2' || packId === 'qcf-tajweed-v4';
 }
 
-function ExactKingFahadPreview({
+const EXACT_PREVIEW_LINES = {
+  'qcf-madani-v1': ['ﭑﭒﭓﭔﭕﭖﭗﭘﭙﭚﭛﭜﭝ', 'ﭞﭟﭠﭡﭢﭣﭤﭥﭦﭧ', 'ﭨﭩﭪﭫﭬﭭﭮﭯﭰﭱﭲ'],
+  'qcf-madani-v2': ['ﱁﱂﱃﱄﱅﱆﱇﱈﱉﱊﱋﱌﱍ', 'ﱎﱏﱐﱑﱒﱓﱔﱕﱖﱗ', 'ﱘﱙﱚﱛﱜﱝﱞﱟﱠﱡﱢ'],
+  'qcf-tajweed-v4': ['ﱁﱂﱃﱄﱅﱆﱇﱈﱉﱊﱋﱌﱍ', 'ﱎﱏﱐﱑﱒﱓﱔﱕﱖﱗ', 'ﱘﱙﱚﱛﱜﱝﱞﱟﱠﱡﱢ'],
+} as const;
+
+function colorizeTajweedLine(lineText: string): string {
+  const colors = ['#1D9A6C', '#D14343', '#2F6FDB', '#8A5B16'];
+  return Array.from(lineText)
+    .map((glyph, index) => `<span style="color:${colors[index % colors.length]}">${glyph}</span>`)
+    .join('');
+}
+
+function buildExactPreviewHtml(packId: ExactPreviewPackId, color: string): string {
+  const isV1 = packId === 'qcf-madani-v1';
+  const isTajweed = packId === 'qcf-tajweed-v4';
+  const fontVersion = isV1 ? 'v1' : 'v2';
+  const fontUrl = `https://verses.quran.foundation/fonts/quran/hafs/${fontVersion}/woff2/p50.woff2`;
+  const lines = EXACT_PREVIEW_LINES[packId];
+  const fontSize = isV1 ? 18 : 16;
+  const lineHeight = isV1 ? 23 : 22;
+  const lineGap = 1;
+  const horizontalPadding = isV1 ? 12 : 22;
+
+  return `<!doctype html>
+<html dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+    <style>
+      @font-face {
+        font-family: "QCFPreview";
+        src: url("${fontUrl}") format("woff2");
+        font-display: block;
+      }
+      html,
+      body {
+        background: transparent;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        padding: 0;
+        width: 100%;
+      }
+      body {
+        align-items: center;
+        color: ${color};
+        display: flex;
+        justify-content: center;
+      }
+      .preview {
+        box-sizing: border-box;
+        direction: rtl;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        min-height: 84px;
+        padding: 0 ${horizontalPadding}px;
+        text-align: center;
+        width: 100%;
+      }
+      .line {
+        color: ${color};
+        direction: rtl;
+        font-family: "QCFPreview", serif;
+        font-size: ${fontSize}px;
+        height: ${lineHeight}px;
+        line-height: ${lineHeight}px;
+        overflow: hidden;
+        text-align: center;
+        white-space: nowrap;
+      }
+      .line + .line {
+        margin-top: ${lineGap}px;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="preview" aria-label="King Fahad preview">
+      ${lines.map((previewLine) => `<div class="line">${isTajweed ? colorizeTajweedLine(previewLine) : previewLine}</div>`).join('')}
+    </main>
+  </body>
+</html>`;
+}
+
+function ExactMushafPreview({
   color,
-  fontFamily,
   packId,
 }: {
   color: string;
-  fontFamily: AppFontFamily;
   packId?: string;
 }): React.JSX.Element {
-  const isV2 = packId === 'qcf-madani-v2';
-  const markerSize = isV2 ? 17 : 19;
-  const markerBorderWidth = isV2 ? 1.4 : 1.8;
-  const textSize = isV2 ? 14 : 13;
-  const rowGap = isV2 ? 4 : 3;
-  const rows = isV2
-    ? [
-        ['الٓمٓ', '١', 'ٱللَّهُ لَآ إِلَـٰهَ إِلَّا هُوَ', '٢'],
-        ['ٱلْحَىُّ ٱلْقَيُّومُ نَزَّلَ عَلَيْكَ ٱلْكِتَـٰبَ'],
-        ['بِٱلْحَقِّ مُصَدِّقًا لِّمَا بَيْنَ يَدَيْهِ'],
-        ['وَأَنزَلَ ٱلتَّوْرَىٰةَ وَٱلْإِنجِيلَ', '٣'],
-      ]
-    : [
-        ['الٓمٓ', '١', 'ٱللَّهُ لَآ إِلَـٰهَ إِلَّا هُوَ', '٢'],
-        ['ٱلْحَىُّ ٱلْقَيُّومُ نَزَّلَ عَلَيْكَ'],
-        ['ٱلْكِتَـٰبَ بِٱلْحَقِّ مُصَدِّقًا'],
-        ['لِّمَا بَيْنَ يَدَيْهِ وَأَنزَلَ ٱلتَّوْرَىٰةَ'],
-        ['وَٱلْإِنجِيلَ', '٣', 'مِن قَبْلُ هُدًى لِّلنَّاسِ'],
-      ];
+  const exactPackId = isExactPreviewPack(packId) ? packId : 'qcf-madani-v1';
+  const html = React.useMemo(
+    () => buildExactPreviewHtml(exactPackId, color),
+    [color, exactPackId]
+  );
 
   return (
-    <View style={{ gap: rowGap }}>
-      {rows.map((row, rowIndex) => (
-        <View
-          key={`exact-preview-row-${rowIndex}`}
-          style={{
-            alignItems: 'center',
-            flexDirection: 'row-reverse',
-            justifyContent: 'center',
-            gap: isV2 ? 5 : 4,
-            minHeight: isV2 ? 16 : 14,
-          }}
-        >
-          {row.map((part, partIndex) => {
-            const isMarker = /^[١٢٣]$/.test(part);
-
-            if (isMarker) {
-              return (
-                <View
-                  key={`exact-preview-row-${rowIndex}-marker-${partIndex}`}
-                  style={{
-                    alignItems: 'center',
-                    borderColor: color,
-                    borderRadius: markerSize / 2,
-                    borderWidth: markerBorderWidth,
-                    height: markerSize,
-                    justifyContent: 'center',
-                    opacity: 0.9,
-                    width: markerSize,
-                  }}
-                >
-                  <Text
-                    allowFontScaling={false}
-                    style={{
-                      color,
-                      fontFamily: DEFAULT_ARABIC_FONT_FAMILY,
-                      fontSize: Math.max(9, markerSize - 9),
-                      includeFontPadding: false,
-                      lineHeight: markerSize - 3,
-                      textAlign: 'center',
-                    }}
-                  >
-                    {part}
-                  </Text>
-                </View>
-              );
-            }
-
-            return (
-              <Text
-                key={`exact-preview-row-${rowIndex}-text-${partIndex}`}
-                allowFontScaling={false}
-                numberOfLines={1}
-                adjustsFontSizeToFit
-                minimumFontScale={0.72}
-                style={{
-                  color,
-                  fontFamily,
-                  fontSize: textSize,
-                  includeFontPadding: false,
-                  lineHeight: isV2 ? 18 : 16,
-                  maxWidth: isV2 ? 360 : 320,
-                  textAlign: 'center',
-                  writingDirection: 'rtl',
-                }}
-              >
-                {part}
-              </Text>
-            );
-          })}
-        </View>
-      ))}
-    </View>
+    <WebView
+      originWhitelist={['*']}
+      source={{ html }}
+      scrollEnabled={false}
+      nestedScrollEnabled={false}
+      javaScriptEnabled={false}
+      domStorageEnabled={false}
+      setSupportMultipleWindows={false}
+      showsHorizontalScrollIndicator={false}
+      showsVerticalScrollIndicator={false}
+      bounces={false}
+      automaticallyAdjustContentInsets={false}
+      style={{ backgroundColor: 'transparent', height: 84, width: '100%' }}
+    />
   );
 }
-
 const cardShadow = {
   ...Platform.select({
     ios: {
@@ -258,6 +271,7 @@ export function MushafPackOptionCard({
   const previewTypography = getPreviewTypographyForPack(packId || '');
   const markerFontFamily = packId?.includes('indopak') ? fontStyle : DEFAULT_ARABIC_FONT_FAMILY;
   const previewTextColor = resolvedTheme === 'dark' ? '#FFFFFF' : '#374151';
+  const isExactPreview = isExactPreviewPack(packId);
 
   // Theme background colors matching card surfaces to avoid blending with page background
   const bgColor = isSelected
@@ -343,11 +357,11 @@ export function MushafPackOptionCard({
             backgroundColor: innerBgColor,
             overflow: 'hidden',
             paddingHorizontal: 14,
-            paddingVertical: 10,
+            paddingVertical: isExactPreview ? 6 : 10,
           }}
         >
-          {isExactKingFahadPack(packId) ? (
-            <ExactKingFahadPreview color={previewTextColor} fontFamily={fontStyle} packId={packId} />
+          {isExactPreview ? (
+            <ExactMushafPreview color={previewTextColor} packId={packId} />
           ) : previewLines.map((lineSegments, lineIndex) => (
             <Text
               key={`preview-line-${lineIndex}`}

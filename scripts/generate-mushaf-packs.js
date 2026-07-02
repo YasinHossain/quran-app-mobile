@@ -102,7 +102,8 @@ const PACKS = {
     totalPages: 604,
     apiMushafId: 19,
     qcfVersion: 'v4',
-    sourceLabel: 'Quran.com official page-data API',
+    sourceLabel: 'Quran.com official page-data API and Quran Foundation COLRv1 font CDN',
+    pageFontBaseUrl: 'https://verses.quran.foundation/fonts/quran/hafs/v4/colrv1/woff2',
   },
 };
 

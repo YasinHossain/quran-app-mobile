@@ -96,10 +96,11 @@ export const DOWNLOADABLE_MUSHAF_PACKS: Record<
     lines: 15,
     totalPages: 604,
     support: 'installable',
-    sourceLabel: 'Quran.com official page-data API',
+    sourceLabel: 'Quran.com official page-data API and Quran Foundation COLRv1 font CDN',
     apiMushafId: 19,
     qcfVersion: 'v4',
     pageDataApiBaseUrl: 'https://api.quran.com/api/v4/verses/by_page',
+    pageFontBaseUrl: 'https://verses.quran.foundation/fonts/quran/hafs/v4/colrv1/woff2',
   },
 };
 
