@@ -107,7 +107,6 @@ export function FolderSettingsModal({
   }, [createFolder, folder, mode, name, onClose, renameFolder, selectedColor]);
 
   const maxDialogHeight = Math.max(0, Math.round(windowHeight * 0.92));
-  const minDialogHeight = Math.min(maxDialogHeight, 440);
 
   return (
     <Modal
@@ -131,10 +130,10 @@ export function FolderSettingsModal({
           <Animated.View
             style={[
               styles.dialog,
-              { maxHeight: maxDialogHeight, minHeight: minDialogHeight },
+              { maxHeight: maxDialogHeight },
               dialogTransform(progress),
             ]}
-            className="bg-surface dark:bg-surface-dark border border-border/30 dark:border-border-dark/20"
+            className="bg-surface dark:bg-background-dark border border-border/30 dark:border-border-dark/20"
           >
             <View style={styles.safeArea}>
               <View className={isDark ? 'dark' : ''} style={styles.inner}>
@@ -217,7 +216,7 @@ export function FolderSettingsModal({
                   </View>
                 </ScrollView>
 
-                <View className="px-5 py-3 border-t border-border/60 dark:border-border-dark/40 bg-surface dark:bg-surface-dark">
+                <View className="px-5 py-3 border-t border-border/60 dark:border-border-dark/40 bg-surface dark:bg-background-dark">
                   <View className="flex-row items-center justify-end gap-3">
                     <Pressable
                       onPress={onClose}

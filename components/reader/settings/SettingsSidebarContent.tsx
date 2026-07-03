@@ -29,6 +29,7 @@ import { DownloadWordTranslationUseCase, requestWordDownloadCancel } from '@/src
 import { DeleteWordTranslationUseCase } from '@/src/core/application/use-cases/DeleteWordTranslation';
 import { ResourceDownloadAction } from './resource-panel/ResourceDownloadAction';
 import { container } from '@/src/core/infrastructure/di/container';
+import { getFirstFontFamily } from '@/src/core/infrastructure/fonts/arabicFonts';
 import { logger } from '@/src/core/infrastructure/monitoring/logger';
 import { isMushafPackInstallCanceledError } from '@/src/core/infrastructure/mushaf/MushafPackInstaller';
 import { getMushafPackCatalogUrl } from '@/src/core/infrastructure/mushaf/mushafPackCatalogConfig';
@@ -58,6 +59,7 @@ const WORD_LANGUAGES = [
 
 const UI_LANGUAGES = WORD_LANGUAGES;
 const BYTES_PER_MEGABYTE = 1024 * 1024;
+const ARABIC_FONT_PREVIEW_TEXT = 'بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ';
 
 type WordLanguageItem = ResourceRecord & {
   code: string;
@@ -462,8 +464,13 @@ export function SettingsSidebarContent({
     return primaryName;
   }, [settings.translationId, settings.translationIds, translationsById]);
   const selectedWordLanguageName = getLanguageName(settings.wordLang);
-  const selectedArabicFontName =
-    arabicFonts.find((f) => f.value === settings.arabicFontFace)?.name ?? 'KFGQ';
+  const selectedArabicFont = React.useMemo(
+    () => arabicFonts.find((font) => font.value === settings.arabicFontFace) ?? arabicFonts[0],
+    [arabicFonts, settings.arabicFontFace]
+  );
+  const selectedArabicFontName = selectedArabicFont?.name ?? 'KFGQ';
+  const selectedArabicFontFamily =
+    getFirstFontFamily(selectedArabicFont?.value ?? settings.arabicFontFace) ?? 'UthmanicHafs1Ver18';
   const selectedUiLanguageName = getUiLanguageName(settings.contentLanguage);
   const selectedMushafName =
     findMushafOption(settings.mushafId)?.name ?? findMushafOption(DEFAULT_MUSHAF_ID)?.name ?? 'Uthmani Unicode';
@@ -982,8 +989,23 @@ export function SettingsSidebarContent({
             keyExtractor={(item) => item.value}
             contentContainerStyle={{ paddingVertical: 12, paddingBottom: 20 }}
             ListHeaderComponent={
-              <View className="pb-2">
+              <View className="px-4 pb-3">
                 <ArabicFontFilterToggle activeFilter={arabicFontFilter} onChange={setArabicFontFilter} />
+                <View
+                  className="mt-3 items-center rounded-lg border border-border/30 bg-surface px-4 pb-4 pt-2 dark:border-border-dark/20 dark:bg-surface-dark"
+                >
+                  <Text
+                    className="text-center text-foreground dark:text-foreground-dark"
+                    style={[
+                      styles.arabicFontPreviewText,
+                      {
+                        fontFamily: selectedArabicFontFamily,
+                      },
+                    ]}
+                  >
+                    {ARABIC_FONT_PREVIEW_TEXT}
+                  </Text>
+                </View>
               </View>
             }
             renderItem={({ item }) => (
@@ -1383,5 +1405,13 @@ const styles = StyleSheet.create({
   },
   hidden: {
     display: 'none',
+  },
+  arabicFontPreviewText: {
+    fontSize: 26,
+    lineHeight: 46,
+    minHeight: 52,
+    includeFontPadding: false,
+    textAlign: 'center',
+    writingDirection: 'rtl',
   },
 });

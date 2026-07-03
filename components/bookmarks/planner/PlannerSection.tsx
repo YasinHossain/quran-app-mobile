@@ -21,6 +21,12 @@ import { buildPlannerGroupCardData } from './utils/buildPlannerGroupCard';
 import { buildChapterLookup, groupPlannerPlans } from './utils/planGrouping';
 import type { PlannerGroupCardData } from './utils/buildPlannerGroupCard';
 
+export interface PlannerDeleteRequest {
+  planIds: string[];
+  title: string;
+  details?: string | null;
+}
+
 export function PlannerSection({
   planner,
   onCreatePlan,
@@ -35,7 +41,7 @@ export function PlannerSection({
 }: {
   planner: Record<string, PlannerPlan>;
   onCreatePlan: () => void;
-  onDeletePlan: (planIds: string[]) => void;
+  onDeletePlan: (request: PlannerDeleteRequest) => void;
   topContent?: React.ReactNode;
   registerScrollToTop?: (handler: (() => void) | null) => void;
   onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
@@ -117,7 +123,13 @@ export function PlannerSection({
             precomputedViewModel={group.viewModel}
             progressLabel={group.progressLabel}
             {...(group.continueVerse ? { continueVerse: group.continueVerse } : {})}
-            onDelete={() => onDeletePlan(group.planIds)}
+            onDelete={() =>
+              onDeletePlan({
+                planIds: group.planIds,
+                title: group.viewModel.planInfo.displayPlanName,
+                details: group.viewModel.planInfo.planDetailsText,
+              })
+            }
           />
         );
       }}

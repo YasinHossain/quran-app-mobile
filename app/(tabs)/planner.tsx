@@ -1,9 +1,14 @@
 import { Stack } from 'expo-router';
 import { ChevronUp } from 'lucide-react-native';
 import React from 'react';
-import { ActivityIndicator, Alert, Text, View } from 'react-native';
+import { ActivityIndicator, Text, View } from 'react-native';
 
-import { CreatePlannerModal, PlannerSection } from '@/components/bookmarks/planner';
+import {
+  CreatePlannerModal,
+  DeletePlannerModal,
+  PlannerSection,
+  type DeletePlannerTarget,
+} from '@/components/bookmarks/planner';
 import { AppHeader } from '@/components/navigation/AppHeader';
 import { HeaderActionButton } from '@/components/search/HeaderSearchBar';
 import Colors from '@/constants/Colors';
@@ -17,6 +22,8 @@ export default function PlannerScreen(): React.JSX.Element {
 
   const plannerScrollToTopRef = React.useRef<(() => void) | null>(null);
   const [isCreatePlannerOpen, setIsCreatePlannerOpen] = React.useState(false);
+  const [deletePlannerTarget, setDeletePlannerTarget] =
+    React.useState<DeletePlannerTarget | null>(null);
 
   const registerPlannerScrollToTop = React.useCallback((handler: (() => void) | null) => {
     plannerScrollToTopRef.current = handler;
@@ -30,24 +37,20 @@ export default function PlannerScreen(): React.JSX.Element {
     setIsCreatePlannerOpen(true);
   }, []);
 
-  const handleDeletePlannerPlan = React.useCallback(
+  const handleDeletePlannerPlan = React.useCallback((target: DeletePlannerTarget) => {
+    const uniqueIds = Array.from(new Set(target.planIds)).filter((id) => id.trim().length > 0);
+    if (uniqueIds.length === 0) return;
+    setDeletePlannerTarget({ ...target, planIds: uniqueIds });
+  }, []);
+
+  const closeDeletePlannerModal = React.useCallback(() => {
+    setDeletePlannerTarget(null);
+  }, []);
+
+  const handleConfirmDeletePlanner = React.useCallback(
     (planIds: string[]) => {
-      const uniqueIds = Array.from(new Set(planIds)).filter((id) => id.trim().length > 0);
-      if (uniqueIds.length === 0) return;
-      Alert.alert(
-        'Delete Planner',
-        'This action cannot be undone.\n\nAre you sure you want to permanently delete this planner?',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Delete',
-            style: 'destructive',
-            onPress: () => {
-              uniqueIds.forEach((id) => removeFromPlanner(id));
-            },
-          },
-        ]
-      );
+      planIds.forEach((id) => removeFromPlanner(id));
+      setDeletePlannerTarget(null);
     },
     [removeFromPlanner]
   );
@@ -81,6 +84,12 @@ export default function PlannerScreen(): React.JSX.Element {
       )}
 
       <CreatePlannerModal isOpen={isCreatePlannerOpen} onClose={() => setIsCreatePlannerOpen(false)} />
+      <DeletePlannerModal
+        isOpen={Boolean(deletePlannerTarget)}
+        onClose={closeDeletePlannerModal}
+        target={deletePlannerTarget}
+        onConfirmDelete={handleConfirmDeletePlanner}
+      />
     </View>
   );
 }

@@ -291,7 +291,7 @@ export function AddToPlannerModal({
               {
                 maxHeight: maxDialogHeight,
                 minHeight: minDialogHeight,
-                backgroundColor: palette.surface,
+                backgroundColor: isDark ? palette.background : palette.surface,
                 borderColor: palette.border,
               },
               dialogTransform(progress),

@@ -114,7 +114,10 @@ export function VerseActionsSheet({
         <Animated.View
           style={[
             styles.sheet,
-            { backgroundColor: palette.surface, borderColor: palette.border },
+            {
+              backgroundColor: isDark ? palette.background : palette.surface,
+              borderColor: palette.border,
+            },
             verticalSheetTransform(progress, hiddenTranslateY),
           ]}
           className="rounded-t-3xl border-t"

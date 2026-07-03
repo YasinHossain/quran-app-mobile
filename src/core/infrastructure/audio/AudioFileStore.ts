@@ -1,5 +1,7 @@
 import * as FileSystem from 'expo-file-system/legacy';
 
+import type { QdcAudioFile } from './qdcAudio';
+
 function normalizeId(value: number): number {
   if (!Number.isFinite(value)) return 0;
   const normalized = Math.trunc(value);
@@ -20,11 +22,12 @@ function buildAudioFileUri({
 }: {
   reciterId: number;
   surahId: number;
-}): { fileUri: string; parentDirUri: string } {
+}): { fileUri: string; metadataUri: string; parentDirUri: string } {
   const base = getDocumentDirectory();
   const parentDirUri = `${base}audio/${reciterId}/`;
   const fileUri = `${parentDirUri}${surahId}.mp3`;
-  return { fileUri, parentDirUri };
+  const metadataUri = `${parentDirUri}${surahId}.qdc.json`;
+  return { fileUri, metadataUri, parentDirUri };
 }
 
 export type AudioFileDownloadProgress = {
@@ -48,6 +51,27 @@ export class AudioFileStore {
 
   getLocalUri(): string {
     return buildAudioFileUri({ reciterId: this.reciterId, surahId: this.surahId }).fileUri;
+  }
+
+  async getAudioFileMetadata(): Promise<QdcAudioFile | null> {
+    const { metadataUri } = buildAudioFileUri({ reciterId: this.reciterId, surahId: this.surahId });
+    const info = await FileSystem.getInfoAsync(metadataUri);
+    if (!info.exists || info.isDirectory) return null;
+
+    const raw = await FileSystem.readAsStringAsync(metadataUri);
+    const parsed = JSON.parse(raw) as QdcAudioFile;
+    if (!parsed || typeof parsed !== 'object') return null;
+    if (!Array.isArray(parsed.verseTimings) || parsed.verseTimings.length === 0) return null;
+    return parsed;
+  }
+
+  async saveAudioFileMetadata(audioFile: QdcAudioFile): Promise<void> {
+    const { metadataUri, parentDirUri } = buildAudioFileUri({
+      reciterId: this.reciterId,
+      surahId: this.surahId,
+    });
+    await FileSystem.makeDirectoryAsync(parentDirUri, { intermediates: true });
+    await FileSystem.writeAsStringAsync(metadataUri, JSON.stringify(audioFile));
   }
 
   async isDownloaded(): Promise<boolean> {
@@ -109,7 +133,11 @@ export class AudioFileStore {
   }
 
   async delete(): Promise<void> {
-    const uri = this.getLocalUri();
-    await FileSystem.deleteAsync(uri, { idempotent: true });
+    const { fileUri, metadataUri } = buildAudioFileUri({
+      reciterId: this.reciterId,
+      surahId: this.surahId,
+    });
+    await FileSystem.deleteAsync(fileUri, { idempotent: true });
+    await FileSystem.deleteAsync(metadataUri, { idempotent: true });
   }
 }

@@ -334,7 +334,7 @@ export function ComprehensiveSearchModal({
             { maxHeight, minHeight },
             verticalSheetTransform(progress, 28),
           ]}
-          className="bg-surface-navigation dark:bg-surface-navigation-dark border border-border/30 dark:border-border-dark/20"
+          className="bg-surface-navigation dark:bg-background-dark border border-border/30 dark:border-border-dark/20"
         >
           <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
             <KeyboardAvoidingView

@@ -1,4 +1,4 @@
-import { Folder as FolderIcon, Trash2, X } from 'lucide-react-native';
+import { Calendar, Trash2, X } from 'lucide-react-native';
 import React from 'react';
 import {
   Animated,
@@ -12,30 +12,32 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { dialogTransform, useModalTransition } from '@/components/motion/modalTransition';
 import Colors from '@/constants/Colors';
 import { useAppTheme } from '@/providers/ThemeContext';
 
-import type { Folder } from '@/types';
+export interface DeletePlannerTarget {
+  planIds: string[];
+  title: string;
+  details?: string | null;
+}
 
-export function DeleteFolderModal({
+export function DeletePlannerModal({
   isOpen,
   onClose,
-  folder,
+  target,
   onConfirmDelete,
 }: {
   isOpen: boolean;
   onClose: () => void;
-  folder: Folder | null;
-  onConfirmDelete: (folderId: string) => void;
+  target: DeletePlannerTarget | null;
+  onConfirmDelete: (planIds: string[]) => void;
 }): React.JSX.Element {
   const { height: windowHeight } = useWindowDimensions();
-  const shouldRender = isOpen && Boolean(folder);
+  const shouldRender = isOpen && Boolean(target?.planIds.length);
   const { resolvedTheme, isDark } = useAppTheme();
   const palette = Colors[resolvedTheme];
-
   const [isDeleting, setIsDeleting] = React.useState(false);
 
   const { visible, progress, dismissEnabledRef, onModalShow } = useModalTransition(shouldRender);
@@ -51,14 +53,15 @@ export function DeleteFolderModal({
   }, [dismissEnabledRef, onClose]);
 
   const handleDelete = React.useCallback(() => {
-    if (!folder) return;
-    if (isDeleting) return;
+    if (!target || isDeleting) return;
+    const uniqueIds = Array.from(new Set(target.planIds)).filter((id) => id.trim().length > 0);
+    if (uniqueIds.length === 0) return;
     setIsDeleting(true);
-    onConfirmDelete(folder.id);
-  }, [folder, isDeleting, onConfirmDelete]);
+    onConfirmDelete(uniqueIds);
+  }, [isDeleting, onConfirmDelete, target]);
 
   const maxDialogHeight = Math.max(0, Math.round(windowHeight * 0.92));
-
+  const minDialogHeight = Math.min(maxDialogHeight, 280);
   return (
     <Modal
       transparent
@@ -81,7 +84,7 @@ export function DeleteFolderModal({
           <Animated.View
             style={[
               styles.dialog,
-              { maxHeight: maxDialogHeight },
+              { maxHeight: maxDialogHeight, minHeight: minDialogHeight },
               dialogTransform(progress),
             ]}
             className="bg-surface dark:bg-background-dark border border-border/30 dark:border-border-dark/20"
@@ -99,7 +102,7 @@ export function DeleteFolderModal({
                     </View>
                     <View>
                       <Text className="text-xl font-bold text-foreground dark:text-foreground-dark">
-                        Delete Folder
+                        Delete Planner
                       </Text>
                       <Text className="text-sm text-muted dark:text-muted-dark">
                         This action cannot be undone
@@ -125,20 +128,27 @@ export function DeleteFolderModal({
                   contentContainerStyle={styles.scrollContent}
                 >
                   <View className="px-6 pb-6">
-                    {folder ? (
+                    {target ? (
                       <View className="bg-interactive/60 dark:bg-interactive-dark/60 border border-border/60 dark:border-border-dark/60 rounded-xl p-4 mb-6">
                         <View className="flex-row items-center gap-3">
                           <View className="h-8 w-8 rounded-lg bg-accent/10 items-center justify-center">
-                            <FolderIcon size={18} strokeWidth={2.25} color={palette.muted} />
+                            <Calendar size={18} strokeWidth={2.25} color={palette.muted} />
                           </View>
-                          <View>
-                            <Text className="font-semibold text-foreground dark:text-foreground-dark">
-                              {folder.name}
+                          <View className="flex-1 min-w-0">
+                            <Text
+                              numberOfLines={1}
+                              className="font-semibold text-foreground dark:text-foreground-dark"
+                            >
+                              {target.title}
                             </Text>
-                            <Text className="text-sm text-muted dark:text-muted-dark">
-                              {folder.bookmarks.length} verse
-                              {folder.bookmarks.length !== 1 ? 's' : ''}
-                            </Text>
+                            {target.details ? (
+                              <Text
+                                numberOfLines={2}
+                                className="text-sm text-muted dark:text-muted-dark"
+                              >
+                                {target.details}
+                              </Text>
+                            ) : null}
                           </View>
                         </View>
                       </View>
@@ -146,26 +156,9 @@ export function DeleteFolderModal({
 
                     <View className="gap-4">
                       <Text className="text-foreground dark:text-foreground-dark">
-                        Are you sure you want to permanently delete this folder?
+                        Are you sure you want to permanently delete this planner?
                       </Text>
-
-                      {folder && folder.bookmarks.length > 0 ? (
-                        <View className="bg-error/10 border border-error/20 rounded-xl p-4">
-                          <Text className="font-semibold text-error dark:text-error-dark text-sm mb-1">
-                            Warning: Contains bookmarked verses
-                          </Text>
-                          <Text className="text-error dark:text-error-dark text-sm">
-                            This folder contains{' '}
-                            <Text className="font-semibold">
-                              {folder.bookmarks.length} bookmarked verse
-                              {folder.bookmarks.length !== 1 ? 's' : ''}
-                            </Text>
-                            . All bookmarks will be permanently deleted and cannot be recovered.
-                          </Text>
-                        </View>
-                      ) : null}
                     </View>
-
                   </View>
                 </ScrollView>
 

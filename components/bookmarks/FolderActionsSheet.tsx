@@ -95,7 +95,7 @@ export function FolderActionsSheet({
             {
               maxHeight: maxSheetHeight,
               minHeight: minSheetHeight,
-              backgroundColor: palette.surface,
+              backgroundColor: isDark ? palette.background : palette.surface,
               borderColor: palette.border,
             },
             verticalSheetTransform(progress, Math.max(260, Math.round(windowHeight * 0.38))),

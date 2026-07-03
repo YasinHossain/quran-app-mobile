@@ -188,7 +188,7 @@ function HomeSearchHeader({
                   styles.menuSheet,
                   {
                     width: menuWidth,
-                    backgroundColor: isDark ? '#1E293B' : '#FFFFFF',
+                    backgroundColor: isDark ? '#0F172A' : '#FFFFFF',
                     paddingTop: insets.top,
                   },
                   sideSheetTransform(progress, hiddenTranslateX),

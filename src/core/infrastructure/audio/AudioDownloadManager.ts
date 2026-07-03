@@ -4,6 +4,7 @@ import type { IDownloadIndexRepository } from '@/src/core/domain/repositories/ID
 import { logger } from '@/src/core/infrastructure/monitoring/logger';
 
 import { AudioFileStore } from './AudioFileStore';
+import type { QdcAudioFile } from './qdcAudio';
 
 function normalizeId(value: number): number {
   if (!Number.isFinite(value)) return 0;
@@ -75,6 +76,7 @@ export class AudioDownloadManager {
     reciterId: number;
     surahId: number;
     audioUrl: string;
+    audioFile?: QdcAudioFile | undefined;
   }): Promise<void> {
     const reciterId = normalizeId(params.reciterId);
     const surahId = normalizeId(params.surahId);
@@ -99,6 +101,9 @@ export class AudioDownloadManager {
       if (existing?.status === 'deleting') return;
 
       if (alreadyInstalled) {
+        if (params.audioFile) {
+          await store.saveAudioFileMetadata(params.audioFile);
+        }
         if (existing?.status === 'installed') return;
         await this.downloadIndexRepository.upsert(content, {
           status: 'installed',
@@ -165,6 +170,9 @@ export class AudioDownloadManager {
           if (progress.percent === null) return;
           latestPercent = clampNumber(progress.percent, 0, 100);
         }, abortController.signal);
+        if (params.audioFile) {
+          await store.saveAudioFileMetadata(params.audioFile);
+        }
         throwIfAudioDownloadCanceled(key, abortController.signal);
 
         clearInterval(intervalId);

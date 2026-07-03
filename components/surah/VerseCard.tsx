@@ -204,10 +204,28 @@ function VerseCardComponent({
   const isWaitingForTajweedText = shouldUseTajweedMode && !shouldRenderTajweedText;
 
   const handleSeekWordPress = React.useCallback(
-    ({ wordPosition }: { word: VerseWord; wordPosition: number }) => {
+    ({
+      word,
+      wordPosition,
+      measurement,
+    }: {
+      word: VerseWord;
+      wordPosition: number;
+      measurement?: {
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+        pageX: number;
+        pageY: number;
+      };
+    }) => {
+      if (word.translationText) {
+        showWordTranslation(word.translationText, measurement);
+      }
       audioWordSync?.seekToWord({ verseKey, wordPosition });
     },
-    [audioWordSync, verseKey]
+    [audioWordSync, showWordTranslation, verseKey]
   );
 
   const handleTranslationWordPress = React.useCallback(
@@ -249,7 +267,7 @@ function VerseCardComponent({
           arabicFontSize={arabicFontSize}
           arabicFontFamily={effectiveArabicFontFamily}
           showTranslations={Boolean(showByWords)}
-          pressBehavior={isSeekEnabled ? 'seek' : showByWords ? 'none' : 'translation'}
+          pressBehavior={isSeekEnabled ? 'seek' : 'translation'}
           onWordPress={isSeekEnabled ? handleSeekWordPress : handleTranslationWordPress}
           registerWordHighlight={audioWordSync?.registerWordHighlight}
         />

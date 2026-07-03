@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 
 import { dialogTransform, useModalTransition } from '@/components/motion/modalTransition';
+import Colors from '@/constants/Colors';
 import { useAppTheme } from '@/providers/ThemeContext';
 
 export function ResourceConfirmModal({
@@ -42,7 +43,8 @@ export function ResourceConfirmModal({
   onConfirm: () => void;
   onClose: () => void;
 }): React.JSX.Element {
-  const { isDark } = useAppTheme();
+  const { resolvedTheme, isDark } = useAppTheme();
+  const palette = Colors[resolvedTheme];
   const { height: windowHeight } = useWindowDimensions();
 
   const { visible: isModalVisible, progress, dismissEnabledRef, onModalShow } = useModalTransition(visible);
@@ -77,10 +79,13 @@ export function ResourceConfirmModal({
         <Animated.View
           style={[
             styles.dialog,
-            { maxHeight: maxDialogHeight },
+            {
+              maxHeight: maxDialogHeight,
+              backgroundColor: isDark ? palette.background : palette.surface,
+            },
             dialogTransform(progress),
           ]}
-          className="rounded-2xl border border-border/50 bg-surface px-5 py-5 dark:border-border-dark/40 dark:bg-surface-dark"
+          className="rounded-2xl border border-border/50 bg-surface px-5 py-5 dark:border-border-dark/40 dark:bg-background-dark"
         >
           <View className="flex-row items-center justify-between">
             <Text className="text-lg font-bold text-foreground dark:text-foreground-dark">{title}</Text>

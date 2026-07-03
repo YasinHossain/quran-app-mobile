@@ -248,7 +248,7 @@ export function CreatePlannerModal({
                 {
                   maxHeight: maxDialogHeight,
                   minHeight: minDialogHeight,
-                  backgroundColor: palette.surface,
+                  backgroundColor: isDark ? palette.background : palette.surface,
                   borderColor: palette.border,
                 },
                 dialogTransform(progress),
@@ -429,7 +429,7 @@ export function CreatePlannerModal({
                     </View>
                   </ScrollView>
 
-                  <View className="px-5 py-3 border-t border-border/60 dark:border-border-dark/40 bg-surface dark:bg-surface-dark">
+                  <View className="px-5 py-3 border-t border-border/60 dark:border-border-dark/40 bg-surface dark:bg-background-dark">
                     <View className="flex-row items-center justify-end gap-3">
                       <Pressable
                         onPress={handleClose}

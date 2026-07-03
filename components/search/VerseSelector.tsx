@@ -344,7 +344,7 @@ export const VerseSelector = React.forwardRef<VerseSelectorHandle, Props>(functi
                                     top: dropdownLayout.listTop,
                                     left: dropdownLayout.inputLeft,
                                     width: dropdownLayout.inputWidth,
-                                    backgroundColor: isDark ? '#1a1a2e' : '#ffffff',
+                                    backgroundColor: isDark ? palette.background : '#ffffff',
                                     borderRadius: 12,
                                     borderWidth: 1,
                                     borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)',

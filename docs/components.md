@@ -138,6 +138,7 @@ This document lists reusable UI components currently available in the codebase s
 | `PlannerHeader` | Planner section header with “Create Plan” action. | `components/bookmarks/planner/PlannerHeader.tsx` |
 | `PlannerEmptyState` | Empty-state UI shown when no plans exist. | `components/bookmarks/planner/PlannerEmptyState.tsx` |
 | `CreatePlannerModal` | Modal + form for creating planner plans (start/end surah + verse + estimated days). | `components/bookmarks/planner/CreatePlannerModal.tsx` |
+| `DeletePlannerModal` | Delete planner confirmation modal matching the project delete-confirmation pattern. | `components/bookmarks/planner/DeletePlannerModal.tsx` |
 | `LastReadSection` | “Recent / Last visited” section (header + grid + empty state) used in Bookmarks → Recent. | `components/bookmarks/last-read/LastReadSection.tsx` |
 | `LastReadCard` | Recent card showing a surah progress ring + verse position + remove action. | `components/bookmarks/last-read/LastReadCard.tsx` |
 | `CircularProgress` | Shared circular progress ring used by Recent cards and compact home recent pills. | `components/bookmarks/last-read/CircularProgress.tsx` |

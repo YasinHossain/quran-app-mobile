@@ -1,5 +1,6 @@
 import React from 'react';
 
+import { AudioFileStore } from '@/src/core/infrastructure/audio/AudioFileStore';
 import { getQdcAudioFile, type QdcAudioFile } from '@/src/core/infrastructure/audio/qdcAudio';
 
 type CacheKey = string;
@@ -46,13 +47,37 @@ async function loadAudioFile({
   if (existingPromise) return existingPromise;
 
   const promise = getQdcAudioFile({ reciterId, chapterId, segments })
-    .then((audioFile) => {
+    .then(async (audioFile) => {
       cachedByKey.set(key, audioFile);
       cachedPromises.delete(key);
+      if (segments) {
+        try {
+          const store = new AudioFileStore({ reciterId, surahId: chapterId });
+          if (await store.isDownloaded()) {
+            await store.saveAudioFileMetadata(audioFile);
+          }
+        } catch {
+          // Metadata backfill is best-effort; the network result is still usable.
+        }
+      }
       return audioFile;
     })
-    .catch((error) => {
+    .catch(async (error) => {
       cachedPromises.delete(key);
+      if (segments) {
+        try {
+          const localAudioFile = await new AudioFileStore({
+            reciterId,
+            surahId: chapterId,
+          }).getAudioFileMetadata();
+          if (localAudioFile) {
+            cachedByKey.set(key, localAudioFile);
+            return localAudioFile;
+          }
+        } catch {
+          // Fall through to the original network error.
+        }
+      }
       throw error;
     });
 
@@ -129,4 +154,3 @@ export function useQdcAudioFile(
     refresh,
   };
 }
-

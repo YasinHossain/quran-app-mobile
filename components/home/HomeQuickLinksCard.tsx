@@ -350,7 +350,6 @@ function AddQuickLinkModal({
 
   const canSubmit = typeof selectedSurah === 'number' && typeof selectedVerse === 'number';
   const maxHeight = Math.max(0, Math.round(windowHeight * 0.72));
-  const minHeight = Math.min(maxHeight, 240);
 
   return (
     <Modal
@@ -371,8 +370,8 @@ function AddQuickLinkModal({
           style={styles.modalWrap}
         >
           <View
-            className="overflow-hidden rounded-2xl border border-border/40 bg-surface dark:border-border-dark/30 dark:bg-surface-dark"
-            style={{ maxHeight, minHeight }}
+            className="overflow-hidden rounded-2xl border border-border/40 bg-surface dark:border-border-dark/30 dark:bg-background-dark"
+            style={{ maxHeight }}
           >
             <SafeAreaView edges={['bottom']} className={isDark ? 'dark' : ''}>
               <View className="px-5 pt-5">

@@ -326,7 +326,7 @@ export function PlaybackOptionsModal({
               { maxHeight: maxDialogHeight, minHeight: minDialogHeight },
               dialogTransform(progress),
             ]}
-            className="bg-surface dark:bg-surface-dark border border-border/30 dark:border-border-dark/20"
+            className="bg-surface dark:bg-background-dark border border-border/30 dark:border-border-dark/20"
           >
             <View style={styles.dialogSafeArea}>
               <View className={isDark ? 'dark' : ''} style={styles.inner}>
