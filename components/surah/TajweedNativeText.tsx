@@ -13,6 +13,7 @@ export type TajweedGlyphRun = {
 };
 
 const DARK_PALETTE_COLOR_INDICES = [0, 1];
+const DEBUG_DISABLE_TAJWEED_DARK_PALETTE = false;
 const darkPaletteFontCache = new Map<
   string,
   Promise<Pick<TajweedGlyphRun, 'fontFamily' | 'fontFileUri'> | null>
@@ -150,6 +151,32 @@ function getDarkPaletteFontFamily(fontFamily: string, color: string): string {
   return `${fontFamily}-dark-${color.replace(/[^a-zA-Z0-9]/g, '')}`;
 }
 
+function resolveReadyGlyphRuns(
+  glyphRuns: TajweedGlyphRun[],
+  resolvedTheme: 'light' | 'dark',
+  textColor: string
+): TajweedGlyphRun[] {
+  if (glyphRuns.length === 0) return [];
+
+  if (resolvedTheme !== 'dark' || DEBUG_DISABLE_TAJWEED_DARK_PALETTE) {
+    return glyphRuns.every((run) => Font.isLoaded(run.fontFamily)) ? glyphRuns : [];
+  }
+
+  const darkRuns = glyphRuns.map((run) => {
+    const darkFontFileUri = getDarkPaletteFontUri(run.fontFileUri, textColor);
+    const darkFontFamily = getDarkPaletteFontFamily(run.fontFamily, textColor);
+    if (!darkFontFileUri || !Font.isLoaded(darkFontFamily)) return null;
+
+    return {
+      ...run,
+      fontFamily: darkFontFamily,
+      fontFileUri: darkFontFileUri,
+    };
+  });
+
+  return darkRuns.every((run): run is TajweedGlyphRun => run !== null) ? darkRuns : [];
+}
+
 async function buildDarkPaletteFont(
   fontFamily: string,
   fontFileUri: string,
@@ -228,15 +255,15 @@ export async function preloadTajweedGlyphRunFontsAsync(
     )
   );
 
-  if (options?.resolvedTheme === 'dark' && options.textColor) {
-    void Promise.all(
+  if (!DEBUG_DISABLE_TAJWEED_DARK_PALETTE && options?.resolvedTheme === 'dark' && options.textColor) {
+    await Promise.all(
       validGlyphRuns.map(async (run) => {
         const darkFont = await buildDarkPaletteFont(run.fontFamily, run.fontFileUri, options.textColor!);
         if (darkFont) {
           await loadTajweedFontAsync(darkFont.fontFamily, darkFont.fontFileUri);
         }
       })
-    ).catch(() => {});
+    );
   }
 }
 
@@ -248,13 +275,10 @@ export function areTajweedGlyphRunFontsLoaded(
   if (validGlyphRuns.length === 0) return false;
 
   return validGlyphRuns.every((run) => {
-    if (options?.resolvedTheme === 'dark' && options.textColor) {
+    if (!DEBUG_DISABLE_TAJWEED_DARK_PALETTE && options?.resolvedTheme === 'dark' && options.textColor) {
       const darkFontFileUri = getDarkPaletteFontUri(run.fontFileUri, options.textColor);
       if (darkFontFileUri) {
-        return (
-          Font.isLoaded(getDarkPaletteFontFamily(run.fontFamily, options.textColor)) ||
-          Font.isLoaded(run.fontFamily)
-        );
+        return Font.isLoaded(getDarkPaletteFontFamily(run.fontFamily, options.textColor));
       }
     }
 
@@ -263,10 +287,14 @@ export function areTajweedGlyphRunFontsLoaded(
 }
 
 export function TajweedNativeText({
+  fallbackFontFamily,
+  fallbackText,
   fontSize,
   glyphRuns,
   lineHeight,
 }: {
+  fallbackFontFamily?: string;
+  fallbackText?: string;
   fontSize: number;
   glyphRuns: TajweedGlyphRun[];
   lineHeight: number;
@@ -275,7 +303,9 @@ export function TajweedNativeText({
   const palette = Colors[resolvedTheme];
   const validGlyphRuns = React.useMemo(() => normalizeGlyphRuns(glyphRuns), [glyphRuns]);
   const runsSignature = React.useMemo(() => getRunsSignature(validGlyphRuns), [validGlyphRuns]);
-  const [renderGlyphRuns, setRenderGlyphRuns] = React.useState(validGlyphRuns);
+  const [renderGlyphRuns, setRenderGlyphRuns] = React.useState<TajweedGlyphRun[]>(() =>
+    resolveReadyGlyphRuns(validGlyphRuns, resolvedTheme, palette.text)
+  );
   const renderRunsSignature = React.useMemo(
     () => getRunsSignature(renderGlyphRuns),
     [renderGlyphRuns]
@@ -285,27 +315,37 @@ export function TajweedNativeText({
   React.useEffect(() => {
     let cancelled = false;
 
-    if (resolvedTheme !== 'dark') {
-      setRenderGlyphRuns(validGlyphRuns);
+    if (resolvedTheme !== 'dark' || DEBUG_DISABLE_TAJWEED_DARK_PALETTE) {
+      setRenderGlyphRuns(
+        validGlyphRuns.every((run) => Font.isLoaded(run.fontFamily)) ? validGlyphRuns : []
+      );
       return;
     }
 
+    const readyGlyphRuns = resolveReadyGlyphRuns(validGlyphRuns, resolvedTheme, palette.text);
+    if (readyGlyphRuns.length > 0) {
+      setRenderGlyphRuns(readyGlyphRuns);
+      return;
+    }
+
+    setRenderGlyphRuns([]);
+
     void Promise.all(
-      validGlyphRuns.map((run) =>
-        buildDarkPaletteFont(run.fontFamily, run.fontFileUri, palette.text).then((darkFont) => ({
-          ...run,
-          ...(darkFont ?? {}),
-        }))
-      )
+      validGlyphRuns.map(async (run) => {
+        const darkFont = await buildDarkPaletteFont(run.fontFamily, run.fontFileUri, palette.text);
+        return darkFont ? { ...run, ...darkFont } : null;
+      })
     )
       .then((nextRuns) => {
         if (!cancelled) {
-          setRenderGlyphRuns(nextRuns);
+          setRenderGlyphRuns(
+            nextRuns.every((run): run is TajweedGlyphRun => run !== null) ? nextRuns : []
+          );
         }
       })
       .catch(() => {
         if (!cancelled) {
-          setRenderGlyphRuns(validGlyphRuns);
+          setRenderGlyphRuns([]);
         }
       });
 
@@ -342,20 +382,24 @@ export function TajweedNativeText({
     renderGlyphRuns.length > 0 && renderGlyphRuns.every((run) => Font.isLoaded(run.fontFamily));
 
   if (!areFontsReady) {
+    const resolvedFallbackText = fallbackText?.trim();
+
     return (
       <Text
+        selectable={Boolean(resolvedFallbackText)}
         allowFontScaling={false}
         style={[
           styles.text,
           {
-            color: 'transparent',
+            color: resolvedFallbackText ? palette.text : 'transparent',
             fontSize,
+            ...(fallbackFontFamily ? { fontFamily: fallbackFontFamily } : {}),
             lineHeight,
             minHeight: lineHeight,
           },
         ]}
       >
-        {' '}
+        {resolvedFallbackText || ' '}
       </Text>
     );
   }

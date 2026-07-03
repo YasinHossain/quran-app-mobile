@@ -236,17 +236,13 @@ function VerseCardComponent({
     <View className="gap-4">
       {shouldRenderTajweedText ? (
         <TajweedNativeText
+          fallbackFontFamily={effectiveArabicFontFamily}
+          fallbackText={sanitizedArabicText}
           glyphRuns={tajweedGlyphRuns ?? []}
           fontSize={arabicFontSize}
           lineHeight={arabicLineHeight}
         />
-      ) : isWaitingForTajweedText ? (
-        <View
-          style={{
-            minHeight: arabicLineHeight * 2,
-          }}
-        />
-      ) : Array.isArray(words) && words.length ? (
+      ) : Array.isArray(words) && words.length && !shouldUseTajweedMode ? (
         <WordByWordVerse
           verseKey={verseKey}
           words={words}
