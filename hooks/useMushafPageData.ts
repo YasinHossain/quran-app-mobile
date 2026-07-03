@@ -24,6 +24,29 @@ function logMushafQcfDev(event: string, details: Record<string, unknown>): void 
   console.log(`[mushaf-qcf][useMushafPageData] ${event}`, details);
 }
 
+function isExpectedPageData(params: {
+  data: MushafPageData | null;
+  expectedVersion?: string;
+  packId: MushafPackId;
+  pageNumber: number | null;
+}): params is {
+  data: MushafPageData;
+  expectedVersion?: string;
+  packId: MushafPackId;
+  pageNumber: number;
+} {
+  if (!params.data || params.pageNumber === null) {
+    return false;
+  }
+
+  if (params.data.pack.packId !== params.packId || params.data.pageNumber !== params.pageNumber) {
+    return false;
+  }
+
+  const expectedVersion = params.expectedVersion?.trim();
+  return !expectedVersion || params.data.pack.version.trim() === expectedVersion;
+}
+
 export type MushafPageErrorKind =
   | 'invalid-page'
   | 'pack-not-installed'
@@ -208,11 +231,23 @@ export function useMushafPageData({
     setRefreshNonce((current) => current + 1);
   }, []);
 
+  const stateData = isExpectedPageData({ data, expectedVersion, packId, pageNumber }) ? data : null;
+  const warmCachedData =
+    enabled && pageNumber !== null
+      ? container.getMushafPageRepository().peekCachedPage({
+          packId,
+          pageNumber,
+          expectedVersion,
+        })
+      : null;
+  const resolvedData = stateData ?? warmCachedData;
+  const hasResolvedData = resolvedData !== null;
+
   return {
-    data,
-    isLoading,
-    errorKind,
-    errorMessage,
+    data: resolvedData,
+    isLoading: hasResolvedData ? false : isLoading,
+    errorKind: hasResolvedData ? null : errorKind,
+    errorMessage: hasResolvedData ? null : errorMessage,
     refresh,
   };
 }

@@ -9,12 +9,22 @@ import {
 } from '@/src/core/infrastructure/mushaf/downloadablePacks';
 import type { VerseWord } from '@/types';
 
+import chaptersData from '../../src/data/chapters.en.json';
+
 export const DEFAULT_SURAH_VERSES_PER_PAGE = 30;
+
+type ChapterPageMetadata = {
+  id: number;
+  pages?: number[];
+};
+
+const chapters = chaptersData as ChapterPageMetadata[];
 
 type SurahPageCacheSettings = {
   translationIds?: number[] | null;
   translationId?: number | null;
   tajweed?: boolean | null;
+  mushafId?: string | null;
 };
 
 type CacheEntry = {
@@ -253,6 +263,66 @@ function getTajweedFontAssetForPage(
       .getMushafPackFileStore()
       .getInstalledFileUri(TAJWEED_MUSHAF_ID, version, fontRelativePath),
   };
+}
+
+function getFirstMushafPageForSurah(surahId: number): number | null {
+  const chapter = chapters.find((item) => item.id === surahId);
+  const firstPage = Array.isArray(chapter?.pages)
+    ? chapter.pages.find((page) => Number.isFinite(page) && page > 0)
+    : undefined;
+
+  return typeof firstPage === 'number' ? Math.trunc(firstPage) : null;
+}
+
+async function preloadSelectedMushafNavigationPage(params: {
+  settings: SurahPageCacheSettings;
+  surahId: number;
+  verseNumber?: number;
+}): Promise<void> {
+  const selectedMushafId = params.settings.tajweed
+    ? TAJWEED_MUSHAF_ID
+    : params.settings.mushafId;
+  const selectedMushafOption = findMushafOption(selectedMushafId ?? undefined);
+
+  if (!selectedMushafOption || selectedMushafOption.renderer !== 'webview') {
+    return;
+  }
+
+  const repository = container.getMushafPageRepository();
+  const activeVersion =
+    selectedMushafId === TAJWEED_MUSHAF_ID
+      ? await resolveActiveTajweedPackVersion()
+      : selectedMushafOption.version;
+  repository.setActivePageCacheIdentity({
+    packId: selectedMushafOption.packId,
+    version: activeVersion,
+  });
+
+  let targetPage: number | null = null;
+  if (typeof params.verseNumber === 'number' && Number.isFinite(params.verseNumber)) {
+    targetPage = await repository.findPageForVerse({
+      packId: selectedMushafOption.packId,
+      verseKey: `${params.surahId}:${Math.trunc(params.verseNumber)}`,
+    });
+  }
+
+  targetPage ??= getFirstMushafPageForSurah(params.surahId);
+
+  if (!targetPage) {
+    return;
+  }
+
+  await repository.prefetchPages({
+    packId: selectedMushafOption.packId,
+    pageNumbers: [targetPage],
+    expectedVersion: activeVersion,
+  });
+
+  void repository.prefetchPages({
+    packId: selectedMushafOption.packId,
+    pageNumbers: [targetPage - 1, targetPage + 1],
+    expectedVersion: activeVersion,
+  });
 }
 
 function parseVerseWordsJson(wordsJson?: string): VerseWord[] | null {
@@ -766,18 +836,25 @@ export function preloadOfflineSurahNavigationPage(params: {
 
   if (surahId <= 0) return Promise.resolve();
 
-  return getOfflineSurahCached({
-    surahId,
-    translationIds: getSelectedTranslationIds(params.settings),
-    perPage,
-  }).then(
-    async (surahVerses) => {
+  return Promise.all([
+    getOfflineSurahCached({
+      surahId,
+      translationIds: getSelectedTranslationIds(params.settings),
+      perPage,
+    }).then(async (surahVerses) => {
       if (params.settings.tajweed) {
         const page = getSurahPageNumber(params.verseNumber, perPage);
         const pageVerses = sliceSurahPage({ surahVerses, page, perPage });
         await preloadTajweedFontsForOfflineVerses(pageVerses);
       }
-    },
+    }),
+    preloadSelectedMushafNavigationPage({
+      settings: params.settings,
+      surahId,
+      verseNumber: params.verseNumber,
+    }),
+  ]).then(
+    () => undefined,
     () => undefined
   );
 }
