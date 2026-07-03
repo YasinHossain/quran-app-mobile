@@ -118,8 +118,11 @@ export function useMushafPackManager({
       pollWhileEnabled: busyInstallKeys.size > 0,
     });
 
-  const loadInstalls = React.useCallback(async () => {
-    setIsRegistryLoading(true);
+  const loadInstalls = React.useCallback(async (options?: { showSpinner?: boolean }) => {
+    const showSpinner = options?.showSpinner ?? true;
+    if (showSpinner) {
+      setIsRegistryLoading(true);
+    }
 
     try {
       const nextInstalls = await container.getMushafPackInstallRegistry().list();
@@ -131,7 +134,9 @@ export function useMushafPackManager({
         error instanceof Error ? error.message : 'Failed to load mushaf pack installs.'
       );
     } finally {
-      setIsRegistryLoading(false);
+      if (showSpinner) {
+        setIsRegistryLoading(false);
+      }
     }
   }, []);
 
@@ -142,13 +147,13 @@ export function useMushafPackManager({
   const mushafDownloadSignature = React.useMemo(() => {
     return items
       .filter((item) => item.content.kind === 'mushaf-pack')
-      .map((item) => `${item.key}:${item.status}:${item.updatedAt}`)
+      .map((item) => `${item.key}:${item.status}`)
       .join('|');
   }, [items]);
 
   React.useEffect(() => {
     if (!mushafDownloadSignature) return;
-    void loadInstalls();
+    void loadInstalls({ showSpinner: false });
   }, [loadInstalls, mushafDownloadSignature]);
 
   const installsByKey = React.useMemo(() => {

@@ -7,7 +7,7 @@ import { DEFAULT_MUSHAF_ID, TAJWEED_MUSHAF_ID, findMushafOption } from '@/data/m
 import Colors from '@/constants/Colors';
 import { MushafPackOptionCard } from '@/components/reader/settings/MushafPackOptionCard';
 import { useTafsirResources } from '@/hooks/useTafsirResources';
-import { useMushafPackManager } from '@/hooks/useMushafPackManager';
+import { useMushafPackManager, type MushafPackManagerEntry } from '@/hooks/useMushafPackManager';
 import { useTranslationResources } from '@/hooks/useTranslationResources';
 import { useSettings } from '@/providers/SettingsContext';
 import { useAppTheme } from '@/providers/ThemeContext';
@@ -18,6 +18,7 @@ import { ManageTafsirsPanel } from './ManageTafsirsPanel';
 import { ManageTranslationsPanel } from './ManageTranslationsPanel';
 import { SelectionBox } from './SelectionBox';
 import { ResourceItem } from './resource-panel/ResourceItem';
+import { ResourceConfirmModal } from './resource-panel/ResourceConfirmModal';
 import { capitalizeLanguageName, type ResourceRecord } from './resource-panel/resourcePanel.utils';
 import { SettingsTabToggle, type SettingsTab } from './SettingsTabToggle';
 import { ToggleRow } from './ToggleRow';
@@ -30,6 +31,7 @@ import { ResourceDownloadAction } from './resource-panel/ResourceDownloadAction'
 import { container } from '@/src/core/infrastructure/di/container';
 import { logger } from '@/src/core/infrastructure/monitoring/logger';
 import { isMushafPackInstallCanceledError } from '@/src/core/infrastructure/mushaf/MushafPackInstaller';
+import { getMushafPackCatalogUrl } from '@/src/core/infrastructure/mushaf/mushafPackCatalogConfig';
 
 import type { MushafPackId } from '@/types';
 import { clampMushafScaleStep, MUSHAF_SCALE_MAX, MUSHAF_SCALE_MIN } from '@/types';
@@ -55,9 +57,15 @@ const WORD_LANGUAGES = [
 ] as const;
 
 const UI_LANGUAGES = WORD_LANGUAGES;
+const BYTES_PER_MEGABYTE = 1024 * 1024;
 
 type WordLanguageItem = ResourceRecord & {
   code: string;
+};
+
+type MushafDownloadSizeInfo = {
+  mb: number | null;
+  isExact: boolean;
 };
 
 const WORD_LANGUAGE_ITEMS: WordLanguageItem[] = WORD_LANGUAGES.map((item, index) => ({
@@ -82,6 +90,58 @@ function getLanguageName(code: string | undefined): string {
 function getUiLanguageName(code: string | undefined): string {
   if (!code) return 'English';
   return UI_LANGUAGES.find((l) => l.code === code)?.name ?? code;
+}
+
+function getMushafPackEntryKey(entry: MushafPackManagerEntry): string {
+  return `${entry.option.id}@${entry.option.version}`;
+}
+
+function formatMushafDownloadDetailLabel(
+  entry: MushafPackManagerEntry | null,
+  sizeInfo: MushafDownloadSizeInfo | null | undefined,
+  isLoading: boolean
+): string {
+  const details: string[] = [];
+
+  if (isLoading) {
+    details.push('Estimating size...');
+  } else if (sizeInfo && typeof sizeInfo.mb === 'number') {
+    details.push(
+      sizeInfo.isExact
+        ? `Download size: ${sizeInfo.mb.toFixed(1)} MB`
+        : `Estimated size: ~${sizeInfo.mb.toFixed(1)} MB`
+    );
+  } else {
+    details.push('Download size unavailable');
+  }
+
+  if (entry?.definition) {
+    details.push(`${entry.definition.totalPages} pages`);
+  }
+
+  return details.join(' · ');
+}
+
+async function resolveMushafDownloadSizeInfo(
+  entry: MushafPackManagerEntry
+): Promise<MushafDownloadSizeInfo | null> {
+  const catalogUrl = getMushafPackCatalogUrl();
+  if (!catalogUrl) return null;
+
+  const catalogEntry = await container.getMushafPackCatalogClient().getPack(catalogUrl, {
+    packId: entry.option.id,
+    version: entry.option.version,
+  });
+  if (!catalogEntry || catalogEntry.sizeBytes <= 0) return null;
+
+  const filesBytes = (catalogEntry.files ?? []).reduce((total, file) => {
+    return total + (typeof file.sizeBytes === 'number' && file.sizeBytes > 0 ? file.sizeBytes : 0);
+  }, 0);
+  const payloadAndAssetsBytes = Math.max(catalogEntry.sizeBytes, filesBytes);
+  const totalBytes = payloadAndAssetsBytes + (catalogEntry.manifestSizeBytes ?? 0);
+  const mb = Math.max(0.1, Math.round((totalBytes / BYTES_PER_MEGABYTE) * 10) / 10);
+
+  return { mb, isExact: true };
 }
 
 const WordLanguageResourceRow = React.memo(function WordLanguageResourceRow({
@@ -207,6 +267,15 @@ export function SettingsSidebarContent({
   const [isTafsirOpen, setIsTafsirOpen] = React.useState(showTafsirSetting && pageType === 'tafsir');
   const [isFontOpen, setIsFontOpen] = React.useState(true);
   const [arabicFontFilter, setArabicFontFilter] = React.useState<ArabicFontFilter>('Uthmani');
+  const [mushafDownloadTargetId, setMushafDownloadTargetId] = React.useState<MushafPackId | null>(null);
+  const [mushafDeleteTargetId, setMushafDeleteTargetId] = React.useState<MushafPackId | null>(null);
+  const [enableTajweedAfterDownload, setEnableTajweedAfterDownload] = React.useState(false);
+  const [mushafDownloadSizeInfoByKey, setMushafDownloadSizeInfoByKey] = React.useState<
+    Record<string, MushafDownloadSizeInfo | null | undefined>
+  >({});
+  const [estimatingMushafDownloadKeys, setEstimatingMushafDownloadKeys] = React.useState<Set<string>>(
+    () => new Set()
+  );
 
 
   const previousMushafIdRef = React.useRef<MushafPackId | undefined>(settings.mushafId);
@@ -409,6 +478,50 @@ export function SettingsSidebarContent({
   } = useMushafPackManager({
     selectedPackId: settings.mushafId ?? DEFAULT_MUSHAF_ID,
   });
+  const mushafDownloadTarget = React.useMemo(
+    () =>
+      mushafDownloadTargetId
+        ? mushafPackEntries.find((entry) => entry.option.id === mushafDownloadTargetId) ?? null
+        : null,
+    [mushafDownloadTargetId, mushafPackEntries]
+  );
+  const mushafDeleteTarget = React.useMemo(
+    () =>
+      mushafDeleteTargetId
+        ? mushafPackEntries.find((entry) => entry.option.id === mushafDeleteTargetId) ?? null
+        : null,
+    [mushafDeleteTargetId, mushafPackEntries]
+  );
+  const mushafDownloadTargetKey = mushafDownloadTarget ? getMushafPackEntryKey(mushafDownloadTarget) : null;
+  const mushafDownloadSizeInfo = mushafDownloadTargetKey
+    ? mushafDownloadSizeInfoByKey[mushafDownloadTargetKey]
+    : undefined;
+  const isEstimatingMushafDownloadSize =
+    mushafDownloadTargetKey !== null &&
+    (mushafDownloadSizeInfo === undefined || estimatingMushafDownloadKeys.has(mushafDownloadTargetKey));
+  const mushafDownloadDetailLabel = React.useMemo(
+    () =>
+      formatMushafDownloadDetailLabel(
+        mushafDownloadTarget,
+        mushafDownloadSizeInfo,
+        isEstimatingMushafDownloadSize
+      ),
+    [isEstimatingMushafDownloadSize, mushafDownloadSizeInfo, mushafDownloadTarget]
+  );
+  const tajweedPackEntry = React.useMemo(
+    () => mushafPackEntries.find((entry) => entry.option.id === TAJWEED_MUSHAF_ID) ?? null,
+    [mushafPackEntries]
+  );
+  const tajweedDownloadStatus =
+    tajweedPackEntry?.downloadItem?.status ??
+    (tajweedPackEntry?.isBusy && !tajweedPackEntry.isInstalled ? ('queued' as const) : undefined);
+  const tajweedDownloadProgress =
+    tajweedPackEntry?.downloadItem?.progress ??
+    (tajweedDownloadStatus === 'queued' || tajweedDownloadStatus === 'downloading'
+      ? { kind: 'items' as const, completed: 0, total: 1 }
+      : undefined);
+  const isTajweedDownloading =
+    tajweedDownloadStatus === 'queued' || tajweedDownloadStatus === 'downloading';
   const filteredArabicFonts = React.useMemo(
     () => arabicFonts.filter((font) => font.category === arabicFontFilter),
     [arabicFontFilter, arabicFonts]
@@ -495,9 +608,29 @@ export function SettingsSidebarContent({
   const toggleTajweed = React.useCallback(
     (enabled: boolean) => {
       if (enabled) {
+        const tajweedEntry = mushafPackEntries.find(
+          (entry) => entry.option.id === TAJWEED_MUSHAF_ID
+        );
+        const canUseTajweed = Boolean(tajweedEntry?.isInstalled || tajweedEntry?.isBundled);
+        if (!canUseTajweed) {
+          if (tajweedEntry?.isInstallImplemented) {
+            previousMushafIdRef.current = settings.mushafId;
+            setEnableTajweedAfterDownload(true);
+            setMushafDownloadTargetId(TAJWEED_MUSHAF_ID);
+            return;
+          }
+
+          Alert.alert(
+            'Tajweed download unavailable',
+            'Tajweed Colors must be downloaded before they can be used offline.'
+          );
+          return;
+        }
+
         previousMushafIdRef.current = settings.mushafId;
         setSettings({ ...settings, tajweed: true, mushafId: TAJWEED_MUSHAF_ID });
       } else {
+        setEnableTajweedAfterDownload(false);
         setSettings({
           ...settings,
           tajweed: false,
@@ -505,32 +638,110 @@ export function SettingsSidebarContent({
         });
       }
     },
-    [setSettings, settings]
+    [mushafPackEntries, setSettings, settings]
   );
 
   const applyMushafSelection = React.useCallback(
     (packId: MushafPackId) => {
+      if (packId === TAJWEED_MUSHAF_ID) {
+        const tajweedEntry = mushafPackEntries.find(
+          (entry) => entry.option.id === TAJWEED_MUSHAF_ID
+        );
+        const canUseTajweed = Boolean(tajweedEntry?.isInstalled || tajweedEntry?.isBundled);
+        if (!canUseTajweed) {
+          if (tajweedEntry?.isInstallImplemented) {
+            previousMushafIdRef.current = settings.mushafId;
+            setEnableTajweedAfterDownload(true);
+            setMushafDownloadTargetId(TAJWEED_MUSHAF_ID);
+            return;
+          }
+
+          Alert.alert(
+            'Tajweed download unavailable',
+            'Tajweed Colors must be downloaded before they can be used offline.'
+          );
+          return;
+        }
+      }
+
       setSettings({
         ...settings,
         mushafId: packId,
         tajweed: packId === TAJWEED_MUSHAF_ID,
       });
     },
-    [setSettings, settings]
+    [mushafPackEntries, setSettings, settings]
   );
 
   const handleInstallMushafPack = React.useCallback(
     async (packId: MushafPackId) => {
       try {
         await installPack(packId);
+        if (packId === TAJWEED_MUSHAF_ID && enableTajweedAfterDownload) {
+          setSettings({ ...settings, tajweed: true, mushafId: TAJWEED_MUSHAF_ID });
+          setEnableTajweedAfterDownload(false);
+        }
       } catch (error) {
+        if (packId === TAJWEED_MUSHAF_ID) {
+          setEnableTajweedAfterDownload(false);
+        }
         if (isMushafPackInstallCanceledError(error)) return;
         const message = error instanceof Error ? error.message : String(error);
         Alert.alert('Install failed', message);
       }
     },
-    [installPack]
+    [enableTajweedAfterDownload, installPack, setSettings, settings]
   );
+
+  const handleConfirmMushafPackDownload = React.useCallback(() => {
+    if (!mushafDownloadTarget) return;
+
+    const packId = mushafDownloadTarget.option.id;
+    setMushafDownloadTargetId(null);
+    void handleInstallMushafPack(packId);
+  }, [handleInstallMushafPack, mushafDownloadTarget]);
+
+  React.useEffect(() => {
+    if (!mushafDownloadTarget) return;
+
+    const key = getMushafPackEntryKey(mushafDownloadTarget);
+    if (mushafDownloadSizeInfoByKey[key] !== undefined) return;
+    if (estimatingMushafDownloadKeys.has(key)) return;
+
+    let cancelled = false;
+    setEstimatingMushafDownloadKeys((prev) => {
+      const next = new Set(prev);
+      next.add(key);
+      return next;
+    });
+
+    void resolveMushafDownloadSizeInfo(mushafDownloadTarget)
+      .then((sizeInfo) => {
+        if (cancelled) return;
+        setMushafDownloadSizeInfoByKey((prev) => ({ ...prev, [key]: sizeInfo }));
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        logger.warn(
+          'Failed to resolve mushaf download size',
+          { packId: mushafDownloadTarget.option.id, version: mushafDownloadTarget.option.version },
+          error as Error
+        );
+        setMushafDownloadSizeInfoByKey((prev) => ({ ...prev, [key]: null }));
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setEstimatingMushafDownloadKeys((prev) => {
+          const next = new Set(prev);
+          next.delete(key);
+          return next;
+        });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [mushafDownloadSizeInfoByKey, mushafDownloadTarget]);
 
   const handleCancelMushafPackInstall = React.useCallback(
     async (packId: MushafPackId) => {
@@ -545,37 +756,27 @@ export function SettingsSidebarContent({
   );
 
   const handleDeleteMushafPack = React.useCallback(
-    (packId: MushafPackId) => {
-      const option = findMushafOption(packId);
-      if (!option) return;
-
-      Alert.alert(
-        'Delete mushaf download?',
-        `This removes ${option.name} from local storage.`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Delete',
-            style: 'destructive',
-            onPress: () => {
-              void (async () => {
-                try {
-                  await deletePack(packId);
-                  if (settings.mushafId === packId) {
-                    applyMushafSelection(DEFAULT_MUSHAF_ID);
-                  }
-                } catch (error) {
-                  const message = error instanceof Error ? error.message : String(error);
-                  Alert.alert('Delete failed', message);
-                }
-              })();
-            },
-          },
-        ]
-      );
+    async (packId: MushafPackId) => {
+      try {
+        await deletePack(packId);
+        if (settings.mushafId === packId) {
+          applyMushafSelection(DEFAULT_MUSHAF_ID);
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        Alert.alert('Delete failed', message);
+      }
     },
     [applyMushafSelection, deletePack, settings.mushafId]
   );
+
+  const handleConfirmMushafPackDelete = React.useCallback(() => {
+    if (!mushafDeleteTarget) return;
+
+    const packId = mushafDeleteTarget.option.id;
+    setMushafDeleteTargetId(null);
+    void handleDeleteMushafPack(packId);
+  }, [handleDeleteMushafPack, mushafDeleteTarget]);
 
   const goBack = React.useCallback(() => {
     closePanel();
@@ -600,6 +801,24 @@ export function SettingsSidebarContent({
     if (!activeTabOverride) return;
     setActiveTab(activeTabOverride);
   }, [activeTabOverride]);
+
+  const tajweedToggleAccessory = isTajweedDownloading ? (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="Cancel Tajweed Colors download"
+      hitSlop={8}
+      onPress={() => void handleCancelMushafPackInstall(TAJWEED_MUSHAF_ID)}
+      style={({ pressed }) => ({ opacity: pressed ? 0.72 : 1 })}
+    >
+      <ResourceDownloadAction
+        status={tajweedDownloadStatus}
+        progress={tajweedDownloadProgress}
+        isSelected={false}
+        isDark={isDark}
+        tintColor={palette.tint}
+      />
+    </Pressable>
+  ) : undefined;
 
   const tafsirSection = showTafsirSetting ? (
     <CollapsibleSection
@@ -861,7 +1080,11 @@ export function SettingsSidebarContent({
                     ? {
                         label: effectiveMushafStatus === 'failed' ? 'Retry install' : 'Install',
                         onPress: () => {
-                          void handleInstallMushafPack(item.option.id);
+                          if (item.option.id === TAJWEED_MUSHAF_ID) {
+                            previousMushafIdRef.current = settings.mushafId;
+                            setEnableTajweedAfterDownload(true);
+                          }
+                          setMushafDownloadTargetId(item.option.id);
                         },
                         disabled: item.isBusy || hasActiveMushafJob,
                         tone: 'accent' as const,
@@ -884,7 +1107,7 @@ export function SettingsSidebarContent({
                     : item.isInstalled && !item.isBundled
                     ? {
                         label: 'Delete',
-                        onPress: () => handleDeleteMushafPack(item.option.id),
+                        onPress: () => setMushafDeleteTargetId(item.option.id),
                         disabled: item.isBusy,
                         tone: 'danger' as const,
                       }
@@ -981,7 +1204,13 @@ export function SettingsSidebarContent({
                               value={selectedWordLanguageName || 'Select'}
                               onPress={() => openPanel('word-language')}
                             />
-                            <ToggleRow label="Tajweed Colors" value={settings.tajweed} onChange={toggleTajweed} />
+                            <ToggleRow
+                              disabled={isTajweedDownloading}
+                              label="Tajweed Colors"
+                              value={settings.tajweed}
+                              rightElement={tajweedToggleAccessory}
+                              onChange={toggleTajweed}
+                            />
                           </View>
                         </CollapsibleSection>
 
@@ -1086,6 +1315,36 @@ export function SettingsSidebarContent({
           {subPanel}
         </Animated.View>
       ) : null}
+
+      <ResourceConfirmModal
+        visible={mushafDownloadTarget !== null}
+        title="Download mushaf pack?"
+        resourceName={mushafDownloadTarget?.option.name ?? null}
+        detailLabel={mushafDownloadDetailLabel}
+        isDetailLoading={isEstimatingMushafDownloadSize}
+        description="This downloads the mushaf pack."
+        confirmLabel="Download"
+        mutedColor={palette.muted}
+        tintColor={palette.tint}
+        onConfirm={handleConfirmMushafPackDownload}
+        onClose={() => {
+          setMushafDownloadTargetId(null);
+          setEnableTajweedAfterDownload(false);
+        }}
+      />
+
+      <ResourceConfirmModal
+        visible={mushafDeleteTarget !== null}
+        title="Delete mushaf download?"
+        resourceName={mushafDeleteTarget?.option.name ?? null}
+        description="This removes the mushaf pack from local storage."
+        confirmLabel="Delete"
+        confirmTone="danger"
+        mutedColor={palette.muted}
+        tintColor={palette.tint}
+        onConfirm={handleConfirmMushafPackDelete}
+        onClose={() => setMushafDeleteTargetId(null)}
+      />
     </View>
   );
 }

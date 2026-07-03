@@ -22,6 +22,7 @@ import type {
 import {
   QCF_MADANI_V1_PACK,
   getDownloadableMushafPackDefinition,
+  getExactPackPageFontFileName,
   getExactPackPageFontRelativePath,
   getSharedPackFontRelativePath,
   type DownloadableMushafPackDefinition,
@@ -586,6 +587,33 @@ function mergeRemoteFileDescriptors(
   return resolvedFiles;
 }
 
+function manifestIncludesExpectedDownloadablePackAssets(
+  pack: DownloadableMushafPackDefinition,
+  manifest: MushafPackManifest
+): boolean {
+  if (manifest.packId !== pack.packId || manifest.version.trim() !== pack.version.trim()) {
+    return false;
+  }
+
+  if (!pack.qcfVersion) {
+    return true;
+  }
+
+  for (const pageNumber of [1, pack.totalPages]) {
+    const relativePath = getExactPackPageFontRelativePath(pack.packId, pageNumber);
+    if (!relativePath) {
+      return false;
+    }
+
+    const isIncluded = (manifest.assetFiles ?? []).some((file) => file.file === relativePath);
+    if (!isIncluded) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 async function verifyDownloadedFileAsync(
   fileUri: string,
   options: {
@@ -732,7 +760,18 @@ export class MushafPackInstaller {
     const installKey = getInstallCancelKey(entry.packId, version);
 
     const existing = await this.installRegistry.get(entry.packId, version);
-    if (existing && (await this.fileStore.hasInstalledVersionAsync(entry.packId, version))) {
+    const existingManifest =
+      existing && (await this.fileStore.hasInstalledVersionAsync(entry.packId, version))
+        ? await this.fileStore.readInstalledManifestAsync(entry.packId, version)
+        : null;
+    const packDefinition = getDownloadableMushafPackDefinition(entry.packId);
+    const canReuseExisting =
+      existing &&
+      existingManifest &&
+      (!packDefinition ||
+        manifestIncludesExpectedDownloadablePackAssets(packDefinition, existingManifest));
+
+    if (canReuseExisting) {
       await this.downloadIndexRepository.upsert(content, {
         status: 'installed',
         progress: null,
@@ -930,7 +969,15 @@ export class MushafPackInstaller {
     const installKey = getInstallCancelKey(pack.packId, version);
 
     const existing = await this.installRegistry.get(pack.packId, version);
-    if (existing && (await this.fileStore.hasInstalledVersionAsync(pack.packId, version))) {
+    const existingManifest =
+      existing && (await this.fileStore.hasInstalledVersionAsync(pack.packId, version))
+        ? await this.fileStore.readInstalledManifestAsync(pack.packId, version)
+        : null;
+    if (
+      existing &&
+      existingManifest &&
+      manifestIncludesExpectedDownloadablePackAssets(pack, existingManifest)
+    ) {
       await this.downloadIndexRepository.upsert(content, {
         status: 'installed',
         progress: null,
@@ -1034,13 +1081,17 @@ export class MushafPackInstaller {
         }
 
         const fontBaseUrl = pack.pageFontBaseUrl;
+        const fontFileName = getExactPackPageFontFileName(pack.packId, pageNumber);
         if (!fontBaseUrl) {
           throw new Error('QCF Madani V1 font base URL is not configured');
+        }
+        if (!fontFileName) {
+          throw new Error(`Missing remote font file mapping for ${pack.packId} page ${pageNumber}`);
         }
 
         return {
           file: relativePath,
-          url: `${fontBaseUrl}/p${pageNumber}.woff2`,
+          url: `${fontBaseUrl}/${fontFileName}`,
         };
       }) : [];
 

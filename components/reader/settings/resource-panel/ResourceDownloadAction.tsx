@@ -27,11 +27,13 @@ function CompactProgressRing({
   tintColor,
   trackColor,
   crossColor,
+  isSelected,
 }: {
   percent: number;
   tintColor: string;
   trackColor: string;
   crossColor: string;
+  isSelected: boolean;
 }): React.JSX.Element {
   const size = 24;
   const strokeWidth = 3;
@@ -41,7 +43,14 @@ function CompactProgressRing({
   const strokeDashoffset = circumference - (clampedPercent / 100) * circumference;
 
   return (
-    <View className="h-8 w-8 items-center justify-center rounded-full border border-border/60 bg-interactive dark:border-border-dark/60 dark:bg-interactive-dark">
+    <View
+      className={[
+        'h-8 w-8 items-center justify-center rounded-full border',
+        isSelected
+          ? 'border-white/30 bg-white/15'
+          : 'border-border/60 bg-interactive dark:border-border-dark/60 dark:bg-interactive-dark',
+      ].join(' ')}
+    >
       <Svg width={size} height={size} style={{ transform: [{ rotate: '-90deg' }] }}>
         <Circle
           cx={size / 2}
@@ -89,7 +98,7 @@ export function ResourceDownloadAction({
   const isInstalled = status === 'installed';
   const isFailed = status === 'failed';
   const progressPercent = toProgressPercent(progress);
-  const destructiveColor = isSelected ? '#FFFFFF' : isDark ? '#F87171' : '#DC2626';
+  const destructiveColor = isDark ? '#F87171' : '#DC2626';
   const iconColor = isSelected ? '#FFFFFF' : tintColor;
   const trackColor = isSelected
     ? 'rgba(255,255,255,0.35)'
@@ -98,14 +107,21 @@ export function ResourceDownloadAction({
       : 'rgba(13,148,136,0.35)';
   const progressColor = isSelected ? '#FFFFFF' : tintColor;
   const crossColor = isSelected ? '#FFFFFF' : tintColor;
+  const selectedDestructiveSurfaceStyle = isSelected
+    ? {
+        backgroundColor: 'rgba(255,255,255,0.92)',
+        borderColor: 'rgba(255,255,255,0.82)',
+      }
+    : undefined;
 
   if (isDeleting) {
     return (
       <View
         className={[
           'h-8 w-8 items-center justify-center rounded-full border',
-          isSelected ? 'border-white/30 bg-white/15' : 'border-error/40 bg-error/10',
+          isSelected ? '' : 'border-error/40 bg-error/10',
         ].join(' ')}
+        style={selectedDestructiveSurfaceStyle}
       >
         <ActivityIndicator size="small" color={destructiveColor} />
       </View>
@@ -119,6 +135,7 @@ export function ResourceDownloadAction({
         tintColor={progressColor}
         trackColor={trackColor}
         crossColor={crossColor}
+        isSelected={isSelected}
       />
     );
   }
@@ -128,8 +145,9 @@ export function ResourceDownloadAction({
       <View
         className={[
           'h-8 w-8 items-center justify-center rounded-full border',
-          isSelected ? 'border-white/30 bg-white/15' : 'border-error/40 bg-error/10',
+          isSelected ? '' : 'border-error/40 bg-error/10',
         ].join(' ')}
+        style={selectedDestructiveSurfaceStyle}
       >
         <Trash2 color={destructiveColor} size={16} strokeWidth={2.25} />
       </View>

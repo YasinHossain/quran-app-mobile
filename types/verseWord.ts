@@ -7,8 +7,9 @@
 export interface VerseWord {
   id: number;
   uthmani: string;
+  codeV2?: string;
+  pageNumber?: number;
   translationText?: string;
   charTypeName?: string;
   position?: number;
 }
-

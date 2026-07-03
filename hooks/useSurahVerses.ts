@@ -11,8 +11,11 @@ import {
 } from '@/lib/surah/offlineSurahPageCache';
 import { useChapters } from '@/hooks/useChapters';
 import { primeVerseDetailsCache } from '@/lib/verse/verseDetailsCache';
+import { TAJWEED_MUSHAF_ID } from '@/data/mushaf/options';
 import type { OfflineVerseWithTranslations } from '@/src/core/domain/repositories/ITranslationOfflineStore';
 import { apiFetch } from '@/src/core/infrastructure/api/apiFetch';
+import { container } from '@/src/core/infrastructure/di/container';
+import { logger } from '@/src/core/infrastructure/monitoring/logger';
 
 import type { VerseWord } from '@/types';
 
@@ -21,6 +24,12 @@ export type SurahVerse = {
   verse_number: number;
   verse_key: string;
   text_uthmani?: string;
+  tajweedGlyphRuns?: Array<{
+    fontFamily: string;
+    fontFileUri: string;
+    glyphs: string[];
+  }>;
+  tajweedText?: string;
   translations?: Array<{ resource_id: number; resource_name?: string; text: string }>;
   words?: VerseWord[];
   translationTexts: string[];
@@ -300,9 +309,17 @@ function getWordsSignature(verse: SurahVerse | undefined): string {
         word.position ?? '',
         word.charTypeName ?? '',
         word.uthmani,
+        word.codeV2 ?? '',
+        word.pageNumber ?? '',
         word.translationText ?? '',
       ].join(':')
     )
+    .join('\u0000');
+}
+
+function getTajweedGlyphRunsSignature(verse: SurahVerse | undefined): string {
+  return (verse?.tajweedGlyphRuns ?? [])
+    .map((run) => [run.fontFamily, run.fontFileUri, run.glyphs.join('')].join(':'))
     .join('\u0000');
 }
 
@@ -315,6 +332,8 @@ function arePageVersesEquivalent(current: SurahVerse[], incoming: SurahVerse[]):
 
     if (currentVerse?.verse_key !== incomingVerse?.verse_key) return false;
     if (currentVerse?.text_uthmani !== incomingVerse?.text_uthmani) return false;
+    if ((currentVerse?.tajweedText ?? '') !== (incomingVerse?.tajweedText ?? '')) return false;
+    if (getTajweedGlyphRunsSignature(currentVerse) !== getTajweedGlyphRunsSignature(incomingVerse)) return false;
     if (getWordsSignature(currentVerse) !== getWordsSignature(incomingVerse)) return false;
     if (getTranslationItemsSignature(currentVerse) !== getTranslationItemsSignature(incomingVerse)) {
       return false;
@@ -322,6 +341,52 @@ function arePageVersesEquivalent(current: SurahVerse[], incoming: SurahVerse[]):
   }
 
   return true;
+}
+
+type TajweedVersePayload = {
+  glyphRuns: NonNullable<SurahVerse['tajweedGlyphRuns']>;
+  text?: string | undefined;
+};
+
+function applyTajweedTextMapToPages(
+  pagesByNumber: Record<number, SurahVerse[]>,
+  tajweedTextByVerseKey: Map<string, TajweedVersePayload>
+): Record<number, SurahVerse[]> {
+  if (tajweedTextByVerseKey.size === 0) return pagesByNumber;
+
+  let didChange = false;
+  const nextPages: Record<number, SurahVerse[]> = {};
+
+  for (const [pageNumber, verses] of Object.entries(pagesByNumber)) {
+    let didChangePage = false;
+    const nextVerses = verses.map((verse) => {
+      const tajweedPayload = tajweedTextByVerseKey.get(verse.verse_key);
+      if (
+        !tajweedPayload ||
+        (
+          verse.tajweedText === tajweedPayload.text &&
+          getTajweedGlyphRunsSignature(verse) ===
+            tajweedPayload.glyphRuns
+              .map((run) => [run.fontFamily, run.fontFileUri, run.glyphs.join('')].join(':'))
+              .join('\u0000')
+        )
+      ) {
+        return verse;
+      }
+
+      didChange = true;
+      didChangePage = true;
+      return {
+        ...verse,
+        tajweedGlyphRuns: tajweedPayload.glyphRuns,
+        tajweedText: tajweedPayload.text,
+      };
+    });
+
+    nextPages[Number(pageNumber)] = didChangePage ? nextVerses : verses;
+  }
+
+  return didChange ? nextPages : pagesByNumber;
 }
 
 function pagesBelongToChapter(
@@ -363,6 +428,7 @@ export function useSurahVerses({
   perPage = DEFAULT_SURAH_VERSES_PER_PAGE,
   includeWords = false,
   includeWordTranslations = false,
+  tajweed = false,
   initialVerseNumber,
   enabled = true,
 }: {
@@ -372,6 +438,7 @@ export function useSurahVerses({
   perPage?: number;
   includeWords?: boolean;
   includeWordTranslations?: boolean;
+  tajweed?: boolean;
   initialVerseNumber?: number;
   enabled?: boolean;
 }): {
@@ -429,7 +496,7 @@ export function useSurahVerses({
       perPage,
       verseCount,
     });
-  }, [enabled, chapterNumber, translationsKey, perPage, verseCount]);
+  }, [enabled, tajweed, chapterNumber, translationsKey, perPage, verseCount]);
 
   const initialHasLoadedContent = Object.keys(initialPagesByNumber).length > 0;
 
@@ -442,6 +509,7 @@ export function useSurahVerses({
     initialPagesByNumber
   );
   const [pendingPageCount, setPendingPageCount] = React.useState(0);
+  const [tajweedTextLookupKey, setTajweedTextLookupKey] = React.useState('');
 
   const pagesByNumberRef = React.useRef<Record<number, SurahVerse[]>>(initialPagesByNumber);
   const totalPagesRef = React.useRef(
@@ -451,6 +519,7 @@ export function useSurahVerses({
   );
   const requestTokenRef = React.useRef(0);
   const inFlightPagesRef = React.useRef(new Map<number, Promise<void>>());
+  const tajweedTextByVerseKeyRef = React.useRef<Map<string, TajweedVersePayload>>(new Map());
 
   const dataSourceRef = React.useRef<'network' | 'offline'>(
     initialHasLoadedContent ? 'offline' : 'network'
@@ -460,17 +529,20 @@ export function useSurahVerses({
   const [prevTranslationsKey, setPrevTranslationsKey] = React.useState(translationsKey);
   const [prevIncludeWords, setPrevIncludeWords] = React.useState(includeWords);
   const [prevIncludeWordTranslations, setPrevIncludeWordTranslations] = React.useState(includeWordTranslations);
+  const [prevTajweed, setPrevTajweed] = React.useState(tajweed);
 
   if (
     chapterNumber !== prevChapterNumber ||
     translationsKey !== prevTranslationsKey ||
     includeWords !== prevIncludeWords ||
-    includeWordTranslations !== prevIncludeWordTranslations
+    includeWordTranslations !== prevIncludeWordTranslations ||
+    tajweed !== prevTajweed
   ) {
     setPrevChapterNumber(chapterNumber);
     setPrevTranslationsKey(translationsKey);
     setPrevIncludeWords(includeWords);
     setPrevIncludeWordTranslations(includeWordTranslations);
+    setPrevTajweed(tajweed);
 
     const warmOfflinePages = getInitialOfflinePagesSnapshot({
       enabled,
@@ -490,6 +562,8 @@ export function useSurahVerses({
     setOfflineNotInstalled(false);
     setIsRefreshing(false);
     setIsLoadingMore(false);
+    setTajweedTextLookupKey('');
+    tajweedTextByVerseKeyRef.current = new Map();
     dataSourceRef.current = hasWarmOfflinePages ? 'offline' : 'network';
     inFlightPagesRef.current.clear();
   }
@@ -521,6 +595,98 @@ export function useSurahVerses({
   }, [initialVerseNumber]);
 
   React.useEffect(() => {
+    if (!tajweed) {
+      tajweedTextByVerseKeyRef.current = new Map();
+      setTajweedTextLookupKey('');
+      return;
+    }
+
+    const firstPage = chapter?.pages?.[0];
+    const lastPage = chapter?.pages?.[1];
+    if (
+      !Number.isFinite(chapterNumber) ||
+      chapterNumber <= 0 ||
+      typeof firstPage !== 'number' ||
+      typeof lastPage !== 'number' ||
+      !Number.isFinite(firstPage) ||
+      !Number.isFinite(lastPage)
+    ) {
+      return;
+    }
+
+    const startPage = Math.max(1, Math.trunc(firstPage));
+    const endPage = Math.max(startPage, Math.trunc(lastPage));
+    const lookupKey = `${chapterNumber}:${startPage}-${endPage}`;
+    if (tajweedTextLookupKey === lookupKey) return;
+
+    let cancelled = false;
+
+    void (async () => {
+      const repository = container.getMushafPageRepository();
+      const nextLookup = new Map<string, TajweedVersePayload>();
+
+      for (let pageNumber = startPage; pageNumber <= endPage; pageNumber += 1) {
+        const pageData = await repository.getPage({
+          packId: TAJWEED_MUSHAF_ID,
+          pageNumber,
+        });
+        const fontFamily = pageData.rendererAssets?.pageFontFamily;
+        const fontFileUri = pageData.rendererAssets?.pageFontFileUri;
+
+        for (const verse of pageData.verses) {
+          if (!verse.verseKey.startsWith(`${chapterNumber}:`)) continue;
+          const glyphs =
+            fontFamily && fontFileUri
+              ? verse.words
+                  .slice()
+                  .sort((a, b) => a.position - b.position)
+                  .map((word) => word.codeV2?.trim() ?? '')
+                  .filter((glyph) => glyph.length > 0)
+              : [];
+          const tajweedText = verse.textUthmaniTajweed?.trim();
+          if (glyphs.length > 0 || tajweedText) {
+            const existing = nextLookup.get(verse.verseKey);
+            nextLookup.set(verse.verseKey, {
+              glyphRuns: [
+                ...(existing?.glyphRuns ?? []),
+                ...(fontFamily && fontFileUri && glyphs.length > 0
+                  ? [{ fontFamily, fontFileUri, glyphs }]
+                  : []),
+              ],
+              text: existing?.text ?? tajweedText,
+            });
+          }
+        }
+      }
+
+      if (cancelled) return;
+      tajweedTextByVerseKeyRef.current = nextLookup;
+      setTajweedTextLookupKey(lookupKey);
+
+      if (nextLookup.size > 0) {
+        setPagesByNumber((previous) => {
+          const next = applyTajweedTextMapToPages(previous, nextLookup);
+          pagesByNumberRef.current = next;
+          return next;
+        });
+      }
+    })().catch((error) => {
+      if (cancelled) return;
+      tajweedTextByVerseKeyRef.current = new Map();
+      setTajweedTextLookupKey('');
+      logger.warn(
+        'Failed to load local Tajweed verse text from mushaf pack',
+        { chapterNumber, packId: TAJWEED_MUSHAF_ID },
+        error as Error
+      );
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [chapter?.pages, chapterNumber, tajweed, tajweedTextLookupKey]);
+
+  React.useEffect(() => {
     totalPagesRef.current =
       verseCount > 0 && Number.isFinite(perPage) && perPage > 0
         ? Math.max(1, Math.ceil(verseCount / perPage))
@@ -547,6 +713,7 @@ export function useSurahVerses({
           verse_key: verse.verse_key,
           text_uthmani: verse.text_uthmani,
           translations: verse.translations,
+          words: buildVerseWords(verse.words),
           translationItems,
           translationTexts,
         };
@@ -556,14 +723,21 @@ export function useSurahVerses({
 
   const setPageData = React.useCallback((pageNumber: number, pageVerses: SurahVerse[]) => {
     if (!pageVerses.length) return;
+    const enrichedPageVerses =
+      tajweedTextByVerseKeyRef.current.size > 0
+        ? (applyTajweedTextMapToPages(
+            { [pageNumber]: pageVerses },
+            tajweedTextByVerseKeyRef.current
+          )[pageNumber] ?? pageVerses)
+        : pageVerses;
 
     setPagesByNumber((prev) => {
       const existing = prev[pageNumber];
-      if (existing && arePageVersesEquivalent(existing, pageVerses)) {
+      if (existing && arePageVersesEquivalent(existing, enrichedPageVerses)) {
         return prev;
       }
 
-      const next = { ...prev, [pageNumber]: pageVerses };
+      const next = { ...prev, [pageNumber]: enrichedPageVerses };
       pagesByNumberRef.current = next;
       return next;
     });
@@ -579,11 +753,15 @@ export function useSurahVerses({
     (offlineVerses: OfflineVerseWithTranslations[]): void => {
       if (!offlineVerses.length) return;
 
-      const nextPages = buildOfflinePagesByNumber({
+      const builtPages = buildOfflinePagesByNumber({
         offlineVerses,
         translationIds: resolvedTranslationIds,
         perPage,
       });
+      const nextPages =
+        tajweedTextByVerseKeyRef.current.size > 0
+          ? applyTajweedTextMapToPages(builtPages, tajweedTextByVerseKeyRef.current)
+          : builtPages;
 
       if (Object.keys(nextPages).length === 0) return;
 
@@ -680,6 +858,7 @@ export function useSurahVerses({
       perPage,
       resolvedTranslationIds,
       setPageData,
+      tajweed,
       verseCount,
     ]
   );
@@ -739,6 +918,7 @@ export function useSurahVerses({
     perPage,
     resolvedTranslationIds,
     setOfflineSurahData,
+    tajweed,
     verseCount,
   ]);
 
@@ -772,8 +952,16 @@ export function useSurahVerses({
             `/verses/by_chapter/${chapterNumber}`,
             {
               language: resolvedWordLang,
-              words: 'false',
+              words: includeWords ? 'true' : 'false',
               fields: 'text_uthmani',
+              ...(includeWords
+                ? {
+                    word_fields: 'text_uthmani',
+                  }
+                : {}),
+              ...(includeWordTranslations
+                ? { word_translation_language: resolvedWordLang }
+                : {}),
               ...(translationsKey ? { translations: translationsKey } : {}),
               per_page: perPage.toString(),
               page: pageNumber.toString(),
@@ -829,6 +1017,7 @@ export function useSurahVerses({
       resolvedTranslationIds,
       resolvedWordLang,
       setPageData,
+      tajweed,
       translationsKey,
     ]
   );
@@ -884,22 +1073,26 @@ export function useSurahVerses({
         perPage,
         verseCount,
       });
-      const hasWarmOfflinePages = Object.keys(warmOfflinePages).length > 0;
+      const enrichedWarmOfflinePages =
+        tajweedTextByVerseKeyRef.current.size > 0
+          ? applyTajweedTextMapToPages(warmOfflinePages, tajweedTextByVerseKeyRef.current)
+          : warmOfflinePages;
+      const hasWarmOfflinePages = Object.keys(enrichedWarmOfflinePages).length > 0;
 
       if (hasWarmOfflinePages) {
         dataSourceRef.current = 'offline';
-        pagesByNumberRef.current = warmOfflinePages;
+        pagesByNumberRef.current = enrichedWarmOfflinePages;
         setPagesByNumber((previous) => {
           const previousPageNumbers = Object.keys(previous);
-          const nextPageNumbers = Object.keys(warmOfflinePages);
-          if (previousPageNumbers.length !== nextPageNumbers.length) return warmOfflinePages;
+          const nextPageNumbers = Object.keys(enrichedWarmOfflinePages);
+          if (previousPageNumbers.length !== nextPageNumbers.length) return enrichedWarmOfflinePages;
 
           for (const pageNumber of nextPageNumbers) {
             const numericPageNumber = Number(pageNumber);
             const previousPage = previous[numericPageNumber];
-            const nextPage = warmOfflinePages[numericPageNumber];
+            const nextPage = enrichedWarmOfflinePages[numericPageNumber];
             if (!previousPage || !nextPage || !arePageVersesEquivalent(previousPage, nextPage)) {
-              return warmOfflinePages;
+              return enrichedWarmOfflinePages;
             }
           }
 
@@ -975,6 +1168,7 @@ export function useSurahVerses({
       enabled,
       fetchPage,
       includeWords,
+      tajweed,
       loadOfflineFirstData,
       perPage,
       resolvedTranslationIds,

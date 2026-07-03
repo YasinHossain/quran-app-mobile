@@ -100,6 +100,7 @@ This document lists reusable UI components currently available in the codebase s
 | --- | --- | --- |
 | `SurahHeaderCard` | Surah intro/header block (calligraphy + metadata), web-like. | `components/surah/SurahHeaderCard.tsx` |
 | `VerseCard` | Separated verse row (verse key + Arabic + translations + ellipsis trigger) with optional subtle highlight for the active audio verse. | `components/surah/VerseCard.tsx` |
+| `TajweedNativeText` | Native Surah verse-card Tajweed renderer; loads the installed QCF Tajweed V4 page font with Expo Font and renders local `codeV2` glyphs in React Native `Text`, with tagged Uthmani text as a fallback. | `components/surah/TajweedNativeText.tsx` |
 | `VerseScrubber` | Thin Surah-specific wrapper around `IndexScrubber` for verse-number scrubbing in the translation view. | `components/surah/VerseScrubber.tsx` |
 | `WordByWordVerse` | Word-by-word verse renderer (per-word Arabic with optional per-word translation). When the audio player is visible, words are tap-to-seek and the active word is highlighted. | `components/surah/WordByWordVerse.tsx` |
 | `useVerseAudioWordSync` | Hook that wires QDC word timing segments to the verse renderer (active word highlight + tap-to-seek). | `components/surah/useVerseAudioWordSync.ts` |

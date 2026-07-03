@@ -283,6 +283,7 @@ export default function SurahScreen(): React.JSX.Element {
     wordLang: settings.wordLang,
     includeWords: Boolean(!isMushafView),
     includeWordTranslations: Boolean(!isMushafView && settings.showByWords),
+    tajweed: Boolean(!isMushafView && settings.tajweed),
     initialVerseNumber: normalizedStartVerse,
     enabled: !isMushafView,
   });
@@ -710,6 +711,7 @@ export default function SurahScreen(): React.JSX.Element {
       translationFontSize: settings.translationFontSize,
       arabicFontFace: settings.arabicFontFace,
       showByWords: settings.showByWords,
+      tajweed: settings.tajweed,
       audioActiveVerseKey: audio.activeVerseKey,
       audioIsVisible: audio.isVisible,
       pagesSignature,
@@ -720,6 +722,7 @@ export default function SurahScreen(): React.JSX.Element {
       settings.arabicFontFace,
       settings.arabicFontSize,
       settings.showByWords,
+      settings.tajweed,
       settings.translationFontSize,
       audio.activeVerseKey,
       audio.isVisible,
@@ -832,6 +835,9 @@ export default function SurahScreen(): React.JSX.Element {
           arabicFontFace={settings.arabicFontFace}
           translationFontSize={settings.translationFontSize}
           showByWords={settings.showByWords}
+          tajweed={settings.tajweed}
+          tajweedGlyphRuns={verse.tajweedGlyphRuns}
+          tajweedText={verse.tajweedText}
           onOpenActions={() =>
             openVerseActions({
               verseKey: verse.verse_key,
@@ -851,6 +857,7 @@ export default function SurahScreen(): React.JSX.Element {
       settings.arabicFontFace,
       settings.arabicFontSize,
       settings.showByWords,
+      settings.tajweed,
       settings.translationFontSize,
       translationsById,
       verseAudioWordSync,

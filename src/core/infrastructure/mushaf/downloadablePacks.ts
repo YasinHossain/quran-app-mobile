@@ -15,6 +15,7 @@ export interface DownloadableMushafPackDefinition {
   qcfVersion?: MushafQcfVersion | undefined;
   pageDataApiBaseUrl?: string | undefined;
   pageFontBaseUrl?: string | undefined;
+  pageFontExtension?: 'woff2' | 'woff' | 'ttf' | undefined;
 }
 
 export const QCF_MADANI_V1_PACK: DownloadableMushafPackDefinition = {
@@ -90,7 +91,7 @@ export const DOWNLOADABLE_MUSHAF_PACKS: Record<
   },
   'qcf-tajweed-v4': {
     packId: 'qcf-tajweed-v4',
-    version: 'v4',
+    version: 'v4-ttf',
     renderer: 'webview',
     script: 'tajweed',
     lines: 15,
@@ -100,7 +101,8 @@ export const DOWNLOADABLE_MUSHAF_PACKS: Record<
     apiMushafId: 19,
     qcfVersion: 'v4',
     pageDataApiBaseUrl: 'https://api.quran.com/api/v4/verses/by_page',
-    pageFontBaseUrl: 'https://verses.quran.foundation/fonts/quran/hafs/v4/colrv1/woff2',
+    pageFontBaseUrl: 'https://verses.quran.foundation/fonts/quran/hafs/v4/colrv1/ttf',
+    pageFontExtension: 'ttf',
   },
 };
 
@@ -123,7 +125,16 @@ export function getExactPackPageFontRelativePath(
     return null;
   }
 
-  return `fonts/p${Math.trunc(pageNumber)}.woff2`;
+  return `fonts/p${Math.trunc(pageNumber)}.${definition.pageFontExtension ?? 'woff2'}`;
+}
+
+export function getExactPackPageFontFileName(packId: MushafPackId, pageNumber: number): string | null {
+  const definition = getDownloadableMushafPackDefinition(packId);
+  if (!definition?.qcfVersion || !Number.isFinite(pageNumber) || pageNumber < 1) {
+    return null;
+  }
+
+  return `p${Math.trunc(pageNumber)}.${definition.pageFontExtension ?? 'woff2'}`;
 }
 
 export function getExactPackPageFontFamily(

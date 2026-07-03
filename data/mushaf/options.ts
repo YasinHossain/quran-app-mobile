@@ -80,7 +80,7 @@ export const MUSHAF_OPTIONS: MushafOption[] = [
   {
     id: 'qcf-tajweed-v4',
     packId: 'qcf-tajweed-v4',
-    version: 'v4',
+    version: 'v4-ttf',
     channel: 'download',
     renderer: 'webview',
     name: 'Tajweed Colors',

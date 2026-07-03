@@ -83,7 +83,10 @@ const EXACT_PREVIEW_LINES = {
 function colorizeTajweedLine(lineText: string): string {
   const colors = ['#1D9A6C', '#D14343', '#2F6FDB', '#8A5B16'];
   return Array.from(lineText)
-    .map((glyph, index) => `<span style="color:${colors[index % colors.length]}">${glyph}</span>`)
+    .map((glyph, index) => {
+      const colorIndex = index % 9 === 2 || index % 11 === 5 ? index % colors.length : -1;
+      return colorIndex >= 0 ? `<span style="color:${colors[colorIndex]}">${glyph}</span>` : glyph;
+    })
     .join('');
 }
 
@@ -159,7 +162,7 @@ function buildExactPreviewHtml(packId: ExactPreviewPackId, color: string): strin
 </html>`;
 }
 
-function ExactMushafPreview({
+const ExactMushafPreview = React.memo(function ExactMushafPreview({
   color,
   packId,
 }: {
@@ -188,7 +191,7 @@ function ExactMushafPreview({
       style={{ backgroundColor: 'transparent', height: 84, width: '100%' }}
     />
   );
-}
+});
 const cardShadow = {
   ...Platform.select({
     ios: {

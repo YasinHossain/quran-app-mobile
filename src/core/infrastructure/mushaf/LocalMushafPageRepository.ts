@@ -275,15 +275,10 @@ function buildRendererAssets(
   }
 
   const fontRelativePath = getExactPackPageFontRelativePath(manifest.packId, pageNumber);
-  const installedPageFontFileUri =
+  const pageFontFileUri =
     fontRelativePath && manifestIncludesAsset(manifest, fontRelativePath)
       ? fileStore.getInstalledFileUri(manifest.packId, manifest.version, fontRelativePath)
       : undefined;
-  const pageFontFileUri =
-    installedPageFontFileUri ??
-    (packDefinition.pageFontBaseUrl
-      ? `${packDefinition.pageFontBaseUrl.replace(/\/+$/, '')}/p${Math.trunc(pageNumber)}.woff2`
-      : undefined);
 
   return {
     packDirectoryUri,

@@ -581,6 +581,31 @@ function buildShellDocumentHtml({
             .trim();
         }
 
+        function escapeCssString(value) {
+          return String(value).replace(/\\\\/g, '\\\\\\\\').replace(/'/g, "\\\\'");
+        }
+
+        function ensureTajweedDarkPalette(qcfFontFamily) {
+          if (${theme === 'dark' ? 'false' : 'true'} || !qcfFontFamily) {
+            return null;
+          }
+
+          var styleId = 'tajweed-dark-palette-' + String(qcfFontFamily).replace(/[^a-zA-Z0-9_-]/g, '-');
+          if (!document.getElementById(styleId)) {
+            var style = document.createElement('style');
+            style.id = styleId;
+            style.textContent =
+              "@font-palette-values --tajweed-dark-palette-" +
+              styleId +
+              " { font-family: '" +
+              escapeCssString(qcfFontFamily) +
+              "'; override-colors: 0 ${palette.text}, 1 ${palette.text}; }";
+            document.head.appendChild(style);
+          }
+
+          return '--tajweed-dark-palette-' + styleId;
+        }
+
         function resolveVerseKey(word) {
           if (typeof word.verseKey === 'string' && word.verseKey.trim()) {
             return word.verseKey.trim();
@@ -950,6 +975,15 @@ function buildShellDocumentHtml({
           if (shouldUseQcfGlyph) {
             wordNode.classList.add('qcf-word');
             wordNode.style.fontFamily = "'" + String(qcfFontFamily).replace(/'/g, "\\\\'") + "', serif";
+            wordNode.style.color = 'var(--text)';
+            wordNode.style.webkitTextFillColor = 'currentColor';
+            if (qcfVersion === 'v4') {
+              wordNode.classList.add('tajweed-word');
+              var tajweedPalette = ensureTajweedDarkPalette(qcfFontFamily);
+              if (tajweedPalette) {
+                wordNode.style.setProperty('font-palette', tajweedPalette);
+              }
+            }
             wordNode.innerHTML = glyphCode;
           } else {
             if (!qcfVersion && qcfFontFamily) {

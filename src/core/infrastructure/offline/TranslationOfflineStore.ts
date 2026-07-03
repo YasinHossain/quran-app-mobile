@@ -1,4 +1,5 @@
 import { getAppDbAsync } from '@/src/core/infrastructure/db';
+import type { SQLiteDatabase } from 'expo-sqlite';
 import juzData from '../../../data/juz.json';
 
 import type {
@@ -91,46 +92,8 @@ export class TranslationOfflineStore implements ITranslationOfflineStore {
 
     if (verses.length === 0 && translations.length === 0) return;
 
-    await db.withTransactionAsync(async () => {
-      const upsertVerseStmt = await db.prepareAsync(`
-        INSERT INTO offline_verses(verse_key, surah, ayah, arabic_uthmani, words_json)
-        VALUES (?, ?, ?, ?, ?)
-        ON CONFLICT(verse_key) DO UPDATE SET
-          surah = excluded.surah,
-          ayah = excluded.ayah,
-          arabic_uthmani = excluded.arabic_uthmani,
-          words_json = COALESCE(excluded.words_json, offline_verses.words_json);
-      `);
-
-      const upsertTranslationStmt = await db.prepareAsync(`
-        INSERT INTO offline_translations(translation_id, verse_key, text)
-        VALUES (?, ?, ?)
-        ON CONFLICT(translation_id, verse_key) DO UPDATE SET
-          text = excluded.text;
-      `);
-
-      try {
-        for (const verse of verses) {
-          await upsertVerseStmt.executeAsync([
-            verse.verseKey,
-            verse.surahId,
-            verse.ayahNumber,
-            verse.arabicUthmani,
-            verse.wordsJson ?? null,
-          ]);
-        }
-
-        for (const translation of translations) {
-          await upsertTranslationStmt.executeAsync([
-            translation.translationId,
-            translation.verseKey,
-            translation.text,
-          ]);
-        }
-      } finally {
-        await upsertVerseStmt.finalizeAsync();
-        await upsertTranslationStmt.finalizeAsync();
-      }
+    await db.withExclusiveTransactionAsync(async (txn) => {
+      await upsertVerseAndTranslationRows(txn, verses, translations);
     });
   }
 
@@ -518,34 +481,81 @@ export class TranslationOfflineStore implements ITranslationOfflineStore {
   async deleteTranslation(translationId: number): Promise<void> {
     const db = await getAppDbAsync();
 
-    await db.withTransactionAsync(async () => {
-      await db.runAsync('DELETE FROM offline_translations WHERE translation_id = ?', [translationId]);
-      await db.runAsync(`
-        DELETE FROM offline_verses
-        WHERE NOT EXISTS (
-          SELECT 1
-          FROM offline_translations t
-          WHERE t.verse_key = offline_verses.verse_key
-        );
-      `);
+    await db.withExclusiveTransactionAsync(async (txn) => {
+      await deleteTranslationRows(txn, translationId);
     });
   }
 
   async deleteWordTranslation(): Promise<void> {
     const db = await getAppDbAsync();
 
-    await db.withTransactionAsync(async () => {
-      await db.runAsync('UPDATE offline_verses SET words_json = NULL');
-      await db.runAsync(`
-        DELETE FROM offline_verses
-        WHERE NOT EXISTS (
-          SELECT 1
-          FROM offline_translations t
-          WHERE t.verse_key = offline_verses.verse_key
-        );
-      `);
+    await db.withExclusiveTransactionAsync(async (txn) => {
+      await txn.runAsync('UPDATE offline_verses SET words_json = NULL');
+      await deleteOrphanedVerseRows(txn);
     });
   }
+}
+
+async function upsertVerseAndTranslationRows(
+  db: SQLiteDatabase,
+  verses: OfflineVerseRowInput[],
+  translations: OfflineTranslationRowInput[]
+): Promise<void> {
+  const upsertVerseStmt = await db.prepareAsync(`
+    INSERT INTO offline_verses(verse_key, surah, ayah, arabic_uthmani, words_json)
+    VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(verse_key) DO UPDATE SET
+      surah = excluded.surah,
+      ayah = excluded.ayah,
+      arabic_uthmani = excluded.arabic_uthmani,
+      words_json = COALESCE(excluded.words_json, offline_verses.words_json);
+  `);
+
+  const upsertTranslationStmt = await db.prepareAsync(`
+    INSERT INTO offline_translations(translation_id, verse_key, text)
+    VALUES (?, ?, ?)
+    ON CONFLICT(translation_id, verse_key) DO UPDATE SET
+      text = excluded.text;
+  `);
+
+  try {
+    for (const verse of verses) {
+      await upsertVerseStmt.executeAsync([
+        verse.verseKey,
+        verse.surahId,
+        verse.ayahNumber,
+        verse.arabicUthmani,
+        verse.wordsJson ?? null,
+      ]);
+    }
+
+    for (const translation of translations) {
+      await upsertTranslationStmt.executeAsync([
+        translation.translationId,
+        translation.verseKey,
+        translation.text,
+      ]);
+    }
+  } finally {
+    await upsertVerseStmt.finalizeAsync();
+    await upsertTranslationStmt.finalizeAsync();
+  }
+}
+
+async function deleteTranslationRows(db: SQLiteDatabase, translationId: number): Promise<void> {
+  await db.runAsync('DELETE FROM offline_translations WHERE translation_id = ?', [translationId]);
+  await deleteOrphanedVerseRows(db);
+}
+
+async function deleteOrphanedVerseRows(db: SQLiteDatabase): Promise<void> {
+  await db.runAsync(`
+    DELETE FROM offline_verses
+    WHERE NOT EXISTS (
+      SELECT 1
+      FROM offline_translations t
+      WHERE t.verse_key = offline_verses.verse_key
+    );
+  `);
 }
 
 function normalizeTranslationIds(translationIds: number[]): number[] {
