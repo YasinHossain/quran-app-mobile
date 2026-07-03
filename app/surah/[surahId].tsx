@@ -284,6 +284,8 @@ export default function SurahScreen(): React.JSX.Element {
     includeWords: Boolean(!isMushafView),
     includeWordTranslations: Boolean(!isMushafView && settings.showByWords),
     tajweed: Boolean(!isMushafView && settings.tajweed),
+    tajweedTextColor: palette.text,
+    tajweedTheme: resolvedTheme,
     initialVerseNumber: normalizedStartVerse,
     enabled: !isMushafView,
   });
@@ -837,7 +839,6 @@ export default function SurahScreen(): React.JSX.Element {
           showByWords={settings.showByWords}
           tajweed={settings.tajweed}
           tajweedGlyphRuns={verse.tajweedGlyphRuns}
-          tajweedText={verse.tajweedText}
           onOpenActions={() =>
             openVerseActions({
               verseKey: verse.verse_key,

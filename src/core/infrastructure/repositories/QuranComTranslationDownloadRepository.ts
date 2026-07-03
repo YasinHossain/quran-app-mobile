@@ -16,6 +16,8 @@ type ApiVerse = {
     char_type_name?: string;
     text_uthmani?: string;
     text?: string;
+    code_v2?: string;
+    page_number?: number;
     translation?: { text?: string } | null;
   }>;
 };
@@ -50,7 +52,7 @@ export class QuranComTranslationDownloadRepository implements ITranslationDownlo
       {
         language: wordLang,
         words: 'true',
-        word_fields: 'text_uthmani,char_type_name,position',
+        word_fields: 'text_uthmani,char_type_name,position,code_v2,page_number',
         word_translation_language: wordLang,
         ...(translationId ? { translations: String(translationId) } : {}),
         fields: 'text_uthmani',
@@ -68,7 +70,7 @@ export class QuranComTranslationDownloadRepository implements ITranslationDownlo
 
         const rawWords = verse.words ?? [];
         const normalizedWords = rawWords
-          .filter((w) => w && w.char_type_name !== 'end')
+          .filter((w) => Boolean(w))
           .map((w) => {
             const uthmani = (w.text_uthmani ?? w.text ?? '').trim();
             return {
@@ -77,6 +79,11 @@ export class QuranComTranslationDownloadRepository implements ITranslationDownlo
               translationText: w.translation?.text || undefined,
               charTypeName: w.char_type_name || undefined,
               position: typeof w.position === 'number' ? w.position : undefined,
+              codeV2: typeof w.code_v2 === 'string' && w.code_v2.trim() ? w.code_v2 : undefined,
+              pageNumber:
+                typeof w.page_number === 'number' && Number.isFinite(w.page_number)
+                  ? w.page_number
+                  : undefined,
             };
           })
           .filter((w) => w.uthmani.length > 0);
@@ -103,4 +110,3 @@ export class QuranComTranslationDownloadRepository implements ITranslationDownlo
     };
   }
 }
-

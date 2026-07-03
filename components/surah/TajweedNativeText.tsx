@@ -6,122 +6,32 @@ import { StyleSheet, Text } from 'react-native';
 import Colors from '@/constants/Colors';
 import { useAppTheme } from '@/providers/ThemeContext';
 
-type TajweedGlyphRun = {
+export type TajweedGlyphRun = {
   fontFamily: string;
   fontFileUri: string;
   glyphs: string[];
 };
 
-type TajweedSegment = {
-  className?: string | undefined;
-  text: string;
-};
-
-const TAG_PATTERN = /<(tajweed|span)\s+[^>]*class=(?:"([^"]+)"|'([^']+)'|([^\s>]+))[^>]*>([\s\S]*?)<\/\1>/gi;
 const DARK_PALETTE_COLOR_INDICES = [0, 1];
 const darkPaletteFontCache = new Map<
   string,
   Promise<Pick<TajweedGlyphRun, 'fontFamily' | 'fontFileUri'> | null>
 >();
-
-const LIGHT_TAJWEED_COLORS: Record<string, string> = {
-  ham_wasl: '#8A8F98',
-  silent: '#8A8F98',
-  slnt: '#8A8F98',
-  laam_shamsiyah: '#D05A00',
-  madda_normal: '#2563EB',
-  madda_permissible: '#4F46E5',
-  madda_necessary: '#1D4ED8',
-  madda_obligatory: '#1E40AF',
-  qalaqah: '#DC2626',
-  qalqalah: '#DC2626',
-  ghunnah: '#B45309',
-  ikhfa: '#9333EA',
-  ikhafa: '#9333EA',
-  ikhfa_shafawi: '#C026D3',
-  iqlab: '#0891B2',
-  idgham_ghunnah: '#16A34A',
-  idgham_wo_ghunnah: '#15803D',
-  idgham_shafawi: '#16A34A',
-  idgham_mutajanisayn: '#0F766E',
-  idgham_mutaqaribayn: '#0D9488',
-  end: '#64748B',
-};
-
-const DARK_TAJWEED_COLORS: Record<string, string> = {
-  ham_wasl: '#AEB6C2',
-  silent: '#AEB6C2',
-  slnt: '#AEB6C2',
-  laam_shamsiyah: '#FB923C',
-  madda_normal: '#60A5FA',
-  madda_permissible: '#818CF8',
-  madda_necessary: '#93C5FD',
-  madda_obligatory: '#BFDBFE',
-  qalaqah: '#F87171',
-  qalqalah: '#F87171',
-  ghunnah: '#FBBF24',
-  ikhfa: '#C084FC',
-  ikhafa: '#C084FC',
-  ikhfa_shafawi: '#E879F9',
-  iqlab: '#22D3EE',
-  idgham_ghunnah: '#4ADE80',
-  idgham_wo_ghunnah: '#86EFAC',
-  idgham_shafawi: '#4ADE80',
-  idgham_mutajanisayn: '#5EEAD4',
-  idgham_mutaqaribayn: '#2DD4BF',
-  end: '#CBD5E1',
-};
-
-function decodeHtmlEntities(value: string): string {
-  return value
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&apos;/g, "'")
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&amp;/g, '&');
-}
-
-function stripTags(value: string): string {
-  return value.replace(/<[^>]+>/g, '');
-}
-
-function parseTajweedSegments(markup: string): TajweedSegment[] {
-  const segments: TajweedSegment[] = [];
-  let cursor = 0;
-  let match: RegExpExecArray | null;
-  TAG_PATTERN.lastIndex = 0;
-
-  while ((match = TAG_PATTERN.exec(markup)) !== null) {
-    if (match.index > cursor) {
-      segments.push({
-        text: decodeHtmlEntities(stripTags(markup.slice(cursor, match.index))),
-      });
-    }
-
-    const className = (match[2] ?? match[3] ?? match[4] ?? '').trim().split(/\s+/)[0];
-    const text = decodeHtmlEntities(stripTags(match[5] ?? ''));
-    if (text) {
-      segments.push({ className: className || undefined, text });
-    }
-
-    cursor = match.index + match[0].length;
-  }
-
-  if (cursor < markup.length) {
-    segments.push({
-      text: decodeHtmlEntities(stripTags(markup.slice(cursor))),
-    });
-  }
-
-  return segments.filter((segment) => segment.text.length > 0);
-}
+const fontLoadCache = new Map<string, Promise<void>>();
 
 function getRunsSignature(glyphRuns: TajweedGlyphRun[]): string {
   return glyphRuns
     .map((run) => [run.fontFamily, run.fontFileUri, run.glyphs.join('')].join(':'))
     .join('\u0000');
+}
+
+function normalizeGlyphRuns(glyphRuns: TajweedGlyphRun[]): TajweedGlyphRun[] {
+  return glyphRuns
+    .map((run) => ({
+      ...run,
+      glyphs: run.glyphs.filter((glyph) => glyph.trim().length > 0),
+    }))
+    .filter((run) => run.fontFamily.trim() && run.fontFileUri.trim() && run.glyphs.length > 0);
 }
 
 function readUint16(data: Uint8Array, offset: number): number {
@@ -236,6 +146,10 @@ function getDarkPaletteFontUri(fontFileUri: string, color: string): string | nul
   return `${FileSystem.cacheDirectory}tajweed-font-palettes/${key}.ttf`;
 }
 
+function getDarkPaletteFontFamily(fontFamily: string, color: string): string {
+  return `${fontFamily}-dark-${color.replace(/[^a-zA-Z0-9]/g, '')}`;
+}
+
 async function buildDarkPaletteFont(
   fontFamily: string,
   fontFileUri: string,
@@ -249,7 +163,7 @@ async function buildDarkPaletteFont(
     const darkFontFileUri = getDarkPaletteFontUri(fontFileUri, color);
     if (!darkFontFileUri) return null;
 
-    const darkFontFamily = `${fontFamily}-dark-${color.replace(/[^a-zA-Z0-9]/g, '')}`;
+    const darkFontFamily = getDarkPaletteFontFamily(fontFamily, color);
     const existing = await FileSystem.getInfoAsync(darkFontFileUri);
     if (!existing.exists) {
       const originalBase64 = await FileSystem.readAsStringAsync(fontFileUri, {
@@ -276,77 +190,90 @@ async function buildDarkPaletteFont(
   return promise;
 }
 
-function FallbackTajweedText({
-  arabicFontFamily,
-  fontSize,
-  lineHeight,
-  text,
-}: {
-  arabicFontFamily: string;
-  fontSize: number;
-  lineHeight: number;
-  text: string;
-}): React.JSX.Element {
-  const { resolvedTheme } = useAppTheme();
-  const palette = Colors[resolvedTheme];
-  const tajweedColors = resolvedTheme === 'dark' ? DARK_TAJWEED_COLORS : LIGHT_TAJWEED_COLORS;
-  const segments = React.useMemo(() => parseTajweedSegments(text), [text]);
+async function loadTajweedFontAsync(fontFamily: string, fontFileUri: string): Promise<void> {
+  if (Font.isLoaded(fontFamily)) return;
 
-  return (
-    <Text
-      selectable
-      allowFontScaling={false}
-      style={[
-        styles.text,
-        {
-          color: palette.text,
-          fontFamily: arabicFontFamily,
-          fontSize,
-          lineHeight,
-        },
-      ]}
-    >
-      {segments.map((segment, index) => {
-        const color = segment.className ? tajweedColors[segment.className] : undefined;
-        return (
-          <Text
-            key={`${index}:${segment.className ?? 'base'}:${segment.text}`}
-            allowFontScaling={false}
-            style={color ? { color } : undefined}
-          >
-            {segment.text}
-          </Text>
-        );
-      })}
-    </Text>
+  const cacheKey = `${fontFamily}:${fontFileUri}`;
+  const cached = fontLoadCache.get(cacheKey);
+  if (cached) {
+    await cached;
+    return;
+  }
+
+  const promise = Font.loadAsync({
+    [fontFamily]: { uri: fontFileUri },
+  }).finally(() => {
+    fontLoadCache.delete(cacheKey);
+  });
+
+  fontLoadCache.set(cacheKey, promise);
+  await promise;
+}
+
+export async function preloadTajweedGlyphRunFontsAsync(
+  glyphRuns: TajweedGlyphRun[],
+  options?: { resolvedTheme?: 'light' | 'dark'; textColor?: string }
+): Promise<void> {
+  const validGlyphRuns = normalizeGlyphRuns(glyphRuns);
+  if (validGlyphRuns.length === 0) return;
+
+  const uniqueRuns = new Map<string, Pick<TajweedGlyphRun, 'fontFamily' | 'fontFileUri'>>();
+  for (const run of validGlyphRuns) {
+    uniqueRuns.set(`${run.fontFamily}:${run.fontFileUri}`, run);
+  }
+
+  await Promise.all(
+    Array.from(uniqueRuns.values()).map((run) =>
+      loadTajweedFontAsync(run.fontFamily, run.fontFileUri)
+    )
   );
+
+  if (options?.resolvedTheme === 'dark' && options.textColor) {
+    void Promise.all(
+      validGlyphRuns.map(async (run) => {
+        const darkFont = await buildDarkPaletteFont(run.fontFamily, run.fontFileUri, options.textColor!);
+        if (darkFont) {
+          await loadTajweedFontAsync(darkFont.fontFamily, darkFont.fontFileUri);
+        }
+      })
+    ).catch(() => {});
+  }
+}
+
+export function areTajweedGlyphRunFontsLoaded(
+  glyphRuns: TajweedGlyphRun[],
+  options?: { resolvedTheme?: 'light' | 'dark'; textColor?: string }
+): boolean {
+  const validGlyphRuns = normalizeGlyphRuns(glyphRuns);
+  if (validGlyphRuns.length === 0) return false;
+
+  return validGlyphRuns.every((run) => {
+    if (options?.resolvedTheme === 'dark' && options.textColor) {
+      const darkFontFileUri = getDarkPaletteFontUri(run.fontFileUri, options.textColor);
+      if (darkFontFileUri) {
+        return (
+          Font.isLoaded(getDarkPaletteFontFamily(run.fontFamily, options.textColor)) ||
+          Font.isLoaded(run.fontFamily)
+        );
+      }
+    }
+
+    return Font.isLoaded(run.fontFamily);
+  });
 }
 
 export function TajweedNativeText({
-  arabicFontFamily,
-  fallbackText,
   fontSize,
   glyphRuns,
   lineHeight,
 }: {
-  arabicFontFamily: string;
-  fallbackText?: string | undefined;
   fontSize: number;
   glyphRuns: TajweedGlyphRun[];
   lineHeight: number;
 }): React.JSX.Element {
   const { resolvedTheme } = useAppTheme();
   const palette = Colors[resolvedTheme];
-  const validGlyphRuns = React.useMemo(
-    () =>
-      glyphRuns
-        .map((run) => ({
-          ...run,
-          glyphs: run.glyphs.filter((glyph) => glyph.trim().length > 0),
-        }))
-        .filter((run) => run.fontFamily.trim() && run.fontFileUri.trim() && run.glyphs.length > 0),
-    [glyphRuns]
-  );
+  const validGlyphRuns = React.useMemo(() => normalizeGlyphRuns(glyphRuns), [glyphRuns]);
   const runsSignature = React.useMemo(() => getRunsSignature(validGlyphRuns), [validGlyphRuns]);
   const [renderGlyphRuns, setRenderGlyphRuns] = React.useState(validGlyphRuns);
   const renderRunsSignature = React.useMemo(
@@ -394,13 +321,7 @@ export function TajweedNativeText({
     const unloadedRuns = renderGlyphRuns.filter((run) => !Font.isLoaded(run.fontFamily));
     if (unloadedRuns.length === 0) return;
 
-    void Promise.all(
-      unloadedRuns.map((run) =>
-        Font.loadAsync({
-          [run.fontFamily]: { uri: run.fontFileUri },
-        })
-      )
-    )
+    void Promise.all(unloadedRuns.map((run) => loadTajweedFontAsync(run.fontFamily, run.fontFileUri)))
       .then(() => {
         if (!cancelled) {
           setFontLoadRevision((revision) => revision + 1);
@@ -417,16 +338,25 @@ export function TajweedNativeText({
     };
   }, [renderRunsSignature, renderGlyphRuns]);
 
-  const fallbackMarkup = fallbackText?.trim() ? fallbackText : undefined;
+  const areFontsReady =
+    renderGlyphRuns.length > 0 && renderGlyphRuns.every((run) => Font.isLoaded(run.fontFamily));
 
-  if (fallbackMarkup && renderGlyphRuns.length === 0) {
+  if (!areFontsReady) {
     return (
-      <FallbackTajweedText
-        text={fallbackMarkup}
-        fontSize={fontSize}
-        lineHeight={lineHeight}
-        arabicFontFamily={arabicFontFamily}
-      />
+      <Text
+        allowFontScaling={false}
+        style={[
+          styles.text,
+          {
+            color: 'transparent',
+            fontSize,
+            lineHeight,
+            minHeight: lineHeight,
+          },
+        ]}
+      >
+        {' '}
+      </Text>
     );
   }
 
@@ -445,7 +375,7 @@ export function TajweedNativeText({
     >
       {renderGlyphRuns.map((run, runIndex) => (
         <Text
-          key={`${run.fontFamily}:${runIndex}`}
+          key={`${run.fontFamily}:${runIndex}:${run.glyphs.join('')}`}
           allowFontScaling={false}
           style={{ color: palette.text, fontFamily: run.fontFamily }}
         >

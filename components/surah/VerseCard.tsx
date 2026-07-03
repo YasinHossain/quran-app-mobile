@@ -43,7 +43,6 @@ function VerseCardComponent({
   showByWords,
   tajweed,
   tajweedGlyphRuns,
-  tajweedText,
   isAudioActive,
   audioWordSync,
   renderSignal: _renderSignal,
@@ -73,7 +72,6 @@ function VerseCardComponent({
     fontFileUri: string;
     glyphs: string[];
   }>;
-  tajweedText?: string;
   isAudioActive?: boolean;
   audioWordSync?: VerseAudioWordSync;
   renderSignal?: number;
@@ -200,10 +198,10 @@ function VerseCardComponent({
   );
 
   const isSeekEnabled = Boolean(audioWordSync?.isSeekEnabled);
+  const shouldUseTajweedMode = Boolean(tajweed && !showByWords && !isSeekEnabled);
   const shouldRenderTajweedText =
-    Boolean(tajweed && (tajweedGlyphRuns?.length || tajweedText?.trim())) &&
-    !showByWords &&
-    !isSeekEnabled;
+    shouldUseTajweedMode && Boolean(tajweedGlyphRuns?.length);
+  const isWaitingForTajweedText = shouldUseTajweedMode && !shouldRenderTajweedText;
 
   const handleSeekWordPress = React.useCallback(
     ({ wordPosition }: { word: VerseWord; wordPosition: number }) => {
@@ -239,10 +237,14 @@ function VerseCardComponent({
       {shouldRenderTajweedText ? (
         <TajweedNativeText
           glyphRuns={tajweedGlyphRuns ?? []}
-          fallbackText={tajweedText}
           fontSize={arabicFontSize}
           lineHeight={arabicLineHeight}
-          arabicFontFamily={effectiveArabicFontFamily}
+        />
+      ) : isWaitingForTajweedText ? (
+        <View
+          style={{
+            minHeight: arabicLineHeight * 2,
+          }}
         />
       ) : Array.isArray(words) && words.length ? (
         <WordByWordVerse
