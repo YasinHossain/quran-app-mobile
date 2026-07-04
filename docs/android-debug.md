@@ -7,7 +7,8 @@ This repo includes a small ADB wrapper so agents can inspect and drive the Andro
 - Android Studio or Android platform-tools
 - An Android emulator or USB device visible to `adb devices`
 
-On macOS, platform-tools can be installed with:
+Install **Android SDK Platform-Tools** through Android Studio on Windows or
+macOS. On macOS, it can alternatively be installed with:
 
 ```bash
 brew install android-platform-tools

@@ -8,11 +8,83 @@ Expo (React Native) app targeting Android + iOS from a single codebase.
 - Android Studio + Android SDK (for `npm run android`)
 - Expo account (for EAS builds)
 
+## Local Android environment
+
+The npm scripts are platform-independent. Configure the Android SDK and Java once
+on each computer instead of committing machine-specific paths to `package.json`.
+
+### Windows (PowerShell)
+
+Android Studio normally installs the SDK and bundled Java runtime at the paths
+below. Add these user environment variables in Windows **Environment Variables**:
+
+```text
+JAVA_HOME=C:\Program Files\Android\Android Studio\jbr
+ANDROID_HOME=%LOCALAPPDATA%\Android\Sdk
+```
+
+Add these entries to the user `Path`:
+
+```text
+%JAVA_HOME%\bin
+%ANDROID_HOME%\platform-tools
+%ANDROID_HOME%\emulator
+%ANDROID_HOME%\cmdline-tools\latest\bin
+```
+
+Close and reopen PowerShell after changing the variables. Verify with:
+
+```powershell
+java -version
+adb version
+emulator -list-avds
+```
+
+### macOS (zsh)
+
+Add this to `~/.zshrc`:
+
+```bash
+export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
+export ANDROID_HOME="$HOME/Library/Android/sdk"
+export PATH="$JAVA_HOME/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
+```
+
+Then open a new terminal, or run `source ~/.zshrc`, and verify with:
+
+```bash
+java -version
+adb version
+emulator -list-avds
+```
+
+If Android Studio or the SDK is installed elsewhere, use its actual path. The
+Android Studio SDK path is shown under **Settings > Languages & Frameworks >
+Android SDK**.
+
 ## Run locally
 
 ```bash
 npm install
+npm start
+```
+
+To build and launch the native Android app:
+
+```bash
 npm run android
+```
+
+To start the first installed Android emulator:
+
+```bash
+npm run emulator
+```
+
+To select a specific AVD, pass its name or set `ANDROID_AVD` locally:
+
+```bash
+npm run emulator -- Pixel_9_Pro_Fold
 ```
 
 ## Verify (recommended)

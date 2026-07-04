@@ -2,7 +2,7 @@
 
 const { existsSync, mkdirSync, writeFileSync } = require("node:fs");
 const { homedir } = require("node:os");
-const { dirname, resolve } = require("node:path");
+const { dirname, join, resolve } = require("node:path");
 const { spawnSync } = require("node:child_process");
 
 const PACKAGE_NAME = "com.anonymous.quranappmobile";
@@ -44,19 +44,28 @@ function pathExists(path) {
 }
 
 function commandPath(command) {
-  const result = spawnSync("which", [command], {
+  const locator = process.platform === "win32" ? "where.exe" : "which";
+  const result = spawnSync(locator, [command], {
     encoding: "utf8",
   });
-  return result.status === 0 ? result.stdout.trim() : "";
+  return result.status === 0 ? result.stdout.split(/\r?\n/)[0].trim() : "";
 }
 
 function findAdb() {
+  const executable = process.platform === "win32" ? "adb.exe" : "adb";
   const candidates = [
     process.env.ADB,
-    commandPath("adb"),
-    `${process.env.ANDROID_HOME || ""}/platform-tools/adb`,
-    `${process.env.ANDROID_SDK_ROOT || ""}/platform-tools/adb`,
-    `${homedir()}/Library/Android/sdk/platform-tools/adb`,
+    commandPath(executable),
+    process.env.ANDROID_HOME
+      ? join(process.env.ANDROID_HOME, "platform-tools", executable)
+      : "",
+    process.env.ANDROID_SDK_ROOT
+      ? join(process.env.ANDROID_SDK_ROOT, "platform-tools", executable)
+      : "",
+    process.platform === "win32" && process.env.LOCALAPPDATA
+      ? join(process.env.LOCALAPPDATA, "Android", "Sdk", "platform-tools", executable)
+      : "",
+    join(homedir(), "Library", "Android", "sdk", "platform-tools", executable),
     "/opt/homebrew/bin/adb",
     "/usr/local/bin/adb",
   ];
@@ -68,7 +77,8 @@ function missingAdb() {
   console.error(`Could not find adb.
 
 Install Android platform-tools, then retry:
-  brew install android-platform-tools
+  - Windows/macOS: install "Android SDK Platform-Tools" from Android Studio
+  - macOS with Homebrew: brew install android-platform-tools
 
 Or point this helper at adb explicitly:
   ADB=/path/to/adb npm run debug:android -- devices
@@ -115,6 +125,18 @@ function runCapture(adb, serial, args, encoding = "buffer") {
   }
 
   return result.stdout;
+}
+
+function extractPng(buffer) {
+  const signature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  const offset = buffer.indexOf(signature);
+
+  if (offset === -1) {
+    console.error("ADB screenshot output did not contain a PNG image.");
+    process.exit(1);
+  }
+
+  return buffer.subarray(offset);
 }
 
 function ensureOutputPath(customPath, fallbackName) {
@@ -189,7 +211,9 @@ function main() {
 
     case "screenshot": {
       const outputPath = ensureOutputPath(args[0], `screen-${timestamp()}.png`);
-      const image = runCapture(adb, serial, ["exec-out", "screencap", "-p"]);
+      // Newer foldable emulators may write a multiple-display warning before
+      // the PNG bytes. Strip any diagnostic prefix so the saved image remains valid.
+      const image = extractPng(runCapture(adb, serial, ["exec-out", "screencap", "-p"]));
       writeFileSync(outputPath, image);
       console.log(outputPath);
       break;
