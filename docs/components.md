@@ -42,7 +42,7 @@ This document lists reusable UI components currently available in the codebase s
 | `HeaderSearchBar` | Shared safe-area header shell and icon-button treatment for Home and Surah search headers. | `components/search/HeaderSearchBar.tsx` |
 | `HeaderSearchInput` | Header search text input (web-style) used by Home, Surah, and settings search surfaces. | `components/search/HeaderSearchInput.tsx` |
 | `ComprehensiveSearchDropdown` | Under-header dropdown card for the Surah header search (Go To when empty; quick results when typing). | `components/search/ComprehensiveSearchDropdown.tsx` |
-| `GoToSurahVerseCard` | Web-parity “Go To” form (Surah + Verse selectors, Go action, and suggestion actions); supports card and embedded modes. | `components/search/GoToSurahVerseCard.tsx` |
+| `GoToSurahVerseCard` | Web-parity “Go To” form (Surah + Verse selectors, Go action, and suggestion actions); supports card and embedded modes. Its native modal input is aligned over the closed selector field to preserve keyboard/list behavior without a visible position jump. | `components/search/GoToSurahVerseCard.tsx` |
 | `SurahVerseSelectorRow` | Shared Surah + Verse selector row (uses the same dropdown selectors as the Go To card). | `components/search/SurahVerseSelectorRow.tsx` |
 | `AnchoredDropdownModal` | Transparent modal that anchors dropdown content to a measured view (useful for web-like select overlays). | `components/search/AnchoredDropdownModal.tsx` |
 | `HighlightedText` | Lightweight `<em>` tag highlighter renderer for search result snippets. | `components/search/HighlightedText.tsx` |

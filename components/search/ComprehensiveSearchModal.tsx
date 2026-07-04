@@ -4,6 +4,7 @@ import React from 'react';
 import {
   ActivityIndicator,
   Animated,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -217,6 +218,8 @@ export function ComprehensiveSearchModal({
   const focusFrameRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const closeAndReset = React.useCallback(() => {
+    inputRef.current?.blur();
+    Keyboard.dismiss();
     setQuery('');
     onClose();
   }, [onClose]);
@@ -251,8 +254,8 @@ export function ComprehensiveSearchModal({
 
   const navigateToSurahVerse = React.useCallback(
     async (surahId: number, verse?: number) => {
-      closeAndReset();
       await preloadOfflineSurahNavigationPage({ surahId, verseNumber: verse, settings });
+      closeAndReset();
       router.push({
         pathname: '/surah/[surahId]',
         params: { surahId: String(surahId), ...(typeof verse === 'number' ? { startVerse: String(verse) } : {}) },

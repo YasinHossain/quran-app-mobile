@@ -10,6 +10,7 @@ import Colors from '@/constants/Colors';
 import { useChapters } from '@/hooks/useChapters';
 import { useAppTheme } from '@/providers/ThemeContext';
 
+import { getGoToCardSelectorVisualOffset } from './selectorDropdownLayout';
 import { SurahVerseSelectorRow } from './SurahVerseSelectorRow';
 
 type SearchSuggestion =
@@ -49,7 +50,7 @@ export function GoToSurahVerseCard({
   variant = 'card',
   onNavigate,
   onSearchSuggestion,
-  dropdownVisualOffset,
+  dropdownVisualOffset = getGoToCardSelectorVisualOffset(),
 }: {
   title?: string;
   subtitle?: string;

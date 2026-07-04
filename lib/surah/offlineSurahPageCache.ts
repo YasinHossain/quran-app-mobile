@@ -16,6 +16,7 @@ type SurahPageCacheSettings = {
   translationIds?: number[] | null;
   translationId?: number | null;
   tajweed?: boolean | null;
+  wordLang?: string | null;
 };
 
 type CacheEntry = {
@@ -897,13 +898,16 @@ export function preloadOfflineSurahNavigationPage(params: {
   return getOfflineSurahCached({
     surahId,
     translationIds: getSelectedTranslationIds(params.settings),
+    wordLang: params.settings.wordLang ?? undefined,
     perPage,
   }).then(
-    async (surahVerses) => {
+    (surahVerses) => {
       if (params.settings.tajweed) {
         const page = getSurahPageNumber(params.verseNumber, perPage);
         const pageVerses = sliceSurahPage({ surahVerses, page, perPage });
-        await preloadTajweedFontsForOfflineVerses(pageVerses);
+        // The offline verse snapshot is enough to render the destination immediately.
+        // Font preparation can be relatively expensive and must not hold navigation.
+        void preloadTajweedFontsForOfflineVerses(pageVerses).catch(() => {});
       }
     },
     () => undefined

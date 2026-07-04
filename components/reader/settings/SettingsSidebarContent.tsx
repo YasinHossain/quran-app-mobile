@@ -308,6 +308,14 @@ export function SettingsSidebarContent({
   }, [navProgress]);
 
   const [busyWordLangCodes, setBusyWordLangCodes] = React.useState<Set<string>>(() => new Set());
+  const [wordDownloadTarget, setWordDownloadTarget] = React.useState<WordLanguageItem | null>(null);
+  const [wordDeleteTarget, setWordDeleteTarget] = React.useState<WordLanguageItem | null>(null);
+  const [wordDownloadSizeBytesByCode, setWordDownloadSizeBytesByCode] = React.useState<
+    Record<string, number | null | undefined>
+  >({});
+  const [loadingWordDownloadSizeCodes, setLoadingWordDownloadSizeCodes] = React.useState<Set<string>>(
+    () => new Set()
+  );
 
   const { itemsByKey, refresh: refreshIndex } = useDownloadIndexItems({
     enabled: panel.type === 'word-language',
@@ -315,7 +323,7 @@ export function SettingsSidebarContent({
     pollWhileEnabled: busyWordLangCodes.size > 0,
   });
 
-  const handleDownloadWordLanguage = React.useCallback(async (code: string) => {
+  const downloadWordLanguage = React.useCallback(async (code: string) => {
     if (busyWordLangCodes.has(code)) return;
     setBusyWordLangCodes((prev) => {
       const next = new Set(prev);
@@ -344,48 +352,110 @@ export function SettingsSidebarContent({
     }
   }, [busyWordLangCodes, refreshIndex]);
 
-  const handleDeleteWordLanguage = React.useCallback((code: string) => {
+  const deleteWordLanguage = React.useCallback(async (code: string) => {
     if (busyWordLangCodes.has(code)) return;
-    Alert.alert(
-      'Delete word-by-word download?',
-      `This removes offline word-by-word translations for this language.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => {
-            void (async () => {
-              setBusyWordLangCodes((prev) => {
-                const next = new Set(prev);
-                next.add(code);
-                return next;
-              });
-              try {
-                const useCase = new DeleteWordTranslationUseCase(
-                  container.getDownloadIndexRepository(),
-                  container.getTranslationOfflineStore(),
-                  logger
-                );
-                await useCase.execute(code);
-                clearOfflineSurahPageCache();
-              } catch (error) {
-                const message = error instanceof Error ? error.message : String(error);
-                Alert.alert('Delete failed', message);
-              } finally {
-                setBusyWordLangCodes((prev) => {
-                  const next = new Set(prev);
-                  next.delete(code);
-                  return next;
-                });
-                refreshIndex();
-              }
-            })();
-          },
-        },
-      ]
-    );
+    setBusyWordLangCodes((prev) => {
+      const next = new Set(prev);
+      next.add(code);
+      return next;
+    });
+    try {
+      const useCase = new DeleteWordTranslationUseCase(
+        container.getDownloadIndexRepository(),
+        container.getTranslationOfflineStore(),
+        logger
+      );
+      await useCase.execute(code);
+      clearOfflineSurahPageCache();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      Alert.alert('Delete failed', message);
+    } finally {
+      setBusyWordLangCodes((prev) => {
+        const next = new Set(prev);
+        next.delete(code);
+        return next;
+      });
+      refreshIndex();
+    }
   }, [busyWordLangCodes, refreshIndex]);
+
+  const handlePressDownloadWordLanguage = React.useCallback(
+    (code: string) => {
+      if (busyWordLangCodes.has(code)) return;
+      const target = WORD_LANGUAGE_ITEMS.find((item) => item.code === code);
+      if (target) setWordDownloadTarget(target);
+    },
+    [busyWordLangCodes]
+  );
+
+  const ensureWordDownloadSize = React.useCallback(
+    async (code: string) => {
+      if (wordDownloadSizeBytesByCode[code] !== undefined) return;
+      if (loadingWordDownloadSizeCodes.has(code)) return;
+
+      setLoadingWordDownloadSizeCodes((prev) => {
+        const next = new Set(prev);
+        next.add(code);
+        return next;
+      });
+
+      try {
+        const sizeBytes = await container.getWordTranslationPackRepository().getPackSizeBytes(code);
+        setWordDownloadSizeBytesByCode((prev) => ({ ...prev, [code]: sizeBytes }));
+      } catch (error) {
+        logger.warn('Failed to resolve word-by-word download size', { languageCode: code }, error as Error);
+        setWordDownloadSizeBytesByCode((prev) => ({ ...prev, [code]: null }));
+      } finally {
+        setLoadingWordDownloadSizeCodes((prev) => {
+          const next = new Set(prev);
+          next.delete(code);
+          return next;
+        });
+      }
+    },
+    [loadingWordDownloadSizeCodes, wordDownloadSizeBytesByCode]
+  );
+
+  React.useEffect(() => {
+    if (!wordDownloadTarget) return;
+    void ensureWordDownloadSize(wordDownloadTarget.code);
+  }, [ensureWordDownloadSize, wordDownloadTarget]);
+
+  const handleConfirmDownloadWordLanguage = React.useCallback(() => {
+    if (!wordDownloadTarget) return;
+    const code = wordDownloadTarget.code;
+    setWordDownloadTarget(null);
+    void downloadWordLanguage(code);
+  }, [downloadWordLanguage, wordDownloadTarget]);
+
+  const handlePressDeleteWordLanguage = React.useCallback(
+    (code: string) => {
+      if (busyWordLangCodes.has(code)) return;
+      const target = WORD_LANGUAGE_ITEMS.find((item) => item.code === code);
+      if (target) setWordDeleteTarget(target);
+    },
+    [busyWordLangCodes]
+  );
+
+  const handleConfirmDeleteWordLanguage = React.useCallback(() => {
+    if (!wordDeleteTarget) return;
+    const code = wordDeleteTarget.code;
+    setWordDeleteTarget(null);
+    void deleteWordLanguage(code);
+  }, [deleteWordLanguage, wordDeleteTarget]);
+
+  const isLoadingWordDownloadSize = wordDownloadTarget
+    ? loadingWordDownloadSizeCodes.has(wordDownloadTarget.code)
+    : false;
+  const wordDownloadSizeBytes = wordDownloadTarget
+    ? wordDownloadSizeBytesByCode[wordDownloadTarget.code]
+    : undefined;
+  const wordDownloadSizeLabel = isLoadingWordDownloadSize
+    ? 'Loading download size...'
+    : typeof wordDownloadSizeBytes === 'number'
+      ? `Download size: ${Math.max(0.1, wordDownloadSizeBytes / BYTES_PER_MEGABYTE).toFixed(1)} MB`
+      : 'Download size unavailable';
 
   const handleCancelWordDownload = React.useCallback((code: string) => {
     requestWordDownloadCancel(code);
@@ -985,8 +1055,8 @@ export function SettingsSidebarContent({
                     isDark={isDark}
                     tintColor={palette.tint}
                     onToggle={handleSelectWordLanguage}
-                    onPressDownload={handleDownloadWordLanguage}
-                    onPressDelete={handleDeleteWordLanguage}
+                    onPressDownload={handlePressDownloadWordLanguage}
+                    onPressDelete={handlePressDeleteWordLanguage}
                     onCancelDownload={handleCancelWordDownload}
                   />
                 </View>
@@ -1378,6 +1448,33 @@ export function SettingsSidebarContent({
         tintColor={palette.tint}
         onConfirm={handleConfirmMushafPackDelete}
         onClose={() => setMushafDeleteTargetId(null)}
+      />
+
+      <ResourceConfirmModal
+        visible={wordDownloadTarget !== null}
+        title="Download word-by-word translation?"
+        resourceName={wordDownloadTarget?.name ?? null}
+        detailLabel={wordDownloadSizeLabel}
+        isDetailLoading={isLoadingWordDownloadSize}
+        description="This downloads the word-by-word translation for offline reading."
+        confirmLabel="Download"
+        mutedColor={palette.muted}
+        tintColor={palette.tint}
+        onConfirm={handleConfirmDownloadWordLanguage}
+        onClose={() => setWordDownloadTarget(null)}
+      />
+
+      <ResourceConfirmModal
+        visible={wordDeleteTarget !== null}
+        title="Delete download?"
+        resourceName={wordDeleteTarget?.name ?? null}
+        description="This removes downloaded word-by-word translations for offline use."
+        confirmLabel="Delete"
+        confirmTone="danger"
+        mutedColor={palette.muted}
+        tintColor={palette.tint}
+        onConfirm={handleConfirmDeleteWordLanguage}
+        onClose={() => setWordDeleteTarget(null)}
       />
     </View>
   );

@@ -44,12 +44,12 @@ export function useHeaderSearch({
 
   const navigateToSurahVerse = React.useCallback(
     async (surahId: number, verse?: number) => {
-      close({ clearQuery: true });
       await preloadOfflineSurahNavigationPage({
         surahId,
         verseNumber: verse,
         settings,
       });
+      close({ clearQuery: true });
       router.push({
         pathname: '/surah/[surahId]',
         params: {

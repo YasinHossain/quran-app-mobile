@@ -159,6 +159,14 @@ export class HostedWordTranslationPackRepository implements IWordTranslationPack
     private readonly logger?: ILogger
   ) {}
 
+  async getPackSizeBytes(languageCode: string): Promise<number | null> {
+    const normalizedLanguageCode = normalizeLanguageCode(languageCode);
+    if (!normalizedLanguageCode) return null;
+
+    const resolved = await this.getResolvedPack(normalizedLanguageCode);
+    return resolved?.entry.sizeBytes ?? null;
+  }
+
   async installPack(params: {
     languageCode: string;
     onProgress?: ((progress: WordTranslationPackInstallProgress) => void) | undefined;
