@@ -19,6 +19,7 @@ import { TAJWEED_MUSHAF_ID, findMushafOption } from '@/data/mushaf/options';
 import type { OfflineVerseWithTranslations } from '@/src/core/domain/repositories/ITranslationOfflineStore';
 import { apiFetch } from '@/src/core/infrastructure/api/apiFetch';
 import { container } from '@/src/core/infrastructure/di/container';
+import { getBundledMushafPack } from '@/src/core/infrastructure/mushaf/bundledPacks';
 import {
   getExactPackPageFontFamily,
   getExactPackPageFontRelativePath,
@@ -64,6 +65,82 @@ type ApiVersesResponse = {
 };
 
 type ApiWord = NonNullable<ApiVersesResponse['verses'][number]['words']>[number];
+
+let bundledVerseWordsByKey: Map<string, VerseWord[]> | null = null;
+let bundledSurahVersesByChapter: Map<number, OfflineVerseWithTranslations[]> | null = null;
+
+function parseChapterNumberFromVerseKey(verseKey: string): number {
+  const [chapterPart] = verseKey.split(':');
+  const parsed = Number.parseInt(chapterPart ?? '', 10);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : 0;
+}
+
+function getBundledVerseWordsByKey(): Map<string, VerseWord[]> {
+  if (bundledVerseWordsByKey) return bundledVerseWordsByKey;
+
+  const map = new Map<string, VerseWord[]>();
+  const pack = getBundledMushafPack('unicode-uthmani-v1');
+  const pages = pack?.payload.pages ?? {};
+
+  for (const pageVerses of Object.values(pages)) {
+    for (const verse of pageVerses) {
+      const words = mushafWordsToVerseWords(verse.words);
+      if (words.length > 0) {
+        map.set(verse.verseKey, words);
+      }
+    }
+  }
+
+  bundledVerseWordsByKey = map;
+  return map;
+}
+
+function getBundledVerseWords(verseKey: string): VerseWord[] | undefined {
+  return getBundledVerseWordsByKey().get(verseKey.trim());
+}
+
+function getBundledSurahVersesByChapter(): Map<number, OfflineVerseWithTranslations[]> {
+  if (bundledSurahVersesByChapter) return bundledSurahVersesByChapter;
+
+  const map = new Map<number, OfflineVerseWithTranslations[]>();
+  const pack = getBundledMushafPack('unicode-uthmani-v1');
+  const pages = pack?.payload.pages ?? {};
+
+  for (const pageVerses of Object.values(pages)) {
+    for (const verse of pageVerses) {
+      const chapterNumber = parseChapterNumberFromVerseKey(verse.verseKey);
+      if (chapterNumber <= 0) continue;
+
+      const row: OfflineVerseWithTranslations = {
+        verseKey: verse.verseKey,
+        surahId: chapterNumber,
+        ayahNumber: Number.parseInt(verse.verseKey.split(':')[1] ?? '', 10) || 0,
+        arabicUthmani: verse.textUthmani ?? '',
+        wordsJson: JSON.stringify(mushafWordsToVerseWords(verse.words)),
+        translations: [],
+      };
+
+      const existing = map.get(chapterNumber);
+      if (existing) {
+        existing.push(row);
+      } else {
+        map.set(chapterNumber, [row]);
+      }
+    }
+  }
+
+  for (const verses of map.values()) {
+    verses.sort((left, right) => left.ayahNumber - right.ayahNumber);
+  }
+
+  bundledSurahVersesByChapter = map;
+  return map;
+}
+
+function getBundledSurahVerses(chapterNumber: number): OfflineVerseWithTranslations[] {
+  if (!Number.isFinite(chapterNumber) || chapterNumber <= 0) return [];
+  return getBundledSurahVersesByChapter().get(Math.trunc(chapterNumber)) ?? [];
+}
 
 function stripHtml(input: string): string {
   return input
@@ -247,6 +324,10 @@ function normalizeOfflineVersePageData(
       } catch {
         words = undefined;
       }
+    }
+
+    if (!Array.isArray(words) || words.length === 0) {
+      words = getBundledVerseWords(verse.verseKey);
     }
 
     const translationItems = buildTranslationItems(translations, translationIds);
@@ -454,12 +535,16 @@ function getInitialOfflinePagesSnapshot(params: {
           expectedVerseCount: params.verseCount,
         });
 
-  if (!offlineSurah) {
+  const resolvedOfflineSurah =
+    offlineSurah ??
+    (params.translationIds.length === 0 ? getBundledSurahVerses(params.chapterNumber) : null);
+
+  if (!resolvedOfflineSurah) {
     return {};
   }
 
   const pages = buildOfflinePagesByNumber({
-    offlineVerses: offlineSurah,
+    offlineVerses: resolvedOfflineSurah,
     translationIds: params.translationIds,
     perPage: params.perPage,
   });
@@ -712,6 +797,7 @@ export function useSurahVerses({
     tajweedTextColor,
     tajweedTheme,
     verseCount,
+    includeWordTranslations,
   ]);
 
   const initialHasLoadedContent = Object.keys(initialPagesByNumber).length > 0;

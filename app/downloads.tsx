@@ -34,6 +34,7 @@ import { useTranslationResources } from '@/hooks/useTranslationResources';
 import { useTafsirResources } from '@/hooks/useTafsirResources';
 import { useReciters } from '@/hooks/audio/useReciters';
 import { useChapters } from '@/hooks/useChapters';
+import { clearOfflineSurahPageCache } from '@/lib/surah/offlineSurahPageCache';
 import { useSettings } from '@/providers/SettingsContext';
 import { useAppTheme } from '@/providers/ThemeContext';
 import { findMushafOption } from '@/data/mushaf/options';
@@ -261,6 +262,7 @@ export default function DownloadsScreen(): React.JSX.Element {
             logger
           );
           await useCase.execute(item.content.languageCode);
+          clearOfflineSurahPageCache();
           break;
         }
         case 'audio': {

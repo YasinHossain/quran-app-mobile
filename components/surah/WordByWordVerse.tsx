@@ -82,12 +82,12 @@ function WordToken({
     return false;
   })();
 
-  const wordHorizontalMargin = showTranslations ? 6 : 5;
-  const wordVerticalMargin = showTranslations ? 10 : 3;
+  const wordHorizontalMargin = showTranslations ? 6 : 1;
+  const wordVerticalMargin = showTranslations ? 10 : 1;
   const wrapperStyle = {
     marginHorizontal: wordHorizontalMargin,
     marginVertical: wordVerticalMargin,
-    paddingHorizontal: 2,
+    paddingHorizontal: showTranslations ? 2 : 0,
     alignItems: 'center' as const,
   };
 
@@ -141,14 +141,11 @@ function WordToken({
     }
   }, [onWordPress, word, wordPosition]);
 
-  if (!isPressable) {
-    return <View style={wrapperStyle}>{content}</View>;
-  }
-
   return (
     <Pressable
       ref={pressableRef}
-      onPress={handlePress}
+      disabled={!isPressable}
+      onPress={isPressable ? handlePress : undefined}
       accessibilityRole="button"
       accessibilityLabel={pressBehavior === 'seek' ? 'Seek audio to word' : 'Show word translation'}
       style={({ pressed }) => [{ opacity: pressed ? 0.65 : 1 }, wrapperStyle]}

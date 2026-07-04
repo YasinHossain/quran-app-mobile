@@ -6,6 +6,7 @@ import { Alert, Animated, Easing, FlatList, Pressable, StyleSheet, Text, useWind
 import { DEFAULT_MUSHAF_ID, TAJWEED_MUSHAF_ID, findMushafOption } from '@/data/mushaf/options';
 import Colors from '@/constants/Colors';
 import { MushafPackOptionCard } from '@/components/reader/settings/MushafPackOptionCard';
+import { clearOfflineSurahPageCache } from '@/lib/surah/offlineSurahPageCache';
 import { useTafsirResources } from '@/hooks/useTafsirResources';
 import { useMushafPackManager, type MushafPackManagerEntry } from '@/hooks/useMushafPackManager';
 import { useTranslationResources } from '@/hooks/useTranslationResources';
@@ -320,6 +321,7 @@ export function SettingsSidebarContent({
         logger
       );
       await useCase.execute(code);
+      clearOfflineSurahPageCache();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       Alert.alert('Download failed', message);
@@ -357,6 +359,7 @@ export function SettingsSidebarContent({
                   logger
                 );
                 await useCase.execute(code);
+                clearOfflineSurahPageCache();
               } catch (error) {
                 const message = error instanceof Error ? error.message : String(error);
                 Alert.alert('Delete failed', message);

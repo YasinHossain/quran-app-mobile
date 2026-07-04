@@ -198,7 +198,7 @@ function VerseCardComponent({
   );
 
   const isSeekEnabled = Boolean(audioWordSync?.isSeekEnabled);
-  const shouldUseTajweedMode = Boolean(tajweed && !showByWords && !isSeekEnabled);
+  const shouldUseTajweedMode = Boolean(tajweed && !showByWords);
   const shouldRenderTajweedText =
     shouldUseTajweedMode && Boolean(tajweedGlyphRuns?.length);
   const isWaitingForTajweedText = shouldUseTajweedMode && !shouldRenderTajweedText;
@@ -362,7 +362,6 @@ function VerseCardComponent({
 
   const containerClassName = [
     'border-b border-border/40 py-4 dark:border-border-dark/30',
-    isAudioActive ? 'bg-accent/5 rounded-xl' : null,
   ]
     .filter(Boolean)
     .join(' ');
@@ -458,12 +457,20 @@ function VerseCardComponent({
       onPress={onPress}
       accessibilityRole="button"
       className={containerClassName}
-      style={({ pressed }) => ({ opacity: pressed ? 0.95 : 1 })}
+      style={({ pressed }) => ({
+        opacity: pressed ? 0.95 : 1,
+        backgroundColor: isAudioActive ? `${palette.tint}0D` : 'transparent',
+      })}
     >
       {content}
     </Pressable>
   ) : (
-    <View className={containerClassName}>{content}</View>
+    <View
+      className={containerClassName}
+      style={{ backgroundColor: isAudioActive ? `${palette.tint}0D` : 'transparent' }}
+    >
+      {content}
+    </View>
   );
 
   return (

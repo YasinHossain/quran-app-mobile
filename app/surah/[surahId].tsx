@@ -282,7 +282,7 @@ export default function SurahScreen(): React.JSX.Element {
     translationIds: verseTranslationIds,
     wordLang: settings.wordLang,
     includeWords: Boolean(!isMushafView),
-    includeWordTranslations: Boolean(!isMushafView),
+    includeWordTranslations: Boolean(!isMushafView && settings.showByWords),
     tajweed: Boolean(!isMushafView && settings.tajweed),
     tajweedTextColor: palette.text,
     tajweedTheme: resolvedTheme,
