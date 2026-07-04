@@ -1,0 +1,13 @@
+{
+  "languageCode": "ur",
+  "name": "Urdu",
+  "version": "2026-07-04",
+  "bundled": false,
+  "format": "word-translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "e79b1309b43edc743de8e586142a1fd4",
+  "payloadSizeBytes": 14093804,
+  "totalVerses": 6236,
+  "generatedAt": "2026-07-04T04:31:28.077Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?words=true&word_translation_language=ur"
+}

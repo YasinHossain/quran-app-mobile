@@ -1,0 +1,101 @@
+{
+  "generatedAt": "2026-07-04T04:37:16.683Z",
+  "packs": [
+    {
+      "languageCode": "bn",
+      "name": "Bangla",
+      "version": "2026-07-04",
+      "downloadUrl": "https://yasinhossain.github.io/quran-app-mobile/word-translation-packs/languages/bn/2026-07-04/payload.json",
+      "checksum": "a1816577b53cfe0aca4f1895edf18faf",
+      "sizeBytes": 15022296,
+      "totalVerses": 6236,
+      "manifestUrl": "https://yasinhossain.github.io/quran-app-mobile/word-translation-packs/languages/bn/2026-07-04/manifest.json",
+      "manifestChecksum": "2f28268982ea52f159dbd8b3181196b2",
+      "manifestSizeBytes": 436
+    },
+    {
+      "languageCode": "en",
+      "name": "English",
+      "version": "2026-07-04",
+      "downloadUrl": "https://yasinhossain.github.io/quran-app-mobile/word-translation-packs/languages/en/2026-07-04/payload.json",
+      "checksum": "bea0ec5b58da0320b26a1bef0e5e622c",
+      "sizeBytes": 13499591,
+      "totalVerses": 6236,
+      "manifestUrl": "https://yasinhossain.github.io/quran-app-mobile/word-translation-packs/languages/en/2026-07-04/manifest.json",
+      "manifestChecksum": "33978c41fc4e68a6f447d5e6c878ae42",
+      "manifestSizeBytes": 437
+    },
+    {
+      "languageCode": "fa",
+      "name": "Persian",
+      "version": "2026-07-04",
+      "downloadUrl": "https://yasinhossain.github.io/quran-app-mobile/word-translation-packs/languages/fa/2026-07-04/payload.json",
+      "checksum": "961eba9b1909aa137ab970798333a928",
+      "sizeBytes": 13910280,
+      "totalVerses": 6236,
+      "manifestUrl": "https://yasinhossain.github.io/quran-app-mobile/word-translation-packs/languages/fa/2026-07-04/manifest.json",
+      "manifestChecksum": "4137cd4fd149c30bacdc1428ca9d4a19",
+      "manifestSizeBytes": 437
+    },
+    {
+      "languageCode": "hi",
+      "name": "Hindi",
+      "version": "2026-07-04",
+      "downloadUrl": "https://yasinhossain.github.io/quran-app-mobile/word-translation-packs/languages/hi/2026-07-04/payload.json",
+      "checksum": "fb4e81d2c85f49332ce16ba9f4a33d2a",
+      "sizeBytes": 14759531,
+      "totalVerses": 6236,
+      "manifestUrl": "https://yasinhossain.github.io/quran-app-mobile/word-translation-packs/languages/hi/2026-07-04/manifest.json",
+      "manifestChecksum": "b5c0004f8eb901260af20953e4e0cd77",
+      "manifestSizeBytes": 435
+    },
+    {
+      "languageCode": "id",
+      "name": "Bahasa Indonesia",
+      "version": "2026-07-04",
+      "downloadUrl": "https://yasinhossain.github.io/quran-app-mobile/word-translation-packs/languages/id/2026-07-04/payload.json",
+      "checksum": "175739f54653a2c5bebdc991210a78ea",
+      "sizeBytes": 13657703,
+      "totalVerses": 6236,
+      "manifestUrl": "https://yasinhossain.github.io/quran-app-mobile/word-translation-packs/languages/id/2026-07-04/manifest.json",
+      "manifestChecksum": "737a90410bb81a1db31ef49a6bdd2bbc",
+      "manifestSizeBytes": 446
+    },
+    {
+      "languageCode": "ta",
+      "name": "Tamil",
+      "version": "2026-07-04",
+      "downloadUrl": "https://yasinhossain.github.io/quran-app-mobile/word-translation-packs/languages/ta/2026-07-04/payload.json",
+      "checksum": "74680c2d3ea2d305be09215c7a8717f6",
+      "sizeBytes": 15435344,
+      "totalVerses": 6236,
+      "manifestUrl": "https://yasinhossain.github.io/quran-app-mobile/word-translation-packs/languages/ta/2026-07-04/manifest.json",
+      "manifestChecksum": "6d00971c1f89b4ce01ebad57c2420be3",
+      "manifestSizeBytes": 435
+    },
+    {
+      "languageCode": "tr",
+      "name": "Turkish",
+      "version": "2026-07-04",
+      "downloadUrl": "https://yasinhossain.github.io/quran-app-mobile/word-translation-packs/languages/tr/2026-07-04/payload.json",
+      "checksum": "324650fefc49be4bed38e8e39412b137",
+      "sizeBytes": 13545487,
+      "totalVerses": 6236,
+      "manifestUrl": "https://yasinhossain.github.io/quran-app-mobile/word-translation-packs/languages/tr/2026-07-04/manifest.json",
+      "manifestChecksum": "83a0fa613bba1e31cf764dc5635a2368",
+      "manifestSizeBytes": 437
+    },
+    {
+      "languageCode": "ur",
+      "name": "Urdu",
+      "version": "2026-07-04",
+      "downloadUrl": "https://yasinhossain.github.io/quran-app-mobile/word-translation-packs/languages/ur/2026-07-04/payload.json",
+      "checksum": "e79b1309b43edc743de8e586142a1fd4",
+      "sizeBytes": 14093804,
+      "totalVerses": 6236,
+      "manifestUrl": "https://yasinhossain.github.io/quran-app-mobile/word-translation-packs/languages/ur/2026-07-04/manifest.json",
+      "manifestChecksum": "3261230c33adc76cd5c2f5cff4a6dd8d",
+      "manifestSizeBytes": 434
+    }
+  ]
+}
