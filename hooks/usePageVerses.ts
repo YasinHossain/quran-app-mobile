@@ -175,6 +175,7 @@ function getOfflinePageVersesSnapshot(params: {
   enabled: boolean;
   verseKeys: string[];
   translationIds: number[];
+  wordLang: string;
 }): Record<string, PageVerse> | null {
   if (!params.enabled || params.verseKeys.length === 0) return null;
 
@@ -192,12 +193,20 @@ function getOfflinePageVersesSnapshot(params: {
         words_json: string | null;
       }>(
         `
-        SELECT verse_key, surah, ayah, arabic_uthmani, words_json
-        FROM offline_verses
-        WHERE verse_key IN (${placeholders})
+        SELECT
+          v.verse_key AS verse_key,
+          v.surah AS surah,
+          v.ayah AS ayah,
+          v.arabic_uthmani AS arabic_uthmani,
+          COALESCE(wt.words_json, v.words_json) AS words_json
+        FROM offline_verses v
+        LEFT JOIN offline_word_translations wt
+          ON wt.verse_key = v.verse_key
+          AND wt.language_code = ?
+        WHERE v.verse_key IN (${placeholders})
         ORDER BY surah ASC, ayah ASC;
         `,
-        params.verseKeys
+        [params.wordLang, ...params.verseKeys]
       );
 
       if (rows.length < params.verseKeys.length) {
@@ -246,18 +255,21 @@ function getOfflinePageVersesSnapshot(params: {
         v.surah AS surah,
         v.ayah AS ayah,
         v.arabic_uthmani AS arabic_uthmani,
-        v.words_json AS words_json,
-        t.translation_id AS translation_id,
-        t.text AS translation_text
-      FROM offline_verses v
-      LEFT JOIN offline_translations t
+          COALESCE(wt.words_json, v.words_json) AS words_json,
+          t.translation_id AS translation_id,
+          t.text AS translation_text
+        FROM offline_verses v
+        LEFT JOIN offline_word_translations wt
+          ON wt.verse_key = v.verse_key
+          AND wt.language_code = ?
+        LEFT JOIN offline_translations t
         ON t.verse_key = v.verse_key
         AND t.translation_id IN (${tPlaceholders})
       WHERE v.verse_key IN (${vPlaceholders})
       ORDER BY v.surah ASC, v.ayah ASC, t.translation_id ASC;
       `,
-      [...resolvedTranslationIds, ...params.verseKeys]
-    );
+        [params.wordLang, ...resolvedTranslationIds, ...params.verseKeys]
+      );
 
     const byVerseKey = new Map<
       string,
@@ -392,6 +404,7 @@ export function usePageVerses({
       enabled,
       verseKeys,
       translationIds: resolvedTranslationIds,
+      wordLang: resolvedWordLang,
     });
   }, [enabled, verseKeys, resolvedTranslationIds]);
 
@@ -418,6 +431,7 @@ export function usePageVerses({
       enabled,
       verseKeys,
       translationIds: resolvedTranslationIds,
+      wordLang: resolvedWordLang,
     });
     const hasWarmOfflineVerses = warmOfflineVerses !== null;
 
@@ -459,7 +473,7 @@ export function usePageVerses({
       const promises = verseKeys.map(async (key) => {
         return container
           .getTranslationOfflineStore()
-          .getVerseWithTranslations(key, resolvedTranslationIds);
+          .getVerseWithTranslations(key, resolvedTranslationIds, resolvedWordLang);
       });
       const offlineResults = await Promise.all(promises);
 

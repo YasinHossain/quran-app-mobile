@@ -6,6 +6,10 @@ export type OfflineVerseRowInput = {
   wordsJson?: string;
 };
 
+export type OfflineWordTranslationRowInput = OfflineVerseRowInput & {
+  languageCode: string;
+};
+
 export type OfflineTranslationRowInput = {
   translationId: number;
   verseKey: string;
@@ -27,9 +31,15 @@ export interface ITranslationOfflineStore {
     translations: OfflineTranslationRowInput[];
   }): Promise<void>;
 
+  upsertWordTranslations(params: {
+    languageCode: string;
+    verses: OfflineVerseRowInput[];
+  }): Promise<void>;
+
   getSurahVersesWithTranslations(
     surahId: number,
-    translationIds: number[]
+    translationIds: number[],
+    wordLang?: string
   ): Promise<OfflineVerseWithTranslations[]>;
 
   getSurahVersesPageWithTranslations(params: {
@@ -37,6 +47,7 @@ export interface ITranslationOfflineStore {
     translationIds: number[];
     page: number;
     perPage: number;
+    wordLang?: string;
   }): Promise<OfflineVerseWithTranslations[]>;
 
   getJuzVersesPageWithTranslations(params: {
@@ -44,9 +55,16 @@ export interface ITranslationOfflineStore {
     translationIds: number[];
     page: number;
     perPage: number;
+    wordLang?: string;
   }): Promise<OfflineVerseWithTranslations[]>;
+
+  getVerseWithTranslations(
+    verseKey: string,
+    translationIds: number[],
+    wordLang?: string
+  ): Promise<OfflineVerseWithTranslations | null>;
 
   deleteTranslation(translationId: number): Promise<void>;
 
-  deleteWordTranslation(): Promise<void>;
+  deleteWordTranslation(languageCode?: string): Promise<void>;
 }

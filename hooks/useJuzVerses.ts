@@ -203,6 +203,7 @@ function getInitialOfflineJuzPagesSnapshot(params: {
   enabled: boolean;
   juzNumber: number;
   translationIds: number[];
+  wordLang: string;
   perPage: number;
   verseCount: number;
 }): Record<number, JuzVerse[]> {
@@ -212,6 +213,7 @@ function getInitialOfflineJuzPagesSnapshot(params: {
   const snapshot = getOfflineJuzSnapshot({
     juzId: params.juzNumber,
     translationIds: params.translationIds,
+    wordLang: params.wordLang,
     perPage: params.perPage,
     expectedVerseCount: params.verseCount,
   });
@@ -318,6 +320,7 @@ export function useJuzVerses({
       enabled,
       juzNumber,
       translationIds: resolvedTranslationIds,
+      wordLang: resolvedWordLang,
       perPage,
       verseCount,
     });
@@ -358,6 +361,7 @@ export function useJuzVerses({
       enabled,
       juzNumber,
       translationIds: resolvedTranslationIds,
+      wordLang: resolvedWordLang,
       perPage,
       verseCount,
     });
@@ -456,6 +460,7 @@ export function useJuzVerses({
       const cachedPage = peekOfflineJuzPageCache({
         juzId: juzNumber,
         translationIds: resolvedTranslationIds,
+        wordLang: resolvedWordLang,
         page: pageNumber,
         perPage,
       });
@@ -633,6 +638,7 @@ export function useJuzVerses({
     const offlineVerses = await getOfflineJuzCached({
       juzId: juzNumber,
       translationIds: resolvedTranslationIds,
+      wordLang: resolvedWordLang,
       perPage,
       expectedVerseCount: verseCount,
     });
@@ -817,6 +823,7 @@ export function useJuzVerses({
         enabled,
         juzNumber,
         translationIds: resolvedTranslationIds,
+        wordLang: resolvedWordLang,
         perPage,
         verseCount,
       });

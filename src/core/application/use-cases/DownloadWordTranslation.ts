@@ -1,14 +1,10 @@
 import type { DownloadProgress, DownloadableContent } from '@/src/domain/entities';
 import type { ILogger } from '@/src/domain/interfaces/ILogger';
 import type { IDownloadIndexRepository } from '@/src/domain/repositories/IDownloadIndexRepository';
-import type { ITranslationDownloadRepository } from '@/src/domain/repositories/ITranslationDownloadRepository';
-import type {
-  ITranslationOfflineStore,
-  OfflineVerseRowInput,
-} from '@/src/domain/repositories/ITranslationOfflineStore';
+import type { ITranslationOfflineStore } from '@/src/domain/repositories/ITranslationOfflineStore';
+import type { IWordTranslationPackRepository } from '@/src/core/domain/repositories/IWordTranslationPackRepository';
 
 const TOTAL_SURAHS = 114;
-const DEFAULT_PER_PAGE = 50;
 const CANCELED_ERROR_CODE = 'word_download_canceled';
 const canceledLanguageCodes = new Set<string>();
 
@@ -42,8 +38,8 @@ export class DownloadWordTranslationUseCase {
   constructor(
     private readonly downloadIndexRepository: IDownloadIndexRepository,
     private readonly translationOfflineStore: ITranslationOfflineStore,
-    private readonly translationDownloadRepository: ITranslationDownloadRepository,
-    private readonly logger?: ILogger
+    private readonly logger?: ILogger,
+    private readonly wordTranslationPackRepository?: IWordTranslationPackRepository
   ) {}
 
   async execute(languageCode: string): Promise<void> {
@@ -83,32 +79,45 @@ export class DownloadWordTranslationUseCase {
     });
 
     try {
-      for (let surahId = 1; surahId <= TOTAL_SURAHS; surahId += 1) {
-        throwIfCanceled(normalizedCode);
-        await this.downloadSurahWords({
-          surahId,
-          languageCode: normalizedCode,
-        });
+      let lastPersistedPackPercent = -1;
+      const installedFromPack = await this.wordTranslationPackRepository?.installPack({
+        languageCode: normalizedCode,
+        assertNotCanceled: () => {
+          throwIfCanceled(normalizedCode);
+        },
+        onProgress: (progress) => {
+          const normalizedPercent = Math.max(0, Math.min(100, progress.percent));
+          const persistedPercent =
+            normalizedPercent >= 100 ? 100 : Math.floor(normalizedPercent / 4) * 4;
 
+          if (persistedPercent === lastPersistedPackPercent) return;
+          lastPersistedPackPercent = persistedPercent;
+
+          void this.downloadIndexRepository.upsert(content, {
+            status: 'downloading',
+            progress: { kind: 'percent', percent: persistedPercent },
+            error: null,
+          });
+        },
+      });
+
+      if (installedFromPack) {
         throwIfCanceled(normalizedCode);
-        completedSurahs = surahId;
         await this.downloadIndexRepository.upsert(content, {
-          status: 'downloading',
-          progress: toDownloadProgress(completedSurahs),
+          status: 'installed',
+          progress: null,
           error: null,
         });
+        return;
       }
 
-      throwIfCanceled(normalizedCode);
-      await this.downloadIndexRepository.upsert(content, {
-        status: 'installed',
-        progress: null,
-        error: null,
-      });
+      throw new Error(
+        `Offline word-by-word pack is not available for language "${normalizedCode}". Run npm run generate:word-translation-packs and publish dist/word-translation-packs before enabling this download.`
+      );
     } catch (error) {
       if (isWordDownloadCanceledError(error)) {
         try {
-          await this.translationOfflineStore.deleteWordTranslation();
+          await this.translationOfflineStore.deleteWordTranslation(normalizedCode);
         } catch (cleanupError) {
           this.logger?.warn(
             'Failed to clean up word translation after cancellation',
@@ -130,7 +139,7 @@ export class DownloadWordTranslationUseCase {
       });
 
       try {
-        await this.translationOfflineStore.deleteWordTranslation();
+        await this.translationOfflineStore.deleteWordTranslation(normalizedCode);
       } catch (cleanupError) {
         this.logger?.warn(
           'Failed to clean up word translation after a download failure',
@@ -142,43 +151,6 @@ export class DownloadWordTranslationUseCase {
       throw error;
     } finally {
       canceledLanguageCodes.delete(normalizedCode);
-    }
-  }
-
-  private async downloadSurahWords(params: {
-    surahId: number;
-    languageCode: string;
-  }): Promise<void> {
-    const { surahId, languageCode } = params;
-    let page = 1;
-    let totalPages = 1;
-
-    while (page <= totalPages) {
-      throwIfCanceled(languageCode);
-      const response = await this.translationDownloadRepository.getChapterVersesPage({
-        chapterNumber: surahId,
-        page,
-        perPage: DEFAULT_PER_PAGE,
-        wordLang: languageCode,
-      });
-
-      throwIfCanceled(languageCode);
-
-      const verseRows: OfflineVerseRowInput[] = response.verses.map((verse) => ({
-        verseKey: verse.verseKey,
-        surahId,
-        ayahNumber: verse.ayahNumber,
-        arabicUthmani: verse.arabicUthmani,
-        wordsJson: verse.wordsJson,
-      }));
-
-      await this.translationOfflineStore.upsertVersesAndTranslations({
-        verses: verseRows,
-        translations: [],
-      });
-
-      totalPages = Math.max(1, response.pagination?.totalPages ?? totalPages);
-      page += 1;
     }
   }
 }

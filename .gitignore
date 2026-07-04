@@ -6,6 +6,10 @@ node_modules/
 # Expo
 .expo/
 dist/
+!dist/
+dist/*
+!dist/word-translation-packs/
+!dist/word-translation-packs/**
 web-build/
 expo-env.d.ts
 

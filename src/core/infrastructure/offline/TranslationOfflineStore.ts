@@ -97,12 +97,30 @@ export class TranslationOfflineStore implements ITranslationOfflineStore {
     });
   }
 
+  async upsertWordTranslations(params: {
+    languageCode: string;
+    verses: OfflineVerseRowInput[];
+  }): Promise<void> {
+    const db = await getAppDbAsync();
+    const languageCode = normalizeWordLanguageCode(params.languageCode);
+    const verses = params.verses ?? [];
+
+    if (!languageCode || verses.length === 0) return;
+
+    await db.withExclusiveTransactionAsync(async (txn) => {
+      await upsertVerseAndTranslationRows(txn, verses, []);
+      await upsertWordTranslationRows(txn, languageCode, verses);
+    });
+  }
+
   async getSurahVersesWithTranslations(
     surahId: number,
-    translationIds: number[]
+    translationIds: number[],
+    wordLang?: string
   ): Promise<OfflineVerseWithTranslations[]> {
     const db = await getAppDbAsync();
     const resolvedTranslationIds = normalizeTranslationIds(translationIds);
+    const resolvedWordLang = normalizeWordLanguageCode(wordLang);
 
     if (resolvedTranslationIds.length === 0) {
       const rows = await db.getAllAsync<{
@@ -113,12 +131,20 @@ export class TranslationOfflineStore implements ITranslationOfflineStore {
         words_json: string | null;
       }>(
         `
-        SELECT verse_key, surah, ayah, arabic_uthmani, words_json
-        FROM offline_verses
-        WHERE surah = ?
-        ORDER BY ayah ASC;
+        SELECT
+          v.verse_key AS verse_key,
+          v.surah AS surah,
+          v.ayah AS ayah,
+          v.arabic_uthmani AS arabic_uthmani,
+          COALESCE(wt.words_json, v.words_json) AS words_json
+        FROM offline_verses v
+        LEFT JOIN offline_word_translations wt
+          ON wt.verse_key = v.verse_key
+          AND wt.language_code = ?
+        WHERE v.surah = ?
+        ORDER BY v.ayah ASC;
         `,
-        [surahId]
+        [resolvedWordLang, surahId]
       );
 
       return rows.map((row) => ({
@@ -147,17 +173,20 @@ export class TranslationOfflineStore implements ITranslationOfflineStore {
         v.surah AS surah,
         v.ayah AS ayah,
         v.arabic_uthmani AS arabic_uthmani,
-        v.words_json AS words_json,
+        COALESCE(wt.words_json, v.words_json) AS words_json,
         t.translation_id AS translation_id,
         t.text AS translation_text
       FROM offline_verses v
+      LEFT JOIN offline_word_translations wt
+        ON wt.verse_key = v.verse_key
+        AND wt.language_code = ?
       LEFT JOIN offline_translations t
         ON t.verse_key = v.verse_key
         AND t.translation_id IN (${placeholders})
       WHERE v.surah = ?
       ORDER BY v.ayah ASC, t.translation_id ASC;
       `,
-      [...resolvedTranslationIds, surahId]
+      [resolvedWordLang, ...resolvedTranslationIds, surahId]
     );
 
     return mapJoinedRowsToOfflineVerses(rows, resolvedTranslationIds);
@@ -168,9 +197,11 @@ export class TranslationOfflineStore implements ITranslationOfflineStore {
     translationIds: number[];
     page: number;
     perPage: number;
+    wordLang?: string;
   }): Promise<OfflineVerseWithTranslations[]> {
     const db = await getAppDbAsync();
     const resolvedTranslationIds = normalizeTranslationIds(params.translationIds);
+    const resolvedWordLang = normalizeWordLanguageCode(params.wordLang);
     const normalizedSurahId =
       Number.isFinite(params.surahId) && params.surahId > 0 ? Math.trunc(params.surahId) : 0;
     const normalizedPage =
@@ -193,13 +224,21 @@ export class TranslationOfflineStore implements ITranslationOfflineStore {
         words_json: string | null;
       }>(
         `
-        SELECT verse_key, surah, ayah, arabic_uthmani, words_json
-        FROM offline_verses
-        WHERE surah = ?
-        ORDER BY ayah ASC
+        SELECT
+          v.verse_key AS verse_key,
+          v.surah AS surah,
+          v.ayah AS ayah,
+          v.arabic_uthmani AS arabic_uthmani,
+          COALESCE(wt.words_json, v.words_json) AS words_json
+        FROM offline_verses v
+        LEFT JOIN offline_word_translations wt
+          ON wt.verse_key = v.verse_key
+          AND wt.language_code = ?
+        WHERE v.surah = ?
+        ORDER BY v.ayah ASC
         LIMIT ? OFFSET ?;
         `,
-        [normalizedSurahId, normalizedPerPage, offset]
+        [resolvedWordLang, normalizedSurahId, normalizedPerPage, offset]
       );
 
       return rows.map((row) => ({
@@ -224,9 +263,17 @@ export class TranslationOfflineStore implements ITranslationOfflineStore {
     }>(
       `
       WITH verse_page AS (
-        SELECT verse_key, surah, ayah, arabic_uthmani, words_json
-        FROM offline_verses
-        WHERE surah = ?
+        SELECT
+          v.verse_key AS verse_key,
+          v.surah AS surah,
+          v.ayah AS ayah,
+          v.arabic_uthmani AS arabic_uthmani,
+          COALESCE(wt.words_json, v.words_json) AS words_json
+        FROM offline_verses v
+        LEFT JOIN offline_word_translations wt
+          ON wt.verse_key = v.verse_key
+          AND wt.language_code = ?
+        WHERE v.surah = ?
         ORDER BY ayah ASC
         LIMIT ? OFFSET ?
       )
@@ -244,7 +291,7 @@ export class TranslationOfflineStore implements ITranslationOfflineStore {
         AND t.translation_id IN (${placeholders})
       ORDER BY v.ayah ASC, t.translation_id ASC;
       `,
-      [normalizedSurahId, normalizedPerPage, offset, ...resolvedTranslationIds]
+      [resolvedWordLang, normalizedSurahId, normalizedPerPage, offset, ...resolvedTranslationIds]
     );
 
     return mapJoinedRowsToOfflineVerses(rows, resolvedTranslationIds);
@@ -255,9 +302,11 @@ export class TranslationOfflineStore implements ITranslationOfflineStore {
     translationIds: number[];
     page: number;
     perPage: number;
+    wordLang?: string;
   }): Promise<OfflineVerseWithTranslations[]> {
     const db = await getAppDbAsync();
     const resolvedTranslationIds = normalizeTranslationIds(params.translationIds);
+    const resolvedWordLang = normalizeWordLanguageCode(params.wordLang);
     const normalizedJuzId =
       Number.isFinite(params.juzId) && params.juzId > 0 ? Math.trunc(params.juzId) : 0;
     const normalizedPage =
@@ -283,8 +332,16 @@ export class TranslationOfflineStore implements ITranslationOfflineStore {
         words_json: string | null;
       }>(
         `
-        SELECT verse_key, surah, ayah, arabic_uthmani, words_json
-        FROM offline_verses
+        SELECT
+          v.verse_key AS verse_key,
+          v.surah AS surah,
+          v.ayah AS ayah,
+          v.arabic_uthmani AS arabic_uthmani,
+          COALESCE(wt.words_json, v.words_json) AS words_json
+        FROM offline_verses v
+        LEFT JOIN offline_word_translations wt
+          ON wt.verse_key = v.verse_key
+          AND wt.language_code = ?
         WHERE (surah > ? AND surah < ?)
            OR (surah = ? AND ? = ? AND ayah BETWEEN ? AND ?)
            OR (surah = ? AND ? < ? AND ayah >= ?)
@@ -293,6 +350,7 @@ export class TranslationOfflineStore implements ITranslationOfflineStore {
         LIMIT ? OFFSET ?;
         `,
         [
+          resolvedWordLang,
           juz.startSurahId,
           juz.endSurahId,
           juz.startSurahId,
@@ -335,8 +393,16 @@ export class TranslationOfflineStore implements ITranslationOfflineStore {
     }>(
       `
       WITH verse_page AS (
-        SELECT verse_key, surah, ayah, arabic_uthmani, words_json
-        FROM offline_verses
+        SELECT
+          v.verse_key AS verse_key,
+          v.surah AS surah,
+          v.ayah AS ayah,
+          v.arabic_uthmani AS arabic_uthmani,
+          COALESCE(wt.words_json, v.words_json) AS words_json
+        FROM offline_verses v
+        LEFT JOIN offline_word_translations wt
+          ON wt.verse_key = v.verse_key
+          AND wt.language_code = ?
         WHERE (surah > ? AND surah < ?)
            OR (surah = ? AND ? = ? AND ayah BETWEEN ? AND ?)
            OR (surah = ? AND ? < ? AND ayah >= ?)
@@ -359,6 +425,7 @@ export class TranslationOfflineStore implements ITranslationOfflineStore {
       ORDER BY v.surah ASC, v.ayah ASC, t.translation_id ASC;
       `,
       [
+        resolvedWordLang,
         juz.startSurahId,
         juz.endSurahId,
         juz.startSurahId,
@@ -385,11 +452,13 @@ export class TranslationOfflineStore implements ITranslationOfflineStore {
 
   async getVerseWithTranslations(
     verseKey: string,
-    translationIds: number[]
+    translationIds: number[],
+    wordLang?: string
   ): Promise<OfflineVerseWithTranslations | null> {
     const db = await getAppDbAsync();
     const normalizedVerseKey = verseKey.trim();
     const resolvedTranslationIds = normalizeTranslationIds(translationIds);
+    const resolvedWordLang = normalizeWordLanguageCode(wordLang);
 
     if (!normalizedVerseKey) return null;
 
@@ -402,12 +471,20 @@ export class TranslationOfflineStore implements ITranslationOfflineStore {
         words_json: string | null;
       }>(
         `
-        SELECT verse_key, surah, ayah, arabic_uthmani, words_json
-        FROM offline_verses
-        WHERE verse_key = ?
+        SELECT
+          v.verse_key AS verse_key,
+          v.surah AS surah,
+          v.ayah AS ayah,
+          v.arabic_uthmani AS arabic_uthmani,
+          COALESCE(wt.words_json, v.words_json) AS words_json
+        FROM offline_verses v
+        LEFT JOIN offline_word_translations wt
+          ON wt.verse_key = v.verse_key
+          AND wt.language_code = ?
+        WHERE v.verse_key = ?
         LIMIT 1;
         `,
-        [normalizedVerseKey]
+        [resolvedWordLang, normalizedVerseKey]
       );
 
       if (!row) return null;
@@ -438,17 +515,20 @@ export class TranslationOfflineStore implements ITranslationOfflineStore {
         v.surah AS surah,
         v.ayah AS ayah,
         v.arabic_uthmani AS arabic_uthmani,
-        v.words_json AS words_json,
+        COALESCE(wt.words_json, v.words_json) AS words_json,
         t.translation_id AS translation_id,
         t.text AS translation_text
       FROM offline_verses v
+      LEFT JOIN offline_word_translations wt
+        ON wt.verse_key = v.verse_key
+        AND wt.language_code = ?
       LEFT JOIN offline_translations t
         ON t.verse_key = v.verse_key
         AND t.translation_id IN (${placeholders})
       WHERE v.verse_key = ?
       ORDER BY t.translation_id ASC;
       `,
-      [...resolvedTranslationIds, normalizedVerseKey]
+      [resolvedWordLang, ...resolvedTranslationIds, normalizedVerseKey]
     );
 
     if (rows.length === 0) return null;
@@ -486,14 +566,34 @@ export class TranslationOfflineStore implements ITranslationOfflineStore {
     });
   }
 
-  async deleteWordTranslation(): Promise<void> {
+  async deleteWordTranslation(languageCode?: string): Promise<void> {
     const db = await getAppDbAsync();
+    const normalizedLanguageCode = normalizeOptionalWordLanguageCode(languageCode);
 
     await db.withExclusiveTransactionAsync(async (txn) => {
-      await txn.runAsync('UPDATE offline_verses SET words_json = NULL');
+      if (normalizedLanguageCode) {
+        await txn.runAsync('DELETE FROM offline_word_translations WHERE language_code = ?', [
+          normalizedLanguageCode,
+        ]);
+        if (normalizedLanguageCode === 'en') {
+          await txn.runAsync('UPDATE offline_verses SET words_json = NULL');
+        }
+      } else {
+        await txn.runAsync('DELETE FROM offline_word_translations');
+        await txn.runAsync('UPDATE offline_verses SET words_json = NULL');
+      }
       await deleteOrphanedVerseRows(txn);
     });
   }
+}
+
+function normalizeWordLanguageCode(value: string | undefined): string {
+  const normalized = typeof value === 'string' ? value.trim().toLowerCase() : '';
+  return normalized || 'en';
+}
+
+function normalizeOptionalWordLanguageCode(value: string | undefined): string {
+  return typeof value === 'string' ? value.trim().toLowerCase() : '';
 }
 
 async function upsertVerseAndTranslationRows(
@@ -554,8 +654,35 @@ async function deleteOrphanedVerseRows(db: SQLiteDatabase): Promise<void> {
       SELECT 1
       FROM offline_translations t
       WHERE t.verse_key = offline_verses.verse_key
+    )
+    AND NOT EXISTS (
+      SELECT 1
+      FROM offline_word_translations wt
+      WHERE wt.verse_key = offline_verses.verse_key
     );
   `);
+}
+
+async function upsertWordTranslationRows(
+  db: SQLiteDatabase,
+  languageCode: string,
+  verses: OfflineVerseRowInput[]
+): Promise<void> {
+  const stmt = await db.prepareAsync(`
+    INSERT INTO offline_word_translations(language_code, verse_key, words_json)
+    VALUES (?, ?, ?)
+    ON CONFLICT(language_code, verse_key) DO UPDATE SET
+      words_json = excluded.words_json;
+  `);
+
+  try {
+    for (const verse of verses) {
+      if (!verse.wordsJson) continue;
+      await stmt.executeAsync([languageCode, verse.verseKey, verse.wordsJson]);
+    }
+  } finally {
+    await stmt.finalizeAsync();
+  }
 }
 
 function normalizeTranslationIds(translationIds: number[]): number[] {

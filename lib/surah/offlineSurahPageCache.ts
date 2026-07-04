@@ -120,10 +120,12 @@ function getPageCacheKey(params: {
   translationIds: number[];
   page: number;
   perPage: number;
+  wordLang?: string;
 }): string {
   return [
     normalizePositiveInt(params.surahId),
     normalizeTranslationIds(params.translationIds).join(','),
+    normalizeWordLanguageCode(params.wordLang),
     normalizePositiveInt(params.page),
     normalizePositiveInt(params.perPage),
   ].join('|');
@@ -132,11 +134,18 @@ function getPageCacheKey(params: {
 function getSurahCacheKey(params: {
   surahId: number;
   translationIds: number[];
+  wordLang?: string;
 }): string {
   return [
     normalizePositiveInt(params.surahId),
     normalizeTranslationIds(params.translationIds).join(','),
+    normalizeWordLanguageCode(params.wordLang),
   ].join('|');
+}
+
+function normalizeWordLanguageCode(value: string | undefined): string {
+  const normalized = typeof value === 'string' ? value.trim().toLowerCase() : '';
+  return normalized || 'en';
 }
 
 function pruneCache(cache: Map<string, CacheEntry>, maxSize: number, now: number): void {
@@ -158,11 +167,13 @@ function resolvePageParams(params: {
   translationIds: number[];
   page: number;
   perPage: number;
+  wordLang?: string;
 }): {
   surahId: number;
   translationIds: number[];
   page: number;
   perPage: number;
+  wordLang: string;
 } | null {
   const surahId = normalizePositiveInt(params.surahId);
   const page = normalizePositiveInt(params.page);
@@ -177,15 +188,18 @@ function resolvePageParams(params: {
     translationIds: normalizeTranslationIds(params.translationIds),
     page,
     perPage,
+    wordLang: normalizeWordLanguageCode(params.wordLang),
   };
 }
 
 function resolveSurahParams(params: {
   surahId: number;
   translationIds: number[];
+  wordLang?: string;
 }): {
   surahId: number;
   translationIds: number[];
+  wordLang: string;
 } | null {
   const surahId = normalizePositiveInt(params.surahId);
   if (surahId <= 0) return null;
@@ -193,6 +207,7 @@ function resolveSurahParams(params: {
   return {
     surahId,
     translationIds: normalizeTranslationIds(params.translationIds),
+    wordLang: normalizeWordLanguageCode(params.wordLang),
   };
 }
 
@@ -516,9 +531,11 @@ function mapJoinedRowsToOfflineVerses(
 
 function readOfflineSurahRowsSync(
   surahId: number,
-  translationIds: number[]
+  translationIds: number[],
+  wordLang = 'en'
 ): OfflineVerseWithTranslations[] {
   const resolvedTranslationIds = normalizeTranslationIds(translationIds);
+  const resolvedWordLang = normalizeWordLanguageCode(wordLang);
   const db = getAppDbSync();
 
   if (resolvedTranslationIds.length === 0) {
@@ -530,12 +547,20 @@ function readOfflineSurahRowsSync(
       words_json: string | null;
     }>(
       `
-      SELECT verse_key, surah, ayah, arabic_uthmani, words_json
-      FROM offline_verses
-      WHERE surah = ?
+      SELECT
+        v.verse_key AS verse_key,
+        v.surah AS surah,
+        v.ayah AS ayah,
+        v.arabic_uthmani AS arabic_uthmani,
+        COALESCE(wt.words_json, v.words_json) AS words_json
+      FROM offline_verses v
+      LEFT JOIN offline_word_translations wt
+        ON wt.verse_key = v.verse_key
+        AND wt.language_code = ?
+      WHERE v.surah = ?
       ORDER BY ayah ASC;
       `,
-      [surahId]
+      [resolvedWordLang, surahId]
     );
 
     return rows.map((row) => ({
@@ -564,17 +589,20 @@ function readOfflineSurahRowsSync(
       v.surah AS surah,
       v.ayah AS ayah,
       v.arabic_uthmani AS arabic_uthmani,
-      v.words_json AS words_json,
+      COALESCE(wt.words_json, v.words_json) AS words_json,
       t.translation_id AS translation_id,
       t.text AS translation_text
     FROM offline_verses v
+    LEFT JOIN offline_word_translations wt
+      ON wt.verse_key = v.verse_key
+      AND wt.language_code = ?
     LEFT JOIN offline_translations t
       ON t.verse_key = v.verse_key
       AND t.translation_id IN (${placeholders})
     WHERE v.surah = ?
     ORDER BY v.ayah ASC, t.translation_id ASC;
     `,
-    [...resolvedTranslationIds, surahId]
+    [resolvedWordLang, ...resolvedTranslationIds, surahId]
   );
 
   return mapJoinedRowsToOfflineVerses(rows, resolvedTranslationIds);
@@ -583,6 +611,7 @@ function readOfflineSurahRowsSync(
 export function peekOfflineSurahCache(params: {
   surahId: number;
   translationIds: number[];
+  wordLang?: string;
 }): OfflineVerseWithTranslations[] | null {
   const resolved = resolveSurahParams(params);
   if (!resolved) return null;
@@ -595,6 +624,7 @@ export function getOfflineSurahSnapshot(params: {
   translationIds: number[];
   perPage?: number;
   expectedVerseCount?: number;
+  wordLang?: string;
 }): OfflineVerseWithTranslations[] | null {
   const resolved = resolveSurahParams(params);
   if (!resolved) return null;
@@ -612,7 +642,11 @@ export function getOfflineSurahSnapshot(params: {
   }
 
   try {
-    const surahVerses = readOfflineSurahRowsSync(resolved.surahId, resolved.translationIds);
+    const surahVerses = readOfflineSurahRowsSync(
+      resolved.surahId,
+      resolved.translationIds,
+      resolved.wordLang
+    );
     if (
       !canCacheOfflineVerses(
         surahVerses,
@@ -649,6 +683,7 @@ export function peekOfflineSurahPageCache(params: {
   translationIds: number[];
   page: number;
   perPage: number;
+  wordLang?: string;
 }): OfflineVerseWithTranslations[] | null {
   const resolved = resolvePageParams(params);
   if (!resolved) return null;
@@ -684,6 +719,7 @@ export function getOfflineSurahCached(params: {
   translationIds: number[];
   perPage?: number;
   expectedVerseCount?: number;
+  wordLang?: string;
 }): Promise<OfflineVerseWithTranslations[]> {
   const resolved = resolveSurahParams(params);
   if (!resolved) return Promise.resolve([]);
@@ -709,7 +745,7 @@ export function getOfflineSurahCached(params: {
 
   const value = container
     .getTranslationOfflineStore()
-    .getSurahVersesWithTranslations(resolved.surahId, resolved.translationIds)
+    .getSurahVersesWithTranslations(resolved.surahId, resolved.translationIds, resolved.wordLang)
     .then((surahVerses) => {
       const current = surahCache.get(key);
       if (!current) return surahVerses;
@@ -755,6 +791,7 @@ export function getOfflineSurahPageCached(params: {
   page: number;
   perPage: number;
   expectedVerseCount?: number;
+  wordLang?: string;
 }): Promise<OfflineVerseWithTranslations[]> {
   const resolved = resolvePageParams(params);
   if (!resolved) return Promise.resolve([]);

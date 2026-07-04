@@ -78,10 +78,12 @@ function getPageCacheKey(params: {
   translationIds: number[];
   page: number;
   perPage: number;
+  wordLang?: string;
 }): string {
   return [
     normalizePositiveInt(params.juzId),
     normalizeTranslationIds(params.translationIds).join(','),
+    normalizeWordLanguageCode(params.wordLang),
     normalizePositiveInt(params.page),
     normalizePositiveInt(params.perPage),
   ].join('|');
@@ -90,11 +92,18 @@ function getPageCacheKey(params: {
 function getJuzCacheKey(params: {
   juzId: number;
   translationIds: number[];
+  wordLang?: string;
 }): string {
   return [
     normalizePositiveInt(params.juzId),
     normalizeTranslationIds(params.translationIds).join(','),
+    normalizeWordLanguageCode(params.wordLang),
   ].join('|');
+}
+
+function normalizeWordLanguageCode(value: string | undefined): string {
+  const normalized = typeof value === 'string' ? value.trim().toLowerCase() : '';
+  return normalized || 'en';
 }
 
 function pruneCache(cache: Map<string, CacheEntry>, maxSize: number, now: number): void {
@@ -116,11 +125,13 @@ function resolvePageParams(params: {
   translationIds: number[];
   page: number;
   perPage: number;
+  wordLang?: string;
 }): {
   juzId: number;
   translationIds: number[];
   page: number;
   perPage: number;
+  wordLang: string;
 } | null {
   const juzId = normalizePositiveInt(params.juzId);
   const page = normalizePositiveInt(params.page);
@@ -135,15 +146,18 @@ function resolvePageParams(params: {
     translationIds: normalizeTranslationIds(params.translationIds),
     page,
     perPage,
+    wordLang: normalizeWordLanguageCode(params.wordLang),
   };
 }
 
 function resolveJuzParams(params: {
   juzId: number;
   translationIds: number[];
+  wordLang?: string;
 }): {
   juzId: number;
   translationIds: number[];
+  wordLang: string;
 } | null {
   const juzId = normalizePositiveInt(params.juzId);
   if (juzId <= 0) return null;
@@ -151,6 +165,7 @@ function resolveJuzParams(params: {
   return {
     juzId,
     translationIds: normalizeTranslationIds(params.translationIds),
+    wordLang: normalizeWordLanguageCode(params.wordLang),
   };
 }
 
@@ -287,9 +302,11 @@ function mapJoinedRowsToOfflineVerses(
 
 function readOfflineJuzRowsSync(
   juzId: number,
-  translationIds: number[]
+  translationIds: number[],
+  wordLang = 'en'
 ): OfflineVerseWithTranslations[] {
   const resolvedTranslationIds = normalizeTranslationIds(translationIds);
+  const resolvedWordLang = normalizeWordLanguageCode(wordLang);
   const db = getAppDbSync();
   const juz = (juzData as any[]).find((j: any) => j.number === juzId);
   if (!juz) return [];
@@ -303,8 +320,16 @@ function readOfflineJuzRowsSync(
       words_json: string | null;
     }>(
       `
-      SELECT verse_key, surah, ayah, arabic_uthmani, words_json
-      FROM offline_verses
+      SELECT
+        v.verse_key AS verse_key,
+        v.surah AS surah,
+        v.ayah AS ayah,
+        v.arabic_uthmani AS arabic_uthmani,
+        COALESCE(wt.words_json, v.words_json) AS words_json
+      FROM offline_verses v
+      LEFT JOIN offline_word_translations wt
+        ON wt.verse_key = v.verse_key
+        AND wt.language_code = ?
       WHERE (surah > ? AND surah < ?)
          OR (surah = ? AND ? = ? AND ayah BETWEEN ? AND ?)
          OR (surah = ? AND ? < ? AND ayah >= ?)
@@ -312,6 +337,7 @@ function readOfflineJuzRowsSync(
       ORDER BY surah ASC, ayah ASC;
       `,
       [
+        resolvedWordLang,
         juz.startSurahId,
         juz.endSurahId,
         juz.startSurahId,
@@ -352,8 +378,16 @@ function readOfflineJuzRowsSync(
   }>(
     `
     WITH verse_page AS (
-      SELECT verse_key, surah, ayah, arabic_uthmani, words_json
-      FROM offline_verses
+      SELECT
+        v.verse_key AS verse_key,
+        v.surah AS surah,
+        v.ayah AS ayah,
+        v.arabic_uthmani AS arabic_uthmani,
+        COALESCE(wt.words_json, v.words_json) AS words_json
+      FROM offline_verses v
+      LEFT JOIN offline_word_translations wt
+        ON wt.verse_key = v.verse_key
+        AND wt.language_code = ?
       WHERE (surah > ? AND surah < ?)
          OR (surah = ? AND ? = ? AND ayah BETWEEN ? AND ?)
          OR (surah = ? AND ? < ? AND ayah >= ?)
@@ -375,6 +409,7 @@ function readOfflineJuzRowsSync(
     ORDER BY v.surah ASC, v.ayah ASC, t.translation_id ASC;
     `,
     [
+      resolvedWordLang,
       juz.startSurahId,
       juz.endSurahId,
       juz.startSurahId,
@@ -400,6 +435,7 @@ function readOfflineJuzRowsSync(
 export function peekOfflineJuzCache(params: {
   juzId: number;
   translationIds: number[];
+  wordLang?: string;
 }): OfflineVerseWithTranslations[] | null {
   const resolved = resolveJuzParams(params);
   if (!resolved) return null;
@@ -412,6 +448,7 @@ export function getOfflineJuzSnapshot(params: {
   translationIds: number[];
   perPage?: number;
   expectedVerseCount?: number;
+  wordLang?: string;
 }): OfflineVerseWithTranslations[] | null {
   const resolved = resolveJuzParams(params);
   if (!resolved) return null;
@@ -429,7 +466,11 @@ export function getOfflineJuzSnapshot(params: {
   }
 
   try {
-    const juzVerses = readOfflineJuzRowsSync(resolved.juzId, resolved.translationIds);
+    const juzVerses = readOfflineJuzRowsSync(
+      resolved.juzId,
+      resolved.translationIds,
+      resolved.wordLang
+    );
     if (
       !canCacheOfflineVerses(
         juzVerses,
@@ -466,6 +507,7 @@ export function peekOfflineJuzPageCache(params: {
   translationIds: number[];
   page: number;
   perPage: number;
+  wordLang?: string;
 }): OfflineVerseWithTranslations[] | null {
   const resolved = resolvePageParams(params);
   if (!resolved) return null;
@@ -501,6 +543,7 @@ export function getOfflineJuzCached(params: {
   translationIds: number[];
   perPage?: number;
   expectedVerseCount?: number;
+  wordLang?: string;
 }): Promise<OfflineVerseWithTranslations[]> {
   const resolved = resolveJuzParams(params);
   if (!resolved) return Promise.resolve([]);
@@ -531,6 +574,7 @@ export function getOfflineJuzCached(params: {
       translationIds: resolved.translationIds,
       page: 1,
       perPage: 9999,
+      wordLang: resolved.wordLang,
     })
     .then((juzVerses) => {
       const current = juzCache.get(key);
@@ -577,6 +621,7 @@ export function getOfflineJuzPageCached(params: {
   page: number;
   perPage: number;
   expectedVerseCount?: number;
+  wordLang?: string;
 }): Promise<OfflineVerseWithTranslations[]> {
   const resolved = resolvePageParams(params);
   if (!resolved) return Promise.resolve([]);
@@ -616,6 +661,7 @@ export function getOfflineJuzPageCached(params: {
       translationIds: resolved.translationIds,
       page: resolved.page,
       perPage: resolved.perPage,
+      wordLang: resolved.wordLang,
     })
     .then((pageVerses) => {
       const current = juzPageCache.get(key);

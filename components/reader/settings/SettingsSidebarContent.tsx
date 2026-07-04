@@ -52,13 +52,22 @@ type SubPanelType = Exclude<PanelType, 'root'>;
 
 const WORD_LANGUAGES = [
   { code: 'en', name: 'English' },
+  { code: 'bn', name: 'Bangla' },
+  { code: 'ur', name: 'Urdu' },
+  { code: 'hi', name: 'Hindi' },
+  { code: 'id', name: 'Bahasa Indonesia' },
+  { code: 'fa', name: 'Persian' },
+  { code: 'tr', name: 'Turkish' },
+  { code: 'ta', name: 'Tamil' },
+] as const;
+
+const UI_LANGUAGES = [
+  { code: 'en', name: 'English' },
   { code: 'bn', name: 'Bengali' },
   { code: 'ur', name: 'Urdu' },
   { code: 'hi', name: 'Hindi' },
   { code: 'ar', name: 'Arabic' },
 ] as const;
-
-const UI_LANGUAGES = WORD_LANGUAGES;
 const BYTES_PER_MEGABYTE = 1024 * 1024;
 const ARABIC_FONT_PREVIEW_TEXT = 'بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ';
 
@@ -317,8 +326,8 @@ export function SettingsSidebarContent({
       const useCase = new DownloadWordTranslationUseCase(
         container.getDownloadIndexRepository(),
         container.getTranslationOfflineStore(),
-        container.getTranslationDownloadRepository(),
-        logger
+        logger,
+        container.getWordTranslationPackRepository()
       );
       await useCase.execute(code);
       clearOfflineSurahPageCache();

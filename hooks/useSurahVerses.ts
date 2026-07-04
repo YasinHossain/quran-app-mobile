@@ -358,6 +358,7 @@ function normalizeOfflineVersePageData(
 function buildOfflinePagesByNumber(params: {
   offlineVerses: OfflineVerseWithTranslations[];
   translationIds: number[];
+  wordLang: string;
   perPage: number;
 }): Record<number, SurahVerse[]> {
   const pages: Record<number, OfflineVerseWithTranslations[]> = {};
@@ -507,6 +508,7 @@ function getInitialOfflinePagesSnapshot(params: {
   enabled: boolean;
   chapterNumber: number;
   translationIds: number[];
+  wordLang: string;
   perPage: number;
   verseCount: number;
   requireTajweedGlyphs?: boolean;
@@ -517,6 +519,7 @@ function getInitialOfflinePagesSnapshot(params: {
   const cachedSurah = peekOfflineSurahCache({
     surahId: params.chapterNumber,
     translationIds: params.translationIds,
+    wordLang: params.wordLang,
   });
 
   const offlineSurah =
@@ -531,6 +534,7 @@ function getInitialOfflinePagesSnapshot(params: {
       : getOfflineSurahSnapshot({
           surahId: params.chapterNumber,
           translationIds: params.translationIds,
+          wordLang: params.wordLang,
           perPage: params.perPage,
           expectedVerseCount: params.verseCount,
         });
@@ -546,6 +550,7 @@ function getInitialOfflinePagesSnapshot(params: {
   const pages = buildOfflinePagesByNumber({
     offlineVerses: resolvedOfflineSurah,
     translationIds: params.translationIds,
+    wordLang: params.wordLang,
     perPage: params.perPage,
   });
 
@@ -783,6 +788,7 @@ export function useSurahVerses({
       enabled,
       chapterNumber,
       translationIds: resolvedTranslationIds,
+      wordLang: resolvedWordLang,
       perPage,
       verseCount,
       requireTajweedGlyphs: false,
@@ -849,6 +855,7 @@ export function useSurahVerses({
       enabled,
       chapterNumber,
       translationIds: resolvedTranslationIds,
+      wordLang: resolvedWordLang,
       perPage,
       verseCount,
       requireTajweedGlyphs: false,
@@ -1020,6 +1027,7 @@ export function useSurahVerses({
       const builtPages = buildOfflinePagesByNumber({
         offlineVerses,
         translationIds: resolvedTranslationIds,
+        wordLang: resolvedWordLang,
         perPage,
       });
       const nextPages = builtPages;
@@ -1064,6 +1072,7 @@ export function useSurahVerses({
       const cachedPage = peekOfflineSurahPageCache({
         surahId: chapterNumber,
         translationIds: resolvedTranslationIds,
+        wordLang: resolvedWordLang,
         page: pageNumber,
         perPage,
       });
@@ -1155,6 +1164,7 @@ export function useSurahVerses({
       const nextPages = buildOfflinePagesByNumber({
         offlineVerses: cachedSurah,
         translationIds: resolvedTranslationIds,
+        wordLang: resolvedWordLang,
         perPage,
       });
       if (requestTokenRef.current !== token) return false;
@@ -1177,6 +1187,7 @@ export function useSurahVerses({
     const offlineVerses = await getOfflineSurahCached({
       surahId: chapterNumber,
       translationIds: resolvedTranslationIds,
+      wordLang: resolvedWordLang,
       perPage,
       expectedVerseCount: verseCount,
     });
@@ -1198,6 +1209,7 @@ export function useSurahVerses({
     const nextPages = buildOfflinePagesByNumber({
       offlineVerses,
       translationIds: resolvedTranslationIds,
+      wordLang: resolvedWordLang,
       perPage,
     });
     if (requestTokenRef.current !== token) return false;
@@ -1385,6 +1397,7 @@ export function useSurahVerses({
         enabled,
         chapterNumber,
         translationIds: resolvedTranslationIds,
+        wordLang: resolvedWordLang,
         perPage,
         verseCount,
         requireTajweedGlyphs: false,

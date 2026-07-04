@@ -14,6 +14,7 @@ import { LocalMushafPageRepository } from '@/src/core/infrastructure/mushaf/Loca
 import { logger } from '@/src/core/infrastructure/monitoring/logger';
 import { HostedTranslationPackRepository } from '@/src/core/infrastructure/translations/HostedTranslationPackRepository';
 import { HostedTafsirPackRepository } from '@/src/core/infrastructure/tafsir/HostedTafsirPackRepository';
+import { HostedWordTranslationPackRepository } from '@/src/core/infrastructure/word-translations/HostedWordTranslationPackRepository';
 
 const downloadIndexRepository = new DownloadIndexRepository();
 const tafsirRepository = new TafsirRepository();
@@ -22,6 +23,10 @@ const tafsirOfflineStore = new TafsirOfflineStore();
 const translationDownloadRepository = new QuranComTranslationDownloadRepository();
 const tafsirDownloadRepository = new QuranComTafsirDownloadRepository();
 const translationPackRepository = new HostedTranslationPackRepository(translationOfflineStore, logger);
+const wordTranslationPackRepository = new HostedWordTranslationPackRepository(
+  translationOfflineStore,
+  logger
+);
 const tafsirPackRepository = new HostedTafsirPackRepository(tafsirOfflineStore, logger);
 const chapterVerseKeysRepository = new QuranComChapterVerseKeysRepository();
 const audioDownloadManager = new AudioDownloadManager(downloadIndexRepository);
@@ -48,6 +53,8 @@ export const container = {
     translationDownloadRepository,
   getTafsirDownloadRepository: (): QuranComTafsirDownloadRepository => tafsirDownloadRepository,
   getTranslationPackRepository: (): HostedTranslationPackRepository => translationPackRepository,
+  getWordTranslationPackRepository: (): HostedWordTranslationPackRepository =>
+    wordTranslationPackRepository,
   getTafsirPackRepository: (): HostedTafsirPackRepository => tafsirPackRepository,
   getChapterVerseKeysRepository: (): QuranComChapterVerseKeysRepository => chapterVerseKeysRepository,
   getAudioDownloadManager: (): AudioDownloadManager => audioDownloadManager,

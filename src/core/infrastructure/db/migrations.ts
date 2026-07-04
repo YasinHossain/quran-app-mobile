@@ -96,6 +96,30 @@ const APP_DB_MIGRATIONS: AppDbMigration[] = [
       `,
     ],
   },
+  {
+    version: 6,
+    statements: [
+      `
+      CREATE TABLE IF NOT EXISTS offline_word_translations(
+        language_code TEXT NOT NULL,
+        verse_key TEXT NOT NULL,
+        words_json TEXT NOT NULL,
+        PRIMARY KEY(language_code, verse_key),
+        FOREIGN KEY(verse_key) REFERENCES offline_verses(verse_key) ON DELETE CASCADE
+      );
+      `,
+      `
+      CREATE INDEX IF NOT EXISTS idx_offline_word_translations_verse_key
+      ON offline_word_translations(verse_key);
+      `,
+      `
+      INSERT OR IGNORE INTO offline_word_translations(language_code, verse_key, words_json)
+      SELECT 'en', verse_key, words_json
+      FROM offline_verses
+      WHERE words_json IS NOT NULL AND TRIM(words_json) <> '';
+      `,
+    ],
+  },
 ];
 
 export const APP_DB_LATEST_SCHEMA_VERSION =

@@ -1,0 +1,13 @@
+{
+  "languageCode": "bn",
+  "name": "Bangla",
+  "version": "2026-07-04",
+  "bundled": false,
+  "format": "word-translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "a1816577b53cfe0aca4f1895edf18faf",
+  "payloadSizeBytes": 15022296,
+  "totalVerses": 6236,
+  "generatedAt": "2026-07-04T04:30:15.706Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?words=true&word_translation_language=bn"
+}

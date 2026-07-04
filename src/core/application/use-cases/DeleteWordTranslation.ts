@@ -28,7 +28,7 @@ export class DeleteWordTranslationUseCase {
     });
 
     try {
-      await this.translationOfflineStore.deleteWordTranslation();
+      await this.translationOfflineStore.deleteWordTranslation(normalizedCode);
       await this.downloadIndexRepository.remove(content);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);

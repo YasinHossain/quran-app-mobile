@@ -46,6 +46,15 @@ export type {
   TranslationPackPayloadFormat,
   TranslationPackPayloadVerse,
 } from './translationPack';
+export type {
+  HostedWordTranslationPackCatalog,
+  HostedWordTranslationPackCatalogEntry,
+  WordTranslationPackChecksum,
+  WordTranslationPackManifest,
+  WordTranslationPackPayload,
+  WordTranslationPackPayloadFormat,
+  WordTranslationPackPayloadVerse,
+} from './wordTranslationPack';
 export type { VerseWord } from './verseWord';
 export type {
   HostedTafsirPackCatalog,
