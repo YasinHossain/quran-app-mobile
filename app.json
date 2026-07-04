@@ -53,7 +53,7 @@
     ],
     "extra": {
       "translationPackCatalogUrl": "https://yasinhossain.github.io/quran-app-mobile/translation-packs/catalog.json",
-      "wordTranslationPackCatalogUrl": "https://yasinhossain.github.io/quran-app-mobile/word-translation-packs/catalog.json",
+      "wordTranslationPackCatalogUrl": "https://yasinhossain.github.io/quran-app-mobile/word-translation-packs/catalog.json?v=2026-07-04",
       "tafsirPackCatalogUrl": "https://yasinhossain.github.io/quran-app-mobile/tafsir-packs/catalog.json",
       "mushafPackCatalogUrl": "https://yasinhossain.github.io/quran-app-mobile/mushaf-packs/catalog.json"
     },
