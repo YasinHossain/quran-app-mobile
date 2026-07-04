@@ -69,11 +69,30 @@ npm install
 npm start
 ```
 
+`npm start` is the default Android development workflow: it starts and waits
+for the emulator, starts Metro, and opens the development client. Do not press
+`a`; the app opens automatically.
+
+To start Metro without launching a platform:
+
+```bash
+npm run metro
+```
+
 To build and launch the native Android app:
 
 ```bash
 npm run android
 ```
+
+For normal Android development, start the emulator, Metro, and the installed
+development client with one command:
+
+```bash
+npm run dev:android
+```
+
+Keep that terminal open for Metro logs. Stop Metro with `Ctrl+C`.
 
 To start the first installed Android emulator:
 
