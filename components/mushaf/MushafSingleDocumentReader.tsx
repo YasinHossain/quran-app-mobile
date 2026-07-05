@@ -266,12 +266,14 @@ export const MushafSingleDocumentReader = React.forwardRef<
   const readerSessionRef = React.useRef(0);
   const backgroundWarmRunRef = React.useRef(0);
   const backgroundWarmTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const initialRevealFallbackTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const backgroundWarmQueueRef = React.useRef<number[]>([]);
   const hasCompletedBackgroundWarmRef = React.useRef(false);
   const activePageNumberRef = React.useRef(initialPageNumber);
   const pageDataByNumberRef = React.useRef(new Map<number, MushafPageData>());
   const requestedPageNumbersRef = React.useRef(new Set<number>());
   const loadingPageNumbersRef = React.useRef(new Set<number>());
+  const pageLoadRetryCountsRef = React.useRef(new Map<number, number>());
   const loadPagesRef = React.useRef<((pageNumbers: number[], reason: string) => void) | null>(null);
   const firstPackDirectoryUriRef = React.useRef<string | null>(
     initialPageData?.rendererAssets?.packDirectoryUri ?? null
@@ -432,13 +434,34 @@ export const MushafSingleDocumentReader = React.forwardRef<
               pageNumber,
               reason,
             });
+
+            if (pageNumber === initialPageNumber) {
+              const retryCount = pageLoadRetryCountsRef.current.get(pageNumber) ?? 0;
+              if (retryCount < 2) {
+                pageLoadRetryCountsRef.current.set(pageNumber, retryCount + 1);
+                const session = readerSessionRef.current;
+                setTimeout(() => {
+                  if (readerSessionRef.current !== session) return;
+                  loadPagesRef.current?.([pageNumber], `initial-page-retry-${retryCount + 1}`);
+                }, 180 * (retryCount + 1));
+              }
+            }
           })
           .finally(() => {
             loadingPageNumbersRef.current.delete(pageNumber);
           });
       });
     },
-    [allowedPageNumbers, expectedVersion, filterChapterId, injectPages, packId, rememberPageData, totalPages]
+    [
+      allowedPageNumbers,
+      expectedVersion,
+      filterChapterId,
+      initialPageNumber,
+      injectPages,
+      packId,
+      rememberPageData,
+      totalPages,
+    ]
   );
   loadPagesRef.current = loadPages;
 
@@ -446,6 +469,13 @@ export const MushafSingleDocumentReader = React.forwardRef<
     if (backgroundWarmTimeoutRef.current !== null) {
       clearTimeout(backgroundWarmTimeoutRef.current);
       backgroundWarmTimeoutRef.current = null;
+    }
+  }, []);
+
+  const clearInitialRevealFallback = React.useCallback(() => {
+    if (initialRevealFallbackTimeoutRef.current !== null) {
+      clearTimeout(initialRevealFallbackTimeoutRef.current);
+      initialRevealFallbackTimeoutRef.current = null;
     }
   }, []);
 
@@ -541,6 +571,7 @@ export const MushafSingleDocumentReader = React.forwardRef<
 
   React.useEffect(() => {
     stopBackgroundWarm();
+    clearInitialRevealFallback();
     readerSessionRef.current += 1;
     isReaderReadyRef.current = false;
     hasInitialPaintRef.current = false;
@@ -550,6 +581,7 @@ export const MushafSingleDocumentReader = React.forwardRef<
     pageDataByNumberRef.current = new Map();
     requestedPageNumbersRef.current = new Set();
     loadingPageNumbersRef.current = new Set();
+    pageLoadRetryCountsRef.current = new Map();
     firstPackDirectoryUriRef.current = initialPageData?.rendererAssets?.packDirectoryUri ?? null;
 
     if (
@@ -560,6 +592,7 @@ export const MushafSingleDocumentReader = React.forwardRef<
     }
   }, [
     expectedVersion,
+    clearInitialRevealFallback,
     filterChapterId,
     initialPageNumber,
     mushafScaleStep,
@@ -571,16 +604,18 @@ export const MushafSingleDocumentReader = React.forwardRef<
   ]);
 
   React.useEffect(() => stopBackgroundWarm, [stopBackgroundWarm]);
+  React.useEffect(() => clearInitialRevealFallback, [clearInitialRevealFallback]);
 
   const revealReader = React.useCallback(() => {
     if (hasInitialPaintRef.current) {
       return;
     }
 
+    clearInitialRevealFallback();
     hasInitialPaintRef.current = true;
     readerOpacity.setValue(1);
     onInitialPositioned?.();
-  }, [onInitialPositioned, readerOpacity]);
+  }, [clearInitialRevealFallback, onInitialPositioned, readerOpacity]);
 
   React.useEffect(() => {
     if (
@@ -709,6 +744,15 @@ export const MushafSingleDocumentReader = React.forwardRef<
               'post-first-visible-page',
               pageNumber ?? activePageNumberRef.current
             );
+            if (initialRevealFallbackTimeoutRef.current === null) {
+              const session = readerSessionRef.current;
+              initialRevealFallbackTimeoutRef.current = setTimeout(() => {
+                initialRevealFallbackTimeoutRef.current = null;
+                if (readerSessionRef.current === session) {
+                  revealReader();
+                }
+              }, 600);
+            }
           }
           return;
         }
@@ -760,6 +804,7 @@ export const MushafSingleDocumentReader = React.forwardRef<
     },
     [
       handleWordPress,
+      clearInitialRevealFallback,
       initialPageNumber,
       injectPages,
       loadPages,
@@ -802,6 +847,28 @@ export const MushafSingleDocumentReader = React.forwardRef<
             isReaderReadyRef.current = false;
             hasInitialPaintRef.current = false;
             readerOpacity.setValue(0);
+          }}
+          onLoadEnd={() => {
+            webViewRef.current?.injectJavaScript(`
+              (function announceRendererReady(attempt) {
+                if (
+                  window.__MUSHAF_READER__ &&
+                  window.ReactNativeWebView
+                ) {
+                  window.ReactNativeWebView.postMessage(JSON.stringify({
+                    type: 'renderer-ready',
+                    payload: { ready: true, source: 'native-load-end' }
+                  }));
+                  return;
+                }
+                if (attempt < 4) {
+                  setTimeout(function () {
+                    announceRendererReady(attempt + 1);
+                  }, 120);
+                }
+              })(0);
+              true;
+            `);
           }}
           onMessage={(event) => handleMessage(event.nativeEvent.data)}
           style={[styles.webView, { backgroundColor: readerBackgroundColor }]}

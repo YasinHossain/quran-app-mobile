@@ -498,6 +498,21 @@ function buildShellDocumentHtml({
         opacity: 0;
       }
 
+      .reader-page.loading {
+        position: relative;
+      }
+
+      .reader-page.loading::after {
+        color: var(--muted);
+        content: 'Loading page…';
+        font-size: 12px;
+        left: 0;
+        position: absolute;
+        right: 0;
+        text-align: center;
+        top: 36px;
+      }
+
       .standard-view {
         width: 100%;
       }
@@ -1025,6 +1040,24 @@ function buildShellDocumentHtml({
           });
         }
 
+        function settleInitialPageWithoutHighlight(state) {
+          if (
+            didEmitInitialPositioned ||
+            didScrollToHighlight ||
+            !HIGHLIGHT_VERSE_KEY ||
+            !state ||
+            state.pageNumber !== INITIAL_PAGE_NUMBER
+          ) {
+            return;
+          }
+
+          window.scrollTo(
+            0,
+            Math.max(0, state.root.offsetTop - FOCUS_TOP_INSET_PX)
+          );
+          didScrollToHighlight = true;
+        }
+
         function getPageRenderKey(pageData) {
           if (!pageData || !pageData.pack) {
             return '';
@@ -1058,21 +1091,43 @@ function buildShellDocumentHtml({
             return qcfFontFamily;
           }
 
-          try {
-            var fontFace = new FontFace(
-              qcfFontFamily,
-              "url('" + String(qcfFontFileUri).replace(/'/g, "\\\\'") + "')"
-            );
+          async function registerFontFace(source) {
+            var fontFace = new FontFace(qcfFontFamily, source);
             fontFace.display = 'block';
             var loadedFace = await fontFace.load();
             if (document.fonts) {
               document.fonts.add(loadedFace);
             }
             return qcfFontFamily;
-          } catch (error) {
-            console.error('Failed to load local QCF page font', error);
-            return null;
           }
+
+          var fontUrl = String(qcfFontFileUri);
+          var escapedFontUrl = fontUrl.replace(/'/g, "\\\\'");
+          var lastError = null;
+
+          for (var attempt = 0; attempt < 2; attempt += 1) {
+            try {
+              return await registerFontFace("url('" + escapedFontUrl + "')");
+            } catch (error) {
+              lastError = error;
+              await new Promise(function (resolve) {
+                setTimeout(resolve, 80 * (attempt + 1));
+              });
+            }
+          }
+
+          try {
+            var response = await fetch(fontUrl, { cache: 'no-store' });
+            if (!response.ok) {
+              throw new Error('Font file request failed with status ' + String(response.status));
+            }
+            return await registerFontFace(await response.arrayBuffer());
+          } catch (error) {
+            lastError = error;
+          }
+
+          console.error('Failed to load local QCF page font', lastError);
+          return null;
         }
 
         function shouldUseReflow(state, layout) {
@@ -1456,6 +1511,8 @@ function buildShellDocumentHtml({
           var renderKey = getPageRenderKey(pageData);
           if (state.renderKey === renderKey && loadedPageNumbers.has(pageNumber)) {
             scrollToHighlightedVerseIfReady(state);
+            settleInitialPageWithoutHighlight(state);
+            scheduleInitialPositioned(pageNumber);
             return;
           }
 
@@ -1486,6 +1543,7 @@ function buildShellDocumentHtml({
             ensureActiveLayoutRendered(state);
             emitPageRendered(state);
             scrollToHighlightedVerseIfReady(state);
+            settleInitialPageWithoutHighlight(state);
             scheduleInitialPositioned(pageNumber);
           }, 0);
         }
@@ -1617,8 +1675,8 @@ function buildShellDocumentHtml({
         }
 
         function collectNearPageNumbers() {
-          var viewportTop = -window.innerHeight * 1.5;
-          var viewportBottom = window.innerHeight * 2.5;
+          var viewportTop = -window.innerHeight * 2.5;
+          var viewportBottom = window.innerHeight * 4;
           var requested = [];
 
           pageStates.forEach(function (state, pageNumber) {
@@ -1663,7 +1721,7 @@ function buildShellDocumentHtml({
                 pageNumbers: pageNumbers,
               },
             });
-          }, 90);
+          }, 16);
         }
 
         document.addEventListener('click', function (event) {

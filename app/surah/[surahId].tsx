@@ -503,11 +503,14 @@ export default function SurahScreen(): React.JSX.Element {
       const currentChapter = chapters.find((item) => item.id === chapterNumber);
       const pageRange = getChapterPageRange(currentChapter);
       const fallbackPage = pageRange?.firstPage ?? 1;
+      const fallbackVerseNumber =
+        typeof normalizedStartVerse === 'number' ? normalizedStartVerse : 1;
+      const fallbackVerseKey =
+        Number.isFinite(chapterNumber) && chapterNumber > 0
+          ? `${Math.trunc(chapterNumber)}:${fallbackVerseNumber}`
+          : null;
       const focusVerseKey =
-        visibleVerseKeyRef.current ??
-        (typeof normalizedStartVerse === 'number'
-          ? getVerseByNumber(normalizedStartVerse)?.verse_key ?? null
-          : getVerseByNumber(1)?.verse_key ?? null);
+        visibleVerseKeyRef.current ?? fallbackVerseKey;
       const focusVerseNumber = parseVerseKeyNumbers(focusVerseKey)?.verseNumber;
 
       runAfterSettingsSidebarClose(() => {
@@ -570,7 +573,6 @@ export default function SurahScreen(): React.JSX.Element {
     [
       chapterNumber,
       chapters,
-      getVerseByNumber,
       normalizedStartVerse,
       router,
       runAfterSettingsSidebarClose,
@@ -1486,7 +1488,9 @@ export default function SurahScreen(): React.JSX.Element {
     resolvedMushafRenderer === 'webview' &&
     !initialMushafPageProbe.errorMessage;
   const isMushafSurfaceVisible =
-    !shouldWaitForMushafPosition || isMushafReaderPositioned;
+    !shouldWaitForMushafPosition ||
+    isMushafReaderPositioned ||
+    (!hasLoadedContent && !initialMushafPageProbe.data);
   const keepTranslationVisibleDuringMushafEntry =
     shouldWaitForMushafPosition && !isMushafReaderPositioned && hasLoadedContent;
 
@@ -1705,6 +1709,12 @@ export default function SurahScreen(): React.JSX.Element {
               />
             ) : initialMushafPageProbe.errorMessage ? (
               <MushafMessageState color={palette.text} message={initialMushafPageProbe.errorMessage} />
+            ) : !initialMushafPageProbe.data ? (
+              <MushafMessageState
+                color={palette.text}
+                message="Loading the first mushaf page…"
+                showSpinner
+              />
             ) : (
               <MushafSingleDocumentReader
                 ref={mushafReaderRef}

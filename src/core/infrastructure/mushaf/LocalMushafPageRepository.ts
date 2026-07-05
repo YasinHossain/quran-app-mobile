@@ -276,7 +276,7 @@ function buildRendererAssets(
 
   const fontRelativePath = getExactPackPageFontRelativePath(manifest.packId, pageNumber);
   const pageFontFileUri =
-    fontRelativePath && manifestIncludesAsset(manifest, fontRelativePath)
+    fontRelativePath
       ? fileStore.getInstalledFileUri(manifest.packId, manifest.version, fontRelativePath)
       : undefined;
 
