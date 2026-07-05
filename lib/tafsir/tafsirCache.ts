@@ -2,6 +2,7 @@ import { getAppDbAsync, getAppDbSync } from '@/src/core/infrastructure/db';
 
 export const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 export const MAX_CACHE_SIZE = 400;
+export const OFFLINE_TAFSIR_PREFETCH_RADIUS = 15;
 
 interface CacheEntry {
   value: Promise<string | null>;
@@ -15,6 +16,23 @@ function getCacheKey(verseKey: string, tafsirId: number): string {
   return `${tafsirId}-${verseKey.trim()}`;
 }
 
+function trimCacheToMaxSize(): void {
+  while (cache.size > MAX_CACHE_SIZE) {
+    let oldestKey: string | undefined;
+    let oldestTimestamp = Number.POSITIVE_INFINITY;
+
+    for (const [entryKey, entry] of cache) {
+      if (entry.timestamp < oldestTimestamp) {
+        oldestKey = entryKey;
+        oldestTimestamp = entry.timestamp;
+      }
+    }
+
+    if (!oldestKey) break;
+    cache.delete(oldestKey);
+  }
+}
+
 function pruneCache(now: number): void {
   for (const [entryKey, entry] of cache) {
     if (now - entry.timestamp >= CACHE_TTL_MS) {
@@ -22,15 +40,7 @@ function pruneCache(now: number): void {
     }
   }
 
-  if (cache.size < MAX_CACHE_SIZE) return;
-
-  const oldest = [...cache.entries()].sort((a, b) => a[1].timestamp - b[1].timestamp);
-  const removeCount = cache.size - MAX_CACHE_SIZE + 1;
-  for (let i = 0; i < removeCount; i += 1) {
-    const entry = oldest[i];
-    if (!entry) break;
-    cache.delete(entry[0]);
-  }
+  trimCacheToMaxSize();
 }
 
 function seedCachedValue(verseKey: string, tafsirId: number, html: string | null): void {
@@ -38,11 +48,13 @@ function seedCachedValue(verseKey: string, tafsirId: number, html: string | null
   if (!normalizedVerseKey) return;
 
   const key = getCacheKey(normalizedVerseKey, tafsirId);
+  cache.delete(key);
   cache.set(key, {
     value: Promise.resolve(html),
     snapshot: html,
     timestamp: Date.now(),
   });
+  trimCacheToMaxSize();
 }
 
 export function primeOfflineTafsirCacheValue(
@@ -255,6 +267,7 @@ export function getOfflineTafsirCached(verseKey: string, tafsirId = 169): Promis
     });
 
   cache.set(key, { value, timestamp: now });
+  trimCacheToMaxSize();
   return value;
 }
 
@@ -325,6 +338,53 @@ export async function getOfflineTafsirBatchCached(
   }
 
   return results;
+}
+
+export async function preloadOfflineTafsirWindow(params: {
+  surahId: number;
+  ayahId: number;
+  tafsirIds: number[];
+  verseCount?: number;
+  radius?: number;
+}): Promise<void> {
+  const surahId = Number.isFinite(params.surahId) ? Math.trunc(params.surahId) : 0;
+  const ayahId = Number.isFinite(params.ayahId) ? Math.trunc(params.ayahId) : 0;
+  const radius =
+    typeof params.radius === 'number' && Number.isFinite(params.radius)
+      ? Math.max(0, Math.trunc(params.radius))
+      : OFFLINE_TAFSIR_PREFETCH_RADIUS;
+  const verseCount =
+    typeof params.verseCount === 'number' && Number.isFinite(params.verseCount)
+      ? Math.max(0, Math.trunc(params.verseCount))
+      : 0;
+  const tafsirIds = Array.from(
+    new Set(
+      (params.tafsirIds ?? [])
+        .map((tafsirId) => (Number.isFinite(tafsirId) ? Math.trunc(tafsirId) : 0))
+        .filter((tafsirId) => tafsirId > 0)
+    )
+  );
+
+  if (surahId <= 0 || ayahId <= 0 || tafsirIds.length === 0) return;
+
+  const startAyah = Math.max(1, ayahId - radius);
+  const endAyah = verseCount > 0
+    ? Math.min(verseCount, ayahId + radius)
+    : ayahId + radius;
+  const verseKeys = Array.from(
+    { length: Math.max(0, endAyah - startAyah + 1) },
+    (_value, index) => `${surahId}:${startAyah + index}`
+  );
+
+  await Promise.all(
+    tafsirIds.map(async (tafsirId) => {
+      try {
+        await getOfflineTafsirBatchCached(verseKeys, tafsirId);
+      } catch {
+        // Window preloading is opportunistic; visible verse loading handles read errors.
+      }
+    })
+  );
 }
 
 export function getOfflineTafsirSurahSnapshot(params: {

@@ -22,6 +22,10 @@ export const DEFAULT_ARABIC_FONT_VALUE = `"${DEFAULT_ARABIC_FONT_FAMILY}", serif
 export const STARTUP_FONT_ASSETS = {
   SpaceMono: FONT_ASSETS.SpaceMono,
   [DEFAULT_ARABIC_FONT_FAMILY]: FONT_ASSETS[DEFAULT_ARABIC_FONT_FAMILY],
+  'Amiri Quran': FONT_ASSETS['Amiri Quran'],
+  'Noto Naskh Arabic': FONT_ASSETS['Noto Naskh Arabic'],
+  'Me Quran': FONT_ASSETS['Me Quran'],
+  'KFGQ V2': FONT_ASSETS['KFGQ V2'],
 } as const;
 
 const SUPPORT_FONT_FAMILIES: readonly AppFontFamily[] = ['Scheherazade New'];

@@ -43,7 +43,7 @@ import {
   getOfflineTafsirBatchCached,
   getOfflineTafsirCached,
   getOfflineTafsirSnapshot,
-  getOfflineTafsirSurahCached,
+  OFFLINE_TAFSIR_PREFETCH_RADIUS,
 } from '@/lib/tafsir/tafsirCache';
 import {
   getVerseDetailsCached,
@@ -81,8 +81,6 @@ type PageState = {
 type TranslationItem = { resourceId: number; resourceName?: string; text: string };
 
 const NO_TAFSIR_AVAILABLE_MESSAGE = 'No tafsir is available for this verse.';
-const OFFLINE_TAFSIR_PREFETCH_RADIUS = 10;
-
 let globalLastActiveTafsirTabId: number | undefined;
 
 function SkeletonBar({
@@ -1103,16 +1101,6 @@ export default function TafsirScreen(): React.JSX.Element {
     return targetIndexByKey.get(getVerseKey(currentTarget)) ?? -1;
   }, [currentTarget, targetIndexByKey]);
   const currentSurahId = currentTarget?.surahId;
-  const currentSurahVerseKeys = React.useMemo(() => {
-    if (!currentSurahId) return [];
-
-    const chapter = getChapterById(chapters, currentSurahId);
-    const verseCount =
-      chapter && Number.isFinite(chapter.verses_count) ? Math.trunc(chapter.verses_count) : 0;
-    if (verseCount <= 0) return [];
-
-    return Array.from({ length: verseCount }, (_value, index) => `${currentSurahId}:${index + 1}`);
-  }, [chapters, currentSurahId]);
   const currentSurahInitialVerseNumber = React.useMemo(
     () => {
       // Keep this stable inside a surah so horizontal ayah swipes do not reset verse loading.
@@ -1491,13 +1479,13 @@ export default function TafsirScreen(): React.JSX.Element {
   }, [currentTarget, currentTargetIndex, pagerTargets]);
 
   React.useEffect(() => {
-    prefetchTargets.forEach((target) => {
-      void loadPage(target);
-    });
-  }, [loadPage, prefetchTargets]);
-
-  React.useEffect(() => {
-    if (tafsirIds.length === 0 || prefetchTargets.length === 0) return;
+    if (prefetchTargets.length === 0) return;
+    if (tafsirIds.length === 0) {
+      prefetchTargets.forEach((target) => {
+        void loadPage(target);
+      });
+      return;
+    }
 
     const generation = generationRef.current;
     const verseKeys = prefetchTargets.map((target) => getVerseKey(target));
@@ -1512,6 +1500,12 @@ export default function TafsirScreen(): React.JSX.Element {
         );
 
         if (generation !== generationRef.current) return;
+
+        // The batch above warms every selected tafsir in one query each. Page loaders
+        // can now resolve tafsir from memory while they prepare verse/translation state.
+        prefetchTargets.forEach((target) => {
+          void loadPage(target);
+        });
 
         setPageStateByKey((previous) => {
           let didChange = false;
@@ -1571,10 +1565,13 @@ export default function TafsirScreen(): React.JSX.Element {
           return didChange ? nextState : previous;
         });
       } catch {
-        // Ignore offline batch prefetch failures and let per-verse loading handle visible pages.
+        // Fall back to per-verse reads if the batch itself fails.
+        prefetchTargets.forEach((target) => {
+          void loadPage(target);
+        });
       }
     })();
-  }, [chapters, pageSignature, prefetchTargets, tafsirIds]);
+  }, [chapters, loadPage, pageSignature, prefetchTargets, tafsirIds]);
 
   const pagerRef = React.useRef<FlatList<VerseTarget> | null>(null);
   const visibleIndexRef = React.useRef(-1);

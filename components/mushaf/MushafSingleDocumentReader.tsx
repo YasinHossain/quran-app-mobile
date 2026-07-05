@@ -45,6 +45,7 @@ type MushafSingleDocumentReaderProps = {
   initialPageNumber: number;
   mushafScaleStep: MushafScaleStep;
   onActivePageChange?: (pageNumber: number) => void;
+  onInitialPositioned?: () => void;
   onSelectionChange: (payload: MushafSelectionPayload) => void;
   onScrollActivity?: (scrollY?: number) => void;
   onSurahNavigation?: (direction: 'next' | 'previous') => void;
@@ -64,6 +65,10 @@ type ReaderMessage =
   | {
       type: 'reader-page-rendered';
       payload?: { pageNumber?: number };
+    }
+  | {
+      type: 'reader-initial-positioned';
+      payload?: { pageNumber?: number; scrollY?: number };
     }
   | {
       type: 'reader-active-page-change';
@@ -238,6 +243,7 @@ export const MushafSingleDocumentReader = React.forwardRef<
     initialPageNumber,
     mushafScaleStep,
     onActivePageChange,
+    onInitialPositioned,
     onSelectionChange,
     onScrollActivity,
     onSurahNavigation,
@@ -252,7 +258,7 @@ export const MushafSingleDocumentReader = React.forwardRef<
 ): React.JSX.Element {
   const { width, height } = useWindowDimensions();
   const { resolvedTheme } = useAppTheme();
-  const readerBackgroundColor = resolvedTheme === 'dark' ? '#102033' : '#F7F9F9';
+  const readerBackgroundColor = resolvedTheme === 'dark' ? '#0F172A' : '#F7F9F9';
   const webViewRef = React.useRef<WebView>(null);
   const isReaderReadyRef = React.useRef(false);
   const hasInitialPaintRef = React.useRef(false);
@@ -572,12 +578,9 @@ export const MushafSingleDocumentReader = React.forwardRef<
     }
 
     hasInitialPaintRef.current = true;
-    Animated.timing(readerOpacity, {
-      toValue: 1,
-      duration: 150,
-      useNativeDriver: true,
-    }).start();
-  }, [readerOpacity]);
+    readerOpacity.setValue(1);
+    onInitialPositioned?.();
+  }, [onInitialPositioned, readerOpacity]);
 
   React.useEffect(() => {
     if (
@@ -702,12 +705,15 @@ export const MushafSingleDocumentReader = React.forwardRef<
               ? Math.trunc(payload.pageNumber)
               : null;
           if (pageNumber === initialPageNumber || pageNumber === null) {
-            revealReader();
             startBackgroundWarm(
               'post-first-visible-page',
               pageNumber ?? activePageNumberRef.current
             );
           }
+          return;
+        }
+        case 'reader-initial-positioned': {
+          revealReader();
           return;
         }
         case 'reader-active-page-change': {

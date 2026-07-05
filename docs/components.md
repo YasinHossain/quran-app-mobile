@@ -98,7 +98,11 @@ This document lists reusable UI components currently available in the codebase s
 
 | Component | Description | File Path |
 | --- | --- | --- |
-| `SurahHeaderCard` | Surah intro/header block (calligraphy + metadata), web-like. | `components/surah/SurahHeaderCard.tsx` |
+| `SurahHeaderCard` | Surah intro/header block with a prominent English title, verse count plus Mecca/Medina subheading, offline revelation-place artwork, and responsive Bismillah calligraphy. It is rendered directly by both Translation and Mushaf modes. | `components/surah/SurahHeaderCard.tsx` |
+| `BismillahDisplay` | Slim responsive Bismillah vector calligraphy centered over a matching fine-line ornament; both use muted emerald in light mode and soft white in dark mode. Shared by Surah, Juz, and Page readers. | `components/surah/BismillahDisplay.tsx` |
+| `BismillahCalligraphy` | Memoized single-path Bismillah artwork extracted from the bundled Amiri Quran font; matches the web’s elongated fallback style without platform-dependent font shaping. | `components/surah/BismillahCalligraphy.tsx` |
+| `BismillahOrnament` | Lightweight, memoized SVG frame with original mirrored floral geometry; kept separate from the live calligraphy for crisp scaling and accessibility. | `components/surah/BismillahOrnament.tsx` |
+| `RevelationPlaceIllustration` | Theme-aware, offline native illustration that renders a Makkah/Kaaba or Madinah/dome motif without image loading or SVG work inside the virtualized reader list. | `components/surah/RevelationPlaceIllustration.tsx` |
 | `VerseCard` | Separated verse row (verse key + Arabic + translations + ellipsis trigger) with optional subtle highlight for the active audio verse. | `components/surah/VerseCard.tsx` |
 | `TajweedNativeText` | Native Surah verse-card Tajweed renderer; loads the installed QCF Tajweed V4 page font with Expo Font and renders local `codeV2` glyphs in React Native `Text`, with tagged Uthmani text as a fallback. | `components/surah/TajweedNativeText.tsx` |
 | `VerseScrubber` | Thin Surah-specific wrapper around `IndexScrubber` for verse-number scrubbing in the translation view. | `components/surah/VerseScrubber.tsx` |

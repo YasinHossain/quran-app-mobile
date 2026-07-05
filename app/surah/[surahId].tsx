@@ -4,8 +4,6 @@ import { ArrowLeft, Settings } from 'lucide-react-native';
 import { FlashList, type FlashListRef } from '@shopify/flash-list';
 import {
   ActivityIndicator,
-  Animated,
-  Easing,
   FlatList,
   InteractionManager,
   Platform,
@@ -35,6 +33,7 @@ import { SettingsSidebar } from '@/components/reader/settings/SettingsSidebar';
 import type { SettingsTab } from '@/components/reader/settings/SettingsTabToggle';
 import { BookmarkModal } from '@/components/bookmarks/BookmarkModal';
 import { SurahHeaderCard } from '@/components/surah/SurahHeaderCard';
+import { getSurahHeaderPresentation } from '@/components/surah/surahHeaderPresentation';
 import { VerseActionsSheet } from '@/components/surah/VerseActionsSheet';
 import { VerseCard } from '@/components/surah/VerseCard';
 import { VerseScrubber, type VerseScrubberHandle } from '@/components/surah/VerseScrubber';
@@ -45,7 +44,7 @@ import { DEFAULT_MUSHAF_ID, findMushafOption } from '@/data/mushaf/options';
 import { useChapters } from '@/hooks/useChapters';
 import { useMushafPageData } from '@/hooks/useMushafPageData';
 import { useSurahVerses, type SurahVerse } from '@/hooks/useSurahVerses';
-import { preloadOfflineTafsirSurah } from '@/lib/tafsir/tafsirCache';
+import { preloadOfflineTafsirWindow } from '@/lib/tafsir/tafsirCache';
 import { useTranslationResources } from '@/hooks/useTranslationResources';
 import { primeVerseDetailsCache } from '@/lib/verse/verseDetailsCache';
 import { useBookmarks } from '@/providers/BookmarkContext';
@@ -399,13 +398,38 @@ export default function SurahScreen(): React.JSX.Element {
   }, [chapterNumber, normalizedStartVerse]);
   const mushafSurahIntro = React.useMemo(() => {
     if (!resolvedChapter) return undefined;
+    const presentation = getSurahHeaderPresentation(resolvedChapter);
     return {
-      revelationPlace: resolvedChapter.revelation_place,
-      showBismillah: resolvedChapter.id !== 9 && resolvedChapter.id !== 1,
-      surahName: resolvedChapter.name_simple,
-      versesCount: resolvedChapter.verses_count,
+      chapterId: resolvedChapter.id,
+      infoLabel: presentation.infoLabel,
+      isMakkah: presentation.isMakkah,
+      showBismillah: presentation.showBismillah,
+      surahName: presentation.surahName,
     };
   }, [resolvedChapter]);
+  const mushafReaderSessionKey = [
+    chapterNumber,
+    initialMushafPageNumber,
+    mushafHighlightVerseKey ?? '',
+    selectedMushafId,
+    activeMushafVersion,
+    settings.mushafScaleStep,
+    resolvedTheme,
+    Math.round(readerHeader.headerHeight),
+  ].join(':');
+  const [positionedMushafReaderKey, setPositionedMushafReaderKey] = React.useState<string | null>(
+    null
+  );
+  const isMushafReaderPositioned = positionedMushafReaderKey === mushafReaderSessionKey;
+  const handleMushafInitialPositioned = React.useCallback(() => {
+    setPositionedMushafReaderKey(mushafReaderSessionKey);
+  }, [mushafReaderSessionKey]);
+
+  React.useEffect(() => {
+    if (!isMushafView) {
+      setPositionedMushafReaderKey(null);
+    }
+  }, [isMushafView]);
 
   const openVerseActions = React.useCallback(
     (params: {
@@ -788,7 +812,12 @@ export default function SurahScreen(): React.JSX.Element {
       translationTexts: activeVerse?.translationTexts,
     });
     if (Number.isFinite(surahNumber) && surahNumber > 0) {
-      void preloadOfflineTafsirSurah({ surahId: surahNumber, tafsirIds });
+      void preloadOfflineTafsirWindow({
+        surahId: surahNumber,
+        ayahId: Number(ayah),
+        tafsirIds,
+        verseCount,
+      });
     }
     router.push({ pathname: '/tafsir/[surahId]/[ayahId]', params: { surahId: surah, ayahId: ayah } });
   }, [
@@ -798,6 +827,7 @@ export default function SurahScreen(): React.JSX.Element {
     router,
     tafsirIds,
     translationIds,
+    verseCount,
   ]);
 
   const handleAddToPlan = React.useCallback(() => {
@@ -1448,32 +1478,17 @@ export default function SurahScreen(): React.JSX.Element {
     return metadata;
   }, [activeVerse, chapter?.name_simple]);
 
-  const mushafEntryProgress = React.useRef(new Animated.Value(isMushafView ? 1 : 0)).current;
-  const mushafSurfaceBackground = resolvedTheme === 'dark' ? '#102033' : palette.background;
-  const mushafEntryStyle = React.useMemo(
-    () => ({
-      opacity: mushafEntryProgress,
-    }),
-    [mushafEntryProgress]
-  );
-
-  React.useEffect(() => {
-    mushafEntryProgress.stopAnimation();
-
-    if (!isMushafView) {
-      mushafEntryProgress.setValue(0);
-      return;
-    }
-
-    mushafEntryProgress.setValue(0);
-    Animated.timing(mushafEntryProgress, {
-      toValue: 1,
-      duration: 130,
-      easing: Easing.out(Easing.cubic),
-      isInteraction: false,
-      useNativeDriver: true,
-    }).start();
-  }, [isMushafView, mushafEntryProgress]);
+  const mushafSurfaceBackground = palette.background;
+  const shouldWaitForMushafPosition =
+    isMushafView &&
+    isHydrated &&
+    Boolean(mushafPageRange) &&
+    resolvedMushafRenderer === 'webview' &&
+    !initialMushafPageProbe.errorMessage;
+  const isMushafSurfaceVisible =
+    !shouldWaitForMushafPosition || isMushafReaderPositioned;
+  const keepTranslationVisibleDuringMushafEntry =
+    shouldWaitForMushafPosition && !isMushafReaderPositioned && hasLoadedContent;
 
   return (
     <View className="flex-1 bg-background dark:bg-background-dark">
@@ -1513,10 +1528,10 @@ export default function SurahScreen(): React.JSX.Element {
       </ReaderOverlayHeader>
 
       <View style={styles.contentStage}>
-        {!isMushafView ? (
+        {!isMushafView || keepTranslationVisibleDuringMushafEntry ? (
           <View
             style={styles.contentLayer}
-            pointerEvents="auto"
+            pointerEvents={isMushafView ? 'none' : 'auto'}
           >
             {!hasLoadedContent && offlineNotInstalled ? (
               <View className="flex-1 px-4" style={{ paddingTop: readerHeader.headerHeight + 16 }}>
@@ -1666,12 +1681,13 @@ export default function SurahScreen(): React.JSX.Element {
         ) : null}
 
         {isMushafView ? (
-          <Animated.View
+          <View
+            pointerEvents={isMushafSurfaceVisible ? 'auto' : 'none'}
             style={[
               styles.contentLayer,
               styles.mushafEntryLayer,
               { backgroundColor: mushafSurfaceBackground },
-              mushafEntryStyle,
+              { opacity: isMushafSurfaceVisible ? 1 : 0 },
             ]}
           >
             {!isHydrated ? (
@@ -1703,6 +1719,7 @@ export default function SurahScreen(): React.JSX.Element {
                 initialPageNumber={initialMushafPageNumber}
                 mushafScaleStep={settings.mushafScaleStep}
                 onActivePageChange={handleMushafActivePageChange}
+                onInitialPositioned={handleMushafInitialPositioned}
                 onScrollActivity={handleMushafScrollActivity}
                 onSelectionChange={handleMushafSelectionChange}
                 onSurahNavigation={handleMushafSurahNavigation}
@@ -1735,7 +1752,7 @@ export default function SurahScreen(): React.JSX.Element {
                 onScrubToIndex={handleScrubToMushafPageIndex}
               />
             ) : null}
-          </Animated.View>
+          </View>
         ) : null}
       </View>
 

@@ -1,6 +1,7 @@
 import type { MushafPackId, MushafPageData, MushafScaleStep } from '@/types';
 
 import { getMushafWebViewLayoutConfig } from '@/components/mushaf/mushafLayoutPresets';
+import { getBismillahCalligraphyPathData } from '@/components/surah/BismillahCalligraphy';
 import { getJuzByPage } from '@/lib/utils/surah-navigation';
 
 type MushafReaderWebViewTheme = 'light' | 'dark';
@@ -17,10 +18,11 @@ const REFLOW_HYSTERESIS_PX = 20;
 const shellDocumentCache = new Map<string, { html: string; layout: MushafReaderWebViewLayoutPayload }>();
 
 export type MushafReaderSurahIntro = {
-  revelationPlace?: string | undefined;
+  chapterId: number;
+  infoLabel: string;
+  isMakkah: boolean;
   showBismillah: boolean;
   surahName: string;
-  versesCount: number;
 };
 
 export type MushafReaderSurahNavigation = {
@@ -89,24 +91,125 @@ function buildPageShells(
   return pageShells.join('\n');
 }
 
+function buildBackgroundMinaretSvg(x: number, height: number): string {
+  const shaftWidth = 3.5;
+  const balconyWidth = 6.5;
+  const baseY = 78;
+  const topY = baseY - height;
+
+  return `
+    <g opacity=".85">
+      <rect x="${x - shaftWidth / 2}" y="${topY}" width="${shaftWidth}" height="${height}" rx=".5" fill="var(--intro-minaret)"/>
+      <rect x="${x - balconyWidth / 2}" y="${topY + height * 0.45}" width="${balconyWidth}" height="2" rx=".3" fill="var(--intro-minaret)"/>
+      <rect x="${x - balconyWidth / 2}" y="${topY + height * 0.15}" width="${balconyWidth}" height="2" rx=".3" fill="var(--intro-minaret)"/>
+      <path d="M${x - 2.2} ${topY}Q${x - 2.7} ${topY - 3.5} ${x} ${topY - 4.5}Q${x + 2.7} ${topY - 3.5} ${x + 2.2} ${topY}Z" fill="var(--intro-minaret)"/>
+      <path d="M${x} ${topY - 4.5}V${topY - 7.5}" fill="none" stroke="var(--intro-minaret)" stroke-width=".8"/>
+    </g>
+  `;
+}
+
+function buildRevelationIllustrationHtml(isMakkah: boolean): string {
+  const background = `
+    <path d="M40 78C40 30 65 15 88 15s48 15 48 63Z" fill="var(--intro-art-bg)"/>
+  `;
+  const ground = `
+    <ellipse cx="${isMakkah ? 92 : 85}" cy="70" rx="${isMakkah ? 22 : 26}" ry="${isMakkah ? 4.5 : 4}" fill="var(--intro-shadow)" opacity="var(--intro-shadow-opacity)"/>
+    <path d="M20 72h105" fill="none" stroke="var(--intro-art-line)" stroke-linecap="round" stroke-width="1.8"/>
+  `;
+  const mosqueWall = `
+    <path d="M45 78V${isMakkah ? 62 : 64}h3q5-4 10 0h3v${isMakkah ? 16 : 14}m0 0V${isMakkah ? 62 : 64}h3q5-4 10 0h3v${isMakkah ? 16 : 14}m0 0V${isMakkah ? 62 : 64}h3q5-4 10 0h3v${isMakkah ? 16 : 14}m0 0V${isMakkah ? 62 : 64}h3q5-4 10 0h3v${isMakkah ? 16 : 14}m0 0V${isMakkah ? 62 : 64}h3q5-4 10 0h3v${isMakkah ? 16 : 14}" fill="var(--intro-mosque)" opacity=".5"/>
+  `;
+
+  if (isMakkah) {
+    return `
+      <svg viewBox="0 0 136 78" aria-hidden="true">
+        ${background}
+        ${buildBackgroundMinaretSvg(54, 50)}
+        ${buildBackgroundMinaretSvg(68, 56)}
+        ${buildBackgroundMinaretSvg(122, 44)}
+        ${mosqueWall}
+        ${ground}
+        <path d="M76 40l16 4v26l-16-4Z" fill="var(--intro-kaaba-left)"/>
+        <path d="m92 44 16-4v26l-16 4Z" fill="var(--intro-kaaba-right)"/>
+        <path d="m76 45.2 16 4v2.5l-16-4Z" fill="var(--intro-gold)"/>
+        <path d="m92 49.2 16-4v2.5l-16 4Z" fill="var(--intro-gold-light)"/>
+        <path d="m96 68.8 5-1.25v-13l-5 1.25Z" fill="var(--intro-gold-light)"/>
+      </svg>
+    `;
+  }
+
+  return `
+    <svg viewBox="0 0 136 78" aria-hidden="true">
+      ${background}
+      ${buildBackgroundMinaretSvg(52, 54)}
+      ${buildBackgroundMinaretSvg(118, 50)}
+      ${mosqueWall}
+      ${ground}
+      <rect x="68" y="64" width="34" height="7" rx=".8" fill="var(--intro-dome-base)"/>
+      <rect x="72" y="58" width="26" height="6" rx=".5" fill="var(--intro-dome-dark)"/>
+      <path d="M70 58c-2-8 4-20 15-22 11 2 17 14 15 22Z" fill="var(--intro-dome)"/>
+      <path d="M85 36V25" fill="none" stroke="var(--intro-gold)" stroke-width="1.2"/>
+      <path d="M85 25c1.3 0 2.2.8 2.2 1.8s-1 1.8-2.2 1.8c.7 0 1.4-.6 1.4-1.8s-.7-1.5-1.4-1.8Z" fill="var(--intro-gold)"/>
+    </svg>
+  `;
+}
+
+function buildBismillahOrnamentEndHtml(): string {
+  return `
+    <path d="M6 20h19c11 0 13-10 18-10s7 10 18 10h19M6 56h19c11 0 13 10 18 10s7-10 18-10h19"/>
+    <path d="M6 23h18c10 0 12-8 19-8s9 8 19 8h18M6 53h18c10 0 12 8 19 8s9-8 19-8h18"/>
+    <circle cx="43" cy="38" r="20"/><circle cx="43" cy="38" r="17"/><circle cx="43" cy="38" r="13.5"/>
+    <rect x="34" y="29" width="18" height="18" rx="1.5"/><rect x="34" y="29" width="18" height="18" rx="1.5" transform="rotate(45 43 38)"/>
+    <circle cx="43" cy="38" r="3.5"/>
+    <path d="m41 10 2-2 2 2-2 2Zm0 56 2 2 2-2-2-2Z"/>
+    <circle cx="14" cy="38" r="5"/><circle cx="14" cy="38" r="2"/><path d="M6 38h3m10 0h4m-9-5v2m0 6v2"/>
+    <circle cx="72" cy="38" r="5"/><circle cx="72" cy="38" r="2"/><path d="M63 38h4m10 0h3.5M72 33v2m0 6v2"/>
+    <path d="m76.5 38 3.5-3.5 3.5 3.5-3.5 3.5Z"/>
+  `;
+}
+
+function buildBismillahHtml(): string {
+  const ornamentEnd = buildBismillahOrnamentEndHtml();
+  const calligraphyPath = escapeHtml(getBismillahCalligraphyPathData());
+
+  return `
+    <div class="surah-intro-bismillah" role="img" aria-label="Bismillah ir-Rahman ir-Rahim">
+      <svg class="bismillah-ornament" viewBox="0 0 560 76" fill="none" stroke="currentColor" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="2" y="2" width="556" height="72" rx="3"/><rect x="6" y="6" width="548" height="64" rx="2"/>
+        <g>${ornamentEnd}</g><g transform="translate(560 0) scale(-1 1)">${ornamentEnd}</g>
+        <path d="M80 38c8-24 25-24 25-24h350s17 0 25 24c-8 24-25 24-25 24H105s-17 0-25-24Z"/>
+        <path d="M84 38c7-21 24-21 24-21h344s16 0 24 21c-7 21-24 21-24 21H108s-16 0-24-21Z"/>
+        <path d="m108 17 4 4-4 4-4-4Zm344 0 4 4-4 4-4-4ZM108 59l4-4-4-4-4 4Zm344 0 4-4-4-4-4 4Z"/>
+        <path d="M91 38c4-5 8-5 12 0-4 5-8 5-12 0Z"/><circle cx="97" cy="38" r="1.35"/><path d="M103 38h5"/>
+        <g transform="translate(560 0) scale(-1 1)"><path d="M91 38c4-5 8-5 12 0-4 5-8 5-12 0Z"/><circle cx="97" cy="38" r="1.35"/><path d="M103 38h5"/></g>
+      </svg>
+      <svg class="bismillah-calligraphy" viewBox="0 0 11523 1583" aria-hidden="true">
+        <g transform="translate(0 979) scale(1 -1)"><path fill="currentColor" d="${calligraphyPath}"/></g>
+      </svg>
+    </div>
+  `;
+}
+
 function buildSurahIntroHtml(surahIntro?: MushafReaderSurahIntro): string {
   if (!surahIntro) {
     return '';
   }
 
-  const revelationLabel = surahIntro.revelationPlace === 'makkah' ? 'مكية' : 'مدنية';
-  const versesLabel = `${surahIntro.versesCount} Verses`;
+  const placeLabel = surahIntro.isMakkah ? 'Makki' : 'Madani';
+  const illustration = buildRevelationIllustrationHtml(surahIntro.isMakkah);
 
   return `
       <section class="surah-intro" aria-label="${escapeHtml(surahIntro.surahName)}">
-        <div class="surah-intro-row">
-          <div class="surah-intro-revelation" dir="rtl">${escapeHtml(revelationLabel)}</div>
-          <div class="surah-intro-bismillah" dir="rtl">${surahIntro.showBismillah ? '﷽' : ''}</div>
-          <div class="surah-intro-title">
+        <div class="surah-intro-heading">
+          <div class="surah-intro-copy">
             <h1>${escapeHtml(surahIntro.surahName)}</h1>
-            <p>${escapeHtml(versesLabel)}</p>
+            <p>${escapeHtml(surahIntro.infoLabel)}</p>
+          </div>
+          <div class="surah-intro-illustration" role="img" aria-label="${placeLabel} surah">
+            ${illustration}
           </div>
         </div>
+        ${surahIntro.showBismillah ? buildBismillahHtml() : ''}
       </section>
   `;
 }
@@ -167,15 +270,32 @@ function buildShellDocumentHtml({
   theme: MushafReaderWebViewTheme;
   totalPages: number;
 }): string {
-  const topContentPaddingPx = Math.max(12, Math.round(focusTopInsetPx) + 12);
+  const topContentPaddingPx = Math.max(
+    12,
+    Math.round(focusTopInsetPx) + (surahIntro ? 0 : 12)
+  );
   const palette =
     theme === 'dark'
       ? {
-          background: '#102033',
+          background: '#0F172A',
           border: 'rgba(255,255,255,0.12)',
           highlight: 'rgba(34, 197, 94, 0.26)',
           text: '#E7E5E4',
           muted: '#94A3B8',
+          introArtBg: surahIntro?.isMakkah ? '#27211B' : '#15221B',
+          introArtLine: surahIntro?.isMakkah ? '#5C5042' : '#385244',
+          introArtMuted: surahIntro?.isMakkah ? '#504233' : '#2E473B',
+          introDome: '#439D7A',
+          introDomeDark: '#348263',
+          introDomeBase: '#2E473B',
+          introGold: '#B8922A',
+          introGoldLight: '#D3AB3B',
+          introKaabaLeft: '#0C0A09',
+          introKaabaRight: '#161412',
+          introMinaret: surahIntro?.isMakkah ? '#504233' : '#2E473B',
+          introMosque: surahIntro?.isMakkah ? '#43372B' : '#24372D',
+          introShadow: '#000000',
+          introShadowOpacity: surahIntro?.isMakkah ? 0.4 : 0.45,
         }
       : {
           background: '#F7F9F9',
@@ -183,6 +303,20 @@ function buildShellDocumentHtml({
           highlight: 'rgba(34, 197, 94, 0.2)',
           text: '#111827',
           muted: '#6B7280',
+          introArtBg: surahIntro?.isMakkah ? '#FDF7EA' : '#EEF6F2',
+          introArtLine: surahIntro?.isMakkah ? '#DECFA2' : '#B8D1C4',
+          introArtMuted: surahIntro?.isMakkah ? '#DECFA2' : '#C6DCD0',
+          introDome: '#28785C',
+          introDomeDark: '#1E5E45',
+          introDomeBase: '#ECE5DB',
+          introGold: '#C5A028',
+          introGoldLight: '#E5C158',
+          introKaabaLeft: '#1C1917',
+          introKaabaRight: '#2A2723',
+          introMinaret: surahIntro?.isMakkah ? '#DECFA2' : '#C6DCD0',
+          introMosque: surahIntro?.isMakkah ? '#EADCB9' : '#D5E8DE',
+          introShadow: surahIntro?.isMakkah ? '#8B7355' : '#4E685B',
+          introShadowOpacity: surahIntro?.isMakkah ? 0.15 : 0.2,
         };
 
   const normalizedTotalPages = Math.max(1, Math.trunc(totalPages));
@@ -213,6 +347,20 @@ function buildShellDocumentHtml({
         --highlight: ${palette.highlight};
         --text: ${palette.text};
         --muted: ${palette.muted};
+        --intro-art-bg: ${palette.introArtBg};
+        --intro-art-line: ${palette.introArtLine};
+        --intro-art-muted: ${palette.introArtMuted};
+        --intro-dome: ${palette.introDome};
+        --intro-dome-dark: ${palette.introDomeDark};
+        --intro-dome-base: ${palette.introDomeBase};
+        --intro-gold: ${palette.introGold};
+        --intro-gold-light: ${palette.introGoldLight};
+        --intro-kaaba-left: ${palette.introKaabaLeft};
+        --intro-kaaba-right: ${palette.introKaabaRight};
+        --intro-minaret: ${palette.introMinaret};
+        --intro-mosque: ${palette.introMosque};
+        --intro-shadow: ${palette.introShadow};
+        --intro-shadow-opacity: ${palette.introShadowOpacity};
         --font-size: ${layout.fontSizeCss};
         --line-height-multiplier: ${layout.lineHeightMultiplier};
         --line-height: calc(var(--font-size) * var(--line-height-multiplier));
@@ -249,65 +397,85 @@ function buildShellDocumentHtml({
       }
 
       .surah-intro {
-        margin: 0 auto 18px;
-        padding: 0 16px 20px;
         border-bottom: 1px solid var(--border);
+        border-color: ${
+          theme === 'dark' ? 'rgba(51, 65, 85, 0.3)' : 'rgba(229, 231, 235, 0.4)'
+        };
+        left: 50%;
+        margin: 0 0 16px;
+        padding: 0 0 20px;
+        position: relative;
+        transform: translateX(-50%);
+        width: calc(100vw - 40px);
+      }
+
+      .surah-intro-heading {
+        align-items: center;
+        display: flex;
+        gap: 16px;
+        justify-content: space-between;
+        min-height: 104px;
+        padding: 0 8px;
+      }
+
+      .surah-intro-copy {
+        flex: 1;
+        min-width: 0;
+        padding-top: 12px;
+      }
+
+      .surah-intro-copy h1 {
+        color: ${theme === 'dark' ? '#E7E5E4' : '#374151'};
+        font-size: 26px;
+        font-weight: 700;
+        line-height: 32px;
+        margin: 0;
+        overflow-wrap: anywhere;
+      }
+
+      .surah-intro-copy p {
+        color: ${theme === 'dark' ? '#94A3B8' : '#6B7280'};
+        font-size: 14px;
+        line-height: 20px;
+        margin: 2px 0 0;
+      }
+
+      .surah-intro-illustration {
+        flex: none;
+        height: 78px;
+        width: 136px;
+      }
+
+      .surah-intro-illustration svg {
+        display: block;
+        height: 100%;
         width: 100%;
       }
 
-      .surah-intro-row {
-        align-items: center;
-        display: grid;
-        gap: 12px;
-        grid-template-columns: 1fr;
-        text-align: center;
-      }
-
-      .surah-intro-revelation,
       .surah-intro-bismillah {
-        direction: rtl;
-        font-family: 'UthmanicHafs1Ver18', serif;
-        line-height: 1.35;
+        color: ${theme === 'dark' ? '#D5DED9' : '#3F735B'};
+        height: auto;
+        margin: 20px auto 0;
+        max-width: 560px;
+        position: relative;
+        width: calc(100% - 16px);
+        aspect-ratio: 560 / 76;
       }
 
-      .surah-intro-revelation {
-        font-size: 22px;
+      .bismillah-ornament {
+        display: block;
+        height: 100%;
+        inset: 0;
+        position: absolute;
+        width: 100%;
       }
 
-      .surah-intro-bismillah {
-        font-size: 34px;
-        min-height: 1em;
-      }
-
-      .surah-intro-title h1 {
-        font-size: 19px;
-        font-weight: 700;
-        line-height: 1.25;
-        margin: 0;
-      }
-
-      .surah-intro-title p {
-        color: var(--muted);
-        font-size: 12px;
-        margin: 4px 0 0;
-      }
-
-      @media (min-width: 640px) {
-        .surah-intro-row {
-          grid-template-columns: minmax(6rem, 1fr) 2fr minmax(6rem, 1fr);
-        }
-
-        .surah-intro-revelation {
-          order: 1;
-        }
-
-        .surah-intro-bismillah {
-          order: 2;
-        }
-
-        .surah-intro-title {
-          order: 3;
-        }
+      .bismillah-calligraphy {
+        height: 54%;
+        left: 20%;
+        position: absolute;
+        top: 23%;
+        width: 60%;
       }
 
       .reader-page {
@@ -528,6 +696,13 @@ function buildShellDocumentHtml({
         var HIGHLIGHT_VERSE_KEY = ${serializeJson(highlightVerseKey ?? '')};
         var FOCUS_TOP_INSET_PX = ${Math.max(0, Math.round(focusTopInsetPx))};
         var FIRST_SHELL_PAGE_NUMBER = ${firstShellPageNumber};
+        var KEEP_SURAH_INTRO_VISIBLE = ${
+          surahIntro &&
+          normalizedInitialPageNumber === firstShellPageNumber &&
+          highlightVerseKey === `${surahIntro.chapterId}:1`
+            ? 'true'
+            : 'false'
+        };
         var COMPACT_PAGE_LINES = ${compactPageLines ? 'true' : 'false'};
         var PAGE_NUMBERS = ${serializeJson(normalizedPageNumbers)};
         var PAGE_NUMBER_LOOKUP = PAGE_NUMBERS.reduce(function (lookup, pageNumber) {
@@ -545,6 +720,8 @@ function buildShellDocumentHtml({
         var selectionRafId = null;
         var didScrollToInitialPage = false;
         var didScrollToHighlight = false;
+        var didEmitInitialPositioned = false;
+        var initialPositionRafId = null;
         var isArrivalHighlightVisible = Boolean(HIGHLIGHT_VERSE_KEY);
         var arrivalHighlightTimeoutId = null;
 
@@ -800,6 +977,9 @@ function buildShellDocumentHtml({
 
         function emitScrollActivity() {
           scrollActivityRafId = null;
+          if (!didEmitInitialPositioned) {
+            return;
+          }
           emit({
             type: 'reader-scroll',
             payload: {
@@ -814,6 +994,35 @@ function buildShellDocumentHtml({
           }
 
           scrollActivityRafId = requestAnimationFrame(emitScrollActivity);
+        }
+
+        function scheduleInitialPositioned(pageNumber) {
+          if (
+            didEmitInitialPositioned ||
+            initialPositionRafId !== null ||
+            pageNumber !== INITIAL_PAGE_NUMBER ||
+            (HIGHLIGHT_VERSE_KEY && !didScrollToHighlight)
+          ) {
+            return;
+          }
+
+          initialPositionRafId = requestAnimationFrame(function () {
+            initialPositionRafId = requestAnimationFrame(function () {
+              initialPositionRafId = null;
+              if (didEmitInitialPositioned) {
+                return;
+              }
+
+              didEmitInitialPositioned = true;
+              emit({
+                type: 'reader-initial-positioned',
+                payload: {
+                  pageNumber: INITIAL_PAGE_NUMBER,
+                  scrollY: window.scrollY || document.documentElement.scrollTop || 0,
+                },
+              });
+            });
+          });
         }
 
         function getPageRenderKey(pageData) {
@@ -1220,7 +1429,12 @@ function buildShellDocumentHtml({
           }
 
           var pageTop = state.root.offsetTop;
-          window.scrollTo(0, Math.max(0, pageTop + anchor.offsetY - FOCUS_TOP_INSET_PX));
+          window.scrollTo(
+            0,
+            KEEP_SURAH_INTRO_VISIBLE
+              ? 0
+              : Math.max(0, pageTop + anchor.offsetY - FOCUS_TOP_INSET_PX)
+          );
           didScrollToHighlight = true;
           emit({
             type: 'highlight-anchor',
@@ -1263,6 +1477,7 @@ function buildShellDocumentHtml({
           loadedPageNumbers.add(pageNumber);
           emitPageRendered(state);
           scrollToHighlightedVerseIfReady(state);
+          scheduleInitialPositioned(pageNumber);
           if (pageNumber === INITIAL_PAGE_NUMBER && HIGHLIGHT_VERSE_KEY) {
             scheduleArrivalHighlightClear();
           }
@@ -1271,6 +1486,7 @@ function buildShellDocumentHtml({
             ensureActiveLayoutRendered(state);
             emitPageRendered(state);
             scrollToHighlightedVerseIfReady(state);
+            scheduleInitialPositioned(pageNumber);
           }, 0);
         }
 
@@ -1648,10 +1864,11 @@ export function buildMushafReaderWebViewShellDocument({
     pageNumbers?.join(',') ?? 'all',
     surahIntro
       ? [
-          surahIntro.revelationPlace ?? '',
+          surahIntro.chapterId,
+          surahIntro.infoLabel,
+          surahIntro.isMakkah ? 'makkah' : 'madinah',
           surahIntro.showBismillah ? 'bismillah' : 'no-bismillah',
           surahIntro.surahName,
-          surahIntro.versesCount,
         ].join('|')
       : 'no-intro',
     surahNavigation

@@ -34,6 +34,7 @@ import type { SettingsTab } from '@/components/reader/settings/SettingsTabToggle
 import { BookmarkModal } from '@/components/bookmarks/BookmarkModal';
 import { VerseActionsSheet } from '@/components/surah/VerseActionsSheet';
 import { VerseCard } from '@/components/surah/VerseCard';
+import { BismillahDisplay } from '@/components/surah/BismillahDisplay';
 import { VerseScrubber, type VerseScrubberHandle } from '@/components/surah/VerseScrubber';
 import { useVerseAudioWordSync } from '@/components/surah/useVerseAudioWordSync';
 import { AddToPlannerModal, type VerseSummaryDetails } from '@/components/verse-planner-modal';
@@ -42,7 +43,7 @@ import { DEFAULT_MUSHAF_ID, findMushafOption } from '@/data/mushaf/options';
 import { useChapters } from '@/hooks/useChapters';
 import { useMushafPageData } from '@/hooks/useMushafPageData';
 import { useJuzVerses, getJuzVerseKeys } from '@/hooks/useJuzVerses';
-import { preloadOfflineTafsirSurah } from '@/lib/tafsir/tafsirCache';
+import { preloadOfflineTafsirWindow } from '@/lib/tafsir/tafsirCache';
 import { useTranslationResources } from '@/hooks/useTranslationResources';
 import { primeVerseDetailsCache } from '@/lib/verse/verseDetailsCache';
 import { useBookmarks } from '@/providers/BookmarkContext';
@@ -644,13 +645,21 @@ export default function JuzScreen(): React.JSX.Element {
       translationTexts: activeVerse?.translationTexts,
     });
     if (Number.isFinite(surahNumber) && surahNumber > 0) {
-      void preloadOfflineTafsirSurah({ surahId: surahNumber, tafsirIds });
+      const chapterVerseCount =
+        chapters.find((chapter) => chapter.id === surahNumber)?.verses_count;
+      void preloadOfflineTafsirWindow({
+        surahId: surahNumber,
+        ayahId: Number(ayah),
+        tafsirIds,
+        verseCount: chapterVerseCount,
+      });
     }
     router.push({ pathname: '/tafsir/[surahId]/[ayahId]', params: { surahId: surah, ayahId: ayah } });
   }, [
     activeVerse?.arabicText,
     activeVerse?.translationTexts,
     activeVerse?.verseKey,
+    chapters,
     router,
     tafsirIds,
     translationIds,
@@ -903,9 +912,7 @@ export default function JuzScreen(): React.JSX.Element {
                 </Text>
               </View>
               {showBismillah ? (
-                <Text className="mt-4 text-center text-xl font-normal text-content-primary dark:text-content-primary-dark">
-                  بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ
-                </Text>
+                <BismillahDisplay />
               ) : null}
             </View>
           ) : null}

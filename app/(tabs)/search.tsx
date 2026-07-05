@@ -26,7 +26,7 @@ import { useChapters } from '@/hooks/useChapters';
 import { analyzeQuery } from '@/lib/api/search';
 import { preloadOfflineSurahNavigationPage } from '@/lib/surah/offlineSurahPageCache';
 import { primeVerseDetailsCache } from '@/lib/verse/verseDetailsCache';
-import { preloadOfflineTafsirSurah } from '@/lib/tafsir/tafsirCache';
+import { preloadOfflineTafsirWindow } from '@/lib/tafsir/tafsirCache';
 import { useSettings } from '@/providers/SettingsContext';
 import { useBookmarks } from '@/providers/BookmarkContext';
 import { useAudioPlayer } from '@/providers/AudioPlayerContext';
@@ -153,13 +153,21 @@ export default function SearchScreen(): React.JSX.Element {
       translationTexts: activeVerse?.translationTexts,
     });
     if (Number.isFinite(surahNumber) && surahNumber > 0) {
-      void preloadOfflineTafsirSurah({ surahId: surahNumber, tafsirIds: settings.tafsirIds ?? [] });
+      const chapterVerseCount =
+        chapters.find((chapter) => chapter.id === surahNumber)?.verses_count;
+      void preloadOfflineTafsirWindow({
+        surahId: surahNumber,
+        ayahId: Number(ayah),
+        tafsirIds: settings.tafsirIds ?? [],
+        verseCount: chapterVerseCount,
+      });
     }
     router.push({ pathname: '/tafsir/[surahId]/[ayahId]', params: { surahId: surah, ayahId: ayah } });
   }, [
     activeVerse?.arabicText,
     activeVerse?.translationTexts,
     activeVerse?.verseKey,
+    chapters,
     router,
     settings.tafsirIds,
     translationIds,
