@@ -1097,7 +1097,13 @@ function buildShellDocumentHtml({
             var loadedFace = await fontFace.load();
             if (document.fonts) {
               document.fonts.add(loadedFace);
+              await document.fonts.ready;
             }
+            await new Promise(function (resolve) {
+              requestAnimationFrame(function () {
+                requestAnimationFrame(resolve);
+              });
+            });
             return qcfFontFamily;
           }
 

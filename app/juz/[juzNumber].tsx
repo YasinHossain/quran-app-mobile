@@ -241,9 +241,6 @@ export default function JuzScreen(): React.JSX.Element {
   const startPage = startPageParam ? Number(startPageParam) : NaN;
 
   const [isSettingsOpen, setIsSettingsOpen] = React.useState(false);
-  const isSettingsOpenRef = React.useRef(isSettingsOpen);
-  const isSettingsClosingRef = React.useRef(false);
-  const pendingSettingsRouteActionRef = React.useRef<(() => void) | null>(null);
   
   const headerSearch = useHeaderSearch({ preserveMushafView: isMushafView });
   const [isVerseActionsOpen, setIsVerseActionsOpen] = React.useState(false);
@@ -384,9 +381,26 @@ export default function JuzScreen(): React.JSX.Element {
     enabled: Boolean(isMushafView && isHydrated && selectedMushafOption?.renderer === 'webview'),
   });
 
+  const retainedMushafPageDataRef = React.useRef(initialMushafPageProbe.data);
+  if (
+    initialMushafPageProbe.data?.pack.packId === selectedMushafId &&
+    initialMushafPageProbe.data.pack.version.trim() === selectedMushafVersion.trim() &&
+    initialMushafPageProbe.data.pageNumber === initialMushafPageNumber
+  ) {
+    retainedMushafPageDataRef.current = initialMushafPageProbe.data;
+  }
+  const retainedMushafPageData =
+    retainedMushafPageDataRef.current?.pack.packId === selectedMushafId &&
+    retainedMushafPageDataRef.current.pack.version.trim() === selectedMushafVersion.trim() &&
+    retainedMushafPageDataRef.current.pageNumber === initialMushafPageNumber
+      ? retainedMushafPageDataRef.current
+      : null;
+  const availableInitialMushafPageData =
+    initialMushafPageProbe.data ?? retainedMushafPageData;
   const resolvedMushafRenderer =
-    initialMushafPageProbe.data?.pack.renderer ?? selectedMushafOption?.renderer ?? 'text';
-  const activeMushafVersion = initialMushafPageProbe.data?.pack.version ?? selectedMushafVersion;
+    availableInitialMushafPageData?.pack.renderer ?? selectedMushafOption?.renderer ?? 'text';
+  const activeMushafVersion =
+    availableInitialMushafPageData?.pack.version ?? selectedMushafVersion;
 
   const [activeMushafPageNumber, setActiveMushafPageNumber] = React.useState(initialMushafPageNumber);
   const activeMushafPageNumberRef = React.useRef(initialMushafPageNumber);
@@ -466,52 +480,19 @@ export default function JuzScreen(): React.JSX.Element {
     setIsVerseActionsOpen(false);
   }, []);
 
-  React.useEffect(() => {
-    isSettingsOpenRef.current = isSettingsOpen;
-    if (isSettingsOpen) {
-      isSettingsClosingRef.current = false;
-    }
-  }, [isSettingsOpen]);
-
   const openTranslationSettings = React.useCallback(() => {
-    pendingSettingsRouteActionRef.current = null;
-    isSettingsClosingRef.current = false;
-    isSettingsOpenRef.current = true;
     setIsSettingsOpen(true);
   }, []);
 
   const closeSettingsSidebar = React.useCallback(() => {
-    pendingSettingsRouteActionRef.current = null;
-    isSettingsClosingRef.current = isSettingsOpenRef.current;
-    isSettingsOpenRef.current = false;
     setIsSettingsOpen(false);
-  }, []);
-
-  const runAfterSettingsSidebarClose = React.useCallback((action: () => void) => {
-    if (isSettingsOpenRef.current || isSettingsClosingRef.current) {
-      pendingSettingsRouteActionRef.current = action;
-      isSettingsClosingRef.current = true;
-      isSettingsOpenRef.current = false;
-      setIsSettingsOpen(false);
-      return;
-    }
-
-    action();
-  }, []);
-
-  const handleSettingsSidebarClosed = React.useCallback(() => {
-    isSettingsClosingRef.current = false;
-    const pendingAction = pendingSettingsRouteActionRef.current;
-    pendingSettingsRouteActionRef.current = null;
-    pendingAction?.();
   }, []);
 
   const handleSettingsTabChange = React.useCallback(
     (nextTab: SettingsTab) => {
       if (nextTab === 'translations') {
-        runAfterSettingsSidebarClose(() => {
-          router.setParams({ view: 'translations' });
-        });
+        closeSettingsSidebar();
+        router.setParams({ view: 'translations' });
         return;
       }
 
@@ -523,50 +504,59 @@ export default function JuzScreen(): React.JSX.Element {
         visibleVerseKeyRef.current ?? verseKeys[0] ?? null;
       const focusVerseNumber = parseVerseKeyNumbers(focusVerseKey)?.verseNumber;
 
-      runAfterSettingsSidebarClose(() => {
-        void (async () => {
-          let targetPage = fallbackPage;
-          const activePackVersion = await resolveActiveMushafVersion(
-            selectedMushafId,
-            selectedMushafVersion
+      closeSettingsSidebar();
+      void (async () => {
+        let targetPage = fallbackPage;
+        const [activePackVersion, resolvedPage] = await Promise.all([
+          resolveActiveMushafVersion(selectedMushafId, selectedMushafVersion),
+          focusVerseKey
+            ? mushafRepository
+                .findPageForVerse({
+                  packId: selectedMushafId,
+                  verseKey: focusVerseKey,
+                })
+                .catch(() => null)
+            : Promise.resolve(null),
+        ]);
+
+        if (typeof resolvedPage === 'number' && resolvedPage > 0) {
+          targetPage = Math.min(
+            Math.max(resolvedPage, mushafPageRange.firstPage),
+            mushafPageRange.lastPage
           );
+        }
 
-          if (focusVerseKey) {
-            try {
-              const resolvedPage = await mushafRepository.findPageForVerse({
-                packId: selectedMushafId,
-                verseKey: focusVerseKey,
-              });
+        mushafRepository.setActivePageCacheIdentity({
+          packId: selectedMushafId,
+          version: activePackVersion,
+        });
 
-              if (typeof resolvedPage === 'number' && resolvedPage > 0) {
-                targetPage = Math.min(
-                  Math.max(resolvedPage, mushafPageRange.firstPage),
-                  mushafPageRange.lastPage
-                );
-              }
-            } catch {
-              // Fall back
-            }
-          }
+        router.setParams({
+          view: 'mushaf',
+          startPage: String(targetPage),
+          ...(typeof focusVerseNumber === 'number' ? { startVerse: String(focusVerseNumber) } : {}),
+        });
 
-          mushafRepository.setActivePageCacheIdentity({
+        void mushafRepository
+          .prefetchPages({
             packId: selectedMushafId,
-            version: activePackVersion,
+            pageNumbers: [targetPage - 1, targetPage, targetPage + 1].filter(
+              (pageNumber) =>
+                pageNumber >= mushafPageRange.firstPage &&
+                pageNumber <= mushafPageRange.lastPage
+            ),
+            expectedVersion: activePackVersion,
+          })
+          .catch(() => {
+            // The mounted reader reports local-pack errors; background warmup must not block entry.
           });
-
-          router.setParams({
-            view: 'mushaf',
-            startPage: String(targetPage),
-            ...(typeof focusVerseNumber === 'number' ? { startVerse: String(focusVerseNumber) } : {}),
-          });
-        })();
-      });
+      })();
     },
     [
+      closeSettingsSidebar,
       verseKeys,
       mushafPageRange,
       router,
-      runAfterSettingsSidebarClose,
       selectedMushafId,
       selectedMushafVersion,
     ]
@@ -1125,8 +1115,9 @@ export default function JuzScreen(): React.JSX.Element {
           </View>
         ) : null}
 
-        {isMushafView ? (
+        {isMushafView || Boolean(availableInitialMushafPageData) ? (
           <Animated.View
+            pointerEvents={isMushafView ? 'auto' : 'none'}
             style={[
               styles.contentLayer,
               styles.mushafEntryLayer,
@@ -1155,7 +1146,7 @@ export default function JuzScreen(): React.JSX.Element {
                 compactPageLines
                 expectedVersion={activeMushafVersion}
                 focusTopInsetPx={readerHeader.headerHeight + 12}
-                initialPageData={initialMushafPageProbe.data}
+                initialPageData={availableInitialMushafPageData}
                 initialPageNumber={initialMushafPageNumber}
                 mushafScaleStep={settings.mushafScaleStep}
                 onActivePageChange={handleMushafActivePageChange}
@@ -1177,7 +1168,6 @@ export default function JuzScreen(): React.JSX.Element {
       <SettingsSidebar
         isOpen={isSettingsOpen}
         onClose={closeSettingsSidebar}
-        onAfterClose={handleSettingsSidebarClosed}
         activeTab={isMushafView ? 'mushaf' : 'translations'}
         onTabChange={handleSettingsTabChange}
       />
