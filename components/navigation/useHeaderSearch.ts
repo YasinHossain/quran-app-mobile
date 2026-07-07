@@ -11,8 +11,10 @@ type CloseHeaderSearchOptions = {
 
 export function useHeaderSearch({
   preserveMushafView = false,
+  replace = false,
 }: {
   preserveMushafView?: boolean;
+  replace?: boolean;
 } = {}) {
   const router = useRouter();
   const { settings } = useSettings();
@@ -37,9 +39,10 @@ export function useHeaderSearch({
       const trimmed = (queryOverride ?? query).trim();
       if (!trimmed) return;
       close({ clearQuery: true });
-      router.push({ pathname: '/search', params: { query: trimmed } });
+      const navMethod = replace ? router.replace : router.push;
+      navMethod({ pathname: '/search', params: { query: trimmed } });
     },
-    [close, query, router]
+    [close, query, router, replace]
   );
 
   const navigateToSurahVerse = React.useCallback(
@@ -50,7 +53,8 @@ export function useHeaderSearch({
         settings,
       });
       close({ clearQuery: true });
-      router.push({
+      const navMethod = replace ? router.replace : router.push;
+      navMethod({
         pathname: '/surah/[surahId]',
         params: {
           surahId: String(surahId),
@@ -59,23 +63,25 @@ export function useHeaderSearch({
         },
       });
     },
-    [close, preserveMushafView, router, settings]
+    [close, preserveMushafView, router, settings, replace]
   );
 
   const navigateToJuz = React.useCallback(
     (juzNumber: number) => {
       close({ clearQuery: true });
-      router.push({ pathname: '/juz/[juzNumber]', params: { juzNumber: String(juzNumber) } });
+      const navMethod = replace ? router.replace : router.push;
+      navMethod({ pathname: '/juz/[juzNumber]', params: { juzNumber: String(juzNumber) } });
     },
-    [close, router]
+    [close, router, replace]
   );
 
   const navigateToPage = React.useCallback(
     (pageNumber: number) => {
       close({ clearQuery: true });
-      router.push({ pathname: '/page/[pageNumber]', params: { pageNumber: String(pageNumber) } });
+      const navMethod = replace ? router.replace : router.push;
+      navMethod({ pathname: '/page/[pageNumber]', params: { pageNumber: String(pageNumber) } });
     },
-    [close, router]
+    [close, router, replace]
   );
 
   return {

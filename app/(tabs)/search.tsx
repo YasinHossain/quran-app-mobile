@@ -13,6 +13,7 @@ import {
   View,
 } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
+import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 
 import { GoToSurahVerseCard } from '@/components/search/GoToSurahVerseCard';
 import { SearchVerseResultCard } from '@/components/search/SearchVerseResultCard';
@@ -331,12 +332,17 @@ export default function SearchScreen(): React.JSX.Element {
         ) : null}
 
         {showGoTo ? (
-          <GoToSurahVerseCard
-            onNavigate={handleNavigateToSurahVerse}
-            onSearchSuggestion={(suggestion) => setQuery(suggestion)}
-            title="Go To"
-            buttonLabel="Go"
-          />
+          <Animated.View
+            entering={FadeIn.duration(200)}
+            exiting={FadeOut.duration(150)}
+          >
+            <GoToSurahVerseCard
+              onNavigate={handleNavigateToSurahVerse}
+              onSearchSuggestion={(suggestion) => setQuery(suggestion)}
+              title="Go To"
+              buttonLabel="Go"
+            />
+          </Animated.View>
         ) : null}
 
         {navigationResults.length > 0 ? (
