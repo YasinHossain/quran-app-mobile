@@ -15,6 +15,11 @@ import {
   type NativeSyntheticEvent,
 } from 'react-native';
 
+import {
+  MushafSingleDocumentReader,
+  type MushafSingleDocumentVersePress,
+} from '@/components/mushaf/MushafSingleDocumentReader';
+import type { MushafSelectionPayload } from '@/components/mushaf/mushafWordPayload';
 import { ComprehensiveSearchDropdown } from '@/components/search/ComprehensiveSearchDropdown';
 import { AppSearchHeader, ReaderOverlayHeader } from '@/components/navigation/AppHeader';
 import { useCollapsibleReaderHeader } from '@/components/navigation/useCollapsibleReaderHeader';
@@ -29,7 +34,9 @@ import { VerseScrubber, type VerseScrubberHandle } from '@/components/surah/Vers
 import { useVerseAudioWordSync } from '@/components/surah/useVerseAudioWordSync';
 import { AddToPlannerModal, type VerseSummaryDetails } from '@/components/verse-planner-modal';
 import Colors from '@/constants/Colors';
+import { DEFAULT_MUSHAF_ID, findMushafOption } from '@/data/mushaf/options';
 import { useChapters } from '@/hooks/useChapters';
+import { useMushafPageData } from '@/hooks/useMushafPageData';
 import { usePageVerses } from '@/hooks/usePageVerses';
 import { preloadOfflineTafsirWindow } from '@/lib/tafsir/tafsirCache';
 import { useTranslationResources } from '@/hooks/useTranslationResources';
@@ -40,8 +47,9 @@ import { useLayoutMetrics } from '@/providers/LayoutMetricsContext';
 import { useSettings } from '@/providers/SettingsContext';
 import { useAppTheme } from '@/providers/ThemeContext';
 import { getBundledMushafPack } from '@/src/core/infrastructure/mushaf/bundledPacks';
+import { container } from '@/src/core/infrastructure/di/container';
 
-import type { Bookmark } from '@/types';
+import type { Bookmark, MushafPackId } from '@/types';
 
 function parseVerseKeyNumbers(
   verseKey: string | null
@@ -55,6 +63,20 @@ function parseVerseKeyNumbers(
   const normalizedVerse = Math.trunc(verseNumber);
   if (normalizedSurah <= 0 || normalizedVerse <= 0) return null;
   return { surahId: normalizedSurah, verseNumber: normalizedVerse };
+}
+
+async function resolveActiveMushafVersion(
+  packId: MushafPackId,
+  fallbackVersion: string
+): Promise<string> {
+  try {
+    const activeInstall = await container
+      .getMushafPackInstallRegistry()
+      .getActive(packId);
+    return activeInstall?.version ?? fallbackVersion;
+  } catch {
+    return fallbackVersion;
+  }
 }
 
 function VerseCardPlaceholder({ verseKey }: { verseKey: string }): React.JSX.Element {
@@ -125,6 +147,7 @@ const styles = StyleSheet.create({
 });
 
 const INITIAL_PLACEHOLDER_VERSE_KEYS = ['1:1', '1:2', '1:3', '1:4'];
+const FALLBACK_MUSHAF_TOTAL_PAGES = 604;
 
 function clampPageNumber(value: number | null): number {
   if (value === null || !Number.isInteger(value)) return 1;
@@ -160,7 +183,9 @@ export default function PageScreen(): React.JSX.Element {
   const { resolvedTheme } = useAppTheme();
   const palette = Colors[resolvedTheme];
   const readerHeader = useCollapsibleReaderHeader();
-  const headerSearch = useHeaderSearch();
+  const { settings, isHydrated } = useSettings();
+  const isMushafView = settings.readingMode === 'mushaf';
+  const headerSearch = useHeaderSearch({ preserveMushafView: isMushafView, replace: true });
   const { chapters } = useChapters();
   const audio = useAudioPlayer();
   const { audioPlayerBarHeight } = useLayoutMetrics();
@@ -174,8 +199,38 @@ export default function PageScreen(): React.JSX.Element {
     [audioPlayerBarHeight, readerHeader.headerHeight]
   );
 
-  const { settings } = useSettings();
   const { isPinned, setLastRead } = useBookmarks();
+  const selectedMushafId = settings.mushafId ?? DEFAULT_MUSHAF_ID;
+  const selectedMushafOption = findMushafOption(selectedMushafId);
+  const selectedMushafVersion = selectedMushafOption?.version ?? 'unknown';
+  const initialMushafPageProbe = useMushafPageData({
+    packId: selectedMushafId,
+    pageNumber,
+    expectedVersion: selectedMushafVersion,
+    enabled: Boolean(isMushafView && isHydrated && selectedMushafOption?.renderer === 'webview'),
+  });
+  const retainedMushafPageDataRef = React.useRef(initialMushafPageProbe.data);
+  if (
+    initialMushafPageProbe.data?.pack.packId === selectedMushafId &&
+    initialMushafPageProbe.data.pack.version.trim() === selectedMushafVersion.trim() &&
+    initialMushafPageProbe.data.pageNumber === pageNumber
+  ) {
+    retainedMushafPageDataRef.current = initialMushafPageProbe.data;
+  }
+  const availableInitialMushafPageData =
+    initialMushafPageProbe.data ??
+    (retainedMushafPageDataRef.current?.pack.packId === selectedMushafId &&
+    retainedMushafPageDataRef.current.pack.version.trim() === selectedMushafVersion.trim() &&
+    retainedMushafPageDataRef.current.pageNumber === pageNumber
+      ? retainedMushafPageDataRef.current
+      : null);
+  const resolvedMushafRenderer =
+    availableInitialMushafPageData?.pack.renderer ?? selectedMushafOption?.renderer ?? 'text';
+  const activeMushafVersion =
+    availableInitialMushafPageData?.pack.version ?? selectedMushafVersion;
+  const mushafTotalPages =
+    availableInitialMushafPageData?.pack.totalPages ?? FALLBACK_MUSHAF_TOTAL_PAGES;
+  const mushafSelectionMetadataRef = React.useRef<MushafSelectionPayload | null>(null);
 
   const chapterNamesById = React.useMemo(
     () => new Map(chapters.map((item) => [item.id, item.name_simple] as const)),
@@ -249,7 +304,7 @@ export default function PageScreen(): React.JSX.Element {
     pageNumber,
     translationIds,
     wordLang: settings.wordLang,
-    enabled: true,
+    enabled: !isMushafView,
   });
 
   const [visibleVerseNumber, setVisibleVerseNumber] = React.useState(1);
@@ -319,6 +374,72 @@ export default function PageScreen(): React.JSX.Element {
   const closeSettingsSidebar = React.useCallback(() => {
     setIsSettingsOpen(false);
   }, []);
+
+  React.useEffect(() => {
+    if (!isMushafView || selectedMushafOption?.renderer !== 'webview') return;
+
+    let cancelled = false;
+    void (async () => {
+      const activePackVersion = await resolveActiveMushafVersion(
+        selectedMushafId,
+        activeMushafVersion
+      );
+      if (cancelled) return;
+      const repository = container.getMushafPageRepository();
+      repository.setActivePageCacheIdentity({
+        packId: selectedMushafId,
+        version: activePackVersion,
+      });
+      void repository
+        .prefetchPages({
+          packId: selectedMushafId,
+          pageNumbers: [pageNumber - 1, pageNumber, pageNumber + 1],
+          expectedVersion: activePackVersion,
+        })
+        .catch(() => {
+          // The mounted reader surfaces local-pack errors.
+        });
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    activeMushafVersion,
+    isMushafView,
+    pageNumber,
+    selectedMushafId,
+    selectedMushafOption?.renderer,
+  ]);
+
+  const handleMushafSelectionChange = React.useCallback((payload: MushafSelectionPayload) => {
+    mushafSelectionMetadataRef.current = payload.isCollapsed ? null : payload;
+  }, []);
+
+  const handleMushafVersePress = React.useCallback(
+    (verse: MushafSingleDocumentVersePress) => {
+      if (mushafSelectionMetadataRef.current && !mushafSelectionMetadataRef.current.isCollapsed) {
+        return;
+      }
+
+      openVerseActions({
+        verseKey: verse.verseKey,
+        verseApiId: verse.verseApiId,
+        arabicText: verse.arabicText,
+        translationTexts: verse.translationTexts,
+      });
+    },
+    [openVerseActions]
+  );
+
+  const handleMushafScrollActivity = React.useCallback(
+    (scrollY?: number) => {
+      if (typeof scrollY === 'number') {
+        readerHeader.handleScrollOffset(scrollY);
+      }
+    },
+    [readerHeader]
+  );
 
   const listExtraData = React.useMemo(
     () => ({
@@ -631,6 +752,47 @@ export default function PageScreen(): React.JSX.Element {
       </ReaderOverlayHeader>
 
       <View style={styles.contentStage}>
+        {isMushafView ? (
+          <View style={styles.contentLayer} pointerEvents="auto">
+            {!isHydrated ? (
+              <View className="flex-1 items-center justify-center gap-4 px-6">
+                <ActivityIndicator color={palette.text} />
+                <Text className="text-center text-sm leading-6 text-muted dark:text-muted-dark">
+                  Loading local mushaf settings…
+                </Text>
+              </View>
+            ) : resolvedMushafRenderer !== 'webview' ? (
+              <View className="flex-1 items-center justify-center px-6">
+                <Text className="text-center text-sm leading-6 text-muted dark:text-muted-dark">
+                  Select an installed exact mushaf pack to use this Page Mushaf view.
+                </Text>
+              </View>
+            ) : initialMushafPageProbe.errorMessage ? (
+              <View className="flex-1 items-center justify-center px-6">
+                <Text className="text-center text-sm leading-6 text-muted dark:text-muted-dark">
+                  {initialMushafPageProbe.errorMessage}
+                </Text>
+              </View>
+            ) : (
+              <MushafSingleDocumentReader
+                backgroundPageNumbers={[pageNumber - 1, pageNumber, pageNumber + 1]}
+                chapterNamesById={chapterNamesById}
+                compactPageLines
+                expectedVersion={activeMushafVersion}
+                focusTopInsetPx={readerHeader.headerHeight + 12}
+                initialPageData={availableInitialMushafPageData}
+                initialPageNumber={pageNumber}
+                mushafScaleStep={settings.mushafScaleStep}
+                onSelectionChange={handleMushafSelectionChange}
+                onScrollActivity={handleMushafScrollActivity}
+                onVersePress={handleMushafVersePress}
+                pageNumbers={[pageNumber]}
+                packId={selectedMushafId}
+                totalPages={mushafTotalPages}
+              />
+            )}
+          </View>
+        ) : (
         <View style={styles.contentLayer} pointerEvents="auto">
           {!hasLoadedContent && offlineNotInstalled ? (
             <View className="flex-1 px-4" style={{ paddingTop: readerHeader.headerHeight + 16 }}>
@@ -737,6 +899,7 @@ export default function PageScreen(): React.JSX.Element {
             />
           ) : null}
         </View>
+        )}
       </View>
 
       <SettingsSidebar

@@ -17,6 +17,7 @@ export interface Settings {
   tajweed: boolean;
   mushafId?: MushafPackId;
   mushafScaleStep: MushafScaleStep;
+  readingMode?: 'translations' | 'mushaf';
   /**
    * The UI language code that was last used to apply language-specific defaults
    * for translations, tafsir and word-by-word settings.

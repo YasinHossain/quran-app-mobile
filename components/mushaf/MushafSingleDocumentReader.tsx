@@ -45,6 +45,7 @@ type MushafSingleDocumentReaderProps = {
   initialPageNumber: number;
   mushafScaleStep: MushafScaleStep;
   onActivePageChange?: (pageNumber: number) => void;
+  onActiveVerseChange?: (verseKey: string) => void;
   onInitialPositioned?: () => void;
   onSelectionChange: (payload: MushafSelectionPayload) => void;
   onScrollActivity?: (scrollY?: number) => void;
@@ -72,7 +73,7 @@ type ReaderMessage =
     }
   | {
       type: 'reader-active-page-change';
-      payload?: { pageNumber?: number };
+      payload?: { pageNumber?: number; verseKey?: string };
     }
   | {
       type: 'reader-scroll';
@@ -243,6 +244,7 @@ export const MushafSingleDocumentReader = React.forwardRef<
     initialPageNumber,
     mushafScaleStep,
     onActivePageChange,
+    onActiveVerseChange,
     onInitialPositioned,
     onSelectionChange,
     onScrollActivity,
@@ -761,11 +763,18 @@ export const MushafSingleDocumentReader = React.forwardRef<
           return;
         }
         case 'reader-active-page-change': {
-          const payload = parsed.payload as { pageNumber?: unknown } | undefined;
+          const payload = parsed.payload as
+            | { pageNumber?: unknown; verseKey?: unknown }
+            | undefined;
           const pageNumber =
             typeof payload?.pageNumber === 'number' && Number.isFinite(payload.pageNumber)
               ? Math.trunc(payload.pageNumber)
               : null;
+          const verseKey =
+            typeof payload?.verseKey === 'string' ? payload.verseKey.trim() : '';
+          if (verseKey) {
+            onActiveVerseChange?.(verseKey);
+          }
           if (pageNumber !== null) {
             activePageNumberRef.current = pageNumber;
             onActivePageChange?.(pageNumber);
@@ -809,6 +818,7 @@ export const MushafSingleDocumentReader = React.forwardRef<
       injectPages,
       loadPages,
       onActivePageChange,
+      onActiveVerseChange,
       onSelectionChange,
       onScrollActivity,
       onSurahNavigation,

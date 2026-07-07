@@ -964,7 +964,7 @@ export default function TafsirScreen(): React.JSX.Element {
   const [plannerVerseSummary, setPlannerVerseSummary] = React.useState<VerseSummaryDetails | null>(
     null
   );
-  const headerSearch = useHeaderSearch();
+  const headerSearch = useHeaderSearch({ replace: true });
   const [activeVerse, setActiveVerse] = React.useState<{
     title: string;
     surahId: number;

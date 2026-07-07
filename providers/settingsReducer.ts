@@ -14,7 +14,8 @@ export type SettingsAction =
   | { type: 'SET_ARABIC_FONT_FACE'; value: string }
   | { type: 'SET_MUSHAF_ID'; value: MushafPackId }
   | { type: 'SET_MUSHAF_SCALE_STEP'; value: MushafScaleStep }
-  | { type: 'SET_CONTENT_LANGUAGE'; value: string };
+  | { type: 'SET_CONTENT_LANGUAGE'; value: string }
+  | { type: 'SET_READING_MODE'; value: 'translations' | 'mushaf' };
 
 function normalizeIdList(value: number[]): number[] {
   const seen = new Set<number>();
@@ -96,6 +97,8 @@ const actionHandlers = {
   },
   SET_CONTENT_LANGUAGE: (state, action) =>
     state.contentLanguage === action.value ? state : { ...state, contentLanguage: action.value },
+  SET_READING_MODE: (state, action) =>
+    state.readingMode === action.value ? state : { ...state, readingMode: action.value },
 } satisfies ActionHandlerMap;
 
 export function settingsReducer(state: Settings, action: SettingsAction): Settings {

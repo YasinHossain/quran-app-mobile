@@ -44,6 +44,7 @@ export const defaultSettings: Settings = {
   tajweed: false,
   mushafId: DEFAULT_MUSHAF_ID,
   mushafScaleStep: DEFAULT_MUSHAF_SCALE_STEP,
+  readingMode: 'translations',
   contentLanguage: 'en',
 };
 
@@ -100,6 +101,11 @@ function normalizeSettings(raw: RawSettings, defaults: Settings): Settings {
         typeof mutable.arabicFontSize === 'number' ? mutable.arabicFontSize : defaults.arabicFontSize
       );
 
+  const readingMode =
+    mutable.readingMode === 'translations' || mutable.readingMode === 'mushaf'
+      ? mutable.readingMode
+      : defaults.readingMode ?? 'translations';
+
   const merged = { ...defaults, ...mutable } as Settings;
 
   return {
@@ -109,6 +115,7 @@ function normalizeSettings(raw: RawSettings, defaults: Settings): Settings {
     tafsirIds,
     mushafId,
     mushafScaleStep,
+    readingMode,
   };
 }
 

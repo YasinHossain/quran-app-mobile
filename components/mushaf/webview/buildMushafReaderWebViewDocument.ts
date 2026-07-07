@@ -76,13 +76,13 @@ function buildPageShells(
   for (const pageNumber of pageNumbers) {
     const juzNumber = getJuzByPage(pageNumber);
     pageShells.push(`
-      <article class="reader-page loading" data-page-number="${pageNumber}">
+      <article class="reader-page loading" data-page-number="${pageNumber}" data-juz-number="${juzNumber}">
         <div class="page-content"${compactPageLines ? '' : ` style="min-height: ${pageMinHeight}px;"`}>
           <div class="standard-view"></div>
           <div class="reflow-view"></div>
         </div>
         <footer class="page-footer" aria-hidden="true">
-          <span></span><b>Page ${pageNumber} • Juz ${juzNumber}</b><span></span>
+          <span></span><b class="page-footer-label">Page ${pageNumber} • Juz ${juzNumber}</b><span></span>
         </footer>
       </article>
     `);
@@ -732,6 +732,7 @@ function buildShellDocumentHtml({
         var activePageRafId = null;
         var scrollActivityRafId = null;
         var lastEmittedActivePageNumber = null;
+        var lastEmittedActiveVerseKey = '';
         var selectionRafId = null;
         var didScrollToInitialPage = false;
         var didScrollToHighlight = false;
@@ -966,18 +967,71 @@ function buildShellDocumentHtml({
           return bestPageNumber;
         }
 
+        function resolveActiveVerseKey(pageNumber) {
+          var state = getPageState(pageNumber);
+          if (!state || !state.root) {
+            return '';
+          }
+
+          var viewportAnchor = Math.min(
+            Math.max(FOCUS_TOP_INSET_PX + 8, 8),
+            Math.max(8, window.innerHeight - 8)
+          );
+          var words = Array.from(
+            state.root.querySelectorAll('[data-mushaf-word="true"][data-verse-key]')
+          );
+          var bestVerseKey = '';
+          var bestDistance = Number.POSITIVE_INFINITY;
+
+          for (var index = 0; index < words.length; index += 1) {
+            var word = words[index];
+            var rect = word.getBoundingClientRect();
+            if (rect.bottom < 0 || rect.top > window.innerHeight) {
+              continue;
+            }
+
+            var verseKey = word.getAttribute('data-verse-key') || '';
+            if (!verseKey) {
+              continue;
+            }
+            if (rect.top <= viewportAnchor && rect.bottom >= viewportAnchor) {
+              return verseKey;
+            }
+
+            var distance =
+              rect.top > viewportAnchor
+                ? rect.top - viewportAnchor
+                : viewportAnchor - rect.bottom;
+            if (distance < bestDistance) {
+              bestDistance = distance;
+              bestVerseKey = verseKey;
+            }
+          }
+
+          return bestVerseKey;
+        }
+
         function emitActivePageIfChanged() {
           activePageRafId = null;
           var activePageNumber = resolveActivePageNumber();
-          if (!Number.isFinite(activePageNumber) || activePageNumber === lastEmittedActivePageNumber) {
+          if (!Number.isFinite(activePageNumber)) {
+            return;
+          }
+          var activeVerseKey = resolveActiveVerseKey(activePageNumber);
+          if (
+            activePageNumber === lastEmittedActivePageNumber &&
+            activeVerseKey === lastEmittedActiveVerseKey
+          ) {
             return;
           }
 
           lastEmittedActivePageNumber = activePageNumber;
+          lastEmittedActiveVerseKey = activeVerseKey;
           emit({
             type: 'reader-active-page-change',
             payload: {
               pageNumber: activePageNumber,
+              verseKey: activeVerseKey,
             },
           });
         }
@@ -1069,6 +1123,27 @@ function buildShellDocumentHtml({
             pageData.pageNumber || '',
             HIGHLIGHT_VERSE_KEY || '',
           ].join(':');
+        }
+
+        function updatePageFooter(state) {
+          if (!state || !state.root || !state.data) {
+            return;
+          }
+
+          var label = state.root.querySelector('.page-footer-label');
+          if (!label) {
+            return;
+          }
+
+          var pageNumber = Number.isFinite(state.data.pageNumber)
+            ? state.data.pageNumber
+            : state.pageNumber;
+          var juzNumber = state.root.dataset ? state.root.dataset.juzNumber : '';
+          var parts = ['Page ' + String(pageNumber)];
+          if (juzNumber) {
+            parts.push('Juz ' + String(juzNumber));
+          }
+          label.textContent = parts.join(' • ');
         }
 
         async function loadQcfPageFontIfNeeded(rendererAssets) {
@@ -1536,9 +1611,11 @@ function buildShellDocumentHtml({
           state.qcfFontFamily = qcfFontFamily;
           applyLayoutMode(state, layout);
           ensureActiveLayoutRendered(state);
+          updatePageFooter(state);
           state.root.classList.remove('loading');
           loadedPageNumbers.add(pageNumber);
           emitPageRendered(state);
+          scheduleActivePageReport();
           scrollToHighlightedVerseIfReady(state);
           scheduleInitialPositioned(pageNumber);
           if (pageNumber === INITIAL_PAGE_NUMBER && HIGHLIGHT_VERSE_KEY) {
@@ -1548,6 +1625,7 @@ function buildShellDocumentHtml({
             applyLayoutMode(state, layout);
             ensureActiveLayoutRendered(state);
             emitPageRendered(state);
+            scheduleActivePageReport();
             scrollToHighlightedVerseIfReady(state);
             settleInitialPageWithoutHighlight(state);
             scheduleInitialPositioned(pageNumber);

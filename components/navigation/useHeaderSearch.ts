@@ -1,4 +1,4 @@
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, usePathname, useRouter } from 'expo-router';
 import React from 'react';
 import { Keyboard, TextInput } from 'react-native';
 
@@ -11,10 +11,14 @@ type CloseHeaderSearchOptions = {
 
 export function useHeaderSearch({
   preserveMushafView = false,
+  replace = false,
 }: {
   preserveMushafView?: boolean;
+  replace?: boolean;
 } = {}) {
   const router = useRouter();
+  const pathname = usePathname();
+  const routeParams = useLocalSearchParams<{ surahId?: string | string[] }>();
   const { settings } = useSettings();
   const [isOpen, setIsOpen] = React.useState(false);
   const [query, setQuery] = React.useState('');
@@ -50,32 +54,65 @@ export function useHeaderSearch({
         settings,
       });
       close({ clearQuery: true });
-      router.push({
+      const route = {
         pathname: '/surah/[surahId]',
         params: {
           surahId: String(surahId),
           ...(typeof verse === 'number' ? { startVerse: String(verse) } : {}),
           ...(preserveMushafView ? { view: 'mushaf' } : {}),
         },
-      });
+      } as const;
+      const currentSurahParam = Array.isArray(routeParams.surahId)
+        ? routeParams.surahId[0]
+        : routeParams.surahId;
+      const isSameSurahRoute =
+        pathname === `/surah/${surahId}` && Number(currentSurahParam) === surahId;
+
+      if (replace && isSameSurahRoute && !preserveMushafView) {
+        router.setParams({ startVerse: String(verse ?? 1) });
+        return;
+      }
+
+      if (replace) {
+        router.replace(route);
+        return;
+      }
+
+      router.push(route);
     },
-    [close, preserveMushafView, router, settings]
+    [close, pathname, preserveMushafView, replace, routeParams.surahId, router, settings]
   );
 
   const navigateToJuz = React.useCallback(
     (juzNumber: number) => {
       close({ clearQuery: true });
-      router.push({ pathname: '/juz/[juzNumber]', params: { juzNumber: String(juzNumber) } });
+      const route = {
+        pathname: '/juz/[juzNumber]',
+        params: { juzNumber: String(juzNumber) },
+      } as const;
+      if (replace) {
+        router.replace(route);
+        return;
+      }
+      router.push(route);
     },
-    [close, router]
+    [close, replace, router]
   );
 
   const navigateToPage = React.useCallback(
     (pageNumber: number) => {
       close({ clearQuery: true });
-      router.push({ pathname: '/page/[pageNumber]', params: { pageNumber: String(pageNumber) } });
+      const route = {
+        pathname: '/page/[pageNumber]',
+        params: { pageNumber: String(pageNumber) },
+      } as const;
+      if (replace) {
+        router.replace(route);
+        return;
+      }
+      router.push(route);
     },
-    [close, router]
+    [close, replace, router]
   );
 
   return {

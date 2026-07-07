@@ -43,6 +43,7 @@ import { DEFAULT_MUSHAF_ID, findMushafOption } from '@/data/mushaf/options';
 import { useChapters } from '@/hooks/useChapters';
 import { useMushafPageData } from '@/hooks/useMushafPageData';
 import { useJuzVerses, getJuzVerseKeys } from '@/hooks/useJuzVerses';
+import { getOfflineJuzCached } from '@/lib/juz/offlineJuzPageCache';
 import { preloadOfflineTafsirWindow } from '@/lib/tafsir/tafsirCache';
 import { useTranslationResources } from '@/hooks/useTranslationResources';
 import { primeVerseDetailsCache } from '@/lib/verse/verseDetailsCache';
@@ -153,6 +154,15 @@ const styles = StyleSheet.create({
   mushafEntryLayer: {
     overflow: 'hidden',
   },
+  translationArrivalHighlight: {
+    backgroundColor: 'rgba(31, 138, 125, 0.14)',
+    borderRadius: 12,
+  },
+  transitionInteractionBlocker: {
+    ...StyleSheet.absoluteFill,
+    elevation: 1000,
+    zIndex: 1000,
+  },
 });
 
 function MushafMessageState({
@@ -230,19 +240,29 @@ export default function JuzScreen(): React.JSX.Element {
     view?: string | string[];
   }>();
   const router = useRouter();
+  const { settings, isHydrated, setReadingMode } = useSettings();
   const juzNumberParam = Array.isArray(params.juzNumber) ? params.juzNumber[0] : params.juzNumber;
   const startVerseParam = Array.isArray(params.startVerse) ? params.startVerse[0] : params.startVerse;
   const startPageParam = Array.isArray(params.startPage) ? params.startPage[0] : params.startPage;
   const viewParam = Array.isArray(params.view) ? params.view[0] : params.view;
 
   const juzNumber = juzNumberParam ? Number(juzNumberParam) : 1;
-  const isMushafView = viewParam === 'mushaf';
+  const isMushafView = viewParam ? viewParam === 'mushaf' : settings.readingMode === 'mushaf';
   const startVerse = startVerseParam ? Number(startVerseParam) : NaN;
   const startPage = startPageParam ? Number(startPageParam) : NaN;
 
   const [isSettingsOpen, setIsSettingsOpen] = React.useState(false);
-  
-  const headerSearch = useHeaderSearch({ preserveMushafView: isMushafView });
+  const [pendingTranslationVerseKey, setPendingTranslationVerseKey] =
+    React.useState<string | null>(null);
+  const [translationHighlightVerseKey, setTranslationHighlightVerseKey] =
+    React.useState<string | null>(null);
+  const mushafOriginVerseKeyRef = React.useRef<string | null>(null);
+  const activeMushafVerseKeyRef = React.useRef<string | null>(null);
+  const [isTransitionInteractionBlocked, setIsTransitionInteractionBlocked] =
+    React.useState(false);
+  const interactionBlockTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const headerSearch = useHeaderSearch({ preserveMushafView: isMushafView, replace: true });
   const [isVerseActionsOpen, setIsVerseActionsOpen] = React.useState(false);
   const [isBookmarkModalOpen, setIsBookmarkModalOpen] = React.useState(false);
   const [isAddToPlannerOpen, setIsAddToPlannerOpen] = React.useState(false);
@@ -271,13 +291,21 @@ export default function JuzScreen(): React.JSX.Element {
     }),
     [audioPlayerBarHeight, readerHeader.headerHeight]
   );
+  const listScrollViewOffset = React.useMemo(
+    () => Math.max(0, readerHeader.headerHeight + 12),
+    [readerHeader.headerHeight]
+  );
+  const nativeListScrollViewOffset = React.useMemo(
+    () => -listScrollViewOffset,
+    [listScrollViewOffset]
+  );
 
-  const { settings, isHydrated } = useSettings();
+
   const { isPinned, setLastRead } = useBookmarks();
-  
+
   const currentJuzData = React.useMemo(() => (juzData as any[]).find((j: any) => j.number === juzNumber), [juzNumber]);
   const surahRange = currentJuzData?.surahRange || '';
-  
+
   const verseKeys = React.useMemo(() => getJuzVerseKeys(juzNumber, chapters), [juzNumber, chapters]);
 
   // Audio word sync is bounded by current chapter inside player
@@ -488,9 +516,36 @@ export default function JuzScreen(): React.JSX.Element {
     setIsSettingsOpen(false);
   }, []);
 
+  const blockReaderInteractionsDuringTransition = React.useCallback(() => {
+    if (interactionBlockTimeoutRef.current) {
+      clearTimeout(interactionBlockTimeoutRef.current);
+    }
+    setIsTransitionInteractionBlocked(true);
+    interactionBlockTimeoutRef.current = setTimeout(() => {
+      interactionBlockTimeoutRef.current = null;
+      setIsTransitionInteractionBlocked(false);
+    }, 500);
+  }, []);
+
+  React.useEffect(
+    () => () => {
+      if (interactionBlockTimeoutRef.current) {
+        clearTimeout(interactionBlockTimeoutRef.current);
+      }
+    },
+    []
+  );
+
   const handleSettingsTabChange = React.useCallback(
     (nextTab: SettingsTab) => {
+      blockReaderInteractionsDuringTransition();
       if (nextTab === 'translations') {
+        const returnVerseKey =
+          activeMushafVerseKeyRef.current ??
+          mushafOriginVerseKeyRef.current ??
+          verseKeys[0] ??
+          null;
+        setPendingTranslationVerseKey(returnVerseKey);
         closeSettingsSidebar();
         router.setParams({ view: 'translations' });
         return;
@@ -503,6 +558,8 @@ export default function JuzScreen(): React.JSX.Element {
       const focusVerseKey =
         visibleVerseKeyRef.current ?? verseKeys[0] ?? null;
       const focusVerseNumber = parseVerseKeyNumbers(focusVerseKey)?.verseNumber;
+      mushafOriginVerseKeyRef.current = focusVerseKey;
+      activeMushafVerseKeyRef.current = focusVerseKey;
 
       closeSettingsSidebar();
       void (async () => {
@@ -554,6 +611,7 @@ export default function JuzScreen(): React.JSX.Element {
     },
     [
       closeSettingsSidebar,
+      blockReaderInteractionsDuringTransition,
       verseKeys,
       mushafPageRange,
       router,
@@ -561,6 +619,86 @@ export default function JuzScreen(): React.JSX.Element {
       selectedMushafVersion,
     ]
   );
+
+  React.useEffect(() => {
+    if (!isSettingsOpen || !isHydrated) return;
+
+    let cancelled = false;
+    let prefetchTimeout: ReturnType<typeof setTimeout> | null = null;
+    const interactionTask = InteractionManager.runAfterInteractions(() => {
+      prefetchTimeout = setTimeout(() => {
+        if (cancelled) return;
+
+        if (isMushafView) {
+          void getOfflineJuzCached({
+            juzId: juzNumber,
+            translationIds,
+            wordLang: settings.wordLang,
+            expectedVerseCount: verseKeys.length,
+          }).catch(() => {
+            // The translation reader will report unavailable offline content after the switch.
+          });
+          return;
+        }
+
+        if (selectedMushafOption?.renderer !== 'webview') return;
+        const focusVerseKey = visibleVerseKeyRef.current ?? verseKeys[0] ?? null;
+        if (!focusVerseKey) return;
+
+        const mushafRepository = container.getMushafPageRepository();
+        void Promise.all([
+          resolveActiveMushafVersion(selectedMushafId, selectedMushafVersion),
+          mushafRepository.findPageForVerse({
+            packId: selectedMushafId,
+            verseKey: focusVerseKey,
+          }),
+        ])
+          .then(([activePackVersion, resolvedPage]) => {
+            if (!resolvedPage) return;
+            const targetPage = Math.min(
+              Math.max(resolvedPage, mushafPageRange.firstPage),
+              mushafPageRange.lastPage
+            );
+            mushafRepository.setActivePageCacheIdentity({
+              packId: selectedMushafId,
+              version: activePackVersion,
+            });
+            return mushafRepository.prefetchPages({
+              packId: selectedMushafId,
+              pageNumbers: [targetPage - 1, targetPage, targetPage + 1].filter(
+                (pageNumber) =>
+                  pageNumber >= mushafPageRange.firstPage &&
+                  pageNumber <= mushafPageRange.lastPage
+              ),
+              expectedVersion: activePackVersion,
+            });
+          })
+          .catch(() => {
+            // The Mushaf reader will report missing local-pack content after the switch.
+          });
+      }, 120);
+    });
+
+    return () => {
+      cancelled = true;
+      interactionTask.cancel?.();
+      if (prefetchTimeout) {
+        clearTimeout(prefetchTimeout);
+      }
+    };
+  }, [
+    isHydrated,
+    isMushafView,
+    isSettingsOpen,
+    juzNumber,
+    mushafPageRange,
+    selectedMushafId,
+    selectedMushafOption?.renderer,
+    selectedMushafVersion,
+    settings.wordLang,
+    translationIds,
+    verseKeys,
+  ]);
 
   const handleMushafJuzNavigation = React.useCallback(
     (direction: 'next' | 'previous') => {
@@ -591,6 +729,7 @@ export default function JuzScreen(): React.JSX.Element {
       audioActiveVerseKey: audio.activeVerseKey,
       audioIsVisible: audio.isVisible,
       pagesSignature,
+      translationHighlightVerseKey,
       verseAudioWordSync,
     }),
     [
@@ -601,6 +740,7 @@ export default function JuzScreen(): React.JSX.Element {
       settings.translationFontSize,
       audio.activeVerseKey,
       audio.isVisible,
+      translationHighlightVerseKey,
       verseAudioWordSync,
     ]
   );
@@ -728,6 +868,7 @@ export default function JuzScreen(): React.JSX.Element {
           index: targetIndex,
           animated: false,
           viewPosition: 0,
+          viewOffset: Platform.OS === 'web' ? listScrollViewOffset : nativeListScrollViewOffset,
         });
         if (scrollResult && typeof (scrollResult as Promise<void>).catch === 'function') {
           scrubScrollInFlightRef.current = true;
@@ -750,8 +891,43 @@ export default function JuzScreen(): React.JSX.Element {
         ensureVerseRangeLoaded(targetIndex, targetIndex);
       }
     },
-    [verseKeys, ensureVerseRangeLoaded]
+    [ensureVerseRangeLoaded, listScrollViewOffset, nativeListScrollViewOffset, verseKeys]
   );
+
+  React.useEffect(() => {
+    if (isMushafView || !pendingTranslationVerseKey || !hasLoadedContent) return;
+    const targetIndex = verseKeys.indexOf(pendingTranslationVerseKey);
+    if (targetIndex < 0) {
+      setPendingTranslationVerseKey(null);
+      return;
+    }
+
+    ensureVerseRangeLoaded(targetIndex, targetIndex);
+    const scrollToTarget = () => handleScrubToVerse(targetIndex + 1, { isFinal: true });
+    scrollToTarget();
+    setTranslationHighlightVerseKey(pendingTranslationVerseKey);
+    const correctionTimeouts = [120, 360, 700].map((delay) =>
+      setTimeout(scrollToTarget, delay)
+    );
+    const completionTimeout = setTimeout(() => setPendingTranslationVerseKey(null), 900);
+    return () => {
+      correctionTimeouts.forEach(clearTimeout);
+      clearTimeout(completionTimeout);
+    };
+  }, [
+    ensureVerseRangeLoaded,
+    handleScrubToVerse,
+    hasLoadedContent,
+    isMushafView,
+    pendingTranslationVerseKey,
+    verseKeys,
+  ]);
+
+  React.useEffect(() => {
+    if (!translationHighlightVerseKey) return;
+    const timeout = setTimeout(() => setTranslationHighlightVerseKey(null), 3500);
+    return () => clearTimeout(timeout);
+  }, [translationHighlightVerseKey]);
 
   const handleScrubStateChange = React.useCallback((isScrubbing: boolean) => {
     isVerseScrubbingRef.current = isScrubbing;
@@ -782,6 +958,12 @@ export default function JuzScreen(): React.JSX.Element {
     },
     [mushafPageRange]
   );
+
+  const handleMushafActiveVerseChange = React.useCallback((verseKey: string) => {
+    if (parseVerseKeyNumbers(verseKey)) {
+      activeMushafVerseKeyRef.current = verseKey;
+    }
+  }, []);
 
   const handleMushafScrollActivity = React.useCallback((scrollY?: number) => {
     if (typeof scrollY === 'number') {
@@ -827,7 +1009,7 @@ export default function JuzScreen(): React.JSX.Element {
       activeVerse.verseApiId > 0
         ? activeVerse.verseApiId
         : undefined;
-    
+
     const parsed = parseVerseKeyNumbers(activeVerse.verseKey);
     const surahName = parsed ? (chapterNamesById.get(parsed.surahId) ?? '') : '';
 
@@ -893,7 +1075,13 @@ export default function JuzScreen(): React.JSX.Element {
         : verse.translationItems ?? [];
 
       return (
-        <View>
+        <View
+          style={
+            translationHighlightVerseKey === verse.verse_key
+              ? styles.translationArrivalHighlight
+              : undefined
+          }
+        >
           {parsed?.verseNumber === 1 ? (
             <View className="mb-4 mt-6 items-center">
               <View className="rounded-full bg-surface-navigation px-4 py-1.5 dark:bg-surface-navigation-dark">
@@ -941,8 +1129,28 @@ export default function JuzScreen(): React.JSX.Element {
       verseAudioWordSync,
       handlePlayPause,
       openVerseActions,
+      translationHighlightVerseKey,
     ]
   );
+
+  React.useEffect(() => {
+    if (!isHydrated) return;
+    const currentMode = isMushafView ? 'mushaf' : 'translations';
+    if (settings.readingMode !== currentMode) {
+      setReadingMode(currentMode);
+    }
+  }, [isMushafView, isHydrated, settings.readingMode, setReadingMode]);
+
+  if (!isHydrated && !viewParam) {
+    return (
+      <View className="flex-1 bg-background dark:bg-background-dark" style={{ backgroundColor: palette.background }}>
+        <Stack.Screen options={{ headerShown: false }} />
+        <View className="flex-1 items-center justify-center">
+          <ActivityIndicator size="large" color={palette.text} />
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View className="flex-1 bg-background dark:bg-background-dark">
@@ -1150,6 +1358,7 @@ export default function JuzScreen(): React.JSX.Element {
                 initialPageNumber={initialMushafPageNumber}
                 mushafScaleStep={settings.mushafScaleStep}
                 onActivePageChange={handleMushafActivePageChange}
+                onActiveVerseChange={handleMushafActiveVerseChange}
                 onScrollActivity={handleMushafScrollActivity}
                 onSelectionChange={handleMushafActivePageChange as any}
                 onSurahNavigation={handleMushafJuzNavigation}
@@ -1165,6 +1374,14 @@ export default function JuzScreen(): React.JSX.Element {
         ) : null}
       </View>
 
+      {isTransitionInteractionBlocked ? (
+        <View
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+          pointerEvents="auto"
+          style={styles.transitionInteractionBlocker}
+        />
+      ) : null}
       <SettingsSidebar
         isOpen={isSettingsOpen}
         onClose={closeSettingsSidebar}
