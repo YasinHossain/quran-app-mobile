@@ -17,6 +17,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Reanimated, { FadeIn, FadeOut } from 'react-native-reanimated';
 
 import { useModalTransition, verticalSheetTransform } from '@/components/motion/modalTransition';
 import Colors from '@/constants/Colors';
@@ -311,7 +312,7 @@ export function ComprehensiveSearchModal({
   const hasResults = hasNavigationResults || hasVerseResults;
 
   const maxHeight = Math.max(0, Math.round(windowHeight * 0.9));
-  const goToMinHeight = Math.min(360, Math.max(300, Math.round(windowHeight * 0.3)));
+  const goToMinHeight = Math.min(440, Math.max(380, Math.round(windowHeight * 0.44)));
   const minHeight = showGoTo
     ? Math.min(maxHeight, goToMinHeight)
     : Math.min(maxHeight, Math.max(520, Math.round(windowHeight * 0.72)));
@@ -376,22 +377,32 @@ export function ComprehensiveSearchModal({
                 </View>
 
                 {showGoTo ? (
-                  <ScrollView
-                    keyboardShouldPersistTaps="handled"
-                    contentContainerStyle={styles.goToContent}
-                    nestedScrollEnabled
+                  <Reanimated.View
+                    entering={FadeIn.duration(200)}
+                    exiting={FadeOut.duration(150)}
+                    style={{ flex: 1 }}
                   >
-                    <GoToSurahVerseCard
-                      onNavigate={navigateToSurahVerse}
-                      onSearchSuggestion={(suggestion) => setQuery(suggestion)}
-                      title="Go To"
-                      buttonLabel="Go"
-                      variant="card"
-                      dropdownVisualOffset={1}
-                    />
-                  </ScrollView>
+                    <ScrollView
+                      keyboardShouldPersistTaps="handled"
+                      contentContainerStyle={styles.goToContent}
+                      nestedScrollEnabled
+                    >
+                      <GoToSurahVerseCard
+                        onNavigate={navigateToSurahVerse}
+                        onSearchSuggestion={(suggestion) => setQuery(suggestion)}
+                        buttonLabel="Go"
+                        variant="embedded"
+                        layout="suggestions-first"
+                        dropdownVisualOffset={1}
+                      />
+                    </ScrollView>
+                  </Reanimated.View>
                 ) : (
-                  <View style={styles.resultsContainer}>
+                  <Reanimated.View
+                    entering={FadeIn.duration(200)}
+                    exiting={FadeOut.duration(150)}
+                    style={styles.resultsContainer}
+                  >
                     <ScrollView
                       keyboardShouldPersistTaps="handled"
                       contentContainerStyle={styles.resultsScrollContent}
@@ -476,7 +487,7 @@ export function ComprehensiveSearchModal({
                         </View>
                       </Pressable>
                     </View>
-                  </View>
+                  </Reanimated.View>
                 )}
               </View>
             </KeyboardAvoidingView>

@@ -1,18 +1,9 @@
 import React from 'react';
-import { Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 
 import type { Chapter } from '@/types';
 
-import { SurahSelector } from './SurahSelector';
-import { VerseSelector, type VerseSelectorHandle } from './VerseSelector';
-
-function buildVerseOptions(versesCount: number | undefined): { value: number; label: string }[] {
-  if (!versesCount || versesCount <= 0) return [];
-  return Array.from({ length: versesCount }, (_, index) => {
-    const verseNumber = index + 1;
-    return { value: verseNumber, label: String(verseNumber) };
-  });
-}
+import { SurahVersePickerSheet } from './SurahVersePickerSheet';
 
 export function SurahVerseSelectorRow({
   chapters,
@@ -24,7 +15,6 @@ export function SurahVerseSelectorRow({
   onSelectSurah,
   onSelectVerse,
   hideVerse = false,
-  dropdownVisualOffset,
 }: {
   chapters: Chapter[];
   isLoading?: boolean;
@@ -37,103 +27,119 @@ export function SurahVerseSelectorRow({
   hideVerse?: boolean;
   dropdownVisualOffset?: number;
 }): React.JSX.Element {
-  const surahOptions = React.useMemo(() => {
-    return chapters.map((chapter) => ({
-      value: chapter.id,
-      label: `${chapter.id} • ${chapter.name_simple}`,
-      searchLabel: `${chapter.id} ${chapter.name_simple}`.toLowerCase(),
-    }));
-  }, [chapters]);
-
-  const activeChapter = React.useMemo(
-    () => (selectedSurah && !hideVerse ? chapters.find((c) => c.id === selectedSurah) : undefined),
-    [chapters, hideVerse, selectedSurah]
-  );
-
-  const verseOptions = React.useMemo(
-    () => buildVerseOptions(activeChapter?.verses_count),
-    [activeChapter?.verses_count]
-  );
+  const [isPickerOpen, setIsPickerOpen] = React.useState(false);
+  const [initialFocus, setInitialFocus] = React.useState<'surah' | 'verse'>('surah');
 
   const surahPlaceholder = isLoading && chapters.length === 0 ? 'Loading surahs…' : 'Select Surah';
   const versePlaceholder = isLoading ? 'Loading…' : 'Select Verse';
   const disabledVersePlaceholder = isLoading ? 'Loading…' : 'Select Surah first';
-  const verseSelectorRef = React.useRef<VerseSelectorHandle>(null);
-  const shouldAdvanceToVerseRef = React.useRef(false);
-  const openVerseTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const clearScheduledVerseOpen = React.useCallback(() => {
-    if (openVerseTimeoutRef.current !== null) {
-      clearTimeout(openVerseTimeoutRef.current);
-      openVerseTimeoutRef.current = null;
-    }
-  }, []);
+  const selectedSurahLabel = React.useMemo(() => {
+    if (!selectedSurah) return '';
+    const chapter = chapters.find((item) => item.id === selectedSurah);
+    return chapter ? `${chapter.id} • ${chapter.name_simple}` : `Surah ${selectedSurah}`;
+  }, [chapters, selectedSurah]);
 
-  const scheduleVerseOpen = React.useCallback(() => {
-    clearScheduledVerseOpen();
-    // Wait for the Surah selector modal to fully close and layout to settle before measuring
-    openVerseTimeoutRef.current = setTimeout(() => {
-      openVerseTimeoutRef.current = null;
-      verseSelectorRef.current?.openDropdown();
-    }, 180);
-  }, [clearScheduledVerseOpen]);
+  const selectedVerseLabel = React.useMemo(() => {
+    if (!selectedVerse) return '';
+    return String(selectedVerse);
+  }, [selectedVerse]);
 
-  const handleSurahSelectionComplete = React.useCallback(
-    (surahId: number) => {
-      if (hideVerse) return;
-      shouldAdvanceToVerseRef.current = true;
-      if (selectedSurah === surahId && verseOptions.length > 0 && !isLoading) {
-        shouldAdvanceToVerseRef.current = false;
-        scheduleVerseOpen();
-      }
-    },
-    [hideVerse, isLoading, scheduleVerseOpen, selectedSurah, verseOptions.length]
-  );
-
-  React.useEffect(() => {
-    if (hideVerse || !shouldAdvanceToVerseRef.current) return;
-    if (!selectedSurah || verseOptions.length === 0 || isLoading) return;
-    shouldAdvanceToVerseRef.current = false;
-    scheduleVerseOpen();
-  }, [hideVerse, isLoading, scheduleVerseOpen, selectedSurah, verseOptions.length]);
-
-  React.useEffect(() => clearScheduledVerseOpen, [clearScheduledVerseOpen]);
+  const canOpen = !isLoading || chapters.length > 0;
+  const openPicker = React.useCallback((focus: 'surah' | 'verse') => {
+    if (!canOpen) return;
+    setInitialFocus(focus);
+    setIsPickerOpen(true);
+  }, [canOpen]);
 
   return (
-    <View className="flex-row gap-3">
-      <View style={{ flex: hideVerse ? 1 : 3 }}>
-        <Text className="mb-2 text-sm font-semibold text-foreground dark:text-foreground-dark">
-          {surahLabel}
-        </Text>
-        <SurahSelector
-          options={surahOptions}
-          selectedValue={selectedSurah}
-          onSelect={onSelectSurah}
+    <>
+      <View className="flex-row gap-3">
+        <SelectorField
+          label={surahLabel}
+          value={selectedSurahLabel}
           placeholder={surahPlaceholder}
-          dropdownVisualOffset={dropdownVisualOffset}
-          onSelectionComplete={handleSurahSelectionComplete}
-          returnKeyType={hideVerse ? 'done' : 'next'}
+          disabled={!canOpen}
+          flex={hideVerse ? 1 : 3}
+          accessibilityLabel={`Select ${surahLabel}`}
+          onPress={() => openPicker('surah')}
         />
+
+        {!hideVerse ? (
+          <SelectorField
+            label={verseLabel}
+            value={selectedVerseLabel}
+            placeholder={selectedSurah ? versePlaceholder : disabledVersePlaceholder}
+            disabled={!canOpen}
+            flex={2}
+            accessibilityLabel={`Select ${verseLabel}`}
+            onPress={() => openPicker(selectedSurah ? 'verse' : 'surah')}
+          />
+        ) : null}
       </View>
 
-      {!hideVerse ? (
-        <View style={{ flex: 2 }}>
-          <Text className="mb-2 text-sm font-semibold text-foreground dark:text-foreground-dark">
-            {verseLabel}
-          </Text>
-          <VerseSelector
-            ref={verseSelectorRef}
-            options={verseOptions}
-            selectedValue={selectedVerse}
-            onSelect={(verseNumber) => onSelectVerse?.(verseNumber)}
-            disabled={!selectedSurah || verseOptions.length === 0 || isLoading}
-            placeholder={versePlaceholder}
-            disabledPlaceholder={disabledVersePlaceholder}
-            dropdownVisualOffset={dropdownVisualOffset}
-            returnKeyType="done"
-          />
-        </View>
-      ) : null}
+      <SurahVersePickerSheet
+        isOpen={isPickerOpen}
+        chapters={chapters}
+        isLoading={isLoading}
+        hideVerse={hideVerse}
+        selectedSurah={selectedSurah}
+        selectedVerse={selectedVerse}
+        surahLabel={surahLabel}
+        verseLabel={verseLabel}
+        initialFocus={initialFocus}
+        onClose={() => setIsPickerOpen(false)}
+        onApply={({ surahId, verseNumber }) => {
+          onSelectSurah(surahId);
+          if (!hideVerse && typeof verseNumber === 'number') {
+            onSelectVerse?.(verseNumber);
+          }
+        }}
+      />
+    </>
+  );
+}
+
+function SelectorField({
+  label,
+  value,
+  placeholder,
+  disabled,
+  flex,
+  accessibilityLabel,
+  onPress,
+}: {
+  label: string;
+  value: string;
+  placeholder: string;
+  disabled: boolean;
+  flex: number;
+  accessibilityLabel: string;
+  onPress: () => void;
+}): React.JSX.Element {
+  return (
+    <View style={{ flex }}>
+      <Text className="mb-2 text-sm font-semibold text-foreground dark:text-foreground-dark">
+        {label}
+      </Text>
+      <Pressable
+        onPress={onPress}
+        disabled={disabled}
+        accessibilityRole="button"
+        accessibilityLabel={accessibilityLabel}
+        className={[
+          'min-h-[42px] justify-center rounded-lg border border-border/50 bg-interactive px-3 dark:border-border-dark/40 dark:bg-interactive-dark',
+          disabled ? 'opacity-50' : '',
+        ].join(' ')}
+        style={({ pressed }) => ({ opacity: disabled ? 0.5 : pressed ? 0.85 : 1 })}
+      >
+        <Text
+          numberOfLines={1}
+          className={value ? 'text-sm text-foreground dark:text-foreground-dark' : 'text-sm text-muted dark:text-muted-dark'}
+        >
+          {value || placeholder}
+        </Text>
+      </Pressable>
     </View>
   );
 }

@@ -2,6 +2,9 @@ import { BookOpen, Hash, Search as SearchIcon } from 'lucide-react-native';
 import React from 'react';
 import {
   ActivityIndicator,
+  Animated,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -9,8 +12,11 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+import Reanimated, { FadeIn, FadeOut } from 'react-native-reanimated';
 
+import { useModalTransition } from '@/components/motion/modalTransition';
 import Colors from '@/constants/Colors';
+import { useChapters } from '@/hooks/useChapters';
 import { useQuickSearch } from '@/hooks/useQuickSearch';
 import { highlightMissingQueryWords, isArabicQuery } from '@/lib/utils/searchHighlight';
 import { useSettings } from '@/providers/SettingsContext';
@@ -18,6 +24,7 @@ import { useAppTheme } from '@/providers/ThemeContext';
 
 import { GoToSurahVerseCard } from './GoToSurahVerseCard';
 import { HighlightedText } from './HighlightedText';
+import { SurahVersePickerSheet } from './SurahVersePickerSheet';
 
 import type { SearchNavigationResult, SearchVerseResult } from '@/lib/api/search';
 
@@ -194,13 +201,8 @@ export function ComprehensiveSearchDropdown({
   const { resolvedTheme, isDark } = useAppTheme();
   const palette = Colors[resolvedTheme];
   const { height: windowHeight } = useWindowDimensions();
-  const [cardLayout, setCardLayout] = React.useState<{
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-  } | null>(null);
   const { settings } = useSettings();
+  const { chapters, isLoading: isChaptersLoading } = useChapters();
   const translationIds = React.useMemo(() => getTranslationIds(settings), [settings.translationId, settings.translationIds]);
 
   const { isLoading, errorMessage, navigationResults, verseResults } = useQuickSearch({
@@ -218,7 +220,7 @@ export function ComprehensiveSearchDropdown({
   const hasResults = hasNavigationResults || hasVerseResults;
 
   const maxHeight = Math.max(0, Math.round(windowHeight * 0.82));
-  const goToMinHeight = Math.min(360, Math.max(300, Math.round(windowHeight * 0.3)));
+  const goToMinHeight = Math.min(440, Math.max(380, Math.round(windowHeight * 0.44)));
   const minHeight = showGoTo
     ? Math.min(maxHeight, goToMinHeight)
     : Math.min(maxHeight, Math.max(520, Math.round(windowHeight * 0.72)));
@@ -260,177 +262,196 @@ export function ComprehensiveSearchDropdown({
     [onNavigateToSurahVerse]
   );
 
-  if (!isOpen) return null;
+  const { visible, progress, onModalShow } = useModalTransition(isOpen, {
+    openDuration: 220,
+    closeDuration: 180,
+  });
+
+  React.useEffect(() => {
+    if (isOpen) {
+      onModalShow();
+    }
+  }, [isOpen, onModalShow]);
+
+  if (!visible) return null;
 
   return (
     <View style={[styles.root, { paddingTop: topInset + 8 }]} pointerEvents="box-none">
-      <View style={StyleSheet.absoluteFill} pointerEvents="none" className="bg-black/30" />
+      <Animated.View
+        style={[
+          StyleSheet.absoluteFill,
+          {
+            opacity: progress.interpolate({
+              inputRange: [0, 1],
+              outputRange: [0, showGoTo ? 0 : 0.3],
+            }),
+            backgroundColor: '#000',
+          },
+        ]}
+        pointerEvents="none"
+      />
 
-      {cardLayout ? (
-        <>
-          <Pressable
-            onPress={onClose}
-            accessibilityRole="button"
-            accessibilityLabel="Close search"
-            style={[
-              styles.outsidePressable,
-              { left: 0, right: 0, top: 0, height: Math.max(0, cardLayout.y - 1) },
-            ]}
-          />
-          <Pressable
-            onPress={onClose}
-            accessibilityRole="button"
-            accessibilityLabel="Close search"
-            style={[
-              styles.outsidePressable,
-              {
-                left: 0,
-                right: 0,
-                top: Math.max(0, cardLayout.y + cardLayout.height + 1),
-                bottom: 0,
-              },
-            ]}
-          />
-          <Pressable
-            onPress={onClose}
-            accessibilityRole="button"
-            accessibilityLabel="Close search"
-            style={[
-              styles.outsidePressable,
-              {
-                left: 0,
-                top: cardLayout.y,
-                width: Math.max(0, cardLayout.x - 1),
-                height: cardLayout.height,
-              },
-            ]}
-          />
-          <Pressable
-            onPress={onClose}
-            accessibilityRole="button"
-            accessibilityLabel="Close search"
-            style={[
-              styles.outsidePressable,
-              {
-                left: Math.max(0, cardLayout.x + cardLayout.width + 1),
-                right: 0,
-                top: cardLayout.y,
-                height: cardLayout.height,
-              },
-            ]}
-          />
-        </>
-      ) : null}
+      <Pressable
+        style={StyleSheet.absoluteFill}
+        onPress={onClose}
+        accessibilityRole="button"
+        accessibilityLabel="Close search"
+      />
 
-      <View
-        onLayout={(event) => {
-          setCardLayout(event.nativeEvent.layout);
-        }}
-        style={[styles.card, { maxHeight, minHeight }]}
-        className="bg-surface-navigation dark:bg-surface-navigation-dark border border-border/30 dark:border-border-dark/20"
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={{ flex: 1 }}
+        pointerEvents="box-none"
       >
-        <View className={isDark ? 'dark' : ''} style={styles.inner}>
-          {showGoTo ? (
-            <ScrollView
-              keyboardShouldPersistTaps="handled"
-              contentContainerStyle={styles.goToContent}
-              nestedScrollEnabled
-            >
-              <GoToSurahVerseCard
-                onNavigate={onNavigateToSurahVerse}
-                onSearchSuggestion={(suggestion) => onQueryChange(suggestion)}
-                title="Go To"
-                buttonLabel="Go"
-                variant="embedded"
-              />
-            </ScrollView>
-          ) : (
-            <View style={styles.resultsContainer}>
-              <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.resultsScrollContent}>
-                {isLoading ? (
-                  <View className="px-4 py-4 flex-row items-center gap-3">
-                    <ActivityIndicator size="small" color={palette.muted} />
-                    <Text className="text-sm text-muted dark:text-muted-dark">Searching…</Text>
-                  </View>
-                ) : null}
+        <View
+          style={showGoTo ? styles.emptyStateStack : styles.resultsStack}
+          pointerEvents="box-none"
+        >
+          <Animated.View
+            style={[
+              styles.card,
+              showGoTo ? styles.suggestionCard : null,
+              {
+                maxHeight: showGoTo ? undefined : maxHeight,
+                minHeight: showGoTo ? undefined : minHeight,
+                opacity: progress,
+                transform: [
+                  {
+                    translateY: progress.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [-10, 0],
+                    }),
+                  },
+                ],
+              },
+            ]}
+            className="bg-surface-navigation dark:bg-surface-navigation-dark border border-border/30 dark:border-border-dark/20"
+          >
+            <Pressable onPress={() => {}} style={!showGoTo ? { flex: 1 } : undefined}>
+              <View className={isDark ? 'dark' : ''} style={!showGoTo ? styles.inner : undefined}>
+                {showGoTo ? (
+                  <Reanimated.View
+                    entering={FadeIn.duration(200)}
+                    exiting={FadeOut.duration(150)}
+                  >
+                    <GoToSurahVerseCard
+                      onNavigate={onNavigateToSurahVerse}
+                      onSearchSuggestion={(suggestion) => onQueryChange(suggestion)}
+                      buttonLabel="Go"
+                      variant="embedded"
+                      layout="suggestions-first"
+                      hideSelectors={true}
+                    />
+                  </Reanimated.View>
+                ) : (
+                  <Reanimated.View
+                    entering={FadeIn.duration(200)}
+                    exiting={FadeOut.duration(150)}
+                    style={styles.resultsContainer}
+                  >
+                    <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.resultsScrollContent}>
+                      {isLoading ? (
+                        <View className="px-4 py-4 flex-row items-center gap-3">
+                          <ActivityIndicator size="small" color={palette.muted} />
+                          <Text className="text-sm text-muted dark:text-muted-dark">Searching…</Text>
+                        </View>
+                      ) : null}
 
-                {errorMessage ? (
-                  <View className="px-4 py-4">
-                    <Text className="text-sm text-error dark:text-error-dark">{errorMessage}</Text>
-                  </View>
-                ) : null}
+                      {errorMessage ? (
+                        <View className="px-4 py-4">
+                          <Text className="text-sm text-error dark:text-error-dark">{errorMessage}</Text>
+                        </View>
+                      ) : null}
 
-                {hasNavigationResults ? (
-                  <View className="border-b border-border/50 dark:border-border-dark/40 py-2">
-                    <Text className="px-4 py-1 text-xs font-medium uppercase tracking-wider text-muted dark:text-muted-dark">
-                      Go To
-                    </Text>
-                    {navigationResults.map((result) => (
-                      <NavigationRow
-                        key={`${result.resultType}-${String(result.key)}`}
-                        result={result}
-                        onPress={() => handleNavPress(result)}
-                      />
-                    ))}
-                  </View>
-                ) : null}
+                      {hasNavigationResults ? (
+                        <View className="border-b border-border/50 dark:border-border-dark/40 py-2">
+                          <Text className="px-4 py-1 text-xs font-medium uppercase tracking-wider text-muted dark:text-muted-dark">
+                            Go To
+                          </Text>
+                          {navigationResults.map((result) => (
+                            <NavigationRow
+                              key={`${result.resultType}-${String(result.key)}`}
+                              result={result}
+                              onPress={() => handleNavPress(result)}
+                            />
+                          ))}
+                        </View>
+                      ) : null}
 
-                {hasVerseResults ? (
-                  <View className="py-2">
-                    <View className="px-4 py-1 flex-row items-center justify-between">
-                      <Text className="text-xs font-medium uppercase tracking-wider text-muted dark:text-muted-dark">
-                        Search Results
-                      </Text>
-                      <Text className="text-xs text-muted dark:text-muted-dark">
-                        Showing {previewVerses.length}
-                      </Text>
+                      {hasVerseResults ? (
+                        <View className="py-2">
+                          <View className="px-4 py-1 flex-row items-center justify-between">
+                            <Text className="text-xs font-medium uppercase tracking-wider text-muted dark:text-muted-dark">
+                              Search Results
+                            </Text>
+                            <Text className="text-xs text-muted dark:text-muted-dark">
+                              Showing {previewVerses.length}
+                            </Text>
+                          </View>
+                          <View className="border-y border-border/50 dark:border-border-dark/40">
+                            {previewVerses.map((verse, index) => (
+                              <VersePreviewRow
+                                key={verse.verseKey}
+                                verse={verse}
+                                query={trimmedQuery}
+                                onPress={() => handleVersePress(verse)}
+                                showDivider={index < previewVerses.length - 1}
+                                arabicFontSize={settings.arabicFontSize}
+                                translationFontSize={settings.translationFontSize}
+                                arabicFontFace={settings.arabicFontFace}
+                              />
+                            ))}
+                          </View>
+                        </View>
+                      ) : null}
+
+                      {!isLoading && !errorMessage && !hasResults ? (
+                        <View className="px-4 py-8 items-center">
+                          <Text className="text-sm text-muted dark:text-muted-dark">
+                            No results found for “{trimmedQuery}”
+                          </Text>
+                        </View>
+                      ) : null}
+                    </ScrollView>
+
+                    <View className="p-3 border-t border-border/50 dark:border-border-dark/40">
+                      <Pressable
+                        onPress={() => onNavigateToSearch(trimmedQuery)}
+                        accessibilityRole="button"
+                        accessibilityLabel="View all search results"
+                        className="rounded-lg px-4 py-2.5 border border-accent/30 bg-accent/10"
+                        style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
+                      >
+                        <View className="flex-row items-center justify-center gap-2">
+                          <SearchIcon color={palette.tint} size={16} strokeWidth={2.25} />
+                          <Text className="text-sm font-medium text-accent dark:text-accent-dark">
+                            View all results for “{trimmedQuery}”
+                          </Text>
+                        </View>
+                      </Pressable>
                     </View>
-                    <View className="border-y border-border/50 dark:border-border-dark/40">
-                      {previewVerses.map((verse, index) => (
-                        <VersePreviewRow
-                          key={verse.verseKey}
-                          verse={verse}
-                          query={trimmedQuery}
-                          onPress={() => handleVersePress(verse)}
-                          showDivider={index < previewVerses.length - 1}
-                          arabicFontSize={settings.arabicFontSize}
-                          translationFontSize={settings.translationFontSize}
-                          arabicFontFace={settings.arabicFontFace}
-                        />
-                      ))}
-                    </View>
-                  </View>
-                ) : null}
-
-                {!isLoading && !errorMessage && !hasResults ? (
-                  <View className="px-4 py-8 items-center">
-                    <Text className="text-sm text-muted dark:text-muted-dark">
-                      No results found for “{trimmedQuery}”
-                    </Text>
-                  </View>
-                ) : null}
-              </ScrollView>
-
-              <View className="p-3 border-t border-border/50 dark:border-border-dark/40">
-                <Pressable
-                  onPress={() => onNavigateToSearch(trimmedQuery)}
-                  accessibilityRole="button"
-                  accessibilityLabel="View all search results"
-                  className="rounded-lg px-4 py-2.5 border border-accent/30 bg-accent/10"
-                  style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
-                >
-                  <View className="flex-row items-center justify-center gap-2">
-                    <SearchIcon color={palette.tint} size={16} strokeWidth={2.25} />
-                    <Text className="text-sm font-medium text-accent dark:text-accent-dark">
-                      View all results for “{trimmedQuery}”
-                    </Text>
-                  </View>
-                </Pressable>
+                  </Reanimated.View>
+                )}
               </View>
-            </View>
-          )}
+            </Pressable>
+          </Animated.View>
+
+          <SurahVersePickerSheet
+            isOpen={showGoTo}
+            presentation="inline"
+            chapters={chapters}
+            isLoading={isChaptersLoading}
+            selectedSurah={undefined}
+            selectedVerse={undefined}
+            onClose={onClose}
+            onApply={({ surahId, verseNumber }) => {
+              onNavigateToSurahVerse(surahId, verseNumber);
+              onClose();
+            }}
+          />
         </View>
-      </View>
+      </KeyboardAvoidingView>
+
     </View>
   );
 }
@@ -457,7 +478,23 @@ const styles = StyleSheet.create({
     zIndex: 1,
     elevation: 12,
   },
+  suggestionCard: {
+    borderRadius: 20,
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.08,
+    shadowRadius: 14,
+    elevation: 4,
+  },
   inner: { flex: 1 },
+  emptyStateStack: {
+    flex: 1,
+    justifyContent: 'flex-start',
+  },
+  resultsStack: {
+    flex: 1,
+    justifyContent: 'space-between',
+  },
   goToContent: { paddingTop: 6, paddingBottom: 4 },
   resultsContainer: { flex: 1 },
   resultsScrollContent: { paddingVertical: 4 },

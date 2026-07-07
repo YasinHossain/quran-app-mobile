@@ -48,17 +48,23 @@ export function GoToSurahVerseCard({
   subtitle,
   buttonLabel = 'Go',
   variant = 'card',
+  layout = 'form-first',
   onNavigate,
   onSearchSuggestion,
+  hideSelectors = false,
+  hideSuggestions = false,
   dropdownVisualOffset = getGoToCardSelectorVisualOffset(),
 }: {
   title?: string;
   subtitle?: string;
   buttonLabel?: string;
   variant?: 'card' | 'embedded';
+  layout?: 'form-first' | 'suggestions-first';
   onNavigate: (surahId: number, verse?: number) => void;
   onSearchSuggestion?: (query: string) => void;
   dropdownVisualOffset?: number;
+  hideSelectors?: boolean;
+  hideSuggestions?: boolean;
 }): React.JSX.Element {
   const { isDark, resolvedTheme } = useAppTheme();
   const palette = Colors[resolvedTheme];
@@ -96,7 +102,91 @@ export function GoToSurahVerseCard({
     (isLoading && chapters.length === 0 ? 'Loading surahs…' : undefined);
   const suggestionRows = React.useMemo(() => toSuggestionRows(SEARCH_SUGGESTIONS), []);
 
-  const formPaddingClass = variant === 'card' ? 'px-5 pt-5 pb-4' : 'px-6 pt-5 pb-4';
+  const formPaddingClass =
+    variant === 'card' ? 'px-5 pt-5 pb-4' : layout === 'suggestions-first' ? 'px-4 py-3' : 'px-6 pt-5 pb-4';
+  const showHeader = layout === 'form-first';
+
+  const suggestionsContent = onSearchSuggestion ? (
+    <View className={layout === 'form-first' ? 'mt-3 border-t border-border/50 dark:border-border-dark/40 pt-3' : ''}>
+      <Text className="mb-2 text-xs font-medium text-muted dark:text-muted-dark">
+        Try searching
+      </Text>
+      <View className="gap-1.5">
+        {suggestionRows.map((row, rowIndex) => (
+          <View key={`suggestion-row-${rowIndex}`} className="flex-row gap-2.5">
+            {row.map((suggestion) => {
+              const label =
+                suggestion.icon === 'juz'
+                  ? `Juz ${suggestion.number}`
+                  : suggestion.icon === 'page'
+                    ? `Page ${suggestion.number}`
+                    : suggestion.icon === 'surah'
+                      ? (() => {
+                        const chapter = chapters.find((item) => item.id === suggestion.surahId);
+                        if (chapter) return chapter.name_simple;
+                        return suggestion.query.replace(/^Surah\s+/i, '');
+                      })()
+                      : suggestion.verseKey;
+
+              return (
+                <Pressable
+                  key={suggestion.query}
+                  onPress={() => onSearchSuggestion(suggestion.query)}
+                  accessibilityRole="button"
+                  accessibilityLabel={label}
+                  className="flex-1 min-w-0 rounded-lg px-3 py-3 flex-row items-center justify-start gap-2.5"
+                  style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
+                >
+                  <View className="h-7 w-7 rounded bg-accent/10 items-center justify-center">
+                    <SuggestionIcon icon={suggestion.icon} />
+                  </View>
+                  <Text
+                    numberOfLines={1}
+                    className="flex-1 text-[16px] text-foreground dark:text-foreground-dark"
+                    style={{ color: palette.text }}
+                  >
+                    {label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+            {row.length < 2 ? <View className="flex-1" /> : null}
+          </View>
+        ))}
+      </View>
+    </View>
+  ) : null;
+
+  const selectorContent = (
+    <View className={layout === 'form-first' ? 'mt-4' : 'mt-4 border-t border-border/50 pt-4 dark:border-border-dark/40'}>
+      <SurahVerseSelectorRow
+        chapters={chapters}
+        isLoading={isLoading}
+        selectedSurah={selectedSurah}
+        selectedVerse={selectedVerse}
+        onSelectSurah={handleSelectSurah}
+        onSelectVerse={handleSelectVerse}
+        dropdownVisualOffset={dropdownVisualOffset}
+      />
+    </View>
+  );
+
+  const actionContent = layout === 'suggestions-first' ? (
+    <View className="mt-4 flex-row justify-end">
+      <Pressable
+        onPress={submit}
+        disabled={!selectedSurah}
+        accessibilityRole="button"
+        accessibilityLabel={buttonLabel}
+        className="min-w-[116px] rounded-lg bg-accent px-6 py-3"
+        style={({ pressed }) => ({
+          opacity: !selectedSurah ? 0.5 : pressed ? 0.9 : 1,
+        })}
+      >
+        <Text className="text-center text-sm font-semibold text-on-accent">{buttonLabel}</Text>
+      </Pressable>
+    </View>
+  ) : null;
 
   return (
     <View className={isDark ? 'dark' : ''}>
@@ -109,45 +199,38 @@ export function GoToSurahVerseCard({
       >
         <View className={formPaddingClass}>
           {/* Header */}
-          <View className="flex-row items-center justify-between gap-3">
-            <View className="min-w-0 flex-1">
-              <Text className="text-lg font-semibold text-foreground dark:text-foreground-dark">
-                {title}
-              </Text>
-              {subtitleText ? (
-                <Text className="mt-1 text-sm text-muted dark:text-muted-dark">{subtitleText}</Text>
-              ) : null}
+          {showHeader ? (
+            <View className="flex-row items-center justify-between gap-3">
+              <View className="min-w-0 flex-1">
+                <Text className="text-lg font-semibold text-foreground dark:text-foreground-dark">
+                  {title}
+                </Text>
+                {subtitleText ? (
+                  <Text className="mt-1 text-sm text-muted dark:text-muted-dark">{subtitleText}</Text>
+                ) : null}
+              </View>
+
+              <Pressable
+                onPress={submit}
+                disabled={!selectedSurah}
+                accessibilityRole="button"
+                accessibilityLabel={buttonLabel}
+                className="rounded-lg bg-accent px-6 py-2"
+                style={({ pressed }) => ({
+                  opacity: !selectedSurah ? 0.5 : pressed ? 0.9 : 1,
+                })}
+              >
+                <Text className="text-sm font-semibold text-on-accent">{buttonLabel}</Text>
+              </Pressable>
             </View>
+          ) : null}
 
-            <Pressable
-              onPress={submit}
-              disabled={!selectedSurah}
-              accessibilityRole="button"
-              accessibilityLabel={buttonLabel}
-              className="rounded-lg bg-accent px-6 py-2"
-              style={({ pressed }) => ({
-                opacity: !selectedSurah ? 0.5 : pressed ? 0.9 : 1,
-              })}
-            >
-              <Text className="text-sm font-semibold text-on-accent">{buttonLabel}</Text>
-            </Pressable>
-          </View>
-
-          {/* Surah & Verse Selectors - Side by Side */}
-          <View className="mt-4">
-            <SurahVerseSelectorRow
-              chapters={chapters}
-              isLoading={isLoading}
-              selectedSurah={selectedSurah}
-              selectedVerse={selectedVerse}
-              onSelectSurah={handleSelectSurah}
-              onSelectVerse={handleSelectVerse}
-              dropdownVisualOffset={dropdownVisualOffset}
-            />
-          </View>
+          {layout === 'suggestions-first' && !hideSuggestions ? suggestionsContent : null}
+          {!hideSelectors ? selectorContent : null}
+          {!hideSelectors ? actionContent : null}
 
           {/* Error & Retry */}
-          {errorMessage && chapters.length === 0 ? (
+          {errorMessage && chapters.length === 0 && !hideSelectors ? (
             <View className="mt-3 gap-2">
               <Text className="text-xs text-error dark:text-error-dark">{errorMessage}</Text>
               <Pressable
@@ -165,56 +248,7 @@ export function GoToSurahVerseCard({
           ) : null}
 
           {/* Search Suggestions */}
-          {onSearchSuggestion ? (
-            <View className="mt-3 border-t border-border/50 dark:border-border-dark/40 pt-3">
-              <Text className="mb-2 text-xs font-medium text-muted dark:text-muted-dark">
-                Or try searching
-              </Text>
-              <View className="gap-1.5">
-                {suggestionRows.map((row, rowIndex) => (
-                  <View key={`suggestion-row-${rowIndex}`} className="flex-row gap-2.5">
-                    {row.map((suggestion) => {
-                      const label =
-                        suggestion.icon === 'juz'
-                          ? `Juz ${suggestion.number}`
-                          : suggestion.icon === 'page'
-                            ? `Page ${suggestion.number}`
-                            : suggestion.icon === 'surah'
-                              ? (() => {
-                                const chapter = chapters.find((item) => item.id === suggestion.surahId);
-                                if (chapter) return chapter.name_simple;
-                                return suggestion.query.replace(/^Surah\s+/i, '');
-                              })()
-                              : suggestion.verseKey;
-
-                      return (
-                        <Pressable
-                          key={suggestion.query}
-                          onPress={() => onSearchSuggestion(suggestion.query)}
-                          accessibilityRole="button"
-                          accessibilityLabel={label}
-                          className="flex-1 min-w-0 rounded-lg px-3 py-3 flex-row items-center justify-start gap-2.5"
-                          style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
-                        >
-                          <View className="h-7 w-7 rounded bg-accent/10 items-center justify-center">
-                            <SuggestionIcon icon={suggestion.icon} />
-                          </View>
-                          <Text
-                            numberOfLines={1}
-                            className="flex-1 text-[16px] text-foreground dark:text-foreground-dark"
-                            style={{ color: palette.text }}
-                          >
-                            {label}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
-                    {row.length < 2 ? <View className="flex-1" /> : null}
-                  </View>
-                ))}
-              </View>
-            </View>
-          ) : null}
+          {layout === 'form-first' && !hideSuggestions ? suggestionsContent : null}
         </View>
       </View>
     </View>
