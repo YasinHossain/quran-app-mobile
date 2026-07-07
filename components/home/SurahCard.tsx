@@ -1,8 +1,11 @@
 import { useRouter } from 'expo-router';
 import React from 'react';
-import { Platform, Pressable, Text, View } from 'react-native';
+import { InteractionManager, Platform, Pressable, Text, View } from 'react-native';
 
-import { preloadOfflineSurahNavigationPage } from '@/lib/surah/offlineSurahPageCache';
+import {
+  preloadOfflineSurahNavigationPage,
+  primeOfflineSurahNavigationPage,
+} from '@/lib/surah/offlineSurahPageCache';
 import { useSettings } from '@/providers/SettingsContext';
 import { useAppTheme } from '@/providers/ThemeContext';
 import type { Surah } from '@/src/core/domain/entities/Surah';
@@ -22,6 +25,21 @@ function SurahCardComponent({ surah }: { surah: Surah }): React.JSX.Element {
   const { settings } = useSettings();
   const { isDark } = useAppTheme();
   const bgColor = isDark ? '#182333' : '#FFFFFF';
+
+  React.useEffect(() => {
+    if (!settings.tajweed) return;
+
+    let cancelled = false;
+    const interactionTask = InteractionManager.runAfterInteractions(() => {
+      if (cancelled) return;
+      primeOfflineSurahNavigationPage({ surahId: surah.id, settings });
+    });
+
+    return () => {
+      cancelled = true;
+      interactionTask.cancel?.();
+    };
+  }, [settings, surah.id]);
 
   const handlePress = React.useCallback(async () => {
     await preloadOfflineSurahNavigationPage({ surahId: surah.id, settings });

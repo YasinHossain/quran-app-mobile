@@ -3,7 +3,6 @@ import React from 'react';
 import { ArrowLeft, Settings } from 'lucide-react-native';
 import { FlashList, type FlashListRef } from '@shopify/flash-list';
 import {
-  ActivityIndicator,
   FlatList,
   Platform,
   Pressable,
@@ -754,14 +753,7 @@ export default function PageScreen(): React.JSX.Element {
       <View style={styles.contentStage}>
         {isMushafView ? (
           <View style={styles.contentLayer} pointerEvents="auto">
-            {!isHydrated ? (
-              <View className="flex-1 items-center justify-center gap-4 px-6">
-                <ActivityIndicator color={palette.text} />
-                <Text className="text-center text-sm leading-6 text-muted dark:text-muted-dark">
-                  Loading local mushaf settings…
-                </Text>
-              </View>
-            ) : resolvedMushafRenderer !== 'webview' ? (
+            {!isHydrated ? null : resolvedMushafRenderer !== 'webview' ? (
               <View className="flex-1 items-center justify-center px-6">
                 <Text className="text-center text-sm leading-6 text-muted dark:text-muted-dark">
                   Select an installed exact mushaf pack to use this Page Mushaf view.

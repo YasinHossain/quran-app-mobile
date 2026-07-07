@@ -124,18 +124,9 @@ const styles = StyleSheet.create({
   },
 });
 
-function MushafMessageState({
-  color,
-  message,
-  showSpinner = false,
-}: {
-  color: string;
-  message: string;
-  showSpinner?: boolean;
-}): React.JSX.Element {
+function MushafMessageState({ message }: { message: string }): React.JSX.Element {
   return (
-    <View className="flex-1 items-center justify-center gap-4 px-6">
-      {showSpinner ? <ActivityIndicator color={color} /> : null}
+    <View className="flex-1 items-center justify-center px-6">
       <Text className="text-center text-sm leading-6 text-muted dark:text-muted-dark">
         {message}
       </Text>
@@ -1830,27 +1821,14 @@ export default function SurahScreen(): React.JSX.Element {
               { opacity: isMushafView && isMushafSurfaceVisible ? 1 : 0 },
             ]}
           >
-            {!isHydrated ? (
-              <MushafMessageState
-                color={palette.text}
-                message="Loading local mushaf settings…"
-                showSpinner
-              />
-            ) : !mushafPageRange ? (
-              <MushafMessageState color={palette.text} message="No mushaf pages found for this surah." />
+            {!isHydrated ? null : !mushafPageRange ? (
+              <MushafMessageState message="No mushaf pages found for this surah." />
             ) : resolvedMushafRenderer !== 'webview' ? (
               <MushafMessageState
-                color={palette.text}
                 message="Select an installed exact mushaf pack to use this surah Mushaf view."
               />
             ) : initialMushafPageProbe.errorMessage ? (
-              <MushafMessageState color={palette.text} message={initialMushafPageProbe.errorMessage} />
-            ) : !availableInitialMushafPageData ? (
-              <MushafMessageState
-                color={palette.text}
-                message="Loading the first mushaf page…"
-                showSpinner
-              />
+              <MushafMessageState message={initialMushafPageProbe.errorMessage} />
             ) : (
               <MushafSingleDocumentReader
                 ref={mushafReaderRef}

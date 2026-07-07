@@ -165,18 +165,9 @@ const styles = StyleSheet.create({
   },
 });
 
-function MushafMessageState({
-  color,
-  message,
-  showSpinner = false,
-}: {
-  color: string;
-  message: string;
-  showSpinner?: boolean;
-}): React.JSX.Element {
+function MushafMessageState({ message }: { message: string }): React.JSX.Element {
   return (
-    <View className="flex-1 items-center justify-center gap-4 px-6">
-      {showSpinner ? <ActivityIndicator color={color} /> : null}
+    <View className="flex-1 items-center justify-center px-6">
       <Text className="text-center text-sm leading-6 text-muted dark:text-muted-dark">
         {message}
       </Text>
@@ -1333,19 +1324,12 @@ export default function JuzScreen(): React.JSX.Element {
               mushafEntryStyle,
             ]}
           >
-            {!isHydrated ? (
+            {!isHydrated ? null : resolvedMushafRenderer !== 'webview' ? (
               <MushafMessageState
-                color={palette.text}
-                message="Loading local mushaf settings…"
-                showSpinner
-              />
-            ) : resolvedMushafRenderer !== 'webview' ? (
-              <MushafMessageState
-                color={palette.text}
                 message="Select an installed exact mushaf pack to use this Juz Mushaf view."
               />
             ) : initialMushafPageProbe.errorMessage ? (
-              <MushafMessageState color={palette.text} message={initialMushafPageProbe.errorMessage} />
+              <MushafMessageState message={initialMushafPageProbe.errorMessage} />
             ) : (
               <MushafSingleDocumentReader
                 ref={mushafReaderRef}

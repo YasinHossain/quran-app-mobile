@@ -257,9 +257,27 @@ function VerseCardComponent({
           fallbackFontFamily={effectiveArabicFontFamily}
           fallbackText={sanitizedArabicText}
           glyphRuns={tajweedGlyphRuns ?? []}
+          hideFallbackText
           fontSize={arabicFontSize}
           lineHeight={arabicLineHeight}
         />
+      ) : isWaitingForTajweedText ? (
+        <Text
+          key={`${verseKey}-tajweed-placeholder-${renderSignal}`}
+          selectable={false}
+          className="text-right"
+          style={{
+            color: 'transparent',
+            fontSize: arabicFontSize,
+            lineHeight: arabicLineHeight,
+            fontFamily: effectiveArabicFontFamily,
+            minHeight: arabicLineHeight,
+            writingDirection: 'rtl',
+            textAlign: 'right',
+          }}
+        >
+          {sanitizedArabicText || ' '}
+        </Text>
       ) : Array.isArray(words) && words.length && !shouldUseTajweedMode ? (
         <WordByWordVerse
           verseKey={verseKey}

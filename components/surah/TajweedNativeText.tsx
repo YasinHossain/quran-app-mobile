@@ -291,12 +291,14 @@ export function TajweedNativeText({
   fallbackText,
   fontSize,
   glyphRuns,
+  hideFallbackText = false,
   lineHeight,
 }: {
   fallbackFontFamily?: string;
   fallbackText?: string;
   fontSize: number;
   glyphRuns: TajweedGlyphRun[];
+  hideFallbackText?: boolean;
   lineHeight: number;
 }): React.JSX.Element {
   const { resolvedTheme } = useAppTheme();
@@ -391,7 +393,7 @@ export function TajweedNativeText({
         style={[
           styles.text,
           {
-            color: resolvedFallbackText ? palette.text : 'transparent',
+            color: resolvedFallbackText && !hideFallbackText ? palette.text : 'transparent',
             fontSize,
             ...(fallbackFontFamily ? { fontFamily: fallbackFontFamily } : {}),
             lineHeight,

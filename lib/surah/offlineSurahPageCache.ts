@@ -905,8 +905,6 @@ export function preloadOfflineSurahNavigationPage(params: {
       if (params.settings.tajweed) {
         const page = getSurahPageNumber(params.verseNumber, perPage);
         const pageVerses = sliceSurahPage({ surahVerses, page, perPage });
-        // The offline verse snapshot is enough to render the destination immediately.
-        // Font preparation can be relatively expensive and must not hold navigation.
         void preloadTajweedFontsForOfflineVerses(pageVerses).catch(() => {});
       }
     },
