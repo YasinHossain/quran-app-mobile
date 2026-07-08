@@ -1,6 +1,8 @@
 import React from 'react';
 import { Platform, Pressable, Text, View } from 'react-native';
 
+import { useUiTranslation } from '@/providers/UiLanguageContext';
+
 export type ArabicFontFilter = 'Uthmani' | 'IndoPak';
 
 export function ArabicFontFilterToggle({
@@ -35,6 +37,7 @@ function FilterTab({
   isActive: boolean;
   onPress: () => void;
 }): React.JSX.Element {
+  const { t } = useUiTranslation();
   const activeShadow =
     Platform.OS === 'android'
       ? { elevation: 2 }
@@ -44,6 +47,10 @@ function FilterTab({
           shadowRadius: 4,
           shadowOffset: { width: 0, height: 2 },
         };
+
+  const displayLabel = label === 'Uthmani'
+    ? t('uthmani', { fallback: 'Uthmani' })
+    : t('indopak', { fallback: 'IndoPak' });
 
   return (
     <Pressable
@@ -63,7 +70,7 @@ function FilterTab({
             : 'text-muted dark:text-muted-dark',
         ].join(' ')}
       >
-        {label}
+        {displayLabel}
       </Text>
     </Pressable>
   );

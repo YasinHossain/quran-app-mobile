@@ -14,6 +14,7 @@ import { HeaderSearchInput } from '@/components/search/HeaderSearchInput';
 import { useDownloadIndexItems } from '@/hooks/useDownloadIndexItems';
 import { useSettings } from '@/providers/SettingsContext';
 import { useAppTheme } from '@/providers/ThemeContext';
+import { useUiTranslation } from '@/providers/UiLanguageContext';
 import { DeleteTranslationUseCase } from '@/src/core/application/use-cases/DeleteTranslation';
 import {
   DownloadTranslationUseCase,
@@ -298,12 +299,13 @@ const TranslationPanelHeader = React.memo(function TranslationPanelHeader({
   onReset: () => void;
   onDragStateChange: (dragging: boolean) => void;
 }): React.JSX.Element {
+  const { t } = useUiTranslation();
   return (
     <View className="p-4 gap-4">
       <HeaderSearchInput
         value={searchTerm}
         onChangeText={onChangeSearchTerm}
-        placeholder="Search translations or languages..."
+        placeholder={t('manage_translations_search_placeholder', { fallback: 'Search translations or languages...' })}
       />
 
       <ReorderableSelectionList
@@ -342,6 +344,7 @@ export function ManageTranslationsPanel({
   const { resolvedTheme, isDark } = useAppTheme();
   const { settings } = useSettings();
   const palette = Colors[resolvedTheme];
+  const { t } = useUiTranslation();
   const [isReordering, setIsReordering] = React.useState(false);
   const [searchTerm, setSearchTerm] = React.useState('');
   const [activeFilter, setActiveFilter] = React.useState('All');

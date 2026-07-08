@@ -38,3 +38,16 @@ export const formatLocalizedNumber = (
     return localizeDigits(String(value), languageCode);
   }
 };
+
+export const delocalizeDigits = (value: string): string => {
+  let res = value;
+  // Map bn digits back
+  res = res.replace(/[০-৯]/g, (d) => String(d.charCodeAt(0) - 2534));
+  // Map hi digits back
+  res = res.replace(/[०-९]/g, (d) => String(d.charCodeAt(0) - 2406));
+  // Map ar digits back
+  res = res.replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 1632));
+  // Map ur digits back
+  res = res.replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 1776));
+  return res;
+};

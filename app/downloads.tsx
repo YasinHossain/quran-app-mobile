@@ -84,7 +84,7 @@ export default function DownloadsScreen(): React.JSX.Element {
   const { resolvedTheme, isDark } = useAppTheme();
   const palette = Colors[resolvedTheme];
   const { settings } = useSettings();
-  const { t } = useUiTranslation();
+  const { t, localizeDigits } = useUiTranslation();
 
   const [deletingKeys, setDeletingKeys] = React.useState<Set<string>>(() => new Set());
   const [collapsedCategories, setCollapsedCategories] = React.useState<Set<string>>(() => new Set());
@@ -173,17 +173,21 @@ export default function DownloadsScreen(): React.JSX.Element {
         }
         case 'words': {
           category = 'Word-by-Word';
-          const surahName = surahNameById.get(item.content.surahId) ?? `Surah ${item.content.surahId}`;
-          title = `Arabic Word Data - ${surahName}`;
+          const surahId = item.content.surahId;
+          const surahName = t('surah_names.' + surahId, { fallback: surahNameById.get(surahId) ?? `${t('surah_tab', { fallback: 'Surah' })} ${surahId}` });
+          title = `${t('downloads_category_word_by_word', { fallback: 'Word-by-Word' })} - ${surahName}`;
           subtitle = '';
           break;
         }
         case 'audio': {
           category = 'Audio';
-          const rName = reciterNameById.get(item.content.reciterId) ?? `Reciter #${item.content.reciterId}`;
-          const surahName = surahNameById.get(item.content.surahId) ?? `Surah ${item.content.surahId}`;
+          const reciterId = item.content.reciterId;
+          const defaultName = reciterNameById.get(reciterId) ?? `${t('reciter', { fallback: 'Reciter' })} #${reciterId}`;
+          const rName = t('reciter_names.' + reciterId, { fallback: defaultName });
+          const surahId = item.content.surahId;
+          const surahName = t('surah_names.' + surahId, { fallback: surahNameById.get(surahId) ?? `${t('surah_tab', { fallback: 'Surah' })} ${surahId}` });
           title = rName;
-          subtitle = `Audio recitation • ${surahName}`;
+          subtitle = `${t('audio_recitation', { fallback: 'Audio recitation' })} • ${surahName}`;
           break;
         }
         case 'mushaf-pack': {
@@ -406,7 +410,7 @@ export default function DownloadsScreen(): React.JSX.Element {
                 {statusText}
               </Text>
               {isProgress && (
-                <Text className="text-xs text-muted dark:text-muted-dark font-medium">({Math.round(percent)}%)</Text>
+                <Text className="text-xs text-muted dark:text-muted-dark font-medium">({localizeDigits(String(Math.round(percent)))}%)</Text>
               )}
             </View>
           ) : null}
@@ -459,7 +463,7 @@ export default function DownloadsScreen(): React.JSX.Element {
           </Text>
           <View className="rounded-full bg-interactive dark:bg-interactive-dark px-2.5 py-0.5 border border-border/20 dark:border-border-dark/10">
             <Text className="text-[10px] font-bold text-muted dark:text-muted-dark">
-              {section.totalCount}
+              {localizeDigits(String(section.totalCount))}
             </Text>
           </View>
         </View>

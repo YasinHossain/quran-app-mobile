@@ -659,7 +659,7 @@ export function AudioDownloadModal({
                           </View>
                         )}
 
-                        <View className="gap-3">
+                        <View className="gap-2">
                           {reciterOptions.map((reciter) => {
                             const isSelected = localReciter.id === reciter.id;
                             return (
@@ -672,7 +672,7 @@ export function AudioDownloadModal({
                                   'w-full rounded-lg border px-3 py-2',
                                   isSelected
                                     ? 'border-accent bg-accent/10'
-                                    : 'border-border/30 dark:border-border-dark/20',
+                                    : 'border-border/30 dark:border-border-dark/20 bg-interactive dark:bg-surface-navigation-dark',
                                 ].join(' ')}
                                 style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
                               >

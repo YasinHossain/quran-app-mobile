@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 
 import Colors from '@/constants/Colors';
+import { useUiTranslation } from '@/providers/UiLanguageContext';
 import { useAppTheme } from '@/providers/ThemeContext';
 import type { VerseWord } from '@/types';
 
@@ -83,6 +84,7 @@ function VerseCardComponent({
 }): React.JSX.Element {
   const { resolvedTheme } = useAppTheme();
   const palette = Colors[resolvedTheme];
+  const { t, localizeDigits } = useUiTranslation();
   const screenDimensions = useWindowDimensions();
   const screenWidth = screenDimensions.width;
   const [wordTranslationTooltip, setWordTranslationTooltip] = React.useState<string | null>(null);
@@ -353,14 +355,14 @@ function VerseCardComponent({
           ].join(' ')}
         >
           <Text className="text-sm font-semibold text-accent dark:text-accent-dark">
-            {verseKey}
+            {localizeDigits(verseKey)}
           </Text>
           {onOpenActions ? (
             <Pressable
               onPress={onOpenActions}
               hitSlop={10}
               accessibilityRole="button"
-              accessibilityLabel="Open verse actions"
+              accessibilityLabel={t('open_verse_actions_menu', { fallback: 'Open verse actions' })}
               className="h-8 w-8 items-center justify-center rounded-full"
               style={({ pressed }) => ({ opacity: pressed ? 0.65 : 1 })}
             >

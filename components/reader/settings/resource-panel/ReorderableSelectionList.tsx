@@ -13,6 +13,7 @@ import {
 
 import Colors from '@/constants/Colors';
 import { useAppTheme } from '@/providers/ThemeContext';
+import { useUiTranslation } from '@/providers/UiLanguageContext';
 
 type BasicResource = { id: number; name: string };
 
@@ -107,6 +108,7 @@ export function ReorderableSelectionList({
 }): React.JSX.Element {
   const { resolvedTheme } = useAppTheme();
   const palette = Colors[resolvedTheme];
+  const { t, localizeDigits } = useUiTranslation();
 
   React.useEffect(() => {
     ensureLayoutAnimationEnabled();
@@ -218,12 +220,14 @@ export function ReorderableSelectionList({
   }, [dragTranslateY, onDragStateChange, onReorder]);
 
   const selectionCount = localOrder.length;
+  const selectionsLabel = t('my_selections', { fallback: 'MY SELECTIONS' }).toUpperCase();
+  const localizedCountStr = localizeDigits(`${selectionCount}/${maxSelections}`);
 
   return (
     <View>
       <View className={styles.headerClassName}>
         <Text className="text-xs font-semibold text-muted dark:text-muted-dark">
-          {`MY SELECTIONS (${selectionCount}/${maxSelections})`}
+          {`${selectionsLabel} (${localizedCountStr})`}
         </Text>
         <View className="flex-row items-center gap-2">
           {selectionCount >= maxSelections ? (

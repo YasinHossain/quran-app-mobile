@@ -14,6 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useModalTransition, verticalSheetTransform } from '@/components/motion/modalTransition';
 import Colors from '@/constants/Colors';
 import { useAppTheme } from '@/providers/ThemeContext';
+import { useUiTranslation } from '@/providers/UiLanguageContext';
 
 export function VerseActionsSheet({
   isOpen,
@@ -46,6 +47,7 @@ export function VerseActionsSheet({
 }): React.JSX.Element {
   const { resolvedTheme, isDark } = useAppTheme();
   const palette = Colors[resolvedTheme];
+  const { t, localizeDigits } = useUiTranslation();
   const { height: windowHeight } = useWindowDimensions();
   const PlayPauseIcon = isPlaying ? Pause : Play;
   const pendingActionRef = React.useRef<(() => void) | null>(null);
@@ -97,6 +99,11 @@ export function VerseActionsSheet({
     onClose();
   }, [dismissEnabledRef, onClose]);
 
+  const [surahIdStr] = (verseKey || '').split(':');
+  const surahId = Number(surahIdStr);
+  const surahName = surahId ? t('surah_names.' + surahId, { fallback: title }) : title;
+  const localizedVerseKey = localizeDigits(verseKey);
+
   return (
     <Modal
       transparent
@@ -129,13 +136,13 @@ export function VerseActionsSheet({
                   numberOfLines={1}
                   className="flex-1 text-base font-semibold text-foreground dark:text-foreground-dark"
                 >
-                  {title} {verseKey}
+                  {surahName} {localizedVerseKey}
                 </Text>
                 <Pressable
                   onPress={onClose}
                   hitSlop={10}
                   accessibilityRole="button"
-                  accessibilityLabel="Close"
+                  accessibilityLabel={t('close', { fallback: 'Close' })}
                   style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
                 >
                   <X color={palette.muted} size={18} strokeWidth={2.25} />
@@ -146,34 +153,34 @@ export function VerseActionsSheet({
                 <View className="gap-2">
                   <ActionRow
                     icon={<PlayPauseIcon color={palette.muted} size={20} strokeWidth={2.25} />}
-                    label={isPlaying ? 'Pause audio' : 'Play audio'}
+                    label={isPlaying ? t('pause_audio', { fallback: 'Pause audio' }) : t('play_audio', { fallback: 'Play audio' })}
                     onPress={() => handleImmediateAction(onPlayPause)}
                     disabled={!onPlayPause}
                   />
                   {showViewTafsir ? (
                     <ActionRow
                       icon={<BookOpenText color={palette.muted} size={20} strokeWidth={2.25} />}
-                      label="View Tafsir"
+                      label={t('view_tafsir', { fallback: 'View Tafsir' })}
                       onPress={() => handleDeferredAction(onOpenTafsir)}
                       disabled={!onOpenTafsir}
                     />
                   ) : null}
                   <ActionRow
                     icon={<Bookmark color={palette.muted} size={20} strokeWidth={2.25} />}
-                    label={showRemove ? 'Remove Bookmark' : 'Pin or Bookmark'}
+                    label={showRemove ? t('remove_bookmark', { fallback: 'Remove Bookmark' }) : t('pin_or_bookmark', { fallback: 'Pin or Bookmark' })}
                     onPress={() => handleDeferredAction(onBookmark)}
                     active={isBookmarked || showRemove}
                     disabled={!onBookmark}
                   />
                   <ActionRow
                     icon={<Calendar color={palette.muted} size={20} strokeWidth={2.25} />}
-                    label="Add to Plan"
+                    label={t('add_to_plan', { fallback: 'Add to Plan' })}
                     onPress={() => handleDeferredAction(onAddToPlan)}
                     disabled={!onAddToPlan}
                   />
                   <ActionRow
                     icon={<Share2 color={palette.muted} size={20} strokeWidth={2.25} />}
-                    label="Share"
+                    label={t('share', { fallback: 'Share' })}
                     onPress={() => handleDeferredAction(onShare)}
                     disabled={!onShare}
                   />

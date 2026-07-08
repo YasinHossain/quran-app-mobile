@@ -28,6 +28,7 @@ import { preloadOfflineSurahNavigationPage } from '@/lib/surah/offlineSurahPageC
 import { primeVerseDetailsCache } from '@/lib/verse/verseDetailsCache';
 import { preloadOfflineTafsirWindow } from '@/lib/tafsir/tafsirCache';
 import { useSettings } from '@/providers/SettingsContext';
+import { useUiTranslation } from '@/providers/UiLanguageContext';
 import { useBookmarks } from '@/providers/BookmarkContext';
 import { useAudioPlayer } from '@/providers/AudioPlayerContext';
 import { useAppTheme } from '@/providers/ThemeContext';
@@ -75,6 +76,7 @@ function NavigationChip({
 }
 
 export default function SearchScreen(): React.JSX.Element {
+  const { t } = useUiTranslation();
   const router = useRouter();
   const params = useLocalSearchParams<{ query?: string | string[] }>();
   const paramQuery = Array.isArray(params.query) ? params.query[0] : params.query;
@@ -308,7 +310,7 @@ export default function SearchScreen(): React.JSX.Element {
           <TextInput
             value={query}
             onChangeText={setQuery}
-            placeholder="Search…"
+            placeholder={t('search', { fallback: 'Search' }) + '…'}
             placeholderTextColor={palette.muted}
             autoCapitalize="none"
             autoCorrect={false}

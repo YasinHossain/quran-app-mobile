@@ -19,6 +19,7 @@ import { PlaybackOptionsModal } from '@/components/audio/PlaybackOptionsModal';
 import { useAudioPlayer } from '@/providers/AudioPlayerContext';
 import { useLayoutMetrics } from '@/providers/LayoutMetricsContext';
 import { useAppTheme } from '@/providers/ThemeContext';
+import { useUiTranslation } from '@/providers/UiLanguageContext';
 
 const SPEED_OPTIONS = [0.75, 1, 1.25, 1.5, 2] as const;
 
@@ -35,9 +36,9 @@ function formatTime(totalSeconds: number): string {
   return `${minutes}:${String(seconds).padStart(2, '0')}`;
 }
 
-function buildTitle(verseKey: string | null): string {
-  if (!verseKey) return 'Audio';
-  if (/^\d+:\d+$/.test(verseKey)) return `Surah ${verseKey}`;
+function buildTitle(verseKey: string | null, t: (key: string, values?: any) => string): string {
+  if (!verseKey) return t('downloads_category_audio', { fallback: 'Audio' });
+  if (/^\d+:\d+$/.test(verseKey)) return t('surah_verse_key', { verseKey, fallback: `Surah ${verseKey}` });
   return verseKey;
 }
 
@@ -47,6 +48,7 @@ function formatSpeedLabel(speed: number): string {
 
 export function AudioPlayerBar(): React.JSX.Element | null {
   const audio = useAudioPlayer();
+  const { t, localizeDigits } = useUiTranslation();
   const { resolvedTheme, isDark } = useAppTheme();
   const palette = Colors[resolvedTheme];
   const segments = useSegments();
@@ -138,14 +140,14 @@ export function AudioPlayerBar(): React.JSX.Element | null {
                     numberOfLines={1}
                     className="flex-1 text-sm font-semibold text-foreground dark:text-foreground-dark"
                   >
-                    {buildTitle(audio.activeVerseKey)}
+                    {buildTitle(audio.activeVerseKey, t)}
                   </Text>
                   <Text
                     numberOfLines={1}
                     className="text-xs text-muted dark:text-muted-dark text-right"
                     style={styles.artistText}
                   >
-                    {audio.reciter.name}
+                    {t('reciter_names.' + audio.reciter.id, { fallback: audio.reciter.name })}
                   </Text>
                 </View>
 
@@ -156,7 +158,7 @@ export function AudioPlayerBar(): React.JSX.Element | null {
                     onPress={audio.prevVerse}
                     hitSlop={10}
                     accessibilityRole="button"
-                    accessibilityLabel="Previous verse"
+                    accessibilityLabel={t('previous_track', { fallback: 'Previous verse' })}
                     className="h-9 w-9 items-center justify-center rounded-full"
                     style={({ pressed }) => ({
                       opacity: !hasPrev || !interactable ? 0.35 : pressed ? 0.65 : 1,
@@ -170,7 +172,7 @@ export function AudioPlayerBar(): React.JSX.Element | null {
                     onPress={audio.togglePlay}
                     hitSlop={10}
                     accessibilityRole="button"
-                    accessibilityLabel={audio.isPlaying ? 'Pause audio' : 'Play audio'}
+                    accessibilityLabel={audio.isPlaying ? t('pause_audio') : t('play_audio')}
                     style={({ pressed }) => ({
                       opacity: !interactable ? 0.35 : pressed ? 0.65 : 1,
                     })}
@@ -191,7 +193,7 @@ export function AudioPlayerBar(): React.JSX.Element | null {
                     onPress={audio.nextVerse}
                     hitSlop={10}
                     accessibilityRole="button"
-                    accessibilityLabel="Next verse"
+                    accessibilityLabel={t('next_track', { fallback: 'Next verse' })}
                     className="h-9 w-9 items-center justify-center rounded-full"
                     style={({ pressed }) => ({
                       opacity: !hasNext || !interactable ? 0.35 : pressed ? 0.65 : 1,
@@ -205,12 +207,12 @@ export function AudioPlayerBar(): React.JSX.Element | null {
                       onPress={handleSpeed}
                       hitSlop={8}
                       accessibilityRole="button"
-                      accessibilityLabel="Speed"
+                      accessibilityLabel={t('speed', { fallback: 'Speed' })}
                       className="h-8 w-10 items-center justify-center rounded-full"
                       style={({ pressed }) => ({ opacity: pressed ? 0.75 : 1 })}
                     >
                       <Text className="text-xs font-bold text-foreground dark:text-foreground-dark">
-                        {formatSpeedLabel(audio.playbackRate)}
+                        {localizeDigits(formatSpeedLabel(audio.playbackRate))}
                       </Text>
                     </Pressable>
                   </View>
@@ -218,7 +220,7 @@ export function AudioPlayerBar(): React.JSX.Element | null {
                     onPress={handleOptions}
                     hitSlop={10}
                     accessibilityRole="button"
-                    accessibilityLabel="Playback options"
+                    accessibilityLabel={t('playback_options')}
                     className="p-2 rounded-full"
                     style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
                   >
@@ -228,7 +230,7 @@ export function AudioPlayerBar(): React.JSX.Element | null {
                     onPress={handleDownload}
                     hitSlop={10}
                     accessibilityRole="button"
-                    accessibilityLabel="Download audio"
+                    accessibilityLabel={t('download_audio', { fallback: 'Download audio' })}
                     className="p-2 rounded-full"
                     style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
                   >
@@ -238,7 +240,7 @@ export function AudioPlayerBar(): React.JSX.Element | null {
                     onPress={audio.closePlayer}
                     hitSlop={10}
                     accessibilityRole="button"
-                    accessibilityLabel="Close player"
+                    accessibilityLabel={t('close_player', { fallback: 'Close player' })}
                     className="p-2 rounded-full"
                     style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
                   >
@@ -270,10 +272,10 @@ export function AudioPlayerBar(): React.JSX.Element | null {
                   </View>
                   <View style={styles.timeDisplay}>
                     <Text className="text-[10px] text-muted dark:text-muted-dark tabular-nums">
-                      {formatTime(currentSec)}
+                      {localizeDigits(formatTime(currentSec))}
                     </Text>
                     <Text className="text-[10px] text-muted dark:text-muted-dark tabular-nums">
-                      {formatTime(durationSec)}
+                      {localizeDigits(formatTime(durationSec))}
                     </Text>
                   </View>
                 </View>
@@ -302,7 +304,7 @@ export function AudioPlayerBar(): React.JSX.Element | null {
                     setSpeedOpen(false);
                   }}
                   accessibilityRole="button"
-                  accessibilityLabel={`Speed ${formatSpeedLabel(speed)}`}
+                  accessibilityLabel={`${t('speed', { fallback: 'Speed' })} ${localizeDigits(formatSpeedLabel(speed))}`}
                   className={[
                     'w-full px-3 py-2 rounded-lg',
                     isSelected ? 'bg-accent' : 'bg-transparent',
@@ -315,7 +317,7 @@ export function AudioPlayerBar(): React.JSX.Element | null {
                       isSelected ? 'text-on-accent' : 'text-foreground dark:text-foreground-dark',
                     ].join(' ')}
                   >
-                    {formatSpeedLabel(speed)}
+                    {localizeDigits(formatSpeedLabel(speed))}
                   </Text>
                 </Pressable>
               );

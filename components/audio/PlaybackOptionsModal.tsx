@@ -15,14 +15,21 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Reanimated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+} from 'react-native-reanimated';
 
 import { dialogTransform, useModalTransition } from '@/components/motion/modalTransition';
 import { SurahVerseSelectorRow } from '@/components/search/SurahVerseSelectorRow';
 import Colors from '@/constants/Colors';
 import { DEFAULT_RECITER, type Reciter, useReciters } from '@/hooks/audio/useReciters';
 import { useChapters } from '@/hooks/useChapters';
+import { delocalizeDigits } from '@/lib/i18n/localizeNumbers';
 import { useAudioPlayer, type RepeatOptions } from '@/providers/AudioPlayerContext';
 import { useAppTheme } from '@/providers/ThemeContext';
+import { useUiTranslation } from '@/providers/UiLanguageContext';
 import type { Chapter } from '@/types';
 
 type PlaybackOptionsTab = 'reciter' | 'repeat';
@@ -135,6 +142,7 @@ export function PlaybackOptionsModal({
   onClose: () => void;
 }): React.JSX.Element {
   const audio = useAudioPlayer();
+  const { t } = useUiTranslation();
   const { reciters, isLoading: recitersLoading, error: recitersError, refresh } = useReciters();
   const { height: windowHeight } = useWindowDimensions();
 
@@ -199,7 +207,7 @@ export function PlaybackOptionsModal({
       const verseNumber = localRepeat.verseNumber ?? fallbackVerseNumber;
       if (!surahId || !verseNumber) {
         setActiveTab('repeat');
-        setRangeWarning('Select a surah and verse to repeat.');
+        setRangeWarning(t('playback_options_warning_select_surah_verse', { fallback: 'Select a surah and verse to repeat.' }));
         return;
       }
       const normalizedVerse = Math.max(1, Math.floor(verseNumber));
@@ -227,7 +235,7 @@ export function PlaybackOptionsModal({
       const surahId = localRepeat.surahId ?? fallbackSurahId;
       if (!surahId) {
         setActiveTab('repeat');
-        setRangeWarning('Select a surah to repeat.');
+        setRangeWarning(t('playback_options_warning_select_surah', { fallback: 'Select a surah to repeat.' }));
         return;
       }
       const nextRepeat: RepeatOptions = {
@@ -265,7 +273,7 @@ export function PlaybackOptionsModal({
         (startSurahId === endSurahId && startVerseNumber > endVerseNumber)
       ) {
         setActiveTab('repeat');
-        setRangeWarning('Select a start and end surah and verse to repeat.');
+        setRangeWarning(t('playback_options_warning_select_range', { fallback: 'Select a start and end surah and verse to repeat.' }));
         return;
       }
 
@@ -299,7 +307,7 @@ export function PlaybackOptionsModal({
     audio.setRepeatOptions(localRepeat);
     setRangeWarning(null);
     onClose();
-  }, [audio, localReciter, localRepeat, onClose]);
+  }, [audio, localReciter, localRepeat, onClose, t]);
 
   return (
     <Modal
@@ -340,7 +348,7 @@ export function PlaybackOptionsModal({
                         numberOfLines={1}
                         className="flex-1 text-base font-semibold text-foreground dark:text-foreground-dark"
                       >
-                        Playback options
+                        {t('playback_options', { fallback: 'Playback options' })}
                       </Text>
                     </View>
 
@@ -348,7 +356,7 @@ export function PlaybackOptionsModal({
                       onPress={onClose}
                       hitSlop={10}
                       accessibilityRole="button"
-                      accessibilityLabel="Close"
+                      accessibilityLabel={t('close', { fallback: 'Close' })}
                       style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
                       className="p-2 rounded-full"
                     >
@@ -356,32 +364,11 @@ export function PlaybackOptionsModal({
                     </Pressable>
                   </View>
 
-                  <View className="mt-4 flex-row justify-center gap-2">
-                    <TabButton
-                      label="Reciter"
-                      isActive={activeTab === 'reciter'}
-                      onPress={() => setActiveTab('reciter')}
-                      icon={
-                        <Mic
-                          size={16}
-                          strokeWidth={2.25}
-                          color={activeTab === 'reciter' ? '#FFFFFF' : palette.muted}
-                        />
-                      }
-                    />
-                    <TabButton
-                      label="Verse Repeat"
-                      isActive={activeTab === 'repeat'}
-                      onPress={() => setActiveTab('repeat')}
-                      icon={
-                        <Repeat
-                          size={16}
-                          strokeWidth={2.25}
-                          color={activeTab === 'repeat' ? '#FFFFFF' : palette.muted}
-                        />
-                      }
-                    />
-                  </View>
+                  <PlaybackOptionsTabToggle
+                    activeTab={activeTab}
+                    onTabChange={setActiveTab}
+                    isOpen={isOpen}
+                  />
                 </View>
 
                 <View style={styles.content}>
@@ -399,26 +386,26 @@ export function PlaybackOptionsModal({
                             ) : null}
                             <Text className="text-xs text-muted dark:text-muted-dark">
                               {recitersLoading
-                                ? 'Loading reciters…'
-                                : 'Unable to load reciters.'}
+                                ? t('loading_reciters', { fallback: 'Loading reciters…' })
+                                : t('unable_to_load_reciters', { fallback: 'Unable to load reciters.' })}
                             </Text>
                             {recitersError ? (
                               <Pressable
                                 onPress={refresh}
                                 accessibilityRole="button"
-                                accessibilityLabel="Retry"
+                                accessibilityLabel={t('retry', { fallback: 'Retry' })}
                                 className="ml-auto px-3 py-1.5 rounded-lg bg-interactive dark:bg-interactive-dark"
                                 style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
                               >
                                 <Text className="text-xs font-semibold text-foreground dark:text-foreground-dark">
-                                  Retry
+                                  {t('retry', { fallback: 'Retry' })}
                                 </Text>
                               </Pressable>
                             ) : null}
                           </View>
                         )}
 
-                        <View className="gap-3 px-1">
+                        <View className="gap-2 px-1">
                           {reciterOptions.map((reciter) => {
                             const isSelected = localReciter.id === reciter.id;
                             return (
@@ -426,12 +413,12 @@ export function PlaybackOptionsModal({
                                 key={reciter.id}
                                 onPress={() => setLocalReciter(reciter)}
                                 accessibilityRole="button"
-                                accessibilityLabel={reciter.name}
+                                accessibilityLabel={t('reciter_names.' + reciter.id, { fallback: reciter.name })}
                                 className={[
                                   'w-full rounded-lg border px-3 py-2',
                                   isSelected
                                     ? 'border-accent bg-accent/10'
-                                    : 'border-border/30 dark:border-border-dark/20',
+                                    : 'border-border/30 dark:border-border-dark/20 bg-interactive dark:bg-surface-navigation-dark',
                                 ].join(' ')}
                                 style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
                               >
@@ -441,7 +428,7 @@ export function PlaybackOptionsModal({
                                       numberOfLines={1}
                                       className="text-sm font-medium text-foreground dark:text-foreground-dark"
                                     >
-                                      {reciter.name}
+                                      {t('reciter_names.' + reciter.id, { fallback: reciter.name })}
                                     </Text>
                                     {reciter.locale ? (
                                       <Text
@@ -488,11 +475,11 @@ export function PlaybackOptionsModal({
                     <Pressable
                       onPress={commit}
                       accessibilityRole="button"
-                      accessibilityLabel="Apply"
+                      accessibilityLabel={t('apply', { fallback: 'Apply' })}
                       className="px-5 py-3 rounded-xl bg-accent"
                       style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
                     >
-                      <Text className="text-sm font-semibold text-on-accent">Apply</Text>
+                      <Text className="text-sm font-semibold text-on-accent">{t('apply', { fallback: 'Apply' })}</Text>
                     </Pressable>
                   </View>
                 </View>
@@ -521,6 +508,7 @@ function RepeatOptionsPanel({
   rangeWarning: string | null;
   setRangeWarning: React.Dispatch<React.SetStateAction<string | null>>;
 }): React.JSX.Element {
+  const { t } = useUiTranslation();
   const mode = getUiRepeatMode(localRepeat.mode);
   const isSingle = mode === 'single';
 
@@ -626,8 +614,8 @@ function RepeatOptionsPanel({
 
         {mode === 'single' ? (
           <SurahVerseSelectorRow
-            surahLabel="Surah"
-            verseLabel="Verse"
+            surahLabel={t('surah_tab', { fallback: 'Surah' })}
+            verseLabel={t('verse', { fallback: 'Verse' })}
             chapters={chapters}
             selectedSurah={localRepeat.surahId}
             selectedVerse={localRepeat.verseNumber ?? localRepeat.start}
@@ -655,7 +643,7 @@ function RepeatOptionsPanel({
           />
         ) : mode === 'surah' ? (
           <SurahVerseSelectorRow
-            surahLabel="Surah"
+            surahLabel={t('surah_tab', { fallback: 'Surah' })}
             chapters={chapters}
             selectedSurah={localRepeat.surahId}
             selectedVerse={undefined}
@@ -676,8 +664,8 @@ function RepeatOptionsPanel({
         ) : (
           <View className="gap-5">
             <SurahVerseSelectorRow
-              surahLabel="Start Surah"
-              verseLabel="Verse"
+              surahLabel={t('start_surah', { fallback: 'Start Surah' })}
+              verseLabel={t('verse', { fallback: 'Verse' })}
               chapters={chapters}
               selectedSurah={startSurahId}
               selectedVerse={startVerseNumber}
@@ -711,8 +699,8 @@ function RepeatOptionsPanel({
             />
 
             <SurahVerseSelectorRow
-              surahLabel="End Surah"
-              verseLabel="Verse"
+              surahLabel={t('end_surah', { fallback: 'End Surah' })}
+              verseLabel={t('verse', { fallback: 'Verse' })}
               chapters={chapters}
               selectedSurah={endSurahId}
               selectedVerse={endVerseNumber}
@@ -741,12 +729,12 @@ function RepeatOptionsPanel({
             <Pressable
               onPress={refresh}
               accessibilityRole="button"
-              accessibilityLabel="Retry loading surahs"
+              accessibilityLabel={t('retry', { fallback: 'Retry' })}
               className="self-start rounded-lg bg-interactive dark:bg-interactive-dark px-3 py-2"
               style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
             >
               <Text className="text-xs font-semibold text-foreground dark:text-foreground-dark">
-                Retry
+                {t('retry', { fallback: 'Retry' })}
               </Text>
             </Pressable>
           </View>
@@ -755,7 +743,7 @@ function RepeatOptionsPanel({
         <View className="flex-row flex-wrap gap-3">
           {!isSingle ? (
             <CounterField
-              label="Play count"
+              label={t('play_count', { fallback: 'Play count' })}
               value={playCount}
               min={1}
               onChange={(v) => {
@@ -765,7 +753,7 @@ function RepeatOptionsPanel({
             />
           ) : null}
           <CounterField
-            label="Repeat each"
+            label={t('repeat_each', { fallback: 'Repeat each' })}
             value={repeatEach}
             min={1}
             onChange={(v) => {
@@ -774,7 +762,7 @@ function RepeatOptionsPanel({
             }}
           />
           <CounterField
-            label="Delay seconds"
+            label={t('delay_seconds', { fallback: 'Delay seconds' })}
             value={delay}
             min={0}
             onChange={(v) => {
@@ -795,23 +783,24 @@ function RepeatModeToggle({
   value: 'single' | 'range' | 'surah';
   onChange: (mode: 'single' | 'range' | 'surah') => void;
 }): React.JSX.Element {
+  const { t } = useUiTranslation();
   return (
     <Pressable
       onPress={() => undefined}
       className="flex-row items-center rounded-full bg-interactive dark:bg-interactive-dark p-1"
     >
       <RepeatModeToggleButton
-        label="Single verse"
+        label={t('single_verse', { fallback: 'Single verse' })}
         isActive={value === 'single'}
         onPress={() => onChange('single')}
       />
       <RepeatModeToggleButton
-        label="Verse range"
+        label={t('verse_range', { fallback: 'Verse range' })}
         isActive={value === 'range'}
         onPress={() => onChange('range')}
       />
       <RepeatModeToggleButton
-        label="Full surah"
+        label={t('full_surah', { fallback: 'Full surah' })}
         isActive={value === 'surah'}
         onPress={() => onChange('surah')}
       />
@@ -877,6 +866,7 @@ function CounterField({
 }): React.JSX.Element {
   const { resolvedTheme } = useAppTheme();
   const palette = Colors[resolvedTheme];
+  const { localizeDigits } = useUiTranslation();
 
   const safeValue = Number.isFinite(value) ? Math.max(min, Math.floor(value)) : min;
 
@@ -896,9 +886,9 @@ function CounterField({
           <Minus size={16} strokeWidth={2.25} color={palette.muted} />
         </Pressable>
         <TextInput
-          value={String(safeValue)}
+          value={localizeDigits(String(safeValue))}
           onChangeText={(text) => {
-            const trimmed = text.trim();
+            const trimmed = delocalizeDigits(text).trim();
             if (!trimmed) {
               onChange(min);
               return;
@@ -925,6 +915,95 @@ function CounterField({
   );
 }
 
+function PlaybackOptionsTabToggle({
+  activeTab,
+  onTabChange,
+  isOpen,
+}: {
+  activeTab: PlaybackOptionsTab;
+  onTabChange: (tab: PlaybackOptionsTab) => void;
+  isOpen: boolean;
+}): React.JSX.Element {
+  const [measuredWidth, setMeasuredWidth] = React.useState(0);
+  const { resolvedTheme } = useAppTheme();
+  const palette = Colors[resolvedTheme];
+  const { t } = useUiTranslation();
+
+  const activeIndex = activeTab === 'reciter' ? 0 : 1;
+  const indicatorPosition = useSharedValue(activeIndex);
+
+  React.useEffect(() => {
+    indicatorPosition.value = withSpring(activeIndex, {
+      damping: 22,
+      stiffness: 180,
+      mass: 0.55,
+    });
+  }, [activeIndex, indicatorPosition]);
+
+  const activeShadow =
+    Platform.OS === 'android'
+      ? { elevation: isOpen ? 2 : 0 }
+      : {
+          shadowColor: '#000',
+          shadowOpacity: isOpen ? 0.1 : 0,
+          shadowRadius: 4,
+          shadowOffset: { width: 0, height: 2 },
+        };
+
+  const animatedIndicatorStyle = useAnimatedStyle(() => {
+    if (measuredWidth === 0) return { opacity: 0 };
+    const tabWidth = (measuredWidth - 8) / 2;
+    return {
+      width: tabWidth,
+      opacity: isOpen ? 1 : 0,
+      transform: [{ translateX: indicatorPosition.value * tabWidth }],
+    };
+  });
+
+  return (
+    <View
+      onLayout={(event) => {
+        const nextWidth = event.nativeEvent.layout.width;
+        setMeasuredWidth((currentWidth) =>
+          Math.abs(currentWidth - nextWidth) < 1 ? currentWidth : nextWidth
+        );
+      }}
+      className="relative flex-row items-center rounded-full bg-interactive dark:bg-interactive-dark p-1 w-full"
+    >
+      <Reanimated.View
+        pointerEvents="none"
+        className="absolute bottom-1 left-1 top-1 rounded-full bg-surface dark:bg-surface-dark"
+        style={[animatedIndicatorStyle, activeShadow]}
+      />
+
+      <TabButton
+        label={t('reciter', { fallback: 'Reciter' })}
+        isActive={activeTab === 'reciter'}
+        onPress={() => onTabChange('reciter')}
+        icon={
+          <Mic
+            size={16}
+            strokeWidth={2.25}
+            color={activeTab === 'reciter' ? palette.tint : palette.muted}
+          />
+        }
+      />
+      <TabButton
+        label={t('verse_repeat', { fallback: 'Verse Repeat' })}
+        isActive={activeTab === 'repeat'}
+        onPress={() => onTabChange('repeat')}
+        icon={
+          <Repeat
+            size={16}
+            strokeWidth={2.25}
+            color={activeTab === 'repeat' ? palette.tint : palette.muted}
+          />
+        }
+      />
+    </View>
+  );
+}
+
 function TabButton({
   label,
   isActive,
@@ -936,31 +1015,28 @@ function TabButton({
   onPress: () => void;
   icon: React.ReactNode;
 }): React.JSX.Element {
-  const { resolvedTheme } = useAppTheme();
-  const palette = Colors[resolvedTheme];
-
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={label}
-      className="px-3 py-2 rounded-xl"
-      style={({ pressed }) => ({
-        opacity: pressed ? 0.9 : 1,
-        backgroundColor: isActive ? palette.accent : palette.interactive,
-      })}
+      className="z-10 flex-1 flex-row items-center justify-center gap-2 py-2.5 rounded-full"
+      style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
     >
-      <View className="flex-row items-center gap-2">
-        {icon}
-        <Text
-          style={{
-            color: isActive ? palette.onAccent : palette.text,
-          }}
-          className="text-sm font-semibold"
-        >
-          {label}
-        </Text>
-      </View>
+      {icon}
+      <Text
+        numberOfLines={1}
+        ellipsizeMode="tail"
+        className={[
+          'text-sm font-semibold',
+          isActive
+            ? 'text-foreground dark:text-foreground-dark'
+            : 'text-muted dark:text-muted-dark',
+        ].join(' ')}
+        style={{ flexShrink: 1 }}
+      >
+        {label}
+      </Text>
     </Pressable>
   );
 }

@@ -6,6 +6,7 @@ import Colors from '@/constants/Colors';
 import { HeaderSearchInput } from '@/components/search/HeaderSearchInput';
 import { useDownloadIndexItems } from '@/hooks/useDownloadIndexItems';
 import { useAppTheme } from '@/providers/ThemeContext';
+import { useUiTranslation } from '@/providers/UiLanguageContext';
 import { DeleteTafsirUseCase } from '@/src/core/application/use-cases/DeleteTafsir';
 import {
   DownloadFullTafsirUseCase,
@@ -231,6 +232,7 @@ export function ManageTafsirsPanel({
 }): React.JSX.Element {
   const { resolvedTheme, isDark } = useAppTheme();
   const palette = Colors[resolvedTheme];
+  const { t } = useUiTranslation();
   const [isReordering, setIsReordering] = React.useState(false);
   const [searchTerm, setSearchTerm] = React.useState('');
   const [activeFilter, setActiveFilter] = React.useState('All');
@@ -611,7 +613,7 @@ export function ManageTafsirsPanel({
         <HeaderSearchInput
           value={searchTerm}
           onChangeText={setSearchTerm}
-          placeholder="Search tafsirs or languages..."
+          placeholder={t('manage_tafsirs_search_placeholder', { fallback: 'Search tafsirs or languages...' })}
         />
 
         <ReorderableSelectionList
