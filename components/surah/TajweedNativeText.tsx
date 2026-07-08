@@ -318,9 +318,7 @@ export function TajweedNativeText({
     let cancelled = false;
 
     if (resolvedTheme !== 'dark' || DEBUG_DISABLE_TAJWEED_DARK_PALETTE) {
-      setRenderGlyphRuns(
-        validGlyphRuns.every((run) => Font.isLoaded(run.fontFamily)) ? validGlyphRuns : []
-      );
+      setRenderGlyphRuns(validGlyphRuns);
       return;
     }
 

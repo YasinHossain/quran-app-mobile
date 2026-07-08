@@ -169,6 +169,14 @@ function buildPageRangeNumbers(range: ChapterPageRange | null, totalPages: numbe
   return Array.from({ length: lastPage - firstPage + 1 }, (_value, index) => firstPage + index);
 }
 
+function getRenderSignal(value: string): number {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 31 + value.charCodeAt(index)) | 0;
+  }
+  return hash;
+}
+
 function clampPageToRange(pageNumber: number, range: ChapterPageRange | null): number {
   if (!range) return 1;
   if (!Number.isFinite(pageNumber) || pageNumber <= 0) return range.firstPage;
@@ -837,6 +845,10 @@ export default function SurahScreen(): React.JSX.Element {
       verseAudioWordSync,
     ]
   );
+  const tajweedRenderSignal = React.useMemo(
+    () => getRenderSignal(`${settings.tajweed ? 'tajweed' : 'plain'}:${pagesSignature}`),
+    [pagesSignature, settings.tajweed]
+  );
 
   const handlePlayPause = React.useCallback(() => {
     const verseKey = activeVerse?.verseKey;
@@ -958,6 +970,7 @@ export default function SurahScreen(): React.JSX.Element {
             showByWords={settings.showByWords}
             tajweed={settings.tajweed}
             tajweedGlyphRuns={verse.tajweedGlyphRuns}
+            renderSignal={tajweedRenderSignal}
             onOpenActions={() =>
               openVerseActions({
                 verseKey: verse.verse_key,
@@ -980,6 +993,7 @@ export default function SurahScreen(): React.JSX.Element {
       settings.showByWords,
       settings.tajweed,
       settings.translationFontSize,
+      tajweedRenderSignal,
       translationHighlightVerseKey,
       translationsById,
       verseAudioWordSync,

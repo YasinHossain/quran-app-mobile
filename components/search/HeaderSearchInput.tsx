@@ -29,19 +29,29 @@ export const HeaderSearchInput = React.forwardRef(
     const { resolvedTheme } = useAppTheme();
     const palette = Colors[resolvedTheme];
     const showClear = value.trim().length > 0;
+    const inputRef = React.useRef<TextInput>(null);
+
+    React.useImperativeHandle(ref, () => inputRef.current as TextInput);
+
+    const focusInput = React.useCallback(() => {
+      if (!editable) return;
+      inputRef.current?.focus();
+    }, [editable]);
 
     return (
       <View className="w-full" style={{ width: '100%' }}>
-        <View
+        <Pressable
+          onPressIn={focusInput}
           className="flex-row items-center gap-2 rounded-xl bg-interactive px-3 py-2 dark:bg-interactive-dark border border-border/30 dark:border-border-dark/20"
           style={{ minHeight: 44 }}
+          accessibilityRole="search"
         >
           <View className="h-4 w-4 items-center justify-center">
             <Search color={palette.muted} size={16} strokeWidth={2.25} />
           </View>
 
           <TextInput
-            ref={ref}
+            ref={inputRef}
             value={value}
             onChangeText={onChangeText}
             onFocus={onFocus}
@@ -70,7 +80,7 @@ export const HeaderSearchInput = React.forwardRef(
               <X color={palette.muted} size={18} strokeWidth={2.25} />
             </Pressable>
           ) : null}
-        </View>
+        </Pressable>
       </View>
     );
   }

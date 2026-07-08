@@ -2,6 +2,7 @@ import React from 'react';
 
 import type { SurahHeaderChapter } from '@/components/surah/SurahHeaderCard';
 import {
+  areTajweedGlyphRunFontsLoaded,
   preloadTajweedGlyphRunFontsAsync,
 } from '@/components/surah/TajweedNativeText';
 import {
@@ -386,6 +387,28 @@ function getTajweedGlyphRunsFromPages(
   return Object.values(pagesByNumber).flatMap((pageVerses) =>
     pageVerses.flatMap((verse) => verse.tajweedGlyphRuns ?? [])
   );
+}
+
+function getTajweedReadyPagesForImmediateRender(
+  pagesByNumber: Record<number, SurahVerse[]>,
+  options: {
+    tajweed: boolean;
+    tajweedTheme: 'light' | 'dark';
+    tajweedTextColor?: string;
+  }
+): Record<number, SurahVerse[]> {
+  if (!options.tajweed) return pagesByNumber;
+  if (Object.keys(pagesByNumber).length === 0) return pagesByNumber;
+
+  const glyphRuns = getTajweedGlyphRunsFromPages(pagesByNumber);
+  if (glyphRuns.length === 0) return {};
+
+  return areTajweedGlyphRunFontsLoaded(glyphRuns, {
+    resolvedTheme: options.tajweedTheme,
+    ...(options.tajweedTextColor ? { textColor: options.tajweedTextColor } : {}),
+  })
+    ? pagesByNumber
+    : {};
 }
 
 function getTajweedGlyphRunsFromVerses(
@@ -794,7 +817,11 @@ export function useSurahVerses({
       requireTajweedGlyphs: false,
     });
 
-    return pages;
+    return getTajweedReadyPagesForImmediateRender(pages, {
+      tajweed,
+      tajweedTheme,
+      ...(tajweedTextColor ? { tajweedTextColor } : {}),
+    });
   }, [
     enabled,
     chapterNumber,
@@ -861,7 +888,11 @@ export function useSurahVerses({
       verseCount,
       requireTajweedGlyphs: false,
     });
-    const visibleWarmOfflinePages = warmOfflinePages;
+    const visibleWarmOfflinePages = getTajweedReadyPagesForImmediateRender(warmOfflinePages, {
+      tajweed,
+      tajweedTheme,
+      ...(tajweedTextColor ? { tajweedTextColor } : {}),
+    });
     const hasWarmOfflinePages = Object.keys(visibleWarmOfflinePages).length > 0;
     const shouldBeLoading = !hasWarmOfflinePages;
 
@@ -965,6 +996,19 @@ export function useSurahVerses({
     ): Promise<Record<number, SurahVerse[]>> => {
       if (!tajweed || pageNumbers.length === 0) return pages;
 
+      const requestedGlyphRuns = pageNumbers.flatMap((pageNumber) =>
+        pages[pageNumber]?.flatMap((verse) => verse.tajweedGlyphRuns ?? []) ?? []
+      );
+      if (
+        requestedGlyphRuns.length > 0 &&
+        areTajweedGlyphRunFontsLoaded(requestedGlyphRuns, {
+          resolvedTheme: tajweedTheme,
+          ...(tajweedTextColor ? { textColor: tajweedTextColor } : {}),
+        })
+      ) {
+        return pages;
+      }
+
       let nextPages = pages;
 
       await Promise.all(
@@ -983,7 +1027,7 @@ export function useSurahVerses({
 
       return nextPages;
     },
-    [preloadTajweedFontsForVerses, tajweed]
+    [preloadTajweedFontsForVerses, tajweed, tajweedTextColor, tajweedTheme]
   );
 
   const normalizeVersePage = React.useCallback(
