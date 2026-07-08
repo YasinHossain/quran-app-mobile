@@ -71,6 +71,12 @@ function parseVerseKeyNumbers(
   return { surahId: normalizedSurah, verseNumber: normalizedVerse };
 }
 
+function getVerseKeyForSurah(verseKey: string | null, surahId: number): string | null {
+  const parsed = parseVerseKeyNumbers(verseKey);
+  if (!parsed || parsed.surahId !== surahId) return null;
+  return verseKey;
+}
+
 async function resolveActiveMushafVersion(
   packId: MushafPackId,
   fallbackVersion: string
@@ -204,6 +210,7 @@ export default function SurahScreen(): React.JSX.Element {
     React.useState<string | null>(null);
   const mushafOriginVerseKeyRef = React.useRef<string | null>(null);
   const activeMushafVerseKeyRef = React.useRef<string | null>(null);
+  const translationModeSwitchRequestIdRef = React.useRef(0);
   const [isTransitionInteractionBlocked, setIsTransitionInteractionBlocked] =
     React.useState(false);
   const interactionBlockTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -508,20 +515,44 @@ export default function SurahScreen(): React.JSX.Element {
     (nextTab: SettingsTab) => {
       blockReaderInteractionsDuringTransition();
       if (nextTab === 'translations') {
+        const currentChapterNumber =
+          Number.isFinite(chapterNumber) && chapterNumber > 0
+            ? Math.trunc(chapterNumber)
+            : null;
+        const fallbackVerseKey =
+          currentChapterNumber !== null
+            ? `${currentChapterNumber}:${normalizedStartVerse ?? 1}`
+            : null;
         const returnVerseKey =
-          activeMushafVerseKeyRef.current ??
-          mushafOriginVerseKeyRef.current ??
-          (Number.isFinite(chapterNumber) && chapterNumber > 0
-            ? `${Math.trunc(chapterNumber)}:${normalizedStartVerse ?? 1}`
-            : null);
-        setPendingTranslationVerseKey(returnVerseKey);
+          currentChapterNumber !== null
+            ? getVerseKeyForSurah(activeMushafVerseKeyRef.current, currentChapterNumber) ??
+              getVerseKeyForSurah(mushafOriginVerseKeyRef.current, currentChapterNumber) ??
+              fallbackVerseKey
+            : null;
+        const parsedReturnVerseKey = parseVerseKeyNumbers(returnVerseKey);
+        const returnVerseNumber = parsedReturnVerseKey?.verseNumber ?? 1;
+        const returnSurahId = parsedReturnVerseKey?.surahId ?? currentChapterNumber;
+        const requestId = ++translationModeSwitchRequestIdRef.current;
         closeSettingsSidebar();
-        router.setParams({
-          view: 'translations',
-          ...(returnVerseKey
-            ? { startVerse: String(parseVerseKeyNumbers(returnVerseKey)?.verseNumber ?? 1) }
-            : {}),
-        });
+        void (async () => {
+          if (returnSurahId) {
+            await preloadOfflineSurahNavigationPage({
+              surahId: returnSurahId,
+              verseNumber: returnVerseNumber,
+              settings,
+            });
+          }
+
+          if (translationModeSwitchRequestIdRef.current !== requestId) return;
+
+          if (Platform.OS === 'web') {
+            setPendingTranslationVerseKey(returnVerseKey);
+          }
+          router.setParams({
+            view: 'translations',
+            startVerse: String(returnVerseNumber),
+          });
+        })();
         return;
       }
 
@@ -598,6 +629,7 @@ export default function SurahScreen(): React.JSX.Element {
       router,
       selectedMushafId,
       selectedMushafVersion,
+      settings,
     ]
   );
 
@@ -1085,11 +1117,21 @@ export default function SurahScreen(): React.JSX.Element {
     const interactionTask = InteractionManager.runAfterInteractions(() => {
       prefetchTimeout = setTimeout(() => {
         if (cancelled) return;
+        const currentChapterNumber =
+          Number.isFinite(chapterNumber) && chapterNumber > 0
+            ? Math.trunc(chapterNumber)
+            : null;
         const focusVerseKey =
+          (currentChapterNumber !== null
+            ? getVerseKeyForSurah(activeMushafVerseKeyRef.current, currentChapterNumber) ??
+              getVerseKeyForSurah(mushafOriginVerseKeyRef.current, currentChapterNumber)
+            : null) ??
           visibleVerseKeyRef.current ??
-          (typeof normalizedStartVerse === 'number'
-            ? getVerseByNumber(normalizedStartVerse)?.verse_key ?? null
-            : getVerseByNumber(1)?.verse_key ?? null);
+          (currentChapterNumber !== null
+            ? typeof normalizedStartVerse === 'number'
+              ? `${currentChapterNumber}:${normalizedStartVerse}`
+              : `${currentChapterNumber}:1`
+            : null);
 
         prefetchMushafForVerse(focusVerseKey);
       }, 120);
@@ -1103,7 +1145,7 @@ export default function SurahScreen(): React.JSX.Element {
       }
     };
   }, [
-    getVerseByNumber,
+    chapterNumber,
     isMushafView,
     isSettingsOpen,
     normalizedStartVerse,
@@ -1120,9 +1162,16 @@ export default function SurahScreen(): React.JSX.Element {
     const interactionTask = InteractionManager.runAfterInteractions(() => {
       prefetchTimeout = setTimeout(() => {
         if (cancelled) return;
+        const currentChapterNumber = Math.trunc(chapterNumber);
+        const focusVerseNumber =
+          parseVerseKeyNumbers(
+            getVerseKeyForSurah(activeMushafVerseKeyRef.current, currentChapterNumber)
+          )?.verseNumber ??
+          normalizedStartVerse ??
+          1;
         void preloadOfflineSurahNavigationPage({
-          surahId: Math.trunc(chapterNumber),
-          verseNumber: normalizedStartVerse ?? 1,
+          surahId: currentChapterNumber,
+          verseNumber: focusVerseNumber,
           settings,
         });
       }, 120);
@@ -1486,11 +1535,6 @@ export default function SurahScreen(): React.JSX.Element {
       nativeTargetStartVerse + 5
     );
     ensureVerseRangeLoadedRef.current(nearbyStartVerse, nearbyEndVerse, 1);
-    setNativeTargetWindow((current) =>
-      current.key === nativeTargetWindowKey && current.startVerse > nearbyStartVerse
-        ? { ...current, startVerse: nearbyStartVerse }
-        : current
-    );
   }, [isNativeTargetRoute, nativeTargetStartVerse, nativeTargetWindowKey]);
 
   const handleNativeVerseListScrollEndDrag = React.useCallback(
@@ -1777,7 +1821,7 @@ export default function SurahScreen(): React.JSX.Element {
                 onViewableItemsChanged={onViewableItemsChanged}
                 onLoad={handleNativeVerseListLoad}
                 showsVerticalScrollIndicator={false}
-                maintainVisibleContentPosition={{ disabled: false }}
+                maintainVisibleContentPosition={{ disabled: isNativeTargetRoute }}
                 ListHeaderComponent={
                   !isNativeTargetRoute && resolvedChapter
                     ? <SurahHeaderCard chapter={resolvedChapter} />

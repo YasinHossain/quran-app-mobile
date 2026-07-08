@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router';
 import React from 'react';
-import { InteractionManager, Platform, Pressable, Text, View } from 'react-native';
+import { Platform, Pressable, Text, View } from 'react-native';
 
 import {
   preloadOfflineSurahNavigationPage,
@@ -26,19 +26,9 @@ function SurahCardComponent({ surah }: { surah: Surah }): React.JSX.Element {
   const { isDark } = useAppTheme();
   const bgColor = isDark ? '#182333' : '#FFFFFF';
 
-  React.useEffect(() => {
+  const handlePressIn = React.useCallback(() => {
     if (!settings.tajweed) return;
-
-    let cancelled = false;
-    const interactionTask = InteractionManager.runAfterInteractions(() => {
-      if (cancelled) return;
-      primeOfflineSurahNavigationPage({ surahId: surah.id, settings });
-    });
-
-    return () => {
-      cancelled = true;
-      interactionTask.cancel?.();
-    };
+    primeOfflineSurahNavigationPage({ surahId: surah.id, settings });
   }, [settings, surah.id]);
 
   const handlePress = React.useCallback(async () => {
@@ -48,6 +38,7 @@ function SurahCardComponent({ surah }: { surah: Surah }): React.JSX.Element {
 
   return (
     <Pressable
+      onPressIn={handlePressIn}
       onPress={handlePress}
       style={({ pressed }) => ({ opacity: pressed ? 0.92 : 1 })}
     >
