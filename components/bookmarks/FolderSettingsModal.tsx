@@ -163,10 +163,7 @@ export function FolderSettingsModal({
                   contentContainerStyle={styles.scrollContent}
                 >
                   <View className="px-5">
-                    <Text className="text-sm font-semibold text-foreground dark:text-foreground-dark mb-2">
-                      {t('bookmarks_folder_name_placeholder')}
-                    </Text>
-                    <View className="rounded-xl border border-border dark:border-border-dark bg-surface dark:bg-surface-dark px-3 py-3">
+                    <View className="rounded-xl border border-border dark:border-border-dark bg-surface dark:bg-surface-dark px-3 py-2">
                       <TextInput
                         ref={inputRef}
                         value={name}
@@ -224,7 +221,7 @@ export function FolderSettingsModal({
                       onPress={onClose}
                       accessibilityRole="button"
                       accessibilityLabel={t('cancel')}
-                      className="px-4 py-2 rounded-lg bg-interactive dark:bg-interactive-dark"
+                      className="px-5 py-2.5 rounded-lg bg-interactive dark:bg-interactive-dark"
                       style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
                     >
                       <Text className="text-sm font-semibold text-foreground dark:text-foreground-dark">
@@ -238,7 +235,7 @@ export function FolderSettingsModal({
                       accessibilityRole="button"
                       accessibilityLabel={submitLabel}
                       className={[
-                        'px-4 py-2 rounded-lg flex-row items-center gap-2 bg-accent',
+                        'px-5 py-2.5 rounded-lg flex-row items-center gap-2 bg-accent',
                         canSubmit ? '' : 'opacity-40',
                       ].join(' ')}
                       style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}

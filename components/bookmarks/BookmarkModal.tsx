@@ -32,6 +32,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { dialogTransform, useModalTransition } from '@/components/motion/modalTransition';
 import Colors from '@/constants/Colors';
+import { resolveFolderAccentColor } from '@/components/bookmarks/folderColor';
 import { useBookmarks } from '@/providers/BookmarkContext';
 import { useAppTheme } from '@/providers/ThemeContext';
 
@@ -264,7 +265,6 @@ export function BookmarkModal({
               styles.dialog,
               {
                 maxHeight: maxDialogHeight,
-                minHeight: minDialogHeight,
                 backgroundColor: isDark ? palette.background : palette.surface,
                 borderColor: palette.border,
               },
@@ -445,6 +445,7 @@ export function BookmarkModal({
                                 const countLabel = `${bookmarkCount} ${
                                   bookmarkCount === 1 ? 'Verse' : 'Verses'
                                 }`;
+                                const accentColor = resolveFolderAccentColor(folder.color);
 
                                 return (
                                   <Pressable
@@ -453,25 +454,28 @@ export function BookmarkModal({
                                     accessibilityRole="button"
                                     accessibilityLabel={folder.name}
                                     className={[
-                                      'w-full flex-row items-center gap-4 p-4 rounded-lg border',
+                                      'w-full flex-row items-center gap-4 px-4 py-3 rounded-lg border',
                                       isSelected
                                         ? 'bg-accent border-accent'
-                                        : 'bg-transparent border-transparent',
+                                        : 'border-border/30 dark:border-border-dark/20 bg-interactive dark:bg-surface-navigation-dark',
                                     ].join(' ')}
                                     style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
                                   >
                                     <View
-                                      className={[
-                                        'h-10 w-10 rounded-lg items-center justify-center',
-                                        isSelected
-                                          ? 'bg-on-accent/20'
-                                          : 'bg-interactive dark:bg-interactive-dark',
-                                      ].join(' ')}
+                                      style={{
+                                        width: 40,
+                                        height: 40,
+                                        borderRadius: 20,
+                                        backgroundColor: accentColor,
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        ...(isSelected ? { borderWidth: 2, borderColor: '#FFFFFF' } : {}),
+                                      }}
                                     >
                                       <Folder
                                         size={18}
                                         strokeWidth={2.25}
-                                        color={isSelected ? '#FFFFFF' : palette.muted}
+                                        color="#FFFFFF"
                                       />
                                     </View>
 
@@ -555,7 +559,7 @@ const styles = StyleSheet.create({
     minHeight: 0,
   },
   scrollContent: {
-    paddingBottom: 24,
+    paddingBottom: 0,
   },
   centerScrollContent: {
     flexGrow: 1,

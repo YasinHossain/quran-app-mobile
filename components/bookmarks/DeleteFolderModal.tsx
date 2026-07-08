@@ -127,6 +127,10 @@ export function DeleteFolderModal({
                   contentContainerStyle={styles.scrollContent}
                 >
                   <View className="px-6 pb-6">
+                    <Text className="text-foreground dark:text-foreground-dark mb-5">
+                      {t('delete_folder_confirm')}
+                    </Text>
+
                     {folder ? (
                       <View className="bg-interactive/60 dark:bg-interactive-dark/60 border border-border/60 dark:border-border-dark/60 rounded-xl p-4 mb-6">
                         <View className="flex-row items-center gap-3">
@@ -146,28 +150,21 @@ export function DeleteFolderModal({
                       </View>
                     ) : null}
 
-                    <View className="gap-4">
-                      <Text className="text-foreground dark:text-foreground-dark">
-                        {t('delete_folder_confirm')}
-                      </Text>
-
-                      {folder && folder.bookmarks.length > 0 ? (
-                        <View className="bg-error/10 border border-error/20 rounded-xl p-4">
-                          <Text className="font-semibold text-error dark:text-error-dark text-sm mb-1">
-                            Warning: Contains bookmarked verses
+                    {folder && folder.bookmarks.length > 0 ? (
+                      <View className="bg-error/10 border border-error/20 rounded-xl p-4">
+                        <Text className="font-semibold text-error dark:text-error-dark text-sm mb-1">
+                          Warning: Contains bookmarked verses
+                        </Text>
+                        <Text className="text-error dark:text-error-dark text-sm">
+                          This folder contains{' '}
+                          <Text className="font-semibold">
+                            {folder.bookmarks.length} bookmarked verse
+                            {folder.bookmarks.length !== 1 ? 's' : ''}
                           </Text>
-                          <Text className="text-error dark:text-error-dark text-sm">
-                            This folder contains{' '}
-                            <Text className="font-semibold">
-                              {folder.bookmarks.length} bookmarked verse
-                              {folder.bookmarks.length !== 1 ? 's' : ''}
-                            </Text>
-                            . All bookmarks will be permanently deleted and cannot be recovered.
-                          </Text>
-                        </View>
-                      ) : null}
-                    </View>
-
+                          . All bookmarks will be permanently deleted and cannot be recovered.
+                        </Text>
+                      </View>
+                    ) : null}
                   </View>
                 </ScrollView>
 
@@ -177,7 +174,7 @@ export function DeleteFolderModal({
                       onPress={onClose}
                       accessibilityRole="button"
                       accessibilityLabel={t('cancel')}
-                      className="px-4 py-2 rounded-lg bg-interactive dark:bg-interactive-dark"
+                      className="px-5 py-2.5 rounded-lg bg-interactive dark:bg-interactive-dark"
                       style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
                     >
                       <Text className="text-sm font-semibold text-foreground dark:text-foreground-dark">
@@ -191,7 +188,7 @@ export function DeleteFolderModal({
                       accessibilityRole="button"
                       accessibilityLabel={t('delete_forever')}
                       className={[
-                        'px-4 py-2 rounded-lg bg-error dark:bg-error-dark',
+                        'px-5 py-2.5 rounded-lg bg-error dark:bg-error-dark',
                         isDeleting ? 'opacity-40' : '',
                       ].join(' ')}
                       style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
@@ -242,6 +239,7 @@ const styles = StyleSheet.create({
   },
   flex: {
     flexShrink: 1,
+    flexGrow: 0,
   },
   scrollContent: {
     paddingBottom: 16,

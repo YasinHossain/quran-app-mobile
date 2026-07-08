@@ -182,7 +182,7 @@ export function HomeQuickLinksCard(): React.JSX.Element {
     <View>
       <View className="mb-3 flex-row items-center justify-between px-3">
         <Text className="text-lg font-semibold text-content-primary dark:text-content-primary-dark">
-          {t('search_recent_searches')}
+          {t('quick_navigation')}
         </Text>
         <Text className="text-xs font-semibold text-muted dark:text-muted-dark">
           {formatNumber(quickLinks.length)}/{formatNumber(MAX_QUICK_LINKS)}
@@ -286,7 +286,7 @@ export function HomeQuickLinksCard(): React.JSX.Element {
                       className="ml-2.5 text-[15px] font-bold"
                       style={{ color: textColor }}
                     >
-                      {t('go_to_verse')}
+                      {t('add')}
                     </Text>
                   ) : null}
               </Pressable>
@@ -387,10 +387,7 @@ function AddQuickLinkModal({
                 <View className="flex-row items-center justify-between">
                   <View className="min-w-0 flex-1">
                     <Text className="text-xl font-bold text-foreground dark:text-foreground-dark">
-                      {t('go_to_verse')}
-                    </Text>
-                    <Text className="mt-1 text-sm text-muted dark:text-muted-dark">
-                      {t('search_tip_go_to_verse')}
+                      {t('add') + ' ' + t('quick_navigation')}
                     </Text>
                   </View>
                   <Pressable
@@ -418,12 +415,12 @@ function AddQuickLinkModal({
                 />
               </View>
 
-              <View className="flex-row justify-end gap-3 border-t border-border/60 px-5 py-4 dark:border-border-dark/40">
+              <View className="flex-row justify-end gap-3 border-t border-border/60 px-5 py-3 dark:border-border-dark/40">
                 <Pressable
                   onPress={onClose}
                   accessibilityRole="button"
                   accessibilityLabel={t('cancel')}
-                  className="rounded-lg bg-interactive px-4 py-2 dark:bg-interactive-dark"
+                  className="rounded-lg bg-interactive px-5 py-2.5 dark:bg-interactive-dark"
                   style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
                 >
                   <Text className="text-sm font-semibold text-foreground dark:text-foreground-dark">
@@ -437,11 +434,11 @@ function AddQuickLinkModal({
                   }}
                   disabled={!canSubmit}
                   accessibilityRole="button"
-                  accessibilityLabel={t('go_to_verse')}
-                  className="rounded-lg bg-accent px-5 py-2"
+                  accessibilityLabel={t('add') + ' ' + t('quick_navigation')}
+                  className="rounded-lg bg-accent px-5 py-2.5"
                   style={({ pressed }) => ({ opacity: !canSubmit ? 0.5 : pressed ? 0.9 : 1 })}
                 >
-                  <Text className="text-sm font-semibold text-on-accent">{t('go')}</Text>
+                  <Text className="text-sm font-semibold text-on-accent">{t('add')}</Text>
                 </Pressable>
               </View>
             </SafeAreaView>

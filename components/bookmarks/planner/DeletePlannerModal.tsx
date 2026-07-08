@@ -170,7 +170,7 @@ export function DeletePlannerModal({
                       onPress={onClose}
                       accessibilityRole="button"
                       accessibilityLabel={t('cancel')}
-                      className="px-4 py-2 rounded-lg bg-interactive dark:bg-interactive-dark"
+                      className="px-5 py-2.5 rounded-lg bg-interactive dark:bg-interactive-dark"
                       style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
                     >
                       <Text className="text-sm font-semibold text-foreground dark:text-foreground-dark">
@@ -184,7 +184,7 @@ export function DeletePlannerModal({
                       accessibilityRole="button"
                       accessibilityLabel={t('delete_forever')}
                       className={[
-                        'px-4 py-2 rounded-lg bg-error dark:bg-error-dark',
+                        'px-5 py-2.5 rounded-lg bg-error dark:bg-error-dark',
                         isDeleting ? 'opacity-40' : '',
                       ].join(' ')}
                       style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}

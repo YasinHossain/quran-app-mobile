@@ -249,7 +249,6 @@ export function CreatePlannerModal({
                 styles.sheet,
                 {
                   maxHeight: maxDialogHeight,
-                  minHeight: minDialogHeight,
                   backgroundColor: isDark ? palette.background : palette.surface,
                   borderColor: palette.border,
                 },
@@ -269,7 +268,10 @@ export function CreatePlannerModal({
                           <Text className="text-xl font-bold text-foreground dark:text-foreground-dark">
                             {t('binder_tab_planner')}
                           </Text>
-                          <Text className="text-sm text-muted dark:text-muted-dark mt-1">
+                          <Text
+                            className="text-sm text-muted dark:text-muted-dark"
+                            style={{ marginTop: -2 }}
+                          >
                             {t('planner_create_new_plan')}
                           </Text>
                         </View>
@@ -303,7 +305,7 @@ export function CreatePlannerModal({
                             {currentLength}/{maxName}
                           </Text>
                         </View>
-                        <View className="rounded-xl border border-border dark:border-border-dark bg-surface dark:bg-surface-dark px-3 py-3">
+                        <View className="rounded-xl border border-border dark:border-border-dark bg-surface dark:bg-surface-dark px-3 py-2">
                           <TextInput
                             ref={inputRef}
                             value={formData.planName}
@@ -436,7 +438,7 @@ export function CreatePlannerModal({
                         onPress={handleClose}
                         accessibilityRole="button"
                         accessibilityLabel={t('cancel')}
-                        className="px-4 py-2 rounded-lg bg-interactive dark:bg-interactive-dark"
+                        className="px-5 py-2.5 rounded-lg bg-interactive dark:bg-interactive-dark"
                         style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
                       >
                         <Text className="text-sm font-semibold text-foreground dark:text-foreground-dark">
@@ -450,7 +452,7 @@ export function CreatePlannerModal({
                         accessibilityRole="button"
                         accessibilityLabel={t('planner_create_plan')}
                         className={[
-                          'px-4 py-2 rounded-lg bg-accent',
+                          'px-5 py-2.5 rounded-lg bg-accent',
                           !canSubmit ? 'opacity-50' : '',
                         ].join(' ')}
                         style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}

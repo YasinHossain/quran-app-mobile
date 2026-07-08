@@ -158,10 +158,39 @@ export function AddToPlannerModal({
   );
 
   const hasValidReference = typeof verseSurahId === 'number' && typeof verseNumber === 'number';
-  const mismatchSelection = Boolean(
-    selectedPlan && typeof verseSurahId === 'number' && selectedPlan.surahId !== verseSurahId
-  );
-  const canSave = Boolean(selectedPlanId && hasValidReference && !mismatchSelection);
+
+  const isOutOfRange = React.useMemo(() => {
+    if (!selectedPlanId || !selectedPlan || !hasValidReference) return false;
+
+    const groups = groupPlannerPlans(planner, chapterLookup);
+    const group = groups.find((g) => g.planIds.includes(selectedPlanId));
+    if (!group) return true;
+
+    if (typeof verseSurahId === 'number') {
+      const startSurahId = group.surahIds[0];
+      const endSurahId = group.surahIds[group.surahIds.length - 1];
+      if (verseSurahId < startSurahId || verseSurahId > endSurahId) {
+        return true;
+      }
+      if (!group.surahIds.includes(verseSurahId)) {
+        return true;
+      }
+    }
+
+    const planForSurah = group.plans.find((p) => p.surahId === verseSurahId);
+    if (!planForSurah) return true;
+
+    if (typeof verseNumber === 'number') {
+      const start = getPlanStartVerse(planForSurah);
+      const end = getPlanEndVerse(planForSurah);
+      if (verseNumber < start || verseNumber > end) {
+        return true;
+      }
+    }
+    return false;
+  }, [selectedPlanId, selectedPlan, hasValidReference, planner, chapterLookup, verseSurahId, verseNumber]);
+
+  const canSave = Boolean(selectedPlanId && hasValidReference && !isOutOfRange);
 
   const helperMessage = React.useMemo(() => {
     if (!selectedPlanId) return null;
@@ -169,23 +198,45 @@ export function AddToPlannerModal({
     if (!hasValidReference) {
       return 'Unable to determine the current verse reference for this planner.';
     }
-    if (mismatchSelection) {
-      const chapter = chapterLookup.get(selectedPlan.surahId);
-      const plannerName = getChapterDisplayName(selectedPlan, chapter);
-      return `This planner is for ${plannerName}. Choose a planner for this surah to continue.`;
+
+    const groups = groupPlannerPlans(planner, chapterLookup);
+    const group = groups.find((g) => g.planIds.includes(selectedPlanId));
+    if (!group) return 'Planner not found.';
+
+    if (typeof verseSurahId === 'number') {
+      const startSurahId = group.surahIds[0];
+      const endSurahId = group.surahIds[group.surahIds.length - 1];
+      
+      if (verseSurahId < startSurahId) {
+        const startChapter = chapterLookup.get(startSurahId);
+        const startName = startChapter ? getChapterDisplayName(group.plans[0], startChapter) : `Surah ${startSurahId}`;
+        return `This planner starts from ${startName}. This verse cannot be added right now.`;
+      }
+      if (verseSurahId > endSurahId) {
+        const endChapter = chapterLookup.get(endSurahId);
+        const endName = endChapter ? getChapterDisplayName(group.plans[group.plans.length - 1], endChapter) : `Surah ${endSurahId}`;
+        return `This planner ends at ${endName}. This verse cannot be added right now.`;
+      }
+      if (!group.surahIds.includes(verseSurahId)) {
+        return 'This verse is out of the range of this planner.';
+      }
     }
+
+    const planForSurah = group.plans.find((p) => p.surahId === verseSurahId);
+    if (!planForSurah) return 'Planner details not found.';
+
     if (typeof verseNumber === 'number') {
-      const start = getPlanStartVerse(selectedPlan);
-      const end = getPlanEndVerse(selectedPlan);
+      const start = getPlanStartVerse(planForSurah);
+      const end = getPlanEndVerse(planForSurah);
       if (verseNumber < start) {
-        return `This planner starts at verse ${start}. Progress will begin from there.`;
+        return `This planner starts at verse ${start}. This verse cannot be added right now.`;
       }
       if (verseNumber > end) {
-        return `This planner ends at verse ${end}. Progress will be capped at the end of the plan.`;
+        return `This planner ends at verse ${end}. This verse cannot be added right now.`;
       }
     }
     return null;
-  }, [chapterLookup, hasValidReference, mismatchSelection, selectedPlan, selectedPlanId, verseNumber]);
+  }, [chapterLookup, hasValidReference, selectedPlan, selectedPlanId, verseNumber, planner, verseSurahId]);
 
   React.useEffect(() => {
     if (!isOpen) {
@@ -194,7 +245,7 @@ export function AddToPlannerModal({
   }, [isOpen]);
 
   const handlePlanSelect = React.useCallback((planId: string) => {
-    setSelectedPlanId(planId);
+    setSelectedPlanId((prev) => (prev === planId ? null : planId));
   }, []);
 
   const handleSave = React.useCallback(() => {
@@ -290,7 +341,6 @@ export function AddToPlannerModal({
               styles.sheet,
               {
                 maxHeight: maxDialogHeight,
-                minHeight: minDialogHeight,
                 backgroundColor: isDark ? palette.background : palette.surface,
                 borderColor: palette.border,
               },
@@ -341,7 +391,7 @@ export function AddToPlannerModal({
 
                 <ScrollView
                   contentContainerStyle={styles.scrollContent}
-                  className="px-5 py-4"
+                  className="px-5"
                   keyboardShouldPersistTaps="handled"
                 >
                   <PlannerCardsSection
@@ -358,13 +408,13 @@ export function AddToPlannerModal({
                   ) : null}
                 </ScrollView>
 
-                <View className="px-5 py-4 border-t border-border/40 dark:border-border-dark/20">
+                <View className="px-5 pt-3 pb-5 border-t border-border/40 dark:border-border-dark/20">
                   <Pressable
                     onPress={handleSave}
                     disabled={!canSave}
                     accessibilityRole="button"
                     accessibilityLabel="Save"
-                    className={['w-full rounded-xl bg-accent px-4 py-3', !canSave ? 'opacity-50' : ''].join(' ')}
+                    className={['w-full rounded-xl bg-accent px-5 py-2.5', !canSave ? 'opacity-50' : ''].join(' ')}
                     style={({ pressed }) => ({ opacity: !canSave ? 0.5 : pressed ? 0.9 : 1 })}
                   >
                     <Text className="text-sm font-semibold text-on-accent text-center">Save</Text>
@@ -397,5 +447,8 @@ const styles = StyleSheet.create({
   },
   safeArea: { flexShrink: 1 },
   inner: { flexShrink: 1 },
-  scrollContent: { paddingBottom: 10 },
+  scrollContent: {
+    paddingTop: 16,
+    paddingBottom: 16,
+  },
 });

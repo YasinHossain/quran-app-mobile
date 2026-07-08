@@ -56,8 +56,8 @@ export function ResourceConfirmModal({
 
   const confirmClassName =
     confirmTone === 'danger'
-      ? 'rounded-lg bg-error px-4 py-2 dark:bg-error-dark'
-      : 'rounded-lg bg-accent px-4 py-2';
+      ? 'rounded-lg bg-error px-5 py-2.5 dark:bg-error-dark'
+      : 'rounded-lg bg-accent px-5 py-2.5';
 
   const maxDialogHeight = Math.max(0, Math.round(windowHeight * 0.92));
 
@@ -123,7 +123,7 @@ export function ResourceConfirmModal({
               onPress={onClose}
               accessibilityRole="button"
               accessibilityLabel="Cancel"
-              className="rounded-lg bg-interactive px-4 py-2 dark:bg-interactive-dark"
+              className="rounded-lg bg-interactive px-5 py-2.5 dark:bg-interactive-dark"
               style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
             >
               <Text className="text-sm font-semibold text-foreground dark:text-foreground-dark">
