@@ -14,6 +14,7 @@ import Colors from '@/constants/Colors';
 import { useChapters } from '@/hooks/useChapters';
 import { useLayoutMetrics } from '@/providers/LayoutMetricsContext';
 import { useAppTheme } from '@/providers/ThemeContext';
+import { useUiTranslation } from '@/providers/UiLanguageContext';
 
 import { LastReadCard } from './LastReadCard';
 import { LastReadHeader } from './LastReadHeader';
@@ -52,6 +53,7 @@ export function LastReadSection({
   scrollEventThrottle?: number;
 }): React.JSX.Element {
   const { resolvedTheme } = useAppTheme();
+  const { t } = useUiTranslation();
   const palette = Colors[resolvedTheme];
   const { width } = useWindowDimensions();
   const { audioPlayerBarHeight } = useLayoutMetrics();
@@ -101,7 +103,7 @@ export function LastReadSection({
             {shouldHoldEmptyState ? (
               <View className="mt-1 flex-row items-center gap-2">
                 <ActivityIndicator size="small" color={palette.muted} />
-                <Text className="text-xs text-muted dark:text-muted-dark">Loading surah info…</Text>
+                <Text className="text-xs text-muted dark:text-muted-dark">{t('loading_surah')}</Text>
               </View>
             ) : chaptersError ? (
               <Text className="mt-1 text-xs text-muted dark:text-muted-dark">{chaptersError}</Text>
@@ -143,6 +145,7 @@ export function LastReadSection({
 
 function LastReadEmptyState(): React.JSX.Element {
   const { resolvedTheme } = useAppTheme();
+  const { t } = useUiTranslation();
   const palette = Colors[resolvedTheme];
 
   return (
@@ -151,10 +154,10 @@ function LastReadEmptyState(): React.JSX.Element {
         <Clock size={32} strokeWidth={2.25} color={palette.muted} />
       </View>
       <Text className="text-lg font-semibold text-foreground dark:text-foreground-dark mb-2">
-        No Recent Activity
+        {t('last_read_empty_title')}
       </Text>
       <Text className="text-muted dark:text-muted-dark text-center px-6">
-        Start reading the Quran and your progress will be automatically tracked here.
+        {t('last_read_empty_description')}
       </Text>
     </View>
   );

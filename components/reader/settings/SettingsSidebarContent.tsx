@@ -12,6 +12,8 @@ import { useMushafPackManager, type MushafPackManagerEntry } from '@/hooks/useMu
 import { useTranslationResources } from '@/hooks/useTranslationResources';
 import { useSettings } from '@/providers/SettingsContext';
 import { useAppTheme } from '@/providers/ThemeContext';
+import { getUiLanguageLabel, UI_LANGUAGES } from '@/lib/i18n/uiLanguages';
+import { useUiTranslation } from '@/providers/UiLanguageContext';
 
 import { CollapsibleSection } from './CollapsibleSection';
 import { FontSizeSlider } from './FontSizeSlider';
@@ -61,13 +63,6 @@ const WORD_LANGUAGES = [
   { code: 'ta', name: 'Tamil' },
 ] as const;
 
-const UI_LANGUAGES = [
-  { code: 'en', name: 'English' },
-  { code: 'bn', name: 'Bengali' },
-  { code: 'ur', name: 'Urdu' },
-  { code: 'hi', name: 'Hindi' },
-  { code: 'ar', name: 'Arabic' },
-] as const;
 const BYTES_PER_MEGABYTE = 1024 * 1024;
 const ARABIC_FONT_PREVIEW_TEXT = 'بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ';
 
@@ -89,19 +84,14 @@ const WORD_LANGUAGE_ITEMS: WordLanguageItem[] = WORD_LANGUAGES.map((item, index)
 
 const UI_LANGUAGE_ITEMS: WordLanguageItem[] = UI_LANGUAGES.map((item, index) => ({
   id: index + 1,
-  name: item.name,
-  lang: item.name,
+  name: item.nativeLabel,
+  lang: item.label,
   code: item.code,
 }));
 
 function getLanguageName(code: string | undefined): string {
   if (!code) return '';
   return WORD_LANGUAGES.find((l) => l.code === code)?.name ?? code;
-}
-
-function getUiLanguageName(code: string | undefined): string {
-  if (!code) return 'English';
-  return UI_LANGUAGES.find((l) => l.code === code)?.name ?? code;
 }
 
 function getMushafPackEntryKey(entry: MushafPackManagerEntry): string {
@@ -266,10 +256,11 @@ export function SettingsSidebarContent({
     setWordLang,
     setTranslationIds,
     setTafsirIds,
-    setContentLanguage,
+    setUiLanguage,
     setMushafId,
     setMushafScaleStep,
   } = useSettings();
+  const { t } = useUiTranslation();
   const { resolvedTheme, setDarkModeEnabled, isDark } = useAppTheme();
   const palette = Colors[resolvedTheme];
 
@@ -553,7 +544,7 @@ export function SettingsSidebarContent({
   const selectedArabicFontName = selectedArabicFont?.name ?? 'KFGQ';
   const selectedArabicFontFamily =
     getFirstFontFamily(selectedArabicFont?.value ?? settings.arabicFontFace) ?? 'UthmanicHafs1Ver18';
-  const selectedUiLanguageName = getUiLanguageName(settings.contentLanguage);
+  const selectedUiLanguageName = getUiLanguageLabel(settings.uiLanguage);
   const selectedMushafName =
     findMushafOption(settings.mushafId)?.name ?? findMushafOption(DEFAULT_MUSHAF_ID)?.name ?? 'Uthmani Unicode';
   const {
@@ -646,9 +637,9 @@ export function SettingsSidebarContent({
     (id: number) => {
       const selected = UI_LANGUAGE_ITEMS.find((item) => item.id === id);
       if (!selected) return;
-      setContentLanguage(selected.code);
+      setUiLanguage(selected.code);
     },
-    [setContentLanguage]
+    [setUiLanguage]
   );
 
   const {
@@ -686,13 +677,13 @@ export function SettingsSidebarContent({
 
   const selectedTafsirName = React.useMemo(() => {
     const ids = settings.tafsirIds ?? [];
-    if (ids.length === 0) return 'Select Tafsir';
+    if (ids.length === 0) return t('select_tafsir');
     const names = ids
       .map((id) => tafsirById.get(id)?.displayName ?? `Tafsir ${id}`)
       .filter(Boolean)
       .slice(0, 3);
-    return names.length ? names.join(', ') : 'Select Tafsir';
-  }, [settings.tafsirIds, tafsirById]);
+    return names.length ? names.join(', ') : t('select_tafsir');
+  }, [settings.tafsirIds, tafsirById, t]);
 
   const toggleTajweed = React.useCallback(
     (enabled: boolean) => {
@@ -911,19 +902,19 @@ export function SettingsSidebarContent({
 
   const tafsirSection = showTafsirSetting ? (
     <CollapsibleSection
-      title="Tafsir Setting"
+      title={t('tafsir_setting')}
       icon={<BookOpenText color={palette.tint} size={20} strokeWidth={2.25} />}
       isOpen={isTafsirOpen}
       onToggle={() => setIsTafsirOpen((v) => !v)}
     >
       <View className="gap-5">
         <SelectionBox
-          label="Select Tafsir"
-          value={selectedTafsirName || 'Select Tafsir'}
+          label={t('select_tafsir')}
+          value={selectedTafsirName || t('select_tafsir')}
           onPress={() => openPanel('tafsir')}
         />
         <FontSizeSlider
-          label="Tafsir Font Size"
+          label={t('tafsir_font_size')}
           value={settings.tafsirFontSize || 18}
           min={12}
           max={48}
@@ -954,16 +945,16 @@ export function SettingsSidebarContent({
 
   const subPanelTitle = isSubPanel
     ? panel.type === 'translations'
-      ? 'Manage Translations'
+      ? t('manage_translations')
       : panel.type === 'tafsir'
-        ? 'Manage Tafsirs'
+        ? t('tafsir_panel_title')
       : panel.type === 'word-language'
-        ? 'Word-by-word Language'
+        ? t('word_by_word_language')
       : panel.type === 'arabic-font'
-        ? 'Arabic Font Selection'
+        ? t('select_font_face')
       : panel.type === 'ui-language'
-        ? 'Language'
-      : 'Mushaf'
+        ? t('language_setting')
+      : t('mushaf')
     : '';
 
   const isTranslationsVisible = panel.type === 'translations';
@@ -1111,7 +1102,7 @@ export function SettingsSidebarContent({
               <View className="px-4 py-1">
                 <ResourceItem
                   item={item}
-                  isSelected={item.code === (settings.contentLanguage ?? 'en')}
+                  isSelected={item.code === (settings.uiLanguage ?? 'en')}
                   onToggle={handleSelectUiLanguage}
                 />
               </View>
@@ -1253,7 +1244,7 @@ export function SettingsSidebarContent({
             <View style={styles.headerSide} />
             <View style={styles.headerTitleWrap}>
               <Text className="text-lg font-semibold text-foreground dark:text-foreground-dark" numberOfLines={1}>
-                Settings
+                {t('settings')}
               </Text>
             </View>
             <View style={styles.headerSide}>
@@ -1286,31 +1277,31 @@ export function SettingsSidebarContent({
                       <>
                         {pageType === 'tafsir' ? tafsirSection : null}
                         <CollapsibleSection
-                          title="Reading Setting"
+                          title={t('reading_setting')}
                           icon={<Wand2 color={palette.tint} size={20} strokeWidth={2.25} />}
                           isOpen={isReadingOpen}
                           onToggle={() => setIsReadingOpen((v) => !v)}
                         >
                           <View className="gap-4">
-                            <ToggleRow label="Night Mode" value={isDark} onChange={setDarkModeEnabled} />
+                            <ToggleRow label={t('night_mode')} value={isDark} onChange={setDarkModeEnabled} />
                             <SelectionBox
-                              label="Translations"
-                              value={selectedTranslationName || 'No translation'}
+                              label={t('translations')}
+                              value={selectedTranslationName || t('no_translation_selected')}
                               onPress={() => openPanel('translations')}
                             />
                             <ToggleRow
-                              label="Show Word-by-Word"
+                              label={t('show_word_by_word')}
                               value={settings.showByWords}
                               onChange={(next) => setSettings({ ...settings, showByWords: next })}
                             />
                             <SelectionBox
-                              label="Word-by-word Language"
-                              value={selectedWordLanguageName || 'Select'}
+                              label={t('word_by_word_language')}
+                              value={selectedWordLanguageName || t('select_language')}
                               onPress={() => openPanel('word-language')}
                             />
                             <ToggleRow
                               disabled={isTajweedDownloading}
-                              label="Tajweed Colors"
+                              label={t('apply_tajweed')}
                               value={settings.tajweed}
                               rightElement={tajweedToggleAccessory}
                               onChange={toggleTajweed}
@@ -1321,28 +1312,28 @@ export function SettingsSidebarContent({
                         {pageType !== 'tafsir' ? tafsirSection : null}
 
                         <CollapsibleSection
-                          title="Font Setting"
+                          title={t('font_setting')}
                           icon={<Type color={palette.tint} size={20} strokeWidth={2.25} />}
                           isOpen={isFontOpen}
                           onToggle={() => setIsFontOpen((v) => !v)}
                         >
                           <View className="gap-5">
                             <FontSizeSlider
-                              label="Arabic Font Size"
+                              label={t('arabic_font_size')}
                               value={settings.arabicFontSize}
                               min={18}
                               max={60}
                               onChange={setArabicFontSize}
                             />
                             <FontSizeSlider
-                              label="Translation Font Size"
+                              label={t('translation_font_size')}
                               value={settings.translationFontSize}
                               min={12}
                               max={36}
                               onChange={setTranslationFontSize}
                             />
                             <SelectionBox
-                              label="Arabic Font"
+                              label={t('arabic_font_face')}
                               value={selectedArabicFontName}
                               onPress={() => openPanel('arabic-font')}
                             />
@@ -1360,7 +1351,7 @@ export function SettingsSidebarContent({
                           <View className="flex-row items-center gap-3">
                             <Download color={palette.tint} size={20} strokeWidth={2.25} />
                             <Text className="text-base font-semibold text-foreground dark:text-foreground-dark">
-                              Manage Downloads
+                              {t('manage_downloads')}
                             </Text>
                           </View>
                         </Pressable>
@@ -1373,7 +1364,7 @@ export function SettingsSidebarContent({
                           <View className="flex-row items-center gap-3">
                             <Globe color={palette.tint} size={20} strokeWidth={2.25} />
                             <Text className="text-base font-semibold text-foreground dark:text-foreground-dark">
-                              Language
+                              {t('language_setting')}
                             </Text>
                           </View>
                           <View className="flex-row items-center gap-2">
@@ -1390,9 +1381,9 @@ export function SettingsSidebarContent({
             ) : (
               <View className="flex-1">
                 <View className="gap-4 px-4 py-3">
-                  <SelectionBox label="Mushaf" value={selectedMushafName} onPress={() => openPanel('mushaf')} />
+                  <SelectionBox label={t('mushaf')} value={selectedMushafName} onPress={() => openPanel('mushaf')} />
                   <FontSizeSlider
-                    label="Mushaf Font Size"
+                    label={t('mushaf_font_size')}
                     value={settings.mushafScaleStep}
                     min={MUSHAF_SCALE_MIN}
                     max={MUSHAF_SCALE_MAX}

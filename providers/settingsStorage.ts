@@ -46,6 +46,7 @@ export const defaultSettings: Settings = {
   mushafScaleStep: DEFAULT_MUSHAF_SCALE_STEP,
   readingMode: 'translations',
   contentLanguage: 'en',
+  uiLanguage: 'en',
 };
 
 type RawSettings = Partial<Settings> & { tafsirId?: number };
@@ -107,6 +108,14 @@ function normalizeSettings(raw: RawSettings, defaults: Settings): Settings {
       : defaults.readingMode ?? 'translations';
 
   const merged = { ...defaults, ...mutable } as Settings;
+  const contentLanguage =
+    typeof mutable.contentLanguage === 'string' && mutable.contentLanguage.trim()
+      ? mutable.contentLanguage.trim().toLowerCase()
+      : defaults.contentLanguage;
+  const uiLanguage =
+    typeof mutable.uiLanguage === 'string' && mutable.uiLanguage.trim()
+      ? mutable.uiLanguage.trim().toLowerCase()
+      : defaults.uiLanguage ?? contentLanguage ?? 'en';
 
   return {
     ...merged,
@@ -116,6 +125,8 @@ function normalizeSettings(raw: RawSettings, defaults: Settings): Settings {
     mushafId,
     mushafScaleStep,
     readingMode,
+    contentLanguage,
+    uiLanguage,
   };
 }
 

@@ -16,6 +16,7 @@ import {
 import { dialogTransform, useModalTransition } from '@/components/motion/modalTransition';
 import Colors from '@/constants/Colors';
 import { useAppTheme } from '@/providers/ThemeContext';
+import { useUiTranslation } from '@/providers/UiLanguageContext';
 
 export interface DeletePlannerTarget {
   planIds: string[];
@@ -37,6 +38,7 @@ export function DeletePlannerModal({
   const { height: windowHeight } = useWindowDimensions();
   const shouldRender = isOpen && Boolean(target?.planIds.length);
   const { resolvedTheme, isDark } = useAppTheme();
+  const { t } = useUiTranslation();
   const palette = Colors[resolvedTheme];
   const [isDeleting, setIsDeleting] = React.useState(false);
 
@@ -102,10 +104,10 @@ export function DeletePlannerModal({
                     </View>
                     <View>
                       <Text className="text-xl font-bold text-foreground dark:text-foreground-dark">
-                        Delete Planner
+                        {t('planner_delete_title')}
                       </Text>
                       <Text className="text-sm text-muted dark:text-muted-dark">
-                        This action cannot be undone
+                        {t('planner_delete_subtitle')}
                       </Text>
                     </View>
                   </View>
@@ -114,7 +116,7 @@ export function DeletePlannerModal({
                     onPress={onClose}
                     hitSlop={10}
                     accessibilityRole="button"
-                    accessibilityLabel="Close"
+                    accessibilityLabel={t('close')}
                     style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
                     className="p-2 rounded-full"
                   >
@@ -156,7 +158,7 @@ export function DeletePlannerModal({
 
                     <View className="gap-4">
                       <Text className="text-foreground dark:text-foreground-dark">
-                        Are you sure you want to permanently delete this planner?
+                        {t('planner_delete_confirm')}
                       </Text>
                     </View>
                   </View>
@@ -167,12 +169,12 @@ export function DeletePlannerModal({
                     <Pressable
                       onPress={onClose}
                       accessibilityRole="button"
-                      accessibilityLabel="Cancel"
+                      accessibilityLabel={t('cancel')}
                       className="px-4 py-2 rounded-lg bg-interactive dark:bg-interactive-dark"
                       style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
                     >
                       <Text className="text-sm font-semibold text-foreground dark:text-foreground-dark">
-                        Cancel
+                        {t('cancel')}
                       </Text>
                     </Pressable>
 
@@ -180,7 +182,7 @@ export function DeletePlannerModal({
                       onPress={handleDelete}
                       disabled={isDeleting}
                       accessibilityRole="button"
-                      accessibilityLabel="Delete Forever"
+                      accessibilityLabel={t('delete_forever')}
                       className={[
                         'px-4 py-2 rounded-lg bg-error dark:bg-error-dark',
                         isDeleting ? 'opacity-40' : '',
@@ -188,7 +190,7 @@ export function DeletePlannerModal({
                       style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
                     >
                       <Text className="text-sm font-semibold text-on-accent">
-                        {isDeleting ? 'Deleting...' : 'Delete Forever'}
+                        {isDeleting ? t('loading') : t('delete_forever')}
                       </Text>
                     </Pressable>
                   </View>

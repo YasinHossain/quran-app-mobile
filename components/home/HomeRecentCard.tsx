@@ -11,6 +11,7 @@ import { preloadOfflineSurahNavigationPage } from '@/lib/surah/offlineSurahPageC
 import { useBookmarks } from '@/providers/BookmarkContext';
 import { useSettings } from '@/providers/SettingsContext';
 import { useAppTheme } from '@/providers/ThemeContext';
+import { useUiTranslation } from '@/providers/UiLanguageContext';
 
 export function HomeRecentCard(): React.JSX.Element {
   const router = useRouter();
@@ -18,6 +19,7 @@ export function HomeRecentCard(): React.JSX.Element {
   const { chapters, isLoading } = useChapters();
   const { settings } = useSettings();
   const { isDark, resolvedTheme } = useAppTheme();
+  const { t, formatNumber } = useUiTranslation();
   const palette = Colors[resolvedTheme];
 
   const recentEntries = React.useMemo(
@@ -72,7 +74,7 @@ export function HomeRecentCard(): React.JSX.Element {
   return (
     <View>
       <Text className="mb-3 px-3 text-lg font-semibold text-content-primary dark:text-content-primary-dark">
-        Recent
+        {t('home_quicklink_recent')}
       </Text>
 
       {hasRecentEntries ? (
@@ -82,7 +84,10 @@ export function HomeRecentCard(): React.JSX.Element {
           contentContainerStyle={styles.chipListContent}
         >
           {recentEntries.map((entry, index) => {
-            const verseRef = `${entry.surahId}:${entry.verseNumber}`;
+            const verseRef = `${formatNumber(Number(entry.surahId))}:${formatNumber(entry.verseNumber)}`;
+            const surahName = t(`surah_names.${entry.surahId}`, {
+              fallback: entry.chapter.name_simple,
+            });
             const isLast = index === recentEntries.length - 1;
             const progressPercent =
               entry.chapter.verses_count > 0
@@ -97,7 +102,7 @@ export function HomeRecentCard(): React.JSX.Element {
                 key={entry.surahId}
                 onPress={() => handlePress(entry)}
                 accessibilityRole="button"
-                accessibilityLabel={`Open recent verse in ${entry.chapter.name_simple}`}
+                accessibilityLabel={`Open recent verse in ${surahName}`}
                 className="flex-row items-center rounded-full bg-interactive py-1.5 pl-1.5 pr-4 dark:bg-surface-navigation-dark"
                 style={({ pressed }) => [
                   {
@@ -127,7 +132,7 @@ export function HomeRecentCard(): React.JSX.Element {
                     className="ml-2.5 flex-1 text-[15px] font-bold"
                     style={{ color: textColor }}
                   >
-                    {entry.chapter.name_simple}{' '}
+                    {surahName}{' '}
                     <Text className="text-[13px] font-semibold" style={{ color: mutedTextColor }}>
                       {verseRef}
                     </Text>

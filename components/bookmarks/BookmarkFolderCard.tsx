@@ -4,6 +4,7 @@ import { Pressable, Text, View } from 'react-native';
 
 import Colors from '@/constants/Colors';
 import { useAppTheme } from '@/providers/ThemeContext';
+import { useUiTranslation } from '@/providers/UiLanguageContext';
 
 import { resolveFolderAccentColor } from '@/components/bookmarks/folderColor';
 
@@ -29,6 +30,7 @@ export function BookmarkFolderCard({
   onOpenOptions: () => void;
 }): React.JSX.Element {
   const { resolvedTheme } = useAppTheme();
+  const { t } = useUiTranslation();
   const palette = Colors[resolvedTheme];
 
   const bookmarks = folder.bookmarks ?? [];
@@ -102,7 +104,9 @@ export function BookmarkFolderCard({
                 {folder.name}
               </Text>
               <Text className="mt-1 text-sm font-medium text-muted dark:text-muted-dark">
-                {bookmarkCount} {bookmarkCount === 1 ? 'verse' : 'verses'}
+                {bookmarkCount === 1
+                  ? t('bookmarks_bookmark_count_single', { count: bookmarkCount })
+                  : t('bookmarks_bookmark_count_plural', { count: bookmarkCount })}
               </Text>
             </View>
 

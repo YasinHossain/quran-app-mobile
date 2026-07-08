@@ -7,6 +7,7 @@ import Colors from '@/constants/Colors';
 import { preloadOfflineSurahNavigationPage } from '@/lib/surah/offlineSurahPageCache';
 import { useSettings } from '@/providers/SettingsContext';
 import { useAppTheme } from '@/providers/ThemeContext';
+import { useUiTranslation } from '@/providers/UiLanguageContext';
 
 import { CircularProgress } from './CircularProgress';
 
@@ -26,6 +27,7 @@ export function LastReadCard({
   const router = useRouter();
   const { resolvedTheme, isDark } = useAppTheme();
   const { settings } = useSettings();
+  const { t } = useUiTranslation();
   const palette = Colors[resolvedTheme];
   const dangerColor = isDark ? '#F87171' : '#DC2626';
 
@@ -35,10 +37,14 @@ export function LastReadCard({
 
   const parsedSurahId = Number.parseInt(surahId, 10);
   const displaySurahId = Number.isFinite(parsedSurahId) ? parsedSurahId : Number(surahId);
-  const surahName = chapter?.name_simple ?? `Surah ${surahId}`;
+  const surahName = t(`surah_names.${surahId}`, {
+    fallback: chapter?.name_simple ?? `${t('surah_tab')} ${surahId}`,
+  });
 
   const verseLine =
-    total > 0 ? `Verse ${verseNumber} of ${total}` : `Verse ${verseNumber}`;
+    total > 0
+      ? t('last_read_verse_of_total', { current: verseNumber, total })
+      : `${t('verse')} ${verseNumber}`;
 
   const handleNavigate = React.useCallback(async () => {
     if (!Number.isFinite(displaySurahId) || displaySurahId <= 0) return;
@@ -60,7 +66,7 @@ export function LastReadCard({
     <Pressable
       onPress={handleNavigate}
       accessibilityRole="button"
-      accessibilityLabel={`Continue reading ${surahName} at verse ${verseNumber}`}
+      accessibilityLabel={`${t('planner_continue_reading')} ${surahName} ${verseNumber}`}
       className="relative min-w-0 rounded-lg border border-border/50 bg-surface px-4 py-4 dark:border-border-dark/40 dark:bg-surface-dark"
       style={({ pressed }) => ({
         minHeight: 168,
@@ -71,7 +77,7 @@ export function LastReadCard({
       <Pressable
         onPress={onRemove}
         accessibilityRole="button"
-        accessibilityLabel="Remove from recent"
+        accessibilityLabel={t('last_read_remove_aria')}
         hitSlop={10}
         className="absolute top-2 right-2 h-8 w-8 items-center justify-center rounded-full"
         style={({ pressed }) => ({
@@ -88,7 +94,7 @@ export function LastReadCard({
       </Pressable>
 
       <View className="flex-1 items-center justify-center w-full">
-        <CircularProgress percentage={percent} size={100} strokeWidth={10} label="Completed" />
+        <CircularProgress percentage={percent} size={100} strokeWidth={10} label={t('completed')} />
       </View>
 
       <View className="mt-4 w-full items-center">

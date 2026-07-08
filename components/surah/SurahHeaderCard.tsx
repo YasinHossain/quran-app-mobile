@@ -6,6 +6,7 @@ import {
   getSurahHeaderPresentation,
   type SurahHeaderData,
 } from './surahHeaderPresentation';
+import { useUiTranslation } from '@/providers/UiLanguageContext';
 
 export type SurahHeaderChapter = SurahHeaderData & {
   name_arabic: string;
@@ -13,7 +14,8 @@ export type SurahHeaderChapter = SurahHeaderData & {
 };
 
 export function SurahHeaderCard({ chapter }: { chapter: SurahHeaderChapter }): React.JSX.Element {
-  const { infoLabel, showBismillah, surahName } = getSurahHeaderPresentation(chapter);
+  const { t } = useUiTranslation();
+  const { infoLabel, showBismillah, surahName } = getSurahHeaderPresentation(chapter, t);
 
   return (
     <View className="mb-4 -mt-1 px-1">

@@ -24,6 +24,7 @@ type SettingsSetters = Pick<
   | 'setMushafId'
   | 'setMushafScaleStep'
   | 'setContentLanguage'
+  | 'setUiLanguage'
   | 'setReadingMode'
 >;
 
@@ -50,6 +51,8 @@ const createSetters = (
     dispatch({ type: 'SET_MUSHAF_SCALE_STEP', value: step }),
   setContentLanguage: (language: string): void =>
     dispatch({ type: 'SET_CONTENT_LANGUAGE', value: language }),
+  setUiLanguage: (language: string): void =>
+    dispatch({ type: 'SET_UI_LANGUAGE', value: language }),
   setReadingMode: (mode: 'translations' | 'mushaf'): void =>
     dispatch({ type: 'SET_READING_MODE', value: mode }),
 });
@@ -72,6 +75,7 @@ interface SettingsContextType {
   setMushafId: (mushafId: MushafPackId) => void;
   setMushafScaleStep: (step: MushafScaleStep) => void;
   setContentLanguage: (language: string) => void;
+  setUiLanguage: (language: string) => void;
   setReadingMode: (mode: 'translations' | 'mushaf') => void;
 }
 

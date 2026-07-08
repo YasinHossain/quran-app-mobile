@@ -17,6 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { dialogTransform, useModalTransition } from '@/components/motion/modalTransition';
 import Colors from '@/constants/Colors';
 import { useAppTheme } from '@/providers/ThemeContext';
+import { useUiTranslation } from '@/providers/UiLanguageContext';
 
 import type { Folder } from '@/types';
 
@@ -34,6 +35,7 @@ export function DeleteFolderModal({
   const { height: windowHeight } = useWindowDimensions();
   const shouldRender = isOpen && Boolean(folder);
   const { resolvedTheme, isDark } = useAppTheme();
+  const { t } = useUiTranslation();
   const palette = Colors[resolvedTheme];
 
   const [isDeleting, setIsDeleting] = React.useState(false);
@@ -99,10 +101,10 @@ export function DeleteFolderModal({
                     </View>
                     <View>
                       <Text className="text-xl font-bold text-foreground dark:text-foreground-dark">
-                        Delete Folder
+                        {t('delete_folder')}
                       </Text>
                       <Text className="text-sm text-muted dark:text-muted-dark">
-                        This action cannot be undone
+                        {t('delete_folder_subtitle')}
                       </Text>
                     </View>
                   </View>
@@ -111,7 +113,7 @@ export function DeleteFolderModal({
                     onPress={onClose}
                     hitSlop={10}
                     accessibilityRole="button"
-                    accessibilityLabel="Close"
+                    accessibilityLabel={t('close')}
                     style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
                     className="p-2 rounded-full"
                   >
@@ -146,7 +148,7 @@ export function DeleteFolderModal({
 
                     <View className="gap-4">
                       <Text className="text-foreground dark:text-foreground-dark">
-                        Are you sure you want to permanently delete this folder?
+                        {t('delete_folder_confirm')}
                       </Text>
 
                       {folder && folder.bookmarks.length > 0 ? (
@@ -174,12 +176,12 @@ export function DeleteFolderModal({
                     <Pressable
                       onPress={onClose}
                       accessibilityRole="button"
-                      accessibilityLabel="Cancel"
+                      accessibilityLabel={t('cancel')}
                       className="px-4 py-2 rounded-lg bg-interactive dark:bg-interactive-dark"
                       style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
                     >
                       <Text className="text-sm font-semibold text-foreground dark:text-foreground-dark">
-                        Cancel
+                        {t('cancel')}
                       </Text>
                     </Pressable>
 
@@ -187,7 +189,7 @@ export function DeleteFolderModal({
                       onPress={handleDelete}
                       disabled={isDeleting}
                       accessibilityRole="button"
-                      accessibilityLabel="Delete Forever"
+                      accessibilityLabel={t('delete_forever')}
                       className={[
                         'px-4 py-2 rounded-lg bg-error dark:bg-error-dark',
                         isDeleting ? 'opacity-40' : '',
@@ -195,7 +197,7 @@ export function DeleteFolderModal({
                       style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
                     >
                       <Text className="text-sm font-semibold text-on-accent">
-                        {isDeleting ? 'Deleting...' : 'Delete Forever'}
+                        {isDeleting ? t('loading') : t('delete_forever')}
                       </Text>
                     </Pressable>
                   </View>

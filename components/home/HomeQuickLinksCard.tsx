@@ -23,6 +23,7 @@ import { getItem, parseJson, setItem } from '@/lib/storage/appStorage';
 import { preloadOfflineSurahNavigationPage } from '@/lib/surah/offlineSurahPageCache';
 import { useSettings } from '@/providers/SettingsContext';
 import { useAppTheme } from '@/providers/ThemeContext';
+import { useUiTranslation } from '@/providers/UiLanguageContext';
 
 import type { Chapter } from '@/types';
 
@@ -77,15 +78,20 @@ function getChapter(chapters: Chapter[], surahId: number): Chapter | undefined {
   return chapters.find((chapter) => chapter.id === surahId);
 }
 
-function getVerseLabel(link: HomeQuickLink, chapter: Chapter | undefined): string {
-  if (!chapter) return `${link.surahId}:${link.verseNumber}`;
-  return `${link.surahId}:${Math.min(link.verseNumber, chapter.verses_count)}`;
+function getVerseLabel(
+  link: HomeQuickLink,
+  chapter: Chapter | undefined,
+  formatNumber: (value: number) => string
+): string {
+  if (!chapter) return `${formatNumber(link.surahId)}:${formatNumber(link.verseNumber)}`;
+  return `${formatNumber(link.surahId)}:${formatNumber(Math.min(link.verseNumber, chapter.verses_count))}`;
 }
 
 export function HomeQuickLinksCard(): React.JSX.Element {
   const router = useRouter();
   const { settings } = useSettings();
   const { isDark, resolvedTheme } = useAppTheme();
+  const { t, formatNumber } = useUiTranslation();
   const palette = Colors[resolvedTheme];
   const { chapters, isLoading } = useChapters();
 
@@ -176,10 +182,10 @@ export function HomeQuickLinksCard(): React.JSX.Element {
     <View>
       <View className="mb-3 flex-row items-center justify-between px-3">
         <Text className="text-lg font-semibold text-content-primary dark:text-content-primary-dark">
-          Quick Links
+          {t('search_recent_searches')}
         </Text>
         <Text className="text-xs font-semibold text-muted dark:text-muted-dark">
-          {quickLinks.length}/{MAX_QUICK_LINKS}
+          {formatNumber(quickLinks.length)}/{formatNumber(MAX_QUICK_LINKS)}
         </Text>
       </View>
 
@@ -192,8 +198,10 @@ export function HomeQuickLinksCard(): React.JSX.Element {
           <>
             {quickLinks.map((link) => {
               const chapter = getChapter(chapters, link.surahId);
-              const surahName = chapter?.name_simple ?? `Surah ${link.surahId}`;
-              const verseLabel = getVerseLabel(link, chapter);
+              const surahName = t(`surah_names.${link.surahId}`, {
+                fallback: chapter?.name_simple ?? `${t('surah_tab')} ${link.surahId}`,
+              });
+              const verseLabel = getVerseLabel(link, chapter, formatNumber);
 
               return (
                 <Pressable
@@ -278,7 +286,7 @@ export function HomeQuickLinksCard(): React.JSX.Element {
                       className="ml-2.5 text-[15px] font-bold"
                       style={{ color: textColor }}
                     >
-                      Add quick link
+                      {t('go_to_verse')}
                     </Text>
                   ) : null}
               </Pressable>
@@ -291,7 +299,7 @@ export function HomeQuickLinksCard(): React.JSX.Element {
           >
             <ActivityIndicator size="small" color={palette.muted} />
             <Text className="ml-3 text-sm font-semibold" style={{ color: mutedColor }}>
-              Loading quick links...
+              {t('loading')}
             </Text>
           </View>
         )}
@@ -325,6 +333,7 @@ function AddQuickLinkModal({
   onAdd: (surahId: number, verseNumber: number) => void;
 }): React.JSX.Element {
   const { isDark, resolvedTheme } = useAppTheme();
+  const { t } = useUiTranslation();
   const palette = Colors[resolvedTheme];
   const { height: windowHeight } = useWindowDimensions();
   const [selectedSurah, setSelectedSurah] = React.useState<number | undefined>(undefined);
@@ -378,17 +387,17 @@ function AddQuickLinkModal({
                 <View className="flex-row items-center justify-between">
                   <View className="min-w-0 flex-1">
                     <Text className="text-xl font-bold text-foreground dark:text-foreground-dark">
-                      Add quick link
+                      {t('go_to_verse')}
                     </Text>
                     <Text className="mt-1 text-sm text-muted dark:text-muted-dark">
-                      Choose a surah and verse
+                      {t('search_tip_go_to_verse')}
                     </Text>
                   </View>
                   <Pressable
                     onPress={onClose}
                     hitSlop={10}
                     accessibilityRole="button"
-                    accessibilityLabel="Close"
+                  accessibilityLabel={t('close')}
                     className="h-9 w-9 items-center justify-center rounded-full bg-interactive dark:bg-interactive-dark"
                     style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}
                   >
@@ -413,12 +422,12 @@ function AddQuickLinkModal({
                 <Pressable
                   onPress={onClose}
                   accessibilityRole="button"
-                  accessibilityLabel="Cancel"
+                  accessibilityLabel={t('cancel')}
                   className="rounded-lg bg-interactive px-4 py-2 dark:bg-interactive-dark"
                   style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
                 >
                   <Text className="text-sm font-semibold text-foreground dark:text-foreground-dark">
-                    Cancel
+                    {t('cancel')}
                   </Text>
                 </Pressable>
                 <Pressable
@@ -428,11 +437,11 @@ function AddQuickLinkModal({
                   }}
                   disabled={!canSubmit}
                   accessibilityRole="button"
-                  accessibilityLabel="Add quick link"
+                  accessibilityLabel={t('go_to_verse')}
                   className="rounded-lg bg-accent px-5 py-2"
                   style={({ pressed }) => ({ opacity: !canSubmit ? 0.5 : pressed ? 0.9 : 1 })}
                 >
-                  <Text className="text-sm font-semibold text-on-accent">Add</Text>
+                  <Text className="text-sm font-semibold text-on-accent">{t('go')}</Text>
                 </Pressable>
               </View>
             </SafeAreaView>

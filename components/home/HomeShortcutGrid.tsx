@@ -5,12 +5,13 @@ import { useRouter } from 'expo-router';
 
 import Colors from '@/constants/Colors';
 import { useAppTheme } from '@/providers/ThemeContext';
+import { useUiTranslation } from '@/providers/UiLanguageContext';
 
 const SHORTCUTS = [
-  { label: 'Recent', icon: Clock3, route: { pathname: '/bookmarks', params: { section: 'last-read' } } },
-  { label: 'Bookmarks', icon: Bookmark, route: { pathname: '/bookmarks', params: { section: 'bookmarks' } } },
-  { label: 'Pinned', icon: Pin, route: { pathname: '/bookmarks', params: { section: 'pinned' } } },
-  { label: 'Planner', icon: Calendar, route: { pathname: '/planner' } },
+  { labelKey: 'home_quicklink_recent', icon: Clock3, route: { pathname: '/bookmarks', params: { section: 'last-read' } } },
+  { labelKey: 'home_quicklink_bookmarks', icon: Bookmark, route: { pathname: '/bookmarks', params: { section: 'bookmarks' } } },
+  { labelKey: 'home_quicklink_pinned', icon: Pin, route: { pathname: '/bookmarks', params: { section: 'pinned' } } },
+  { labelKey: 'home_quicklink_planner', icon: Calendar, route: { pathname: '/planner' } },
 ] as const;
 
 const tileShadow =
@@ -25,6 +26,7 @@ const tileShadow =
 
 export function HomeShortcutGrid(): React.JSX.Element {
   const router = useRouter();
+  const { t } = useUiTranslation();
   const { isDark, resolvedTheme } = useAppTheme();
   const { width } = useWindowDimensions();
   const numColumns = 4;
@@ -42,7 +44,8 @@ export function HomeShortcutGrid(): React.JSX.Element {
       className="flex-row justify-evenly w-full"
       style={{ marginLeft: -12, width: screenWidth }} // Negate the parent's px-3 padding so justify-evenly divides the full screen
     >
-      {SHORTCUTS.map(({ label, icon: Icon, route }, index) => {
+      {SHORTCUTS.map(({ labelKey, icon: Icon, route }, index) => {
+        const label = t(labelKey);
         const isLastInRow = (index + 1) % numColumns === 0;
         const handlePress = (): void => {
           if ('params' in route) {
@@ -54,7 +57,7 @@ export function HomeShortcutGrid(): React.JSX.Element {
 
         return (
           <View
-            key={label}
+            key={labelKey}
             className="mb-3 items-center"
             style={{ width: itemWidth }}
           >

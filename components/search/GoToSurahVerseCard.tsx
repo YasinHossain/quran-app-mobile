@@ -9,6 +9,7 @@ import {
 import Colors from '@/constants/Colors';
 import { useChapters } from '@/hooks/useChapters';
 import { useAppTheme } from '@/providers/ThemeContext';
+import { useUiTranslation } from '@/providers/UiLanguageContext';
 
 import { getGoToCardSelectorVisualOffset } from './selectorDropdownLayout';
 import { SurahVerseSelectorRow } from './SurahVerseSelectorRow';
@@ -61,6 +62,7 @@ export function GoToSurahVerseCard({
   dropdownVisualOffset?: number;
 }): React.JSX.Element {
   const { isDark, resolvedTheme } = useAppTheme();
+  const { t, formatNumber } = useUiTranslation();
   const palette = Colors[resolvedTheme];
   const { chapters, isLoading, errorMessage, refresh } = useChapters();
 
@@ -93,7 +95,7 @@ export function GoToSurahVerseCard({
 
   const subtitleText =
     subtitle ??
-    (isLoading && chapters.length === 0 ? 'Loading surahs…' : undefined);
+    (isLoading && chapters.length === 0 ? t('loading_surah') : undefined);
   const suggestionRows = React.useMemo(() => toSuggestionRows(SEARCH_SUGGESTIONS), []);
 
   const formPaddingClass = variant === 'card' ? 'px-5 pt-5 pb-4' : 'px-6 pt-5 pb-4';
@@ -112,7 +114,7 @@ export function GoToSurahVerseCard({
           <View className="flex-row items-center justify-between gap-3">
             <View className="min-w-0 flex-1">
               <Text className="text-lg font-semibold text-foreground dark:text-foreground-dark">
-                {title}
+                {title === 'Go To' ? t('go_to') : title}
               </Text>
               {subtitleText ? (
                 <Text className="mt-1 text-sm text-muted dark:text-muted-dark">{subtitleText}</Text>
@@ -123,13 +125,13 @@ export function GoToSurahVerseCard({
               onPress={submit}
               disabled={!selectedSurah}
               accessibilityRole="button"
-              accessibilityLabel={buttonLabel}
+              accessibilityLabel={buttonLabel === 'Go' ? t('go') : buttonLabel}
               className="rounded-lg bg-accent px-6 py-2"
               style={({ pressed }) => ({
                 opacity: !selectedSurah ? 0.5 : pressed ? 0.9 : 1,
               })}
             >
-              <Text className="text-sm font-semibold text-on-accent">{buttonLabel}</Text>
+              <Text className="text-sm font-semibold text-on-accent">{buttonLabel === 'Go' ? t('go') : buttonLabel}</Text>
             </Pressable>
           </View>
 
@@ -158,7 +160,7 @@ export function GoToSurahVerseCard({
                 style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
               >
                 <Text className="text-xs font-semibold text-foreground dark:text-foreground-dark">
-                  Retry
+                  {t('search_error_title')}
                 </Text>
               </Pressable>
             </View>
@@ -168,7 +170,7 @@ export function GoToSurahVerseCard({
           {onSearchSuggestion ? (
             <View className="mt-3 border-t border-border/50 dark:border-border-dark/40 pt-3">
               <Text className="mb-2 text-xs font-medium text-muted dark:text-muted-dark">
-                Or try searching
+                {t('or_try_searching')}
               </Text>
               <View className="gap-1.5">
                 {suggestionRows.map((row, rowIndex) => (
@@ -176,16 +178,16 @@ export function GoToSurahVerseCard({
                     {row.map((suggestion) => {
                       const label =
                         suggestion.icon === 'juz'
-                          ? `Juz ${suggestion.number}`
+                          ? t('juz_number', { number: suggestion.number })
                           : suggestion.icon === 'page'
-                            ? `Page ${suggestion.number}`
+                            ? t('page_number_label', { number: suggestion.number })
                             : suggestion.icon === 'surah'
                               ? (() => {
                                 const chapter = chapters.find((item) => item.id === suggestion.surahId);
-                                if (chapter) return chapter.name_simple;
+                                if (chapter) return t(`surah_names.${chapter.id}`, { fallback: chapter.name_simple });
                                 return suggestion.query.replace(/^Surah\s+/i, '');
                               })()
-                              : suggestion.verseKey;
+                              : suggestion.verseKey.replace(/\d+/g, (value) => formatNumber(Number(value)));
 
                       return (
                         <Pressable

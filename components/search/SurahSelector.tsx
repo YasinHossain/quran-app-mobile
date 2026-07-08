@@ -18,6 +18,7 @@ import {
 
 import Colors from '@/constants/Colors';
 import { useAppTheme } from '@/providers/ThemeContext';
+import { useUiTranslation } from '@/providers/UiLanguageContext';
 
 import { getSelectorAndroidVisualOffset } from './selectorDropdownLayout';
 
@@ -52,6 +53,7 @@ export const SurahSelector = React.forwardRef<SurahSelectorHandle, Props>(functi
     returnKeyType = 'done',
 }: Props, ref): React.JSX.Element {
     const { resolvedTheme, isDark } = useAppTheme();
+    const { t, formatNumber } = useUiTranslation();
     const palette = Colors[resolvedTheme];
     const { height: windowHeight } = useWindowDimensions();
 
@@ -105,8 +107,8 @@ export const SurahSelector = React.forwardRef<SurahSelectorHandle, Props>(functi
     const selectedLabel = React.useMemo(() => {
         if (!selectedValue) return '';
         const option = options.find((o) => o.value === selectedValue);
-        return option?.label ?? `Surah ${selectedValue}`;
-    }, [options, selectedValue]);
+        return option?.label ?? `${t('surah_tab')} ${formatNumber(selectedValue)}`;
+    }, [formatNumber, options, selectedValue, t]);
 
     // Filtered options
     const filteredOptions = React.useMemo(() => {
@@ -308,7 +310,7 @@ export const SurahSelector = React.forwardRef<SurahSelectorHandle, Props>(functi
                                     value={searchText}
                                     onChangeText={setSearchText}
                                     onSubmitEditing={handleSubmitSelection}
-                                    placeholder="Type to search..."
+                                    placeholder={t('search')}
                                     placeholderTextColor={palette.muted}
                                     autoCorrect={false}
                                     autoCapitalize="none"
@@ -354,7 +356,7 @@ export const SurahSelector = React.forwardRef<SurahSelectorHandle, Props>(functi
                                     ListEmptyComponent={
                                         <View style={{ paddingHorizontal: 16, paddingVertical: 24 }}>
                                             <Text style={{ color: palette.muted, fontSize: 14, textAlign: 'center' }}>
-                                                No results found
+                                                {t('search_no_results_title')}
                                             </Text>
                                         </View>
                                     }

@@ -3,6 +3,7 @@ import React from 'react';
 import { Platform, Pressable, Text, View } from 'react-native';
 
 import { useAppTheme } from '@/providers/ThemeContext';
+import { useUiTranslation } from '@/providers/UiLanguageContext';
 
 const cardShadow =
   Platform.OS === 'android'
@@ -16,6 +17,7 @@ const cardShadow =
 
 function PageCardComponent({ pageNumber }: { pageNumber: number }): React.JSX.Element {
   const { isDark } = useAppTheme();
+  const { t, formatNumber } = useUiTranslation();
   const bgColor = isDark ? '#182333' : '#FFFFFF';
 
   return (
@@ -44,7 +46,7 @@ function PageCardComponent({ pageNumber }: { pageNumber: number }): React.JSX.El
         <View className="flex-row items-center gap-3">
           <View className="h-12 w-12 items-center justify-center rounded-xl bg-number-badge dark:bg-number-badge-dark">
             <Text className="text-base font-bold text-accent dark:text-accent-dark">
-              {pageNumber}
+              {formatNumber(pageNumber)}
             </Text>
           </View>
 
@@ -53,7 +55,7 @@ function PageCardComponent({ pageNumber }: { pageNumber: number }): React.JSX.El
               numberOfLines={1}
               className="text-base font-semibold text-content-primary dark:text-content-primary-dark"
             >
-              {`Page ${pageNumber}`}
+              {t('page_number_label', { number: pageNumber })}
             </Text>
           </View>
         </View>

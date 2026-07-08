@@ -19,8 +19,11 @@ export interface Settings {
   mushafScaleStep: MushafScaleStep;
   readingMode?: 'translations' | 'mushaf';
   /**
-   * The UI language code that was last used to apply language-specific defaults
-   * for translations, tafsir and word-by-word settings.
+   * Language used when querying Quran content resources, such as translation lists.
    */
   contentLanguage?: string;
+  /**
+   * Language used for app chrome/settings labels.
+   */
+  uiLanguage?: string;
 }

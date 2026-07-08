@@ -1,16 +1,21 @@
 import React from 'react';
 import { Text, View } from 'react-native';
 
+import { useUiTranslation } from '@/providers/UiLanguageContext';
+
 import type { Chapter } from '@/types';
 
 import { SurahSelector } from './SurahSelector';
 import { VerseSelector, type VerseSelectorHandle } from './VerseSelector';
 
-function buildVerseOptions(versesCount: number | undefined): { value: number; label: string }[] {
+function buildVerseOptions(
+  versesCount: number | undefined,
+  formatNumber: (value: number) => string
+): { value: number; label: string }[] {
   if (!versesCount || versesCount <= 0) return [];
   return Array.from({ length: versesCount }, (_, index) => {
     const verseNumber = index + 1;
-    return { value: verseNumber, label: String(verseNumber) };
+    return { value: verseNumber, label: formatNumber(verseNumber) };
   });
 }
 
@@ -37,13 +42,14 @@ export function SurahVerseSelectorRow({
   hideVerse?: boolean;
   dropdownVisualOffset?: number;
 }): React.JSX.Element {
+  const { t, formatNumber } = useUiTranslation();
   const surahOptions = React.useMemo(() => {
     return chapters.map((chapter) => ({
       value: chapter.id,
-      label: `${chapter.id} • ${chapter.name_simple}`,
-      searchLabel: `${chapter.id} ${chapter.name_simple}`.toLowerCase(),
+      label: `${formatNumber(chapter.id)} • ${t(`surah_names.${chapter.id}`, { fallback: chapter.name_simple })}`,
+      searchLabel: `${chapter.id} ${chapter.name_simple} ${t(`surah_names.${chapter.id}`, { fallback: chapter.name_simple })}`.toLowerCase(),
     }));
-  }, [chapters]);
+  }, [chapters, formatNumber, t]);
 
   const activeChapter = React.useMemo(
     () => (selectedSurah && !hideVerse ? chapters.find((c) => c.id === selectedSurah) : undefined),
@@ -51,13 +57,13 @@ export function SurahVerseSelectorRow({
   );
 
   const verseOptions = React.useMemo(
-    () => buildVerseOptions(activeChapter?.verses_count),
-    [activeChapter?.verses_count]
+    () => buildVerseOptions(activeChapter?.verses_count, formatNumber),
+    [activeChapter?.verses_count, formatNumber]
   );
 
-  const surahPlaceholder = isLoading && chapters.length === 0 ? 'Loading surahs…' : 'Select Surah';
-  const versePlaceholder = isLoading ? 'Loading…' : 'Select Verse';
-  const disabledVersePlaceholder = isLoading ? 'Loading…' : 'Select Surah first';
+  const surahPlaceholder = isLoading && chapters.length === 0 ? t('loading_surah') : t('select_surah');
+  const versePlaceholder = isLoading ? t('loading') : t('select_verse');
+  const disabledVersePlaceholder = isLoading ? t('loading') : t('select_surah');
   const verseSelectorRef = React.useRef<VerseSelectorHandle>(null);
   const shouldAdvanceToVerseRef = React.useRef(false);
   const openVerseTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);

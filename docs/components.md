@@ -65,6 +65,14 @@ This document lists reusable UI components currently available in the codebase s
 | `useMushafPageData` | Local-only mushaf page data hook that resolves the active installed pack version and returns page lookup, verse/word payload, and grouped page lines for the page route. | `hooks/useMushafPageData.ts` |
 | `useMushafPackManager` | Local mushaf pack manager hook used by reader settings; loads install state from the mushaf registry, merges download-index progress/errors, and exposes install/delete actions for downloadable mushaf packs like QCF V1/V2, QPC Hafs, IndoPak, and Tajweed. | `hooks/useMushafPackManager.ts` |
 
+## Localization Providers
+
+| Provider / Utility | Description | File Path |
+| --- | --- | --- |
+| `UiLanguageProvider` | Lightweight mobile UI translation provider backed by the website locale JSON copied into `locales/{en,bn,hi,ar,ur}`; reads persisted `settings.uiLanguage` and exposes `useUiTranslation()` for web-matching labels without changing Quran translation defaults. | `providers/UiLanguageContext.tsx` |
+| `UI_LANGUAGES` | Shared UI language list and native labels mirrored from the web app (`English`, `বাংলা`, `العربية`, `اردو`, `हिन्दी`). | `lib/i18n/uiLanguages.ts` |
+| `localizeNumbers` / `plannerText` | Digit localization and planner helper-text normalization used so Bangla/Hindi/Arabic/Urdu render localized numbers in cards, selectors, progress rings, and generated planner labels. | `lib/i18n/` |
+
 ## Mushaf Reader Components
 
 | Component | Description | File Path |

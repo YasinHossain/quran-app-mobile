@@ -2,7 +2,11 @@ import { Clock } from 'lucide-react-native';
 import React from 'react';
 import { Text, View } from 'react-native';
 
+import { useUiTranslation } from '@/providers/UiLanguageContext';
+
 export function LastReadHeader(): React.JSX.Element {
+  const { t } = useUiTranslation();
+
   return (
     <View className="mb-2">
       <View className="flex-row items-center gap-3">
@@ -11,9 +15,9 @@ export function LastReadHeader(): React.JSX.Element {
         </View>
         <View className="min-w-0">
           <Text className="text-lg font-bold text-foreground dark:text-foreground-dark">
-            Recent
+            {t('binder_tab_recent')}
           </Text>
-          <Text className="text-xs text-muted dark:text-muted-dark">Last visited</Text>
+          <Text className="text-xs text-muted dark:text-muted-dark">{t('binder_tab_recent_desc')}</Text>
         </View>
       </View>
     </View>

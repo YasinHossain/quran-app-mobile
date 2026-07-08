@@ -21,6 +21,7 @@ import Colors from '@/constants/Colors';
 import { useChapters } from '@/hooks/useChapters';
 import { useBookmarks } from '@/providers/BookmarkContext';
 import { useAppTheme } from '@/providers/ThemeContext';
+import { useUiTranslation } from '@/providers/UiLanguageContext';
 
 import { SurahVerseSelectorRow } from '@/components/search/SurahVerseSelectorRow';
 import {
@@ -51,6 +52,7 @@ export function CreatePlannerModal({
   onClose: () => void;
 }): React.JSX.Element {
   const { resolvedTheme, isDark } = useAppTheme();
+  const { t } = useUiTranslation();
   const palette = Colors[resolvedTheme];
   const { height: windowHeight } = useWindowDimensions();
 
@@ -265,10 +267,10 @@ export function CreatePlannerModal({
                         </View>
                         <View>
                           <Text className="text-xl font-bold text-foreground dark:text-foreground-dark">
-                            Planner
+                            {t('binder_tab_planner')}
                           </Text>
                           <Text className="text-sm text-muted dark:text-muted-dark mt-1">
-                            Create a new plan
+                            {t('planner_create_new_plan')}
                           </Text>
                         </View>
                       </View>
@@ -277,7 +279,7 @@ export function CreatePlannerModal({
                         onPress={handleClose}
                         hitSlop={10}
                         accessibilityRole="button"
-                        accessibilityLabel="Close"
+                        accessibilityLabel={t('close')}
                         style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
                         className="p-2 rounded-full"
                       >
@@ -295,7 +297,7 @@ export function CreatePlannerModal({
                       <View>
                         <View className="flex-row items-center justify-between mb-2">
                           <Text className="text-sm font-semibold text-foreground dark:text-foreground-dark">
-                            Set Plan Name
+                            {t('planner_set_plan_name')}
                           </Text>
                           <Text className="text-sm text-muted dark:text-muted-dark">
                             {currentLength}/{maxName}
@@ -306,7 +308,7 @@ export function CreatePlannerModal({
                             ref={inputRef}
                             value={formData.planName}
                             onChangeText={(planName) => updateFormData({ planName })}
-                            placeholder="Enter Plan Name"
+                            placeholder={t('planner_enter_plan_name')}
                             placeholderTextColor={palette.muted}
                             maxLength={maxName}
                             returnKeyType="done"
@@ -315,8 +317,7 @@ export function CreatePlannerModal({
                         </View>
                         {duplicatePlanName ? (
                           <Text className="mt-2 text-sm text-error dark:text-error-dark">
-                            A planner named "{duplicatePlanName}" already exists. Choose a different
-                            name.
+                            {t('planner_duplicate_name_error', { name: duplicatePlanName })}
                           </Text>
                         ) : null}
                       </View>
@@ -325,8 +326,8 @@ export function CreatePlannerModal({
                         <SurahVerseSelectorRow
                           chapters={chapters}
                           isLoading={isChaptersLoading}
-                          surahLabel="Start Surah"
-                          verseLabel="Verse"
+                          surahLabel={t('start')}
+                          verseLabel={t('verse')}
                           selectedSurah={formData.startSurah}
                           selectedVerse={formData.startVerse}
                           onSelectSurah={handleSelectStartSurah}
@@ -337,8 +338,8 @@ export function CreatePlannerModal({
                         <SurahVerseSelectorRow
                           chapters={chapters}
                           isLoading={isChaptersLoading}
-                          surahLabel="End Surah"
-                          verseLabel="Verse"
+                          surahLabel={t('end')}
+                          verseLabel={t('verse')}
                           selectedSurah={formData.endSurah}
                           selectedVerse={formData.endVerse}
                           onSelectSurah={handleSelectEndSurah}
@@ -349,7 +350,7 @@ export function CreatePlannerModal({
 
                       <View>
                         <Text className="text-sm font-semibold text-foreground dark:text-foreground-dark mb-2">
-                          Estimated Days
+                          {t('planner_estimated_days')}
                         </Text>
                         <View className="flex-row items-center justify-between rounded-xl border border-border dark:border-border-dark bg-surface dark:bg-surface-dark px-3 py-2">
                           <Pressable
@@ -380,7 +381,7 @@ export function CreatePlannerModal({
                         <View className="rounded-xl border border-accent/20 bg-accent/5 px-4 py-4">
                           <View className="flex-row items-center justify-between">
                             <Text className="text-sm text-muted dark:text-muted-dark">
-                              Total Verses:
+                              {t('planner_total_verses')}:
                             </Text>
                             <Text className="text-sm font-semibold text-foreground dark:text-foreground-dark">
                               {stats.totalVerses}
@@ -388,7 +389,7 @@ export function CreatePlannerModal({
                           </View>
                           <View className="mt-2 flex-row items-center justify-between">
                             <Text className="text-sm text-muted dark:text-muted-dark">
-                              Verses per Day:
+                              {t('planner_verses_per_day')}:
                             </Text>
                             <Text className="text-sm font-semibold text-accent dark:text-accent-dark">
                               {stats.versesPerDay}
@@ -405,10 +406,10 @@ export function CreatePlannerModal({
                             ) : null}
                             <Text className="text-sm text-muted dark:text-muted-dark">
                               {isChaptersLoading
-                                ? 'Loading surahs…'
+                                ? t('loading_surah')
                                 : errorMessage
                                   ? errorMessage
-                                  : 'Surah list is required to create a plan.'}
+                                  : t('no_verses_found')}
                             </Text>
                           </View>
                           {errorMessage ? (
@@ -420,7 +421,7 @@ export function CreatePlannerModal({
                               style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
                             >
                               <Text className="text-sm font-semibold text-foreground dark:text-foreground-dark">
-                                Retry
+                                {t('search_error_title')}
                               </Text>
                             </Pressable>
                           ) : null}
@@ -434,12 +435,12 @@ export function CreatePlannerModal({
                       <Pressable
                         onPress={handleClose}
                         accessibilityRole="button"
-                        accessibilityLabel="Cancel"
+                        accessibilityLabel={t('cancel')}
                         className="px-4 py-2 rounded-lg bg-interactive dark:bg-interactive-dark"
                         style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
                       >
                         <Text className="text-sm font-semibold text-foreground dark:text-foreground-dark">
-                          Cancel
+                          {t('cancel')}
                         </Text>
                       </Pressable>
 
@@ -447,7 +448,7 @@ export function CreatePlannerModal({
                         onPress={handleSubmit}
                         disabled={!canSubmit}
                         accessibilityRole="button"
-                        accessibilityLabel="Create Plan"
+                        accessibilityLabel={t('planner_create_plan')}
                         className={[
                           'px-4 py-2 rounded-lg bg-accent',
                           !canSubmit ? 'opacity-50' : '',
@@ -455,7 +456,7 @@ export function CreatePlannerModal({
                         style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
                       >
                         <Text className="text-sm font-semibold text-on-accent">
-                          {isSubmitting ? 'Creating…' : 'Create Plan'}
+                          {isSubmitting ? t('loading') : t('planner_create_plan')}
                         </Text>
                       </Pressable>
                     </View>

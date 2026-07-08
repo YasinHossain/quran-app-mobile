@@ -15,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useModalTransition, verticalSheetTransform } from '@/components/motion/modalTransition';
 import Colors from '@/constants/Colors';
 import { useAppTheme } from '@/providers/ThemeContext';
+import { useUiTranslation } from '@/providers/UiLanguageContext';
 
 export function FolderActionsSheet({
   isOpen,
@@ -31,6 +32,7 @@ export function FolderActionsSheet({
 }): React.JSX.Element {
   const { height: windowHeight } = useWindowDimensions();
   const { resolvedTheme, isDark } = useAppTheme();
+  const { t } = useUiTranslation();
   const palette = Colors[resolvedTheme];
 
   const pendingActionRef = React.useRef<(() => void) | null>(null);
@@ -112,13 +114,13 @@ export function FolderActionsSheet({
                   >
                     {folderName}
                   </Text>
-                  <Text className="text-xs text-muted dark:text-muted-dark">Folder options</Text>
+                  <Text className="text-xs text-muted dark:text-muted-dark">{t('folder_options')}</Text>
                 </View>
                 <Pressable
                   onPress={onClose}
                   hitSlop={10}
                   accessibilityRole="button"
-                  accessibilityLabel="Close"
+                  accessibilityLabel={t('close')}
                   style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
                   className="p-2 rounded-full"
                 >
@@ -130,9 +132,9 @@ export function FolderActionsSheet({
                 <View>
                   <ActionRow
                     icon={<SlidersHorizontal color={palette.muted} size={20} strokeWidth={2.25} />}
-                    label="Edit Folder"
+                    label={t('edit_folder')}
                     onPress={() => handleDeferredAction(onEdit)}
-                    accessibilityLabel="Edit Folder"
+                    accessibilityLabel={t('edit_folder')}
                   />
                   <ActionRow
                     icon={
@@ -142,9 +144,9 @@ export function FolderActionsSheet({
                         strokeWidth={2.25}
                       />
                     }
-                    label="Delete Folder"
+                    label={t('delete_folder')}
                     onPress={() => handleDeferredAction(onDelete)}
-                    accessibilityLabel="Delete Folder"
+                    accessibilityLabel={t('delete_folder')}
                     destructive
                   />
                 </View>

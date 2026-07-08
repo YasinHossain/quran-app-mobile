@@ -12,9 +12,11 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import Colors from '@/constants/Colors';
+import { localizePlannerText } from '@/lib/i18n/plannerText';
 import { preloadOfflineSurahNavigationPage } from '@/lib/surah/offlineSurahPageCache';
 import { useSettings } from '@/providers/SettingsContext';
 import { useAppTheme } from '@/providers/ThemeContext';
+import { useUiTranslation } from '@/providers/UiLanguageContext';
 
 import { DailyFocusSection } from './DailyFocusSection';
 import { PlannerCardHeader } from './PlannerCardHeader';
@@ -46,6 +48,8 @@ export function PlannerCard({
   onDelete,
 }: PlannerCardProps & { onDelete?: () => void }): React.JSX.Element {
   const { resolvedTheme } = useAppTheme();
+  const i18n = useUiTranslation();
+  const { t, formatNumber } = i18n;
   const palette = Colors[resolvedTheme];
 
   const [isExpanded, setIsExpanded] = React.useState(false);
@@ -114,7 +118,11 @@ export function PlannerCard({
     typeof progressLabel === 'string' && progressLabel.length > 0
       ? progressLabel
       : `${viewModel.planInfo.surahLabel} ${surahId}:${viewModel.progress.currentVerse}`;
-  const percentLabel = `${viewModel.progress.percent}%`;
+  const percentLabel = `${formatNumber(viewModel.progress.percent)}%`;
+  const localizedVerseLine = localizePlannerText(verseLine, i18n);
+  const localizedSecondaryText = viewModel.progress.currentSecondaryText
+    ? localizePlannerText(viewModel.progress.currentSecondaryText, i18n)
+    : null;
 
   return (
     <Animated.View
@@ -142,7 +150,7 @@ export function PlannerCard({
               <Pressable
                 onPress={onDelete}
                 accessibilityRole="button"
-                accessibilityLabel="Delete planner"
+                accessibilityLabel={t('planner_delete_plan')}
                 hitSlop={10}
                 style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
                 className="h-8 w-8 items-center justify-center rounded-full bg-interactive dark:bg-interactive-dark"
@@ -187,7 +195,7 @@ export function PlannerCard({
               <View className="flex-row items-center gap-2">
                 <Sparkles size={16} strokeWidth={2.25} color={palette.tint} />
                 <Text className="text-sm font-semibold text-muted dark:text-muted-dark">
-                  Currently at
+                  {t('planner_currently_at')}
                 </Text>
               </View>
               <Text className="text-xs font-semibold text-muted dark:text-muted-dark">
@@ -197,11 +205,11 @@ export function PlannerCard({
 
             <View>
               <Text className="text-base font-semibold text-foreground dark:text-foreground-dark">
-                {verseLine}
+                {localizedVerseLine}
               </Text>
               {viewModel.progress.currentSecondaryText ? (
                 <Text className="mt-1 text-xs text-muted dark:text-muted-dark">
-                  {viewModel.progress.currentSecondaryText}
+                  {localizedSecondaryText}
                 </Text>
               ) : null}
             </View>
@@ -222,11 +230,11 @@ export function PlannerCard({
           <Pressable
             onPress={handleNavigate}
             accessibilityRole="button"
-            accessibilityLabel="Continue reading"
+            accessibilityLabel={t('planner_continue_reading')}
             className="w-full items-center justify-center rounded-xl bg-accent px-4 py-3"
             style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
           >
-            <Text className="text-sm font-semibold text-on-accent">Continue reading</Text>
+            <Text className="text-sm font-semibold text-on-accent">{t('planner_continue_reading')}</Text>
           </Pressable>
         </Animated.View>
       </View>

@@ -37,6 +37,7 @@ import { useChapters } from '@/hooks/useChapters';
 import { clearOfflineSurahPageCache } from '@/lib/surah/offlineSurahPageCache';
 import { useSettings } from '@/providers/SettingsContext';
 import { useAppTheme } from '@/providers/ThemeContext';
+import { useUiTranslation } from '@/providers/UiLanguageContext';
 import { findMushafOption } from '@/data/mushaf/options';
 
 import { DeleteTranslationUseCase } from '@/src/core/application/use-cases/DeleteTranslation';
@@ -83,6 +84,7 @@ export default function DownloadsScreen(): React.JSX.Element {
   const { resolvedTheme, isDark } = useAppTheme();
   const palette = Colors[resolvedTheme];
   const { settings } = useSettings();
+  const { t } = useUiTranslation();
 
   const [deletingKeys, setDeletingKeys] = React.useState<Set<string>>(() => new Set());
   const [collapsedCategories, setCollapsedCategories] = React.useState<Set<string>>(() => new Set());
@@ -165,7 +167,7 @@ export default function DownloadsScreen(): React.JSX.Element {
         case 'word-translation': {
           category = 'Word-by-Word';
           const lang = WORD_LANGUAGES_MAP[item.content.languageCode] ?? item.content.languageCode;
-          title = lang;
+          title = t('lang_' + item.content.languageCode, { fallback: lang });
           subtitle = '';
           break;
         }
@@ -205,7 +207,7 @@ export default function DownloadsScreen(): React.JSX.Element {
         category,
       };
     });
-  }, [items, translationsById, tafsirById, reciterNameById, surahNameById]);
+  }, [items, translationsById, tafsirById, reciterNameById, surahNameById, t]);
 
   // Group items by category
   const sections = React.useMemo(() => {
@@ -330,6 +332,25 @@ export default function DownloadsScreen(): React.JSX.Element {
     setDeleteTarget(displayItem);
   };
 
+  const getCategoryTranslation = (cat: DisplayDownloadItem['category']) => {
+    switch (cat) {
+      case 'Translations':
+        return t('translations');
+      case 'Tafsirs':
+        return t('downloads_category_tafsirs', { fallback: 'Tafsirs' });
+      case 'Word-by-Word':
+        return t('downloads_category_word_by_word', { fallback: 'Word-by-Word' });
+      case 'Audio':
+        return t('downloads_category_audio', { fallback: 'Audio' });
+      case 'Mushaf Packs':
+        return t('downloads_category_mushaf_packs', { fallback: 'Mushaf Packs' });
+      case 'Other':
+        return t('downloads_category_other', { fallback: 'Other' });
+      default:
+        return cat;
+    }
+  };
+
   const renderDownloadItem = ({ item: dItem }: { item: DisplayDownloadItem }) => {
     const status = dItem.item.status;
     const progress = dItem.item.progress;
@@ -341,17 +362,17 @@ export default function DownloadsScreen(): React.JSX.Element {
     let percent = 0;
 
     if (status === 'queued') {
-      statusText = 'Queued…';
+      statusText = t('downloads_status_queued', { fallback: 'Queued…' });
     } else if (status === 'downloading') {
-      statusText = 'Downloading…';
+      statusText = t('downloads_status_downloading', { fallback: 'Downloading…' });
       if (progress?.kind === 'percent') {
         isProgress = true;
         percent = progress.percent;
       }
     } else if (status === 'failed') {
-      statusText = 'Failed';
+      statusText = t('downloads_status_failed', { fallback: 'Failed' });
     } else if (isDeleting) {
-      statusText = 'Deleting…';
+      statusText = t('downloads_status_deleting', { fallback: 'Deleting…' });
     }
 
     const actionStatus = isDeleting ? 'deleting' : status === 'failed' ? 'installed' : status;
@@ -434,7 +455,7 @@ export default function DownloadsScreen(): React.JSX.Element {
             <IconComponent color={palette.tint} size={16} strokeWidth={2.25} />
           </View>
           <Text className="text-sm font-bold text-foreground dark:text-foreground-dark uppercase tracking-wider">
-            {section.title}
+            {getCategoryTranslation(section.title)}
           </Text>
           <View className="rounded-full bg-interactive dark:bg-interactive-dark px-2.5 py-0.5 border border-border/20 dark:border-border-dark/10">
             <Text className="text-[10px] font-bold text-muted dark:text-muted-dark">
@@ -457,7 +478,7 @@ export default function DownloadsScreen(): React.JSX.Element {
   return (
     <View className="flex-1 bg-background dark:bg-background-dark">
       <AppHeader
-        title="Downloads"
+        title={t('downloads', { fallback: 'Downloads' })}
         left={
           <HeaderActionButton onPress={() => router.back()} accessibilityLabel="Go back">
             <ArrowLeft size={24} color={palette.text} />
@@ -469,7 +490,7 @@ export default function DownloadsScreen(): React.JSX.Element {
         <View className="flex-1 items-center justify-center">
           <ActivityIndicator size="large" color={palette.tint} />
           <Text className="text-sm text-muted dark:text-muted-dark mt-3">
-            Loading downloads…
+            {t('downloads_loading', { fallback: 'Loading downloads…' })}
           </Text>
         </View>
       ) : mappedItems.length === 0 ? (
@@ -478,17 +499,17 @@ export default function DownloadsScreen(): React.JSX.Element {
             <Download size={28} color={palette.tint} strokeWidth={2.25} />
           </View>
           <Text className="text-lg font-bold text-foreground dark:text-foreground-dark mb-2">
-            No Downloads Yet
+            {t('downloads_empty_title', { fallback: 'No Downloads Yet' })}
           </Text>
           <Text className="text-sm text-muted dark:text-muted-dark text-center max-w-[280px] leading-6">
-            Translations, tafsirs, audio recitations, and mushaf packs downloaded for offline reading will appear here.
+            {t('downloads_empty_desc', { fallback: 'Translations, tafsirs, audio recitations, and mushaf packs downloaded for offline reading will appear here.' })}
           </Text>
           <Pressable
             onPress={() => router.back()}
             className="mt-8 bg-accent px-6 py-3 rounded-xl active:opacity-90"
             style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
           >
-            <Text className="text-sm font-semibold text-on-accent">Go Back</Text>
+            <Text className="text-sm font-semibold text-on-accent">{t('downloads_go_back', { fallback: 'Go Back' })}</Text>
           </Pressable>
         </View>
       ) : (
@@ -504,11 +525,11 @@ export default function DownloadsScreen(): React.JSX.Element {
 
       <ResourceConfirmModal
         visible={deleteTarget !== null}
-        title="Delete Download?"
+        title={t('downloads_delete_confirm_title', { fallback: 'Delete Download?' })}
         resourceName={deleteTarget?.title}
         detailLabel={deleteTarget?.subtitle}
-        description="Are you sure you want to delete this downloaded item? This will remove the offline files from your device."
-        confirmLabel="Delete"
+        description={t('downloads_delete_confirm_desc', { fallback: 'Are you sure you want to delete this downloaded item? This will remove the offline files from your device.' })}
+        confirmLabel={t('delete', { fallback: 'Delete' })}
         confirmTone="danger"
         mutedColor={palette.muted}
         tintColor={palette.tint}

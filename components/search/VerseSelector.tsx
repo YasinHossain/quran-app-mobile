@@ -18,6 +18,7 @@ import {
 
 import Colors from '@/constants/Colors';
 import { useAppTheme } from '@/providers/ThemeContext';
+import { useUiTranslation } from '@/providers/UiLanguageContext';
 
 import { getSelectorAndroidVisualOffset } from './selectorDropdownLayout';
 
@@ -55,6 +56,7 @@ export const VerseSelector = React.forwardRef<VerseSelectorHandle, Props>(functi
     returnKeyType = 'done',
 }: Props, ref): React.JSX.Element {
     const { resolvedTheme, isDark } = useAppTheme();
+    const { t, formatNumber } = useUiTranslation();
     const palette = Colors[resolvedTheme];
     const { height: windowHeight } = useWindowDimensions();
 
@@ -107,8 +109,8 @@ export const VerseSelector = React.forwardRef<VerseSelectorHandle, Props>(functi
     // Get selected label
     const selectedLabel = React.useMemo(() => {
         if (!selectedValue) return '';
-        return String(selectedValue);
-    }, [selectedValue]);
+        return formatNumber(selectedValue);
+    }, [formatNumber, selectedValue]);
 
     // Filtered options
     const filteredOptions = React.useMemo(() => {
@@ -322,7 +324,7 @@ export const VerseSelector = React.forwardRef<VerseSelectorHandle, Props>(functi
                                     value={searchText}
                                     onChangeText={(text) => setSearchText(text.replace(/[^\d]/g, ''))}
                                     onSubmitEditing={handleSubmitSelection}
-                                    placeholder="Type verse..."
+                                    placeholder={t('select_verse')}
                                     placeholderTextColor={palette.muted}
                                     keyboardType="number-pad"
                                     autoCorrect={false}
@@ -368,7 +370,7 @@ export const VerseSelector = React.forwardRef<VerseSelectorHandle, Props>(functi
                                     ListEmptyComponent={
                                         <View style={{ paddingHorizontal: 16, paddingVertical: 24 }}>
                                             <Text style={{ color: palette.muted, fontSize: 14, textAlign: 'center' }}>
-                                                No results found
+                                                {t('search_no_results_title')}
                                             </Text>
                                         </View>
                                     }

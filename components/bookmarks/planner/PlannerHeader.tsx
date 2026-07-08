@@ -2,7 +2,11 @@ import { Calendar, Plus } from 'lucide-react-native';
 import React from 'react';
 import { Pressable, Text, View } from 'react-native';
 
+import { useUiTranslation } from '@/providers/UiLanguageContext';
+
 export function PlannerHeader({ onCreatePlan }: { onCreatePlan: () => void }): React.JSX.Element {
+  const { t } = useUiTranslation();
+
   return (
     <View className="mb-2 gap-4">
       <View className="flex-row items-center justify-between gap-3">
@@ -12,10 +16,10 @@ export function PlannerHeader({ onCreatePlan }: { onCreatePlan: () => void }): R
           </View>
           <View className="min-w-0">
             <Text className="text-lg font-bold text-foreground dark:text-foreground-dark">
-              Planner
+              {t('binder_tab_planner')}
             </Text>
             <Text className="text-xs text-muted dark:text-muted-dark">
-              Set and track your reading goals
+              {t('planner_header_description')}
             </Text>
           </View>
         </View>
@@ -23,7 +27,7 @@ export function PlannerHeader({ onCreatePlan }: { onCreatePlan: () => void }): R
         <Pressable
           onPress={onCreatePlan}
           accessibilityRole="button"
-          accessibilityLabel="Create Plan"
+          accessibilityLabel={t('planner_create_plan')}
           className="h-9 w-9 items-center justify-center rounded-xl bg-accent"
           style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
         >

@@ -19,6 +19,7 @@ import { dialogTransform, useModalTransition } from '@/components/motion/modalTr
 import Colors from '@/constants/Colors';
 import { useBookmarks } from '@/providers/BookmarkContext';
 import { useAppTheme } from '@/providers/ThemeContext';
+import { useUiTranslation } from '@/providers/UiLanguageContext';
 
 import { DEFAULT_FOLDER_COLOR, FOLDER_COLORS } from '@/components/bookmarks/folderColor';
 
@@ -38,6 +39,7 @@ export function FolderSettingsModal({
   const { height: windowHeight } = useWindowDimensions();
   const shouldRender = mode === 'edit' ? isOpen && Boolean(folder) : isOpen;
   const { resolvedTheme, isDark } = useAppTheme();
+  const { t } = useUiTranslation();
   const palette = Colors[resolvedTheme];
   const { createFolder, renameFolder } = useBookmarks();
 
@@ -80,9 +82,9 @@ export function FolderSettingsModal({
     onClose();
   }, [dismissEnabledRef, onClose]);
 
-  const modalTitle = mode === 'create' ? 'Create Folder' : 'Edit Folder';
-  const submitLabel = mode === 'create' ? 'Create Folder' : 'Save Changes';
-  const submittingLabel = mode === 'create' ? 'Creating...' : 'Saving...';
+  const modalTitle = mode === 'create' ? t('bookmarks_create_folder') : t('edit_folder');
+  const submitLabel = mode === 'create' ? t('bookmarks_create_folder') : t('save_changes');
+  const submittingLabel = t('loading');
 
   const canSubmit = Boolean(name.trim()) && !isSubmitting;
 
@@ -146,7 +148,7 @@ export function FolderSettingsModal({
                       onPress={onClose}
                       hitSlop={10}
                       accessibilityRole="button"
-                      accessibilityLabel="Close"
+                      accessibilityLabel={t('close')}
                       style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
                       className="p-2 rounded-full"
                     >
@@ -162,14 +164,14 @@ export function FolderSettingsModal({
                 >
                   <View className="px-5">
                     <Text className="text-sm font-semibold text-foreground dark:text-foreground-dark mb-2">
-                      Folder name
+                      {t('bookmarks_folder_name_placeholder')}
                     </Text>
                     <View className="rounded-xl border border-border dark:border-border-dark bg-surface dark:bg-surface-dark px-3 py-3">
                       <TextInput
                         ref={inputRef}
                         value={name}
                         onChangeText={setName}
-                        placeholder="Folder name"
+                        placeholder={t('bookmarks_folder_name_placeholder')}
                         placeholderTextColor={palette.muted}
                         maxLength={30}
                         returnKeyType="done"
@@ -181,7 +183,7 @@ export function FolderSettingsModal({
 
                   <View className="px-5 mt-6">
                     <Text className="text-sm font-semibold text-foreground dark:text-foreground-dark mb-3">
-                      Color
+                      {t('folder_color_label')}
                     </Text>
                     <View className="flex-row flex-wrap" style={styles.colorGrid}>
                       {FOLDER_COLORS.map((color) => {
@@ -221,12 +223,12 @@ export function FolderSettingsModal({
                     <Pressable
                       onPress={onClose}
                       accessibilityRole="button"
-                      accessibilityLabel="Cancel"
+                      accessibilityLabel={t('cancel')}
                       className="px-4 py-2 rounded-lg bg-interactive dark:bg-interactive-dark"
                       style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
                     >
                       <Text className="text-sm font-semibold text-foreground dark:text-foreground-dark">
-                        Cancel
+                        {t('cancel')}
                       </Text>
                     </Pressable>
 

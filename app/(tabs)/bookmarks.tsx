@@ -38,6 +38,7 @@ import { useAudioPlayer } from '@/providers/AudioPlayerContext';
 import { useLayoutMetrics } from '@/providers/LayoutMetricsContext';
 import { useSettings } from '@/providers/SettingsContext';
 import { useAppTheme } from '@/providers/ThemeContext';
+import { useUiTranslation } from '@/providers/UiLanguageContext';
 
 import type { Bookmark, Folder } from '@/types';
 
@@ -81,6 +82,7 @@ export default function BookmarksScreen(): React.JSX.Element {
   const params = useLocalSearchParams<{ section?: string | string[] }>();
   const router = useRouter();
   const { resolvedTheme, isDark } = useAppTheme();
+  const { t } = useUiTranslation();
   const palette = Colors[resolvedTheme];
   const audio = useAudioPlayer();
   const { width } = useWindowDimensions();
@@ -339,18 +341,18 @@ export default function BookmarksScreen(): React.JSX.Element {
   const navigationSections = React.useMemo(
     () =>
       [
-        { id: 'last-read' as const, icon: Clock, label: 'Recent', description: 'Last visited' },
+        { id: 'last-read' as const, icon: Clock, label: t('binder_tab_recent'), description: t('binder_tab_recent_desc') },
         {
           id: 'bookmarks' as const,
           icon: BookmarkIcon,
-          label: 'All Bookmarks',
-          description: 'Manage folders',
+          label: t('binder_tab_all'),
+          description: t('binder_tab_all_desc'),
         },
         {
           id: 'pinned' as const,
           icon: Pin,
-          label: 'Pinned',
-          description: 'Quick access',
+          label: t('binder_tab_pinned'),
+          description: t('binder_tab_pinned_desc'),
         },
       ] satisfies Array<{
         id: SectionId;
@@ -358,7 +360,7 @@ export default function BookmarksScreen(): React.JSX.Element {
         label: string;
         description: string;
       }>,
-    []
+    [t]
   );
 
   const renderSectionNavigation = React.useCallback(
@@ -425,7 +427,7 @@ export default function BookmarksScreen(): React.JSX.Element {
   return (
     <View className="flex-1 bg-background dark:bg-background-dark">
       <AppHeader
-        title="Bookmarks"
+        title={t('bookmarks')}
         right={
           <HeaderActionButton
             accessibilityLabel="Scroll to section cards"
@@ -439,7 +441,7 @@ export default function BookmarksScreen(): React.JSX.Element {
       {!isHydrated ? (
         <View className="flex-1 items-center justify-center">
           <ActivityIndicator color={palette.text} />
-          <Text className="mt-2 text-sm text-muted dark:text-muted-dark">Loading…</Text>
+          <Text className="mt-2 text-sm text-muted dark:text-muted-dark">{t('loading')}</Text>
         </View>
       ) : showFolderList ? (
         <FlashList
@@ -460,16 +462,16 @@ export default function BookmarksScreen(): React.JSX.Element {
                     </View>
                     <View>
                       <Text className="text-lg font-bold text-foreground dark:text-foreground-dark">
-                        All Bookmarks
+                        {t('binder_tab_all')}
                       </Text>
-                      <Text className="text-xs text-muted dark:text-muted-dark">Manage folders</Text>
+                      <Text className="text-xs text-muted dark:text-muted-dark">{t('binder_tab_all_desc')}</Text>
                     </View>
                   </View>
 
                   <Pressable
                     onPress={openCreateFolderModal}
                     accessibilityRole="button"
-                    accessibilityLabel="Create Folder"
+                    accessibilityLabel={t('bookmarks_create_folder')}
                     className="h-10 w-10 items-center justify-center rounded-xl bg-accent"
                     style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
                   >
@@ -485,11 +487,10 @@ export default function BookmarksScreen(): React.JSX.Element {
                 <BookmarkIcon size={32} strokeWidth={2.25} color={palette.muted} />
               </View>
               <Text className="text-lg font-semibold text-foreground dark:text-foreground-dark mb-2">
-                Create Your First Folder
+                {t('bookmarks_empty_create_title')}
               </Text>
               <Text className="text-muted dark:text-muted-dark text-center px-6">
-                Tap the + button in the top-right corner to add a folder and start organizing your
-                favorite verses.
+                {t('bookmarks_empty_create_description_prefix')}+{t('bookmarks_empty_create_description_suffix')}
               </Text>
             </View>
           }
@@ -532,12 +533,12 @@ export default function BookmarksScreen(): React.JSX.Element {
                 <Pressable
                   onPress={() => setSelectedFolderId(null)}
                   accessibilityRole="button"
-                  accessibilityLabel="Back"
+                  accessibilityLabel={t('bookmarks_back_to_folders_aria')}
                   className="self-start rounded-lg bg-interactive dark:bg-interactive-dark px-3 py-2"
                   style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
                 >
                   <Text className="text-sm font-semibold text-foreground dark:text-foreground-dark">
-                    Back
+                    {t('bookmarks_back_to_folders')}
                   </Text>
                 </Pressable>
 
@@ -567,7 +568,7 @@ export default function BookmarksScreen(): React.JSX.Element {
           ListEmptyComponent={
             <View className="items-center justify-center py-20 px-6">
               <Text className="text-center text-muted dark:text-muted-dark">
-                No verses in this folder
+                      {t('bookmarks_empty_state_secondary')}
               </Text>
             </View>
           }
@@ -587,7 +588,7 @@ export default function BookmarksScreen(): React.JSX.Element {
                 onPress={() => navigateToVerse(verseKey)}
                 onOpenActions={() =>
                   openVerseActionsForBookmark(bookmark, {
-                    title: bookmark.surahName ?? 'Surah',
+                    title: bookmark.surahName ?? t('surah_tab'),
                     onRemove: () => removeBookmark(String(bookmark.verseId), selectedFolder.id),
                   })
                 }
@@ -618,9 +619,9 @@ export default function BookmarksScreen(): React.JSX.Element {
                   </View>
                   <View>
                     <Text className="text-lg font-bold text-foreground dark:text-foreground-dark">
-                      Pinned
+                      {t('binder_tab_pinned')}
                     </Text>
-                    <Text className="text-xs text-muted dark:text-muted-dark">Quick access</Text>
+                    <Text className="text-xs text-muted dark:text-muted-dark">{t('binder_tab_pinned_desc')}</Text>
                   </View>
                 </View>
               </View>
@@ -632,10 +633,10 @@ export default function BookmarksScreen(): React.JSX.Element {
                 <Pin size={32} strokeWidth={2.25} color={palette.muted} />
               </View>
               <Text className="text-lg font-semibold text-foreground dark:text-foreground-dark mb-2">
-                No Pinned
+                {t('no_pinned_verses')}
               </Text>
               <Text className="text-muted dark:text-muted-dark text-center px-6">
-                Pin your favorite verses while reading to access them quickly from here.
+                {t('no_pinned_verses_description')}
               </Text>
             </View>
           }
@@ -654,7 +655,7 @@ export default function BookmarksScreen(): React.JSX.Element {
                 onPress={() => navigateToVerse(verseKey)}
                 onOpenActions={() =>
                   openVerseActionsForBookmark(bookmark, {
-                    title: bookmark.surahName ?? 'Surah',
+                    title: bookmark.surahName ?? t('surah_tab'),
                     onRemove: () =>
                       togglePinned(
                         String(bookmark.verseId),
@@ -671,10 +672,10 @@ export default function BookmarksScreen(): React.JSX.Element {
           {renderSectionNavigation()}
           <View className="flex-1 items-center justify-center px-6">
             <Text className="text-lg font-semibold text-foreground dark:text-foreground-dark">
-              Coming soon
+              {t('view_not_implemented', { tab: activeSection })}
             </Text>
             <Text className="mt-2 text-center text-sm text-muted dark:text-muted-dark">
-              This section will be added next.
+              {t('language_beta_note')}
             </Text>
           </View>
         </View>
@@ -683,7 +684,7 @@ export default function BookmarksScreen(): React.JSX.Element {
       <VerseActionsSheet
         isOpen={isVerseActionsOpen}
         onClose={closeVerseActions}
-        title={activeVerse?.title ?? 'Surah'}
+        title={activeVerse?.title ?? t('surah_tab')}
         verseKey={activeVerse?.verseKey ?? ''}
         isPlaying={Boolean(audio.isPlaying && audio.activeVerseKey === activeVerse?.verseKey)}
         isBookmarked={activeVerse?.isPinned ?? false}

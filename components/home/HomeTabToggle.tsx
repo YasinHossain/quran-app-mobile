@@ -6,6 +6,8 @@ import Animated, {
   withSpring,
 } from 'react-native-reanimated';
 
+import { useUiTranslation } from '@/providers/UiLanguageContext';
+
 export type HomeTab = 'surah' | 'juz' | 'page';
 
 const TABS: HomeTab[] = ['surah', 'juz', 'page'];
@@ -20,6 +22,7 @@ export function HomeTabToggle({
   onTabChange: (tab: HomeTab) => void;
 }): React.JSX.Element {
   const [measuredWidth, setMeasuredWidth] = React.useState(0);
+  const { t } = useUiTranslation();
   const activeIndex = Math.max(0, TABS.indexOf(activeTab));
   const indicatorPosition = useSharedValue(activeIndex);
   const containerWidth = width ?? measuredWidth;
@@ -72,7 +75,7 @@ export function HomeTabToggle({
       {TABS.map((tab) => (
         <TabButton
           key={tab}
-          label={tab.charAt(0).toUpperCase() + tab.slice(1)}
+          label={tab === 'surah' ? t('surah_tab') : tab === 'juz' ? t('juz_tab') : t('page_tab')}
           isActive={activeTab === tab}
           onPress={() => onTabChange(tab)}
         />

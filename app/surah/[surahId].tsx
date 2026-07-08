@@ -53,6 +53,7 @@ import { useBookmarks } from '@/providers/BookmarkContext';
 import { useLayoutMetrics } from '@/providers/LayoutMetricsContext';
 import { useSettings } from '@/providers/SettingsContext';
 import { useAppTheme } from '@/providers/ThemeContext';
+import { useUiTranslation } from '@/providers/UiLanguageContext';
 import { container } from '@/src/core/infrastructure/di/container';
 
 import type { Bookmark, MushafPackId } from '@/types';
@@ -203,6 +204,7 @@ export default function SurahScreen(): React.JSX.Element {
   }>();
   const router = useRouter();
   const { settings, isHydrated, setReadingMode } = useSettings();
+  const { t } = useUiTranslation();
   const surahId = Array.isArray(params.surahId) ? params.surahId[0] : params.surahId;
   const startVerseParam = Array.isArray(params.startVerse) ? params.startVerse[0] : params.startVerse;
   const startPageParam = Array.isArray(params.startPage) ? params.startPage[0] : params.startPage;
@@ -447,7 +449,7 @@ export default function SurahScreen(): React.JSX.Element {
   }, [chapterNumber, normalizedStartVerse]);
   const mushafSurahIntro = React.useMemo(() => {
     if (!resolvedChapter) return undefined;
-    const presentation = getSurahHeaderPresentation(resolvedChapter);
+    const presentation = getSurahHeaderPresentation(resolvedChapter, t);
     return {
       chapterId: resolvedChapter.id,
       infoLabel: presentation.infoLabel,
@@ -455,7 +457,7 @@ export default function SurahScreen(): React.JSX.Element {
       showBismillah: presentation.showBismillah,
       surahName: presentation.surahName,
     };
-  }, [resolvedChapter]);
+  }, [resolvedChapter, t]);
   const mushafReaderSessionKey = [
     chapterNumber,
     initialMushafPageNumber,

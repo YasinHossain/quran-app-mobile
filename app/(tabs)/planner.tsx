@@ -14,9 +14,11 @@ import { HeaderActionButton } from '@/components/search/HeaderSearchBar';
 import Colors from '@/constants/Colors';
 import { useBookmarks } from '@/providers/BookmarkContext';
 import { useAppTheme } from '@/providers/ThemeContext';
+import { useUiTranslation } from '@/providers/UiLanguageContext';
 
 export default function PlannerScreen(): React.JSX.Element {
   const { resolvedTheme } = useAppTheme();
+  const { t } = useUiTranslation();
   const palette = Colors[resolvedTheme];
   const { planner, isHydrated, removeFromPlanner } = useBookmarks();
 
@@ -58,7 +60,7 @@ export default function PlannerScreen(): React.JSX.Element {
   return (
     <View className="flex-1 bg-background dark:bg-background-dark">
       <AppHeader
-        title="Planner"
+        title={t('binder_tab_planner')}
         right={
           <HeaderActionButton
             accessibilityLabel="Scroll to planner cards"
@@ -72,7 +74,7 @@ export default function PlannerScreen(): React.JSX.Element {
       {!isHydrated ? (
         <View className="flex-1 items-center justify-center">
           <ActivityIndicator color={palette.text} />
-          <Text className="mt-2 text-sm text-muted dark:text-muted-dark">Loading…</Text>
+          <Text className="mt-2 text-sm text-muted dark:text-muted-dark">{t('loading')}</Text>
         </View>
       ) : (
         <PlannerSection

@@ -4,6 +4,7 @@ import Svg, { Circle } from 'react-native-svg';
 
 import Colors from '@/constants/Colors';
 import { useAppTheme } from '@/providers/ThemeContext';
+import { useUiTranslation } from '@/providers/UiLanguageContext';
 
 export function CircularProgress({
   percentage,
@@ -25,6 +26,7 @@ export function CircularProgress({
   center?: React.ReactNode;
 }): React.JSX.Element {
   const { resolvedTheme } = useAppTheme();
+  const { formatNumber } = useUiTranslation();
   const palette = Colors[resolvedTheme];
 
   const clamped = Math.max(0, Math.min(100, Number.isFinite(percentage) ? percentage : 0));
@@ -63,7 +65,7 @@ export function CircularProgress({
           (showLabel ? (
             <>
               <Text className="text-base font-bold text-foreground dark:text-foreground-dark">
-                {Math.round(clamped)}%
+                {formatNumber(Math.round(clamped))}%
               </Text>
               <Text className="text-[10px] font-medium text-muted dark:text-muted-dark">{label}</Text>
             </>

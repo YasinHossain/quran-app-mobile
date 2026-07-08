@@ -1,5 +1,7 @@
 import { Platform, Pressable, Text, View } from 'react-native';
 
+import { useUiTranslation } from '@/providers/UiLanguageContext';
+
 export type SettingsTab = 'translations' | 'mushaf';
 
 export function SettingsTabToggle({
@@ -9,14 +11,16 @@ export function SettingsTabToggle({
   activeTab: SettingsTab;
   onTabChange: (tab: SettingsTab) => void;
 }): React.JSX.Element {
+  const { t } = useUiTranslation();
+
   return (
     <View className="flex-row items-center rounded-full bg-interactive dark:bg-interactive-dark p-1">
       <TabButton
-        label="Translations"
+        label={t('translations')}
         isActive={activeTab === 'translations'}
         onPress={() => onTabChange('translations')}
       />
-      <TabButton label="Mushaf" isActive={activeTab === 'mushaf'} onPress={() => onTabChange('mushaf')} />
+      <TabButton label={t('mushaf')} isActive={activeTab === 'mushaf'} onPress={() => onTabChange('mushaf')} />
     </View>
   );
 }
@@ -63,4 +67,3 @@ function TabButton({
     </Pressable>
   );
 }
-

@@ -30,6 +30,7 @@ import { ComprehensiveSearchDropdown } from '@/components/search/ComprehensiveSe
 import { HeaderActionButton } from '@/components/search/HeaderSearchBar';
 import { useChapters } from '@/hooks/useChapters';
 import { useAppTheme } from '@/providers/ThemeContext';
+import { useUiTranslation } from '@/providers/UiLanguageContext';
 import { IndexScrubber, type IndexScrubberHandle } from '@/components/reader/IndexScrubber';
 import { sideSheetTransform, useModalTransition } from '@/components/motion/modalTransition';
 import juzData from '../../src/data/juz.json';
@@ -148,6 +149,7 @@ function HomeSearchHeader({
   });
 
   const { isDark, setDarkModeEnabled } = useAppTheme();
+  const { t } = useUiTranslation();
 
   const openMenu = () => setIsMenuOpen(true);
   const closeMenu = () => setIsMenuOpen(false);
@@ -196,7 +198,7 @@ function HomeSearchHeader({
                 className="border-r border-border/30 dark:border-border-dark/20"
               >
                 <View className="px-5 py-6 border-b border-border dark:border-border-dark">
-                  <Text className="text-xl font-bold text-foreground dark:text-foreground-dark">Quran</Text>
+                  <Text className="text-xl font-bold text-foreground dark:text-foreground-dark">{t('title')}</Text>
                 </View>
                 <Pressable
                   onPress={() => {
@@ -225,7 +227,7 @@ function HomeSearchHeader({
       inputRef={headerSearchInputRef}
       value={headerSearchQuery}
       onChangeText={onQueryChange}
-      placeholder="Search…"
+      placeholder={t('search_placeholder_header')}
       onFocus={onFocus}
       onSubmitEditing={onSubmit}
       right={
@@ -331,6 +333,7 @@ function buildHomeListData({
   pageNumbers,
   surahs,
   numColumns,
+  loadingLabel,
 }: {
   activeTab: HomeTab;
   errorMessage: string | null;
@@ -338,6 +341,7 @@ function buildHomeListData({
   pageNumbers: number[];
   surahs: Surah[];
   numColumns: number;
+  loadingLabel: string;
 }): HomeListRow[] {
   const rows: HomeListRow[] = [
     { type: 'intro', key: 'intro' },
@@ -351,7 +355,7 @@ function buildHomeListData({
     }
 
     if (isLoading) {
-      rows.push({ type: 'message', key: 'loading', message: 'Loading…', tone: 'muted' });
+      rows.push({ type: 'message', key: 'loading', message: loadingLabel, tone: 'muted' });
       return rows;
     }
 
@@ -387,6 +391,7 @@ function buildHomeListData({
 
 export default function ReadScreen(): React.JSX.Element {
   const [activeTab, setActiveTab] = React.useState<HomeTab>('surah');
+  const { t } = useUiTranslation();
   const [searchHeaderHeight, setSearchHeaderHeight] = React.useState(0);
   const headerSearch = useHeaderSearch();
   const listRef = React.useRef<FlatList<HomeListRow> | null>(null);
@@ -410,8 +415,17 @@ export default function ReadScreen(): React.JSX.Element {
   const lastScrubScrollIndexRef = React.useRef<number | null>(null);
 
   const listData = React.useMemo(
-    () => buildHomeListData({ activeTab, errorMessage, isLoading, pageNumbers, surahs, numColumns }),
-    [activeTab, errorMessage, isLoading, pageNumbers, surahs, numColumns]
+    () =>
+      buildHomeListData({
+        activeTab,
+        errorMessage,
+        isLoading,
+        pageNumbers,
+        surahs,
+        numColumns,
+        loadingLabel: t('loading'),
+      }),
+    [activeTab, errorMessage, isLoading, pageNumbers, surahs, numColumns, t]
   );
   const effectiveHomeIntroHeight =
     homeIntroHeight > 0 ? homeIntroHeight : HOME_INTRO_ESTIMATED_HEIGHT;
@@ -553,14 +567,16 @@ export default function ReadScreen(): React.JSX.Element {
     (index: number) => {
       if (activeTab === 'surah') {
         const surah = surahs[index - 1];
-        return surah ? surah.name : `Surah ${index}`;
+        return surah
+          ? t(`surah_names.${surah.id}`, { fallback: surah.name })
+          : `${t('surah_tab')} ${index}`;
       }
       if (activeTab === 'juz') {
-        return `Juz ${index}`;
+        return t('juz_number', { number: index });
       }
-      return `Page ${index}`;
+      return t('page_number_label', { number: index });
     },
-    [activeTab, surahs]
+    [activeTab, surahs, t]
   );
 
   React.useEffect(() => {

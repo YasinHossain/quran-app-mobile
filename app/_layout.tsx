@@ -17,6 +17,7 @@ import { AudioPlayerProvider } from '@/providers/AudioPlayerContext';
 import { LayoutMetricsProvider } from '@/providers/LayoutMetricsContext';
 import { SettingsProvider } from '@/providers/SettingsContext';
 import { StartupResourcePrefetch } from '@/providers/StartupResourcePrefetch';
+import { UiLanguageProvider } from '@/providers/UiLanguageContext';
 import { StatusBar } from 'expo-status-bar';
 import { AppThemeProvider, useAppTheme, THEME_STORAGE_KEY, ThemePreference } from '@/providers/ThemeContext';
 import { getItem } from '@/lib/storage/appStorage';
@@ -98,16 +99,18 @@ export default function RootLayout() {
     <SafeAreaProvider initialMetrics={initialWindowMetrics}>
       <AppThemeProvider initialPreference={initialThemePreference}>
         <SettingsProvider>
-          <StartupResourcePrefetch />
-          <ChaptersProvider>
-            <BookmarkProvider>
-              <AudioPlayerProvider>
-                <LayoutMetricsProvider>
-                  <RootLayoutNav />
-                </LayoutMetricsProvider>
-              </AudioPlayerProvider>
-            </BookmarkProvider>
-          </ChaptersProvider>
+          <UiLanguageProvider>
+            <StartupResourcePrefetch />
+            <ChaptersProvider>
+              <BookmarkProvider>
+                <AudioPlayerProvider>
+                  <LayoutMetricsProvider>
+                    <RootLayoutNav />
+                  </LayoutMetricsProvider>
+                </AudioPlayerProvider>
+              </BookmarkProvider>
+            </ChaptersProvider>
+          </UiLanguageProvider>
         </SettingsProvider>
       </AppThemeProvider>
     </SafeAreaProvider>

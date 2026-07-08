@@ -12,6 +12,7 @@ import Colors from '@/constants/Colors';
 import { useChapters } from '@/hooks/useChapters';
 import { useLayoutMetrics } from '@/providers/LayoutMetricsContext';
 import { useAppTheme } from '@/providers/ThemeContext';
+import { useUiTranslation } from '@/providers/UiLanguageContext';
 import type { PlannerPlan } from '@/types';
 
 import { PlannerCard } from './PlannerCard';
@@ -51,6 +52,7 @@ export function PlannerSection({
   scrollEventThrottle?: number;
 }): React.JSX.Element {
   const { resolvedTheme } = useAppTheme();
+  const { t } = useUiTranslation();
   const palette = Colors[resolvedTheme];
   const { audioPlayerBarHeight } = useLayoutMetrics();
   const contentContainerStyle = React.useMemo(
@@ -104,7 +106,7 @@ export function PlannerSection({
             {isChaptersLoading ? (
               <View className="mt-1 flex-row items-center gap-2">
                 <ActivityIndicator size="small" color={palette.muted} />
-                <Text className="text-xs text-muted dark:text-muted-dark">Loading surah info…</Text>
+                <Text className="text-xs text-muted dark:text-muted-dark">{t('loading_surah')}</Text>
               </View>
             ) : chaptersError ? (
               <Text className="mt-1 text-xs text-muted dark:text-muted-dark">

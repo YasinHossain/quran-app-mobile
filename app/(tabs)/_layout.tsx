@@ -9,6 +9,7 @@ import Colors from '@/constants/Colors';
 import { useClientOnlyValue } from '@/components/useClientOnlyValue';
 import { useLayoutMetrics } from '@/providers/LayoutMetricsContext';
 import { useAppTheme } from '@/providers/ThemeContext';
+import { useUiTranslation } from '@/providers/UiLanguageContext';
 
 function TabBarIcon({
   Icon,
@@ -45,6 +46,7 @@ function ReportingTabBar(props: any): React.JSX.Element {
 
 export default function TabLayout() {
   const { resolvedTheme } = useAppTheme();
+  const { t } = useUiTranslation();
   const palette = Colors[resolvedTheme];
   const insets = useSafeAreaInsets();
   const bottomPadding = Math.max(insets.bottom, 12);
@@ -92,14 +94,14 @@ export default function TabLayout() {
         <Tabs.Screen
           name="index"
           options={{
-            title: 'Home',
+            title: t('home'),
             tabBarIcon: ({ color }) => <TabBarIcon Icon={Home} color={color} />,
           }}
         />
         <Tabs.Screen
           name="search"
           options={{
-            title: 'Search',
+            title: t('search'),
             href: null,
             tabBarIcon: ({ color }) => <TabBarIcon Icon={Search} color={color} />,
           }}
@@ -107,14 +109,14 @@ export default function TabLayout() {
         <Tabs.Screen
           name="bookmarks"
           options={{
-            title: 'Bookmarks',
+            title: t('bookmarks'),
             tabBarIcon: ({ color }) => <TabBarIcon Icon={Bookmark} color={color} />,
           }}
         />
         <Tabs.Screen
           name="planner"
           options={{
-            title: 'Planner',
+            title: t('binder_tab_planner'),
             tabBarIcon: ({ color }) => <TabBarIcon Icon={Calendar} color={color} />,
           }}
         />
