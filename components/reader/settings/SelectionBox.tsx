@@ -17,31 +17,41 @@ export function SelectionBox({
 }): React.JSX.Element {
   const { resolvedTheme } = useAppTheme();
   const palette = Colors[resolvedTheme];
+  const isDark = resolvedTheme === 'dark';
+  const surfaceColor = isDark ? '#1E293B' : '#FFFFFF';
+  const borderColor = isDark ? 'rgba(51,65,85,0.2)' : 'rgba(229,231,235,0.3)';
 
   return (
     <View className="gap-2">
-      <Text className="text-xs font-semibold text-content-secondary dark:text-content-secondary-dark">
+      <Text className="text-xs font-semibold" style={{ color: palette.muted }}>
         {label}
       </Text>
       <Pressable
         disabled={disabled}
         onPress={onPress}
-        className={[
-          'flex-row items-center justify-between gap-3 rounded-xl border',
-          'border-border/30 dark:border-border-dark/20',
-          'bg-surface dark:bg-surface-dark',
-          'px-4 py-3',
-          disabled ? 'opacity-50' : '',
-        ].join(' ')}
-        style={({ pressed }) => ({ opacity: pressed ? 0.92 : 1 })}
+        style={({ pressed }) => ({
+          opacity: disabled ? 0.5 : pressed ? 0.92 : 1,
+        })}
       >
-        <Text
-          numberOfLines={1}
-          className="flex-1 text-sm font-semibold text-foreground dark:text-white"
+        <View
+          className="flex-row items-center justify-between gap-3 px-4 py-3"
+          style={{
+            width: '100%',
+            backgroundColor: surfaceColor,
+            borderColor,
+            borderRadius: 12,
+            borderWidth: 1,
+          }}
         >
-          {value}
-        </Text>
-        <ChevronRight color={palette.muted} size={18} strokeWidth={2.25} />
+          <Text
+            numberOfLines={1}
+            className="flex-1 text-sm font-semibold"
+            style={{ color: palette.text }}
+          >
+            {value}
+          </Text>
+          <ChevronRight color={palette.muted} size={18} strokeWidth={2.25} />
+        </View>
       </Pressable>
     </View>
   );

@@ -22,7 +22,9 @@ export function ToggleRow({
 
   return (
     <View className="flex-row items-center justify-between py-1">
-      <Text className="text-sm text-foreground dark:text-foreground-dark">{label}</Text>
+      <Text className="text-sm" style={{ color: palette.text }}>
+        {label}
+      </Text>
       {rightElement ?? (
         <Switch
           disabled={disabled}

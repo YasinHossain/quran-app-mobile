@@ -264,7 +264,7 @@ const TranslationResourceRow = React.memo(function TranslationResourceRow({
       : `Download ${translation.name} for offline use`;
 
   return (
-    <View className="px-4 py-1">
+    <View style={{ paddingHorizontal: 16, paddingVertical: 2 }}>
       <ResourceItem
         item={translation}
         isSelected={isSelected}
@@ -716,9 +716,9 @@ export function ManageTranslationsPanel({
       if (item.type === 'tabs') {
         return (
           <View
-            className="py-2 bg-background dark:bg-background-dark"
+            className="py-2"
             style={[
-              { zIndex: 10 },
+              { backgroundColor: palette.background, zIndex: 10 },
               Platform.OS === 'android'
                 ? { shadowColor: isDark ? '#FFFFFF' : '#000000', elevation: isDark ? 2 : 1 }
                 : {
@@ -743,7 +743,7 @@ export function ManageTranslationsPanel({
       if (item.type === 'section') {
         return (
           <View className="px-4 pt-4 pb-2">
-            <Text className="text-lg font-semibold text-foreground dark:text-foreground-dark">
+            <Text className="text-lg font-semibold" style={{ color: palette.text }}>
               {item.language}
             </Text>
           </View>
@@ -753,7 +753,9 @@ export function ManageTranslationsPanel({
       if (item.type === 'empty') {
         return (
           <View className="px-4 py-8 items-center">
-            <Text className="text-sm text-muted dark:text-muted-dark text-center">{item.text}</Text>
+            <Text className="text-sm text-center" style={{ color: palette.muted }}>
+              {item.text}
+            </Text>
           </View>
         );
       }
@@ -788,6 +790,9 @@ export function ManageTranslationsPanel({
       itemsByKey,
       languages,
       palette.tint,
+      palette.background,
+      palette.muted,
+      palette.text,
       selectedIds,
     ]
   );
@@ -799,10 +804,16 @@ export function ManageTranslationsPanel({
         {onRefresh ? (
           <Pressable
             onPress={onRefresh}
-            className="self-start rounded-lg bg-interactive dark:bg-interactive-dark border border-border dark:border-border-dark px-4 py-2"
-            style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}
+            className="self-start rounded-lg border px-4 py-2"
+            style={({ pressed }) => ({
+              backgroundColor: palette.interactive,
+              borderColor: palette.border,
+              opacity: pressed ? 0.85 : 1,
+            })}
           >
-            <Text className="text-sm font-semibold text-foreground dark:text-foreground-dark">Retry</Text>
+            <Text className="text-sm font-semibold" style={{ color: palette.text }}>
+              Retry
+            </Text>
           </Pressable>
         ) : null}
       </View>
@@ -812,7 +823,9 @@ export function ManageTranslationsPanel({
   if (isLoading && translations.length === 0) {
     return (
       <View className="flex-1 p-4">
-        <Text className="text-sm text-muted dark:text-muted-dark">Loading translations...</Text>
+        <Text className="text-sm" style={{ color: palette.muted }}>
+          Loading translations...
+        </Text>
       </View>
     );
   }

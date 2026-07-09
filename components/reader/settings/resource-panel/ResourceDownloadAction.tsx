@@ -44,12 +44,13 @@ function CompactProgressRing({
 
   return (
     <View
-      className={[
-        'h-8 w-8 items-center justify-center rounded-full border',
-        isSelected
-          ? 'border-white/30 bg-white/15'
-          : 'border-border/60 bg-interactive dark:border-border-dark/60 dark:bg-interactive-dark',
-      ].join(' ')}
+      className="h-8 w-8 items-center justify-center"
+      style={{
+        backgroundColor: isSelected ? 'rgba(255,255,255,0.15)' : undefined,
+        borderColor: isSelected ? 'rgba(255,255,255,0.3)' : undefined,
+        borderRadius: 16,
+        borderWidth: 1,
+      }}
     >
       <Svg width={size} height={size} style={{ transform: [{ rotate: '-90deg' }] }}>
         <Circle
@@ -107,21 +108,35 @@ export function ResourceDownloadAction({
       : 'rgba(13,148,136,0.35)';
   const progressColor = isSelected ? '#FFFFFF' : tintColor;
   const crossColor = isSelected ? '#FFFFFF' : tintColor;
-  const selectedDestructiveSurfaceStyle = isSelected
-    ? {
-        backgroundColor: 'rgba(255,255,255,0.92)',
-        borderColor: 'rgba(255,255,255,0.82)',
-      }
-    : undefined;
+  const neutralSurface = {
+    backgroundColor: isDark ? '#334155' : '#F3F4F6',
+    borderColor: isDark ? 'rgba(51,65,85,0.6)' : 'rgba(229,231,235,0.6)',
+    borderRadius: 16,
+    borderWidth: 1,
+  };
+  const selectedDownloadSurface = {
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderColor: 'rgba(255,255,255,0.3)',
+    borderRadius: 16,
+    borderWidth: 1,
+  };
+  const selectedDestructiveSurface = {
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderColor: 'rgba(255,255,255,0.82)',
+    borderRadius: 16,
+    borderWidth: 1,
+  };
 
   if (isDeleting) {
     return (
       <View
-        className={[
-          'h-8 w-8 items-center justify-center rounded-full border',
-          isSelected ? '' : 'border-error/40 bg-error/10',
-        ].join(' ')}
-        style={selectedDestructiveSurfaceStyle}
+        className="h-8 w-8 items-center justify-center"
+        style={isSelected ? selectedDestructiveSurface : {
+          backgroundColor: 'rgba(220, 38, 38, 0.10)',
+          borderColor: 'rgba(220, 38, 38, 0.40)',
+          borderRadius: 16,
+          borderWidth: 1,
+        }}
       >
         <ActivityIndicator size="small" color={destructiveColor} />
       </View>
@@ -143,11 +158,13 @@ export function ResourceDownloadAction({
   if (isInstalled) {
     return (
       <View
-        className={[
-          'h-8 w-8 items-center justify-center rounded-full border',
-          isSelected ? '' : 'border-error/40 bg-error/10',
-        ].join(' ')}
-        style={selectedDestructiveSurfaceStyle}
+        className="h-8 w-8 items-center justify-center"
+        style={isSelected ? selectedDestructiveSurface : {
+          backgroundColor: 'rgba(220, 38, 38, 0.10)',
+          borderColor: 'rgba(220, 38, 38, 0.40)',
+          borderRadius: 16,
+          borderWidth: 1,
+        }}
       >
         <Trash2 color={destructiveColor} size={16} strokeWidth={2.25} />
       </View>
@@ -156,12 +173,8 @@ export function ResourceDownloadAction({
 
   return (
     <View
-      className={[
-        'h-8 w-8 items-center justify-center rounded-full border',
-        isSelected
-          ? 'border-white/30 bg-white/15'
-          : 'border-border/60 bg-interactive dark:border-border-dark/60 dark:bg-interactive-dark',
-      ].join(' ')}
+      className="h-8 w-8 items-center justify-center"
+      style={isSelected ? selectedDownloadSurface : neutralSurface}
     >
       <Download color={isFailed ? destructiveColor : iconColor} size={16} strokeWidth={2.25} />
     </View>

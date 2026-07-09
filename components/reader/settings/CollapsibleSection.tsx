@@ -29,7 +29,7 @@ export function CollapsibleSection({
       >
         <View className="flex-row items-center gap-3">
           {icon}
-          <Text className="text-base font-semibold text-foreground dark:text-foreground-dark">
+          <Text className="text-base font-semibold" style={{ color: palette.text }}>
             {title}
           </Text>
         </View>
@@ -41,4 +41,3 @@ export function CollapsibleSection({
     </View>
   );
 }
-

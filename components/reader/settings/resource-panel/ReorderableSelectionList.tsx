@@ -31,21 +31,21 @@ interface VariantStyles {
 const VARIANT_STYLES: Record<SelectionListVariant, VariantStyles> = {
   translation: {
     headerClassName: 'flex-row items-center justify-between px-2 mb-3',
-    maxBadgeClassName: 'text-xs px-2.5 py-1 rounded-full bg-accent/10 text-accent dark:text-accent-dark font-medium',
-    containerClassName: 'rounded-lg p-3 bg-surface dark:bg-surface-dark border border-border dark:border-border-dark',
-    emptyTextClassName: 'text-center text-sm py-4 text-muted dark:text-muted-dark font-medium',
+    maxBadgeClassName: 'text-xs px-2.5 py-1 rounded-full font-medium',
+    containerClassName: 'p-3',
+    emptyTextClassName: 'text-center text-sm py-4 font-medium',
     itemRowClassName:
-      'h-[54px] flex-row items-center justify-between p-3 rounded-lg bg-background dark:bg-background-dark border border-border/30 dark:border-border-dark/20',
+      'h-[54px] flex-row items-center justify-between p-3',
     removeButtonClassName:
       'p-1.5 rounded-full flex-shrink-0 ml-1',
   },
   tafsir: {
     headerClassName: 'flex-row items-center justify-between px-1 mb-2',
-    maxBadgeClassName: 'text-xs px-2 py-1 rounded-full bg-accent/10 text-accent dark:text-accent-dark',
-    containerClassName: 'rounded-lg p-2 bg-surface dark:bg-surface-dark border border-border dark:border-border-dark',
-    emptyTextClassName: 'text-center text-sm py-2 text-muted dark:text-muted-dark',
+    maxBadgeClassName: 'text-xs px-2 py-1 rounded-full',
+    containerClassName: 'p-2',
+    emptyTextClassName: 'text-center text-sm py-2',
     itemRowClassName:
-      'h-[46px] flex-row items-center justify-between p-2 rounded-lg bg-background dark:bg-background-dark border border-border/30 dark:border-border-dark/20',
+      'h-[46px] flex-row items-center justify-between p-2',
     removeButtonClassName:
       'p-1 rounded-full flex-shrink-0 ml-1',
   },
@@ -108,6 +108,11 @@ export function ReorderableSelectionList({
 }): React.JSX.Element {
   const { resolvedTheme } = useAppTheme();
   const palette = Colors[resolvedTheme];
+  const isDark = resolvedTheme === 'dark';
+  const cloudBackground = isDark ? '#1E293B' : '#FFFFFF';
+  const cloudBorder = isDark ? '#334155' : '#E5E7EB';
+  const rowBackground = isDark ? '#0F172A' : '#F7F9F9';
+  const rowBorder = isDark ? 'rgba(51,65,85,0.2)' : 'rgba(229,231,235,0.3)';
   const { t, localizeDigits } = useUiTranslation();
 
   React.useEffect(() => {
@@ -226,12 +231,17 @@ export function ReorderableSelectionList({
   return (
     <View>
       <View className={styles.headerClassName}>
-        <Text className="text-xs font-semibold text-muted dark:text-muted-dark">
+        <Text className="text-xs font-semibold" style={{ color: palette.muted }}>
           {`${selectionsLabel} (${localizedCountStr})`}
         </Text>
         <View className="flex-row items-center gap-2">
           {selectionCount >= maxSelections ? (
-            <Text className={styles.maxBadgeClassName}>MAX</Text>
+            <Text
+              className={styles.maxBadgeClassName}
+              style={{ backgroundColor: `${palette.tint}1A`, color: palette.tint }}
+            >
+              MAX
+            </Text>
           ) : null}
 
           {onReset ? (
@@ -249,11 +259,21 @@ export function ReorderableSelectionList({
         </View>
       </View>
 
-      <View className={styles.containerClassName}>
+      <View
+        className={styles.containerClassName}
+        style={{
+          backgroundColor: cloudBackground,
+          borderColor: cloudBorder,
+          borderRadius: 8,
+          borderWidth: 1,
+        }}
+      >
         {selectionCount === 0 ? (
-          <Text className={styles.emptyTextClassName}>{emptyText}</Text>
+          <Text className={styles.emptyTextClassName} style={{ color: palette.muted }}>
+            {emptyText}
+          </Text>
         ) : (
-          <View className="gap-2">
+          <View style={{ gap: 4 }}>
             {localOrder.map((id) => {
               const item = resourceById.get(id);
               const name = item?.name ?? `${id}`;
@@ -274,7 +294,10 @@ export function ReorderableSelectionList({
                   removeAccessibilityLabel={removeAccessibilityLabel}
                   onRemove={onRemove}
                   variant={variant}
+                  backgroundColor={rowBackground}
+                  borderColor={rowBorder}
                   mutedColor={palette.muted}
+                  textColor={palette.text}
                 />
               );
             })}
@@ -299,7 +322,10 @@ function SelectionListRow({
   removeAccessibilityLabel,
   onRemove,
   variant,
+  backgroundColor,
+  borderColor,
   mutedColor,
+  textColor,
 }: {
   id: number;
   name: string;
@@ -314,7 +340,10 @@ function SelectionListRow({
   removeAccessibilityLabel?: string;
   onRemove: (id: number) => void;
   variant: SelectionListVariant;
+  backgroundColor: string;
+  borderColor: string;
   mutedColor: string;
+  textColor: string;
 }): React.JSX.Element {
   const panResponder = React.useMemo(
     () =>
@@ -337,6 +366,12 @@ function SelectionListRow({
     <Animated.View
       className={itemRowClassName}
       style={[
+        {
+          backgroundColor,
+          borderColor,
+          borderRadius: 8,
+          borderWidth: 1,
+        },
         isDragging
           ? {
               transform: [{ translateY: dragTranslateY }],
@@ -360,7 +395,8 @@ function SelectionListRow({
           <Text
             numberOfLines={1}
             ellipsizeMode="tail"
-            className="font-medium text-sm text-foreground dark:text-foreground-dark"
+            className="font-medium text-sm"
+            style={{ color: textColor }}
           >
             {name}
           </Text>

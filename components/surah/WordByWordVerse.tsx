@@ -109,8 +109,8 @@ function WordToken({
 
       {showTranslations && translationText ? (
         <Text
-          className="text-muted dark:text-muted-dark"
           style={{
+            color: palette.muted,
             marginTop: 2,
             fontSize: translationFontSize,
             lineHeight: translationLineHeight,

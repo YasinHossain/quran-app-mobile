@@ -23,8 +23,10 @@ export function FontSizeSlider({
   return (
     <View className="gap-2">
       <View className="flex-row items-center justify-between">
-        <Text className="text-sm text-foreground dark:text-foreground-dark">{label}</Text>
-        <Text className="text-sm font-semibold text-accent dark:text-accent-dark">
+        <Text className="text-sm" style={{ color: palette.text }}>
+          {label}
+        </Text>
+        <Text className="text-sm font-semibold" style={{ color: palette.tint }}>
           {Math.round(value)}
         </Text>
       </View>

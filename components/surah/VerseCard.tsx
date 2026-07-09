@@ -294,8 +294,9 @@ function VerseCardComponent({
       ) : (
         <Text
           key={`${verseKey}-arabic-${renderSignal}`}
-          className="text-right text-foreground dark:text-foreground-dark"
+          className="text-right"
           style={{
+            color: palette.text,
             fontSize: arabicFontSize,
             lineHeight: arabicLineHeight,
             fontFamily: effectiveArabicFontFamily,
@@ -308,7 +309,9 @@ function VerseCardComponent({
       )}
 
       {!showByWords && wordTranslationTooltip ? (
-        <Text className="text-xs text-muted dark:text-muted-dark">{wordTranslationTooltip}</Text>
+        <Text className="text-xs" style={{ color: palette.muted }}>
+          {wordTranslationTooltip}
+        </Text>
       ) : null}
 
       {cleanedTranslationItems.length ? (
@@ -322,13 +325,17 @@ function VerseCardComponent({
             return (
               <View key={`${renderSignal}-${idx}-${translation.text.slice(0, 24)}`} className="gap-2">
                 {shouldShowTranslationAttribution && resourceName ? (
-                  <Text className="text-xs font-normal uppercase tracking-wider text-muted dark:text-muted-dark">
+                  <Text
+                    className="text-xs font-normal uppercase tracking-wider"
+                    style={{ color: palette.muted }}
+                  >
                     {resourceName}
                   </Text>
                 ) : null}
                 <Text
-                  className="text-foreground dark:text-foreground-dark"
+                  className=""
                   style={{
+                    color: palette.text,
                     fontSize: translationFontSize,
                     lineHeight: translationLineHeight,
                     writingDirection: 'auto',
@@ -354,7 +361,7 @@ function VerseCardComponent({
             onOpenActions ? 'justify-between' : 'justify-start',
           ].join(' ')}
         >
-          <Text className="text-sm font-semibold text-accent dark:text-accent-dark">
+          <Text className="text-sm font-semibold" style={{ color: palette.tint }}>
             {localizeDigits(verseKey)}
           </Text>
           {onOpenActions ? (
@@ -381,7 +388,7 @@ function VerseCardComponent({
   );
 
   const containerClassName = [
-    'border-b border-border/40 py-4 dark:border-border-dark/30',
+    'border-b py-4',
   ]
     .filter(Boolean)
     .join(' ');
@@ -479,6 +486,7 @@ function VerseCardComponent({
       className={containerClassName}
       style={({ pressed }) => ({
         opacity: pressed ? 0.95 : 1,
+        borderBottomColor: `${palette.border}66`,
         backgroundColor: isAudioActive ? `${palette.tint}0D` : 'transparent',
       })}
     >
@@ -487,7 +495,10 @@ function VerseCardComponent({
   ) : (
     <View
       className={containerClassName}
-      style={{ backgroundColor: isAudioActive ? `${palette.tint}0D` : 'transparent' }}
+      style={{
+        borderBottomColor: `${palette.border}66`,
+        backgroundColor: isAudioActive ? `${palette.tint}0D` : 'transparent',
+      }}
     >
       {content}
     </View>

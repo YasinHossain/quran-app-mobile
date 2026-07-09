@@ -1,5 +1,8 @@
+import React from 'react';
 import { Platform, Pressable, Text, View } from 'react-native';
 
+import Colors from '@/constants/Colors';
+import { useAppTheme } from '@/providers/ThemeContext';
 import { useUiTranslation } from '@/providers/UiLanguageContext';
 
 export type SettingsTab = 'translations' | 'mushaf';
@@ -12,28 +15,11 @@ export function SettingsTabToggle({
   onTabChange: (tab: SettingsTab) => void;
 }): React.JSX.Element {
   const { t } = useUiTranslation();
-
-  return (
-    <View className="flex-row items-center rounded-full bg-interactive dark:bg-interactive-dark p-1">
-      <TabButton
-        label={t('translations')}
-        isActive={activeTab === 'translations'}
-        onPress={() => onTabChange('translations')}
-      />
-      <TabButton label={t('mushaf')} isActive={activeTab === 'mushaf'} onPress={() => onTabChange('mushaf')} />
-    </View>
-  );
-}
-
-function TabButton({
-  label,
-  isActive,
-  onPress,
-}: {
-  label: string;
-  isActive: boolean;
-  onPress: () => void;
-}): React.JSX.Element {
+  const { resolvedTheme } = useAppTheme();
+  const palette = Colors[resolvedTheme];
+  const [measuredWidth, setMeasuredWidth] = React.useState(0);
+  const activeIndex = activeTab === 'mushaf' ? 1 : 0;
+  const indicatorWidth = measuredWidth > 8 ? (measuredWidth - 8) / 2 : 0;
   const activeShadow =
     Platform.OS === 'android'
       ? { elevation: 2 }
@@ -45,22 +31,78 @@ function TabButton({
         };
 
   return (
+    <View
+      className="relative flex-row items-center p-1"
+      onLayout={(event) => {
+        const nextWidth = event.nativeEvent.layout.width;
+        setMeasuredWidth((currentWidth) =>
+          Math.abs(currentWidth - nextWidth) < 1 ? currentWidth : nextWidth
+        );
+      }}
+      style={{
+        backgroundColor: palette.interactive,
+        borderColor: `${palette.border}55`,
+        borderRadius: 24,
+        borderWidth: 1,
+      }}
+    >
+      {indicatorWidth > 0 ? (
+        <View
+          pointerEvents="none"
+          style={[
+            activeShadow,
+            {
+              position: 'absolute',
+              bottom: 4,
+              left: 4,
+              top: 4,
+              width: indicatorWidth,
+              backgroundColor: palette.surfaceNavigation,
+              borderRadius: 999,
+              transform: [{ translateX: activeIndex * indicatorWidth }],
+            },
+          ]}
+        />
+      ) : null}
+      <TabButton
+        label={t('translations')}
+        isActive={activeTab === 'translations'}
+        palette={palette}
+        onPress={() => onTabChange('translations')}
+      />
+      <TabButton
+        label={t('mushaf')}
+        isActive={activeTab === 'mushaf'}
+        palette={palette}
+        onPress={() => onTabChange('mushaf')}
+      />
+    </View>
+  );
+}
+
+function TabButton({
+  label,
+  isActive,
+  palette,
+  onPress,
+}: {
+  label: string;
+  isActive: boolean;
+  palette: (typeof Colors)['light'];
+  onPress: () => void;
+}): React.JSX.Element {
+  return (
     <Pressable
       onPress={onPress}
       className={[
-        'h-11 flex-1 items-center justify-center rounded-full px-3',
-        isActive ? 'bg-surface dark:bg-surface-dark' : '',
+        'z-10 h-11 flex-1 items-center justify-center px-3',
       ].join(' ')}
-      style={({ pressed }) => [isActive ? activeShadow : null, { opacity: pressed ? 0.9 : 1 }]}
+      style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
     >
       <Text
         numberOfLines={1}
-        className={[
-          'text-xs font-semibold',
-          isActive
-            ? 'text-foreground dark:text-white'
-            : 'text-muted dark:text-muted-dark',
-        ].join(' ')}
+        className="text-xs font-semibold"
+        style={{ color: isActive ? palette.text : palette.muted }}
       >
         {label}
       </Text>

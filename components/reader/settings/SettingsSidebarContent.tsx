@@ -965,7 +965,10 @@ export function SettingsSidebarContent({
   const subPanel = (
     <View className="flex-1">
       {isSubPanel ? (
-        <View style={styles.header} className="border-b border-border/30 dark:border-border-dark/20">
+        <View
+          style={[styles.header, { borderBottomColor: `${palette.border}66` }]}
+          className="border-b"
+        >
           <View style={styles.headerSide}>
             <Pressable
               onPress={goBack}
@@ -978,7 +981,11 @@ export function SettingsSidebarContent({
             </Pressable>
           </View>
           <View style={styles.headerTitleWrap}>
-            <Text className="text-lg font-semibold text-foreground dark:text-foreground-dark" numberOfLines={1}>
+            <Text
+              className="text-lg font-semibold"
+              numberOfLines={1}
+              style={{ color: palette.text }}
+            >
               {subPanelTitle}
             </Text>
           </View>
@@ -1037,7 +1044,7 @@ export function SettingsSidebarContent({
               const key = getDownloadKey({ kind: 'word-translation', languageCode: item.code });
               const downloadItem = itemsByKey.get(key);
               return (
-                <View className="px-4 py-1">
+                <View style={{ paddingHorizontal: 16, paddingVertical: 2 }}>
                   <WordLanguageResourceRow
                     item={item}
                     downloadItem={downloadItem}
@@ -1065,13 +1072,20 @@ export function SettingsSidebarContent({
               <View className="px-4 pb-3">
                 <ArabicFontFilterToggle activeFilter={arabicFontFilter} onChange={setArabicFontFilter} />
                 <View
-                  className="mt-3 items-center rounded-lg border border-border/30 bg-surface px-4 pb-4 pt-2 dark:border-border-dark/20 dark:bg-surface-dark"
+                  className="mt-3 items-center px-4 pb-4 pt-2"
+                  style={{
+                    backgroundColor: isDark ? '#1E293B' : '#FFFFFF',
+                    borderColor: isDark ? 'rgba(51,65,85,0.2)' : 'rgba(229,231,235,0.3)',
+                    borderRadius: 8,
+                    borderWidth: 1,
+                  }}
                 >
                   <Text
-                    className="text-center text-foreground dark:text-foreground-dark"
+                    className="text-center"
                     style={[
                       styles.arabicFontPreviewText,
                       {
+                        color: palette.text,
                         fontFamily: selectedArabicFontFamily,
                       },
                     ]}
@@ -1082,7 +1096,7 @@ export function SettingsSidebarContent({
               </View>
             }
             renderItem={({ item }) => (
-              <View className="px-4 py-1">
+              <View style={{ paddingHorizontal: 16, paddingVertical: 2 }}>
                 <ResourceItem
                   item={item}
                   isSelected={item.value === settings.arabicFontFace}
@@ -1099,7 +1113,7 @@ export function SettingsSidebarContent({
             keyExtractor={(item) => item.code}
             contentContainerStyle={{ paddingVertical: 12, paddingBottom: 20 }}
             renderItem={({ item }) => (
-              <View className="px-4 py-1">
+              <View style={{ paddingHorizontal: 16, paddingVertical: 2 }}>
                 <ResourceItem
                   item={item}
                   isSelected={item.code === (settings.uiLanguage ?? 'en')}
@@ -1118,12 +1132,12 @@ export function SettingsSidebarContent({
               contentContainerStyle={{ padding: 12, gap: 10, paddingBottom: 24 }}
               ListHeaderComponent={
                 <View className="px-1 pb-3">
-                  <Text className="text-xs leading-5 text-muted dark:text-muted-dark">
+                  <Text className="text-xs leading-5" style={{ color: palette.muted }}>
                     Keep the bundled Unicode mushaf for instant offline reading. Exact packs download
                     into local versioned storage and stay available offline once installed.
                   </Text>
                   {isMushafPackManagerLoading ? (
-                    <Text className="mt-3 text-xs text-muted dark:text-muted-dark">
+                    <Text className="mt-3 text-xs" style={{ color: palette.muted }}>
                       Refreshing local mushaf pack status…
                     </Text>
                   ) : null}
@@ -1135,10 +1149,13 @@ export function SettingsSidebarContent({
                       <View className="mt-3 flex-row">
                         <Pressable
                           onPress={refreshMushafPacks}
-                          className="rounded-full bg-interactive px-4 py-2 dark:bg-interactive-dark"
-                          style={({ pressed }) => ({ opacity: pressed ? 0.88 : 1 })}
+                          className="rounded-full px-4 py-2"
+                          style={({ pressed }) => ({
+                            backgroundColor: palette.interactive,
+                            opacity: pressed ? 0.88 : 1,
+                          })}
                         >
-                          <Text className="text-xs font-semibold text-foreground dark:text-foreground-dark">
+                          <Text className="text-xs font-semibold" style={{ color: palette.text }}>
                             Retry
                           </Text>
                         </Pressable>
@@ -1234,16 +1251,23 @@ export function SettingsSidebarContent({
   );
 
   return (
-    <View className="flex-1">
+    <View className="flex-1" style={{ backgroundColor: palette.background }}>
       <Animated.View
         style={{ flex: 1, opacity: rootOpacity, transform: [{ translateX: rootTranslateX }] }}
         pointerEvents={isSubPanel ? 'none' : 'auto'}
       >
         <View className="flex-1">
-          <View style={styles.header} className="border-b border-border/30 dark:border-border-dark/20">
+          <View
+            style={[styles.header, { borderBottomColor: `${palette.border}66` }]}
+            className="border-b"
+          >
             <View style={styles.headerSide} />
             <View style={styles.headerTitleWrap}>
-              <Text className="text-lg font-semibold text-foreground dark:text-foreground-dark" numberOfLines={1}>
+              <Text
+                className="text-lg font-semibold"
+                numberOfLines={1}
+                style={{ color: palette.text }}
+              >
                 {t('settings')}
               </Text>
             </View>
@@ -1261,7 +1285,10 @@ export function SettingsSidebarContent({
               ) : null}
             </View>
           </View>
-          <View className="border-b border-border/30 dark:border-border-dark/20 px-4 py-3">
+          <View
+            className="border-b px-4 py-3"
+            style={{ borderBottomColor: `${palette.border}66` }}
+          >
             <SettingsTabToggle activeTab={activeTab} onTabChange={handleActiveTabChange} />
           </View>
 
@@ -1350,7 +1377,10 @@ export function SettingsSidebarContent({
                         >
                           <View className="flex-row items-center gap-3">
                             <Download color={palette.tint} size={20} strokeWidth={2.25} />
-                            <Text className="text-base font-semibold text-foreground dark:text-foreground-dark">
+                            <Text
+                              className="text-base font-semibold"
+                              style={{ color: palette.text }}
+                            >
                               {t('manage_downloads')}
                             </Text>
                           </View>
@@ -1363,12 +1393,15 @@ export function SettingsSidebarContent({
                         >
                           <View className="flex-row items-center gap-3">
                             <Globe color={palette.tint} size={20} strokeWidth={2.25} />
-                            <Text className="text-base font-semibold text-foreground dark:text-foreground-dark">
+                            <Text
+                              className="text-base font-semibold"
+                              style={{ color: palette.text }}
+                            >
                               {t('language_setting')}
                             </Text>
                           </View>
                           <View className="flex-row items-center gap-2">
-                            <Text className="text-sm text-muted dark:text-muted-dark">
+                            <Text className="text-sm" style={{ color: palette.muted }}>
                               {selectedUiLanguageName}
                             </Text>
                           </View>

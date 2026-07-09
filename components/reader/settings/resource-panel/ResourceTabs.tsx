@@ -35,32 +35,40 @@ function NavButton({
 function Tab({
   label,
   active,
+  tintColor,
+  mutedColor,
   onPress,
 }: {
   label: string;
   active: boolean;
+  tintColor: string;
+  mutedColor: string;
   onPress: () => void;
 }): React.JSX.Element {
   return (
     <Pressable
       onPress={onPress}
-      className={[
-        'flex-shrink-0 px-3 py-1 border-b-2',
-        active
-          ? 'border-accent dark:border-accent-dark'
-          : 'border-transparent',
-      ].join(' ')}
-      style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}
+      className="flex-shrink-0 items-center px-3 py-1"
+      style={({ pressed }) => ({
+        opacity: pressed ? 0.85 : 1,
+      })}
       accessibilityRole="button"
     >
       <Text
-        className={[
-          'text-sm font-semibold',
-          active ? 'text-accent dark:text-accent-dark' : 'text-muted dark:text-muted-dark',
-        ].join(' ')}
+        className="text-sm font-semibold"
+        style={{ color: active ? tintColor : mutedColor }}
       >
         {label}
       </Text>
+      <View
+        style={{
+          backgroundColor: active ? tintColor : 'transparent',
+          borderRadius: 999,
+          height: 2,
+          marginTop: 6,
+          width: '100%',
+        }}
+      />
     </Pressable>
   );
 }
@@ -149,6 +157,8 @@ export function ResourceTabs({
             key={lang}
             label={lang}
             active={activeFilter === lang}
+            tintColor={palette.tint}
+            mutedColor={palette.muted}
             onPress={() => {
               Keyboard.dismiss();
               onTabPress(lang);

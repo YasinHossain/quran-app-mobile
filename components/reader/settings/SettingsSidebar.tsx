@@ -61,11 +61,12 @@ export function SettingsSidebar({
             styles.sheet,
             {
               backgroundColor: palette.background,
+              borderLeftColor: `${palette.border}66`,
               width: sheetWidth,
             },
             sideSheetTransform(progress, hiddenTranslateX),
           ]}
-          className="border-l border-border/30 dark:border-border-dark/20"
+          className="border-l"
         >
           <View
             style={{
