@@ -1,6 +1,12 @@
 import { Text, View } from 'react-native';
 
+import Colors from '@/constants/Colors';
+import { useAppTheme } from '@/providers/ThemeContext';
+
 export function HomeVersePlaceholder(): React.JSX.Element {
+  const { resolvedTheme } = useAppTheme();
+  const palette = Colors[resolvedTheme];
+
   return (
     <View
       accessibilityElementsHidden
@@ -9,11 +15,15 @@ export function HomeVersePlaceholder(): React.JSX.Element {
       style={{ minHeight: 168 }}
     >
       <Text
-        className="text-center text-[24px] font-semibold leading-[38px] text-content-primary dark:text-content-primary-dark"
+        className="text-center text-[24px] font-semibold leading-[38px]"
+        style={{ color: palette.text }}
       >
         Indeed, with hardship comes ease.
       </Text>
-      <Text className="mt-5 text-center text-sm font-medium tracking-[1px] text-content-secondary dark:text-content-secondary-dark">
+      <Text
+        className="mt-5 text-center text-sm font-medium tracking-[1px]"
+        style={{ color: palette.muted }}
+      >
         [ASH-SHARH 94:6]
       </Text>
     </View>

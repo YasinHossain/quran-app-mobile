@@ -42,8 +42,13 @@ export const HeaderSearchInput = React.forwardRef(
       <View className="w-full" style={{ width: '100%' }}>
         <Pressable
           onPressIn={focusInput}
-          className="flex-row items-center gap-2 rounded-xl bg-interactive px-3 py-2 dark:bg-interactive-dark border border-border/30 dark:border-border-dark/20"
-          style={{ minHeight: 44 }}
+          className="flex-row items-center gap-2 rounded-xl px-3 py-2"
+          style={{
+            minHeight: 44,
+            backgroundColor: palette.interactive,
+            borderColor: `${palette.border}55`,
+            borderWidth: 1,
+          }}
           accessibilityRole="search"
         >
           <View className="h-4 w-4 items-center justify-center">
@@ -62,8 +67,8 @@ export const HeaderSearchInput = React.forwardRef(
             returnKeyType="search"
             onSubmitEditing={onSubmitEditing}
             editable={editable}
-            style={{ paddingVertical: 0 }}
-            className="flex-1 text-sm text-foreground dark:text-foreground-dark"
+            style={{ paddingVertical: 0, color: palette.text }}
+            className="flex-1 text-sm"
           />
 
           {showClear ? (

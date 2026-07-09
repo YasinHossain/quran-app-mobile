@@ -6,6 +6,8 @@ import Animated, {
   withSpring,
 } from 'react-native-reanimated';
 
+import Colors from '@/constants/Colors';
+import { useAppTheme } from '@/providers/ThemeContext';
 import { useUiTranslation } from '@/providers/UiLanguageContext';
 
 export type HomeTab = 'surah' | 'juz' | 'page';
@@ -22,7 +24,9 @@ export function HomeTabToggle({
   onTabChange: (tab: HomeTab) => void;
 }): React.JSX.Element {
   const [measuredWidth, setMeasuredWidth] = React.useState(0);
+  const { resolvedTheme } = useAppTheme();
   const { t } = useUiTranslation();
+  const palette = Colors[resolvedTheme];
   const activeIndex = Math.max(0, TABS.indexOf(activeTab));
   const indicatorPosition = useSharedValue(activeIndex);
   const containerWidth = width ?? measuredWidth;
@@ -64,19 +68,27 @@ export function HomeTabToggle({
           Math.abs(currentWidth - nextWidth) < 1 ? currentWidth : nextWidth
         );
       }}
-      className="relative flex-row items-center rounded-[24px] border border-border/30 bg-interactive p-1 dark:border-border-dark/30 dark:bg-interactive-dark"
-      style={width !== undefined ? { width } : undefined}
+      className="relative flex-row items-center rounded-[24px] p-1"
+      style={[
+        {
+          backgroundColor: palette.interactive,
+          borderColor: `${palette.border}55`,
+          borderWidth: 1,
+        },
+        width !== undefined ? { width } : undefined,
+      ]}
     >
       <Animated.View
         pointerEvents="none"
-        className="absolute bottom-1 left-1 top-1 rounded-full bg-surface-navigation dark:bg-surface-navigation-dark"
-        style={[animatedIndicatorStyle, activeShadow]}
+        className="absolute bottom-1 left-1 top-1 rounded-full"
+        style={[animatedIndicatorStyle, activeShadow, { backgroundColor: palette.surfaceNavigation }]}
       />
       {TABS.map((tab) => (
         <TabButton
           key={tab}
           label={tab === 'surah' ? t('surah_tab') : tab === 'juz' ? t('juz_tab') : t('page_tab')}
           isActive={activeTab === tab}
+          palette={palette}
           onPress={() => onTabChange(tab)}
         />
       ))}
@@ -87,10 +99,12 @@ export function HomeTabToggle({
 function TabButton({
   label,
   isActive,
+  palette,
   onPress,
 }: {
   label: string;
   isActive: boolean;
+  palette: (typeof Colors)['light'];
   onPress: () => void;
 }): React.JSX.Element {
   return (
@@ -100,12 +114,8 @@ function TabButton({
       style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
     >
       <Text
-        className={[
-          'text-[13px] font-semibold',
-          isActive
-            ? 'text-content-primary dark:text-content-primary-dark'
-            : 'text-content-secondary dark:text-content-secondary-dark',
-        ].join(' ')}
+        className="text-[13px] font-semibold"
+        style={{ color: isActive ? palette.text : palette.muted }}
       >
         {label}
       </Text>

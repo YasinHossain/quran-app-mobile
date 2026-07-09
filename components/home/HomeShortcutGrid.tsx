@@ -35,8 +35,10 @@ export function HomeShortcutGrid(): React.JSX.Element {
   const iconBoxSize = 48; // Smaller iOS app icon size
   const itemWidth = iconBoxSize; // Match container exactly to icon size for perfect gap calculation
   const iconBorderRadius = 12; // Squircle
-  const tileBackground = isDark ? '#182333' : '#FFFFFF';
-  const iconColor = Colors[resolvedTheme].tint; // Emerald green
+  const palette = Colors[resolvedTheme];
+  const tileBackground = palette.surfaceNavigation;
+  const borderColor = palette.border;
+  const iconColor = palette.tint; // Emerald green
   const labelColor = isDark ? '#E5E5E5' : '#2F3744';
 
   return (
@@ -79,7 +81,8 @@ export function HomeShortcutGrid(): React.JSX.Element {
                     height: iconBoxSize,
                     backgroundColor: tileBackground,
                     borderRadius: iconBorderRadius,
-                    borderWidth: 0, // Explicitly ensure no border
+                    borderWidth: 1,
+                    borderColor: borderColor,
                   },
                 ]}
               >

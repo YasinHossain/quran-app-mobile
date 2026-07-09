@@ -28,6 +28,7 @@ import { AppSearchHeader } from '@/components/navigation/AppHeader';
 import { useHeaderSearch } from '@/components/navigation/useHeaderSearch';
 import { ComprehensiveSearchDropdown } from '@/components/search/ComprehensiveSearchDropdown';
 import { HeaderActionButton } from '@/components/search/HeaderSearchBar';
+import Colors from '@/constants/Colors';
 import { useChapters } from '@/hooks/useChapters';
 import { useAppTheme } from '@/providers/ThemeContext';
 import { useUiTranslation } from '@/providers/UiLanguageContext';
@@ -279,6 +280,8 @@ function HomeTabsBar({
   onHeightChange?: (height: number) => void;
   onTabChange: (tab: HomeTab) => void;
 }): React.JSX.Element {
+  const { resolvedTheme } = useAppTheme();
+  const palette = Colors[resolvedTheme];
   const tabsBarWidth = Math.max(0, containerWidth - LIST_HORIZONTAL_PADDING * 2);
   const toggleWidth = Math.max(0, tabsBarWidth - TABS_BAR_HORIZONTAL_PADDING * 2);
 
@@ -286,7 +289,7 @@ function HomeTabsBar({
     <View
       collapsable={false}
       onLayout={(event) => onHeightChange?.(event.nativeEvent.layout.height)}
-      className="bg-background dark:bg-background-dark"
+      style={{ backgroundColor: palette.background }}
     >
       <View
         className="px-3 pb-3 pt-1"
@@ -391,6 +394,8 @@ function buildHomeListData({
 
 export default function ReadScreen(): React.JSX.Element {
   const [activeTab, setActiveTab] = React.useState<HomeTab>('surah');
+  const { resolvedTheme } = useAppTheme();
+  const palette = Colors[resolvedTheme];
   const { t } = useUiTranslation();
   const [searchHeaderHeight, setSearchHeaderHeight] = React.useState(0);
   const headerSearch = useHeaderSearch();
@@ -661,7 +666,7 @@ export default function ReadScreen(): React.JSX.Element {
   );
 
   return (
-    <View className="flex-1 bg-background dark:bg-background-dark">
+    <View className="flex-1" style={{ backgroundColor: palette.background }}>
       <HomeSearchHeader
         headerSearchInputRef={headerSearch.inputRef}
         headerSearchQuery={headerSearch.query}
@@ -673,7 +678,7 @@ export default function ReadScreen(): React.JSX.Element {
         }}
       />
 
-      <View className="flex-1">
+      <View className="flex-1" style={{ backgroundColor: palette.background }}>
         <Animated.FlatList
           ref={listRef}
           key={`home-flatlist`}

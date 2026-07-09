@@ -2,7 +2,6 @@ import { Plus, Sparkles, X } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import React from 'react';
 import {
-  ActivityIndicator,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -174,17 +173,36 @@ export function HomeQuickLinksCard(): React.JSX.Element {
           },
     []
   );
+  const chipShadow = React.useMemo(
+    () =>
+      Platform.OS === 'android'
+        ? { elevation: 0, shadowColor: '#000' }
+        : {
+            shadowColor: '#000',
+            shadowOpacity: 0,
+            shadowRadius: 0,
+            shadowOffset: { width: 0, height: 0 },
+          },
+    []
+  );
   const textColor = palette.text;
   const mutedColor = palette.muted;
+  const chipBackground = isDark ? palette.surfaceNavigation : palette.interactive;
+  const borderColor = 'transparent';
+  const borderWidth = 0;
+  const iconCircleBackground = isDark ? '#0F172A' : '#FFFFFF';
   const canAdd = quickLinks.length < MAX_QUICK_LINKS;
 
   return (
     <View>
       <View className="mb-3 flex-row items-center justify-between px-3">
-        <Text className="text-lg font-semibold text-content-primary dark:text-content-primary-dark">
-          {t('quick_navigation')}
+        <Text className="text-lg font-semibold" style={{ color: textColor }}>
+          {t('quick_links', { fallback: 'Quick Links' })}
         </Text>
-        <Text className="text-xs font-semibold text-muted dark:text-muted-dark">
+        <Text
+          className="text-xs font-semibold"
+          style={{ color: mutedColor, opacity: isHydrated ? 1 : 0 }}
+        >
           {formatNumber(quickLinks.length)}/{formatNumber(MAX_QUICK_LINKS)}
         </Text>
       </View>
@@ -209,26 +227,37 @@ export function HomeQuickLinksCard(): React.JSX.Element {
                   onPress={() => navigateToQuickLink(link)}
                   accessibilityRole="button"
                   accessibilityLabel={`Open quick link ${surahName} ${verseLabel}`}
-                  className="flex-row items-center rounded-full bg-interactive py-1.5 pl-1.5 pr-2.5 dark:bg-surface-navigation-dark"
-                  style={({ pressed }) => [
-                    {
-                      minHeight: 46,
-                      maxWidth: 242,
-                      opacity: pressed ? 0.92 : 1,
-                      transform: [{ scale: pressed ? 0.985 : 1 }],
-                    },
-                  ]}
+                  style={({ pressed }) => ({
+                    maxWidth: 242,
+                    opacity: pressed ? 0.92 : 1,
+                    transform: [{ scale: pressed ? 0.985 : 1 }],
+                  })}
                 >
+                  <View
+                    className="flex-row items-center rounded-full py-1.5 pl-1.5 pr-2.5"
+                    style={[
+                      {
+                        minHeight: 46,
+                        maxWidth: 242,
+                        backgroundColor: chipBackground,
+                        borderRadius: 999,
+                        borderWidth,
+                        borderColor,
+                      },
+                      chipShadow,
+                    ]}
+                  >
                     <View
-                      className="items-center justify-center rounded-full bg-surface-navigation dark:bg-background-dark"
-                      style={[{ width: 34, height: 34 }, activeShadow]}
+                      className="items-center justify-center rounded-full"
+                      style={[{ width: 34, height: 34, backgroundColor: iconCircleBackground }, activeShadow]}
                     >
                       <Sparkles size={16} strokeWidth={2.3} color={palette.tint} />
                     </View>
                     <Text
                       numberOfLines={1}
-                      className="ml-2.5 flex-1 text-[15px] font-bold"
-                      style={{ color: textColor }}
+                      ellipsizeMode="tail"
+                      className="ml-2.5 text-[15px] font-bold"
+                      style={{ color: textColor, maxWidth: 150 }}
                     >
                       {surahName}{' '}
                       <Text className="text-[13px] font-semibold" style={{ color: mutedColor }}>
@@ -254,6 +283,7 @@ export function HomeQuickLinksCard(): React.JSX.Element {
                     >
                       <X size={14} strokeWidth={2.4} color={mutedColor} />
                     </Pressable>
+                  </View>
                 </Pressable>
               );
             })}
@@ -263,20 +293,30 @@ export function HomeQuickLinksCard(): React.JSX.Element {
                 onPress={() => setIsAddOpen(true)}
                 accessibilityRole="button"
                 accessibilityLabel="Add quick link"
-                className={`flex-row items-center justify-center rounded-full bg-interactive dark:bg-surface-navigation-dark ${quickLinks.length === 0 ? 'py-1.5 pl-1.5 pr-5' : 'p-1.5'}`}
-                style={({ pressed }) => [
-                  {
-                    minHeight: 46,
-                    minWidth: quickLinks.length === 0 ? undefined : 46,
-                    alignSelf: 'flex-start',
-                    opacity: pressed ? 0.9 : 1,
-                    transform: [{ scale: pressed ? 0.985 : 1 }],
-                  },
-                ]}
+                style={({ pressed }) => ({
+                  minWidth: quickLinks.length === 0 ? undefined : 46,
+                  alignSelf: 'flex-start',
+                  opacity: pressed ? 0.95 : 1,
+                  transform: [{ scale: pressed ? 0.985 : 1 }],
+                })}
               >
+                <View
+                  className={`flex-row items-center justify-center rounded-full ${quickLinks.length === 0 ? 'py-1.5 pl-1.5 pr-5' : 'p-1.5'}`}
+                  style={[
+                    {
+                      minHeight: 46,
+                      minWidth: quickLinks.length === 0 ? undefined : 46,
+                      backgroundColor: chipBackground,
+                      borderRadius: 999,
+                      borderWidth,
+                      borderColor,
+                    },
+                    chipShadow,
+                  ]}
+                >
                   <View
-                    className="items-center justify-center rounded-full bg-surface-navigation dark:bg-background-dark"
-                    style={[{ width: 34, height: 34 }, activeShadow]}
+                    className="items-center justify-center rounded-full"
+                    style={[{ width: 34, height: 34, backgroundColor: iconCircleBackground }, activeShadow]}
                   >
                     <Plus size={18} strokeWidth={2.5} color={palette.tint} />
                   </View>
@@ -286,22 +326,27 @@ export function HomeQuickLinksCard(): React.JSX.Element {
                       className="ml-2.5 text-[15px] font-bold"
                       style={{ color: textColor }}
                     >
-                      {t('add')}
+                      {t('add_quick_link', { fallback: 'Add quick link' })}
                     </Text>
                   ) : null}
+                </View>
               </Pressable>
             ) : null}
           </>
         ) : (
           <View
-            className="flex-row items-center rounded-full bg-interactive px-5 dark:bg-surface-navigation-dark"
-            style={{ minHeight: 46, alignSelf: 'flex-start' }}
-          >
-            <ActivityIndicator size="small" color={palette.muted} />
-            <Text className="ml-3 text-sm font-semibold" style={{ color: mutedColor }}>
-              {t('loading')}
-            </Text>
-          </View>
+            className="flex-row items-center rounded-full py-1.5 pl-1.5 pr-5"
+            style={{
+              minHeight: 46,
+              width: 190,
+              alignSelf: 'flex-start',
+              backgroundColor: chipBackground,
+              borderRadius: 999,
+              borderWidth,
+              borderColor,
+              opacity: 0,
+            }}
+          />
         )}
       </ScrollView>
 
@@ -456,25 +501,6 @@ const styles = StyleSheet.create({
     paddingTop: 4,
     paddingBottom: 12,
     gap: 4,
-  },
-  pillPressable: {
-    borderRadius: 999,
-  },
-  pillSurface: {
-    height: 44,
-    borderRadius: 999,
-    paddingLeft: 8,
-    paddingRight: 15,
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-  },
-  iconCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   modalRoot: {
     flex: 1,

@@ -189,6 +189,12 @@ export default function PageScreen(): React.JSX.Element {
   const audio = useAudioPlayer();
   const { audioPlayerBarHeight } = useLayoutMetrics();
 
+  React.useEffect(() => {
+    if (isSettingsOpen) {
+      headerSearch.close({ clearQuery: false });
+    }
+  }, [headerSearch.close, isSettingsOpen]);
+
   const listContentContainerStyle = React.useMemo(
     () => ({
       paddingHorizontal: 16,
@@ -727,7 +733,7 @@ export default function PageScreen(): React.JSX.Element {
         style={readerHeader.headerAnimatedStyle}
       >
         <AppSearchHeader
-          editable={readerHeader.headerPointerEvents !== 'none'}
+          editable={readerHeader.headerPointerEvents !== 'none' && !isSettingsOpen}
           left={
             <HeaderActionButton accessibilityLabel="Go back" onPress={() => router.back()}>
               <ArrowLeft color={palette.text} size={22} strokeWidth={2.25} />
@@ -738,6 +744,7 @@ export default function PageScreen(): React.JSX.Element {
           onChangeText={headerSearch.updateQuery}
           placeholder="Search…"
           onFocus={() => {
+            if (isSettingsOpen) return;
             readerHeader.showHeader();
             headerSearch.setIsOpen(true);
           }}
@@ -934,7 +941,7 @@ export default function PageScreen(): React.JSX.Element {
       ) : null}
 
       <ComprehensiveSearchDropdown
-        isOpen={headerSearch.isOpen}
+        isOpen={headerSearch.isOpen && !isSettingsOpen}
         query={headerSearch.query}
         onQueryChange={headerSearch.updateQuery}
         onClose={() => headerSearch.close({ clearQuery: false })}

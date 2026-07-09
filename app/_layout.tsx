@@ -6,7 +6,7 @@ import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useState } from 'react';
 import 'react-native-reanimated';
-import { View } from 'react-native';
+import { StatusBar as NativeStatusBar, View } from 'react-native';
 import { initialWindowMetrics, SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { AudioPlayerBar } from '@/components/audio/AudioPlayerBar';
@@ -134,6 +134,10 @@ function RootLayoutNav() {
       notification: palette.tint,
     },
   } as const;
+
+  useEffect(() => {
+    NativeStatusBar.setBackgroundColor(palette.background, true);
+  }, [palette.background]);
 
   return (
     <ThemeProvider value={theme}>

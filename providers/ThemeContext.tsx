@@ -1,5 +1,13 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { useColorScheme as useSystemColorScheme } from 'react-native';
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useState,
+} from 'react';
+import { Appearance } from 'react-native';
 import { colorScheme } from 'nativewind';
 
 import { getItem, setItem } from '@/lib/storage/appStorage';
@@ -19,6 +27,17 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export const THEME_STORAGE_KEY = 'quranAppThemePreference';
 
+function getSystemTheme(): ResolvedTheme {
+  return Appearance.getColorScheme() === 'dark' ? 'dark' : 'light';
+}
+
+function resolveThemePreference(
+  preference: ThemePreference,
+  systemScheme: ResolvedTheme
+): ResolvedTheme {
+  return preference === 'system' ? systemScheme : preference;
+}
+
 export function AppThemeProvider({
   children,
   initialPreference = 'system',
@@ -26,14 +45,29 @@ export function AppThemeProvider({
   children: React.ReactNode;
   initialPreference?: ThemePreference;
 }): React.JSX.Element {
-  const systemScheme = (useSystemColorScheme() ?? 'light') as ResolvedTheme;
+  const [systemScheme, setSystemScheme] = useState<ResolvedTheme>(() => getSystemTheme());
   const [preference, setPreferenceState] = useState<ThemePreference>(() => {
-    colorScheme.set(initialPreference);
+    colorScheme.set(resolveThemePreference(initialPreference, systemScheme));
     return initialPreference;
   });
 
+  const resolvedTheme = resolveThemePreference(preference, systemScheme);
+  const isDark = resolvedTheme === 'dark';
+
+  useLayoutEffect(() => {
+    colorScheme.set(resolvedTheme);
+  }, [resolvedTheme]);
+
   useEffect(() => {
-    colorScheme.set(preference);
+    const subscription = Appearance.addChangeListener(({ colorScheme: nextColorScheme }) => {
+      const nextSystemScheme: ResolvedTheme = nextColorScheme === 'dark' ? 'dark' : 'light';
+      colorScheme.set(resolveThemePreference(preference, nextSystemScheme));
+      setSystemScheme(nextSystemScheme);
+    });
+
+    return () => {
+      subscription.remove();
+    };
   }, [preference]);
 
   useEffect(() => {
@@ -43,6 +77,7 @@ export function AppThemeProvider({
       const stored = (await getItem(THEME_STORAGE_KEY)) as ThemePreference | null;
       if (cancelled) return;
       if (stored === 'light' || stored === 'dark' || stored === 'system') {
+        colorScheme.set(resolveThemePreference(stored, systemScheme));
         setPreferenceState(stored);
       }
     }
@@ -51,15 +86,16 @@ export function AppThemeProvider({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [systemScheme]);
 
-  const resolvedTheme: ResolvedTheme = preference === 'system' ? systemScheme : preference;
-  const isDark = resolvedTheme === 'dark';
-
-  const setPreference = useCallback((next: ThemePreference) => {
-    setPreferenceState(next);
-    void setItem(THEME_STORAGE_KEY, next);
-  }, []);
+  const setPreference = useCallback(
+    (next: ThemePreference) => {
+      colorScheme.set(resolveThemePreference(next, systemScheme));
+      setPreferenceState(next);
+      void setItem(THEME_STORAGE_KEY, next);
+    },
+    [systemScheme]
+  );
 
   const setDarkModeEnabled = useCallback(
     (enabled: boolean) => setPreference(enabled ? 'dark' : 'light'),

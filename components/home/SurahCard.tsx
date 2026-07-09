@@ -27,6 +27,10 @@ function SurahCardComponent({ surah }: { surah: Surah }): React.JSX.Element {
   const { isDark } = useAppTheme();
   const { t, formatNumber } = useUiTranslation();
   const bgColor = isDark ? '#182333' : '#FFFFFF';
+  const numberBadgeBgColor = isDark ? '#334155' : '#F3F4F6';
+  const primaryTextColor = isDark ? '#E7E5E4' : '#374151';
+  const secondaryTextColor = isDark ? '#94A3B8' : '#6B7280';
+  const accentColor = isDark ? '#14B8A6' : '#0D9488';
   const localizedSurahName = t(`surah_names.${surah.id}`, { fallback: surah.englishName });
   const verseCountLabel = `${formatNumber(surah.numberOfAyahs)} ${t('verses')}`;
 
@@ -62,20 +66,25 @@ function SurahCardComponent({ surah }: { surah: Surah }): React.JSX.Element {
         ]}
       >
       <View className="flex-row items-center gap-3">
-        <View className="h-12 w-12 items-center justify-center rounded-xl bg-number-badge dark:bg-number-badge-dark">
-          <Text className="text-lg font-bold text-accent dark:text-accent-dark">{formatNumber(surah.id)}</Text>
+        <View
+          className="h-12 w-12 items-center justify-center rounded-xl"
+          style={{ backgroundColor: numberBadgeBgColor }}
+        >
+          <Text className="text-lg font-bold" style={{ color: accentColor }}>{formatNumber(surah.id)}</Text>
         </View>
 
         <View className="flex-1 min-w-0">
           <Text
             numberOfLines={1}
-            className="text-base font-bold text-content-primary dark:text-content-primary-dark"
+            className="text-base font-bold"
+            style={{ color: primaryTextColor }}
           >
             {localizedSurahName}
           </Text>
           <Text
             numberOfLines={1}
-            className="mt-0.5 text-xs text-content-secondary dark:text-content-secondary-dark"
+            className="mt-0.5 text-xs"
+            style={{ color: secondaryTextColor }}
           >
             {verseCountLabel}
           </Text>
@@ -83,7 +92,8 @@ function SurahCardComponent({ surah }: { surah: Surah }): React.JSX.Element {
 
         <Text
           numberOfLines={1}
-          className="text-lg font-semibold text-foreground dark:text-foreground-dark"
+          className="text-lg font-semibold"
+          style={{ color: primaryTextColor }}
         >
           {surah.arabicName}
         </Text>
