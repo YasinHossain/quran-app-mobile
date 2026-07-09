@@ -141,7 +141,6 @@ function MushafMessageState({ message }: { message: string }): React.JSX.Element
   );
 }
 
-const INITIAL_PLACEHOLDER_VERSE_NUMBERS = [1, 2, 3, 4];
 const FALLBACK_MUSHAF_TOTAL_PAGES = 604;
 
 type ChapterPageRange = {
@@ -326,32 +325,6 @@ export default function SurahScreen(): React.JSX.Element {
     () => Array.from({ length: Math.max(0, verseCount) }, (_value, index) => index + 1),
     [verseCount]
   );
-  const nativeTargetWindowKey = `${surahId ?? ''}:${normalizedStartVerse ?? ''}`;
-  const nativeTargetStartVerse =
-    Platform.OS !== 'web' && typeof normalizedStartVerse === 'number'
-      ? Math.max(1, normalizedStartVerse)
-      : 1;
-  const [nativeTargetWindow, setNativeTargetWindow] = React.useState({
-    key: nativeTargetWindowKey,
-    startVerse: nativeTargetStartVerse,
-  });
-
-  if (nativeTargetWindow.key !== nativeTargetWindowKey) {
-    setNativeTargetWindow({
-      key: nativeTargetWindowKey,
-      startVerse: nativeTargetStartVerse,
-    });
-  }
-
-  const nativeListStartVerse =
-    nativeTargetWindow.key === nativeTargetWindowKey
-      ? nativeTargetWindow.startVerse
-      : nativeTargetStartVerse;
-  const nativeVerseNumbers = React.useMemo(
-    () => verseNumbers.slice(Math.max(0, nativeListStartVerse - 1)),
-    [nativeListStartVerse, verseNumbers]
-  );
-  const isNativeTargetRoute = nativeTargetStartVerse > 1;
   const navigationChapter = React.useMemo(
     () => chapters.find((item) => item.id === chapterNumber) ?? null,
     [chapterNumber, chapters]
@@ -1052,14 +1025,6 @@ export default function SurahScreen(): React.JSX.Element {
     ensureVerseRangeLoadedRef.current = ensureVerseRangeLoaded;
   }, [ensureVerseRangeLoaded]);
 
-  const nativeListStartVerseRef = React.useRef(nativeListStartVerse);
-  React.useEffect(() => {
-    nativeListStartVerseRef.current = nativeListStartVerse;
-  }, [nativeListStartVerse]);
-  const nativeTargetWindowKeyRef = React.useRef(nativeTargetWindowKey);
-  React.useEffect(() => {
-    nativeTargetWindowKeyRef.current = nativeTargetWindowKey;
-  }, [nativeTargetWindowKey]);
 
   const setLastReadRef = React.useRef(setLastRead);
   React.useEffect(() => {
@@ -1348,13 +1313,11 @@ export default function SurahScreen(): React.JSX.Element {
   }, [surahId, startVerseParam]);
 
   React.useEffect(() => {
-    if (Platform.OS !== 'web') return;
     if (!Number.isFinite(startVerse) || startVerse <= 0) return;
     if (didScrollToStartRef.current) return;
     if (verseCountRef.current <= 0) return;
 
-    // Verse 1 is already the natural list position. Running FlashList's
-    // multi-step scroll for it only adds latency compared with opening a surah.
+    // Verse 1 is already the natural list position.
     if (Math.floor(startVerse) === 1) {
       didScrollToStartRef.current = true;
       return;
@@ -1377,21 +1340,25 @@ export default function SurahScreen(): React.JSX.Element {
 
     if (targetIndex >= verseCountRef.current) return;
 
-    if (!flatListRef.current) {
+    const list = Platform.OS === 'web' ? flatListRef.current : flashListRef.current;
+    if (!list) {
       scheduleRetry();
       return;
     }
 
+    const scrollViewOffset =
+      Platform.OS === 'web' ? listScrollViewOffset : nativeListScrollViewOffset;
+
     try {
-      flatListRef.current.scrollToIndex({
+      list.scrollToIndex({
         index: targetIndex,
         animated: false,
         viewPosition: 0,
-        viewOffset: listScrollViewOffset,
+        viewOffset: scrollViewOffset,
       });
     } catch { }
     scheduleRetry();
-  }, [listScrollViewOffset, scrollTick, startVerse, verseCount]);
+  }, [listScrollViewOffset, nativeListScrollViewOffset, scrollTick, startVerse, verseCount]);
 
   const handleScrubToVerse = React.useCallback(
     (verseNumber: number, options?: { isFinal?: boolean }) => {
@@ -1401,11 +1368,7 @@ export default function SurahScreen(): React.JSX.Element {
         1,
         Math.min(Math.trunc(verseNumber), Math.max(1, verseCountRef.current))
       );
-      const nativeStartVerse = nativeListStartVerseRef.current;
-      const targetIndex =
-        Platform.OS === 'web'
-          ? targetVerseNumber - 1
-          : targetVerseNumber - nativeStartVerse;
+      const targetIndex = targetVerseNumber - 1;
 
       if (
         !isFinal &&
@@ -1436,15 +1399,6 @@ export default function SurahScreen(): React.JSX.Element {
           Math.min(verseCount, targetVerseNumber + prefetchRadius),
           isFinal ? 2 : 1
         );
-      }
-
-      if (Platform.OS !== 'web' && targetVerseNumber < nativeStartVerse) {
-        setNativeTargetWindow((current) =>
-          current.key === nativeTargetWindowKeyRef.current
-            ? { ...current, startVerse: targetVerseNumber }
-            : current
-        );
-        return;
       }
 
       const list = Platform.OS === 'web' ? flatListRef.current : flashListRef.current;
@@ -1539,32 +1493,8 @@ export default function SurahScreen(): React.JSX.Element {
     verseScrubberRef.current?.show();
   }, [readerHeader]);
 
-  const expandedNativeTargetKeyRef = React.useRef<string | null>(null);
-  const handleNativeVerseListLoad = React.useCallback(() => {
-    if (!isNativeTargetRoute) return;
-    if (expandedNativeTargetKeyRef.current === nativeTargetWindowKey) return;
-
-    expandedNativeTargetKeyRef.current = nativeTargetWindowKey;
-    const nearbyStartVerse = Math.max(1, nativeTargetStartVerse - 5);
-    const nearbyEndVerse = Math.min(
-      Math.max(1, verseCountRef.current),
-      nativeTargetStartVerse + 5
-    );
-    ensureVerseRangeLoadedRef.current(nearbyStartVerse, nearbyEndVerse, 1);
-  }, [isNativeTargetRoute, nativeTargetStartVerse, nativeTargetWindowKey]);
-
-  const handleNativeVerseListScrollEndDrag = React.useCallback(
-    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-      if (nativeListStartVerse <= 1 || event.nativeEvent.contentOffset.y > 1) return;
-
-      setNativeTargetWindow((current) =>
-        current.key === nativeTargetWindowKey
-          ? { ...current, startVerse: Math.max(1, current.startVerse - 30) }
-          : current
-      );
-    },
-    [nativeListStartVerse, nativeTargetWindowKey]
-  );
+  // No-op: native list load handler removed. Scroll-to-start is handled by
+  // the unified useEffect above.
 
   const mushafPageScrubberIndex = React.useMemo(
     () => resolvePageIndexInList(activeMushafPageNumber, mushafSurahPageNumbers),
@@ -1760,17 +1690,6 @@ export default function SurahScreen(): React.JSX.Element {
                   </Pressable>
                 </View>
               </View>
-            ) : !hasLoadedContent && verseCount > 0 ? (
-              <FlatList
-                data={INITIAL_PLACEHOLDER_VERSE_NUMBERS}
-                keyExtractor={(item) => `placeholder:${chapterNumber}:${item}`}
-                renderItem={({ item }) => (
-                  <VerseCardPlaceholder verseKey={`${chapterNumber}:${item}`} />
-                )}
-                contentContainerStyle={listContentContainerStyle}
-                ListHeaderComponent={resolvedChapter ? <SurahHeaderCard chapter={resolvedChapter} /> : null}
-                scrollEnabled={false}
-              />
             ) : verseCount <= 0 ? (
               <View className="flex-1 px-4" style={{ paddingTop: readerHeader.headerHeight + 16 }}>
                 <Text className="mt-2 text-sm text-muted dark:text-muted-dark">
@@ -1810,36 +1729,27 @@ export default function SurahScreen(): React.JSX.Element {
               />
             ) : (
               <FlashList
-                key={`surah:${chapterNumber}:${nativeTargetWindowKey}`}
+                key={`surah:${chapterNumber}`}
                 ref={(node) => {
                   flashListRef.current = node;
                 }}
-                data={nativeVerseNumbers}
+                data={verseNumbers}
                 keyExtractor={(item) => `${chapterNumber}:${item}`}
                 extraData={listExtraData}
                 renderItem={renderVerseItem}
                 drawDistance={
-                  isNativeTargetRoute
-                    ? Platform.OS === 'android'
-                      ? 2000
-                      : 1600
-                    : Platform.OS === 'android'
-                      ? 1200
-                      : 800
+                  Platform.OS === 'android' ? 1200 : 800
                 }
                 contentContainerStyle={listContentContainerStyle}
                 refreshing={isRefreshing}
                 onRefresh={refresh}
                 onScroll={handleSurahListScroll}
-                onScrollEndDrag={handleNativeVerseListScrollEndDrag}
                 scrollEventThrottle={16}
                 viewabilityConfig={viewabilityConfig}
                 onViewableItemsChanged={onViewableItemsChanged}
-                onLoad={handleNativeVerseListLoad}
                 showsVerticalScrollIndicator={false}
-                maintainVisibleContentPosition={{ disabled: isNativeTargetRoute }}
                 ListHeaderComponent={
-                  !isNativeTargetRoute && resolvedChapter
+                  resolvedChapter
                     ? <SurahHeaderCard chapter={resolvedChapter} />
                     : null
                 }

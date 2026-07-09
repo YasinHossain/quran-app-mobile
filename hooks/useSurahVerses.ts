@@ -401,14 +401,31 @@ function getTajweedReadyPagesForImmediateRender(
   if (Object.keys(pagesByNumber).length === 0) return pagesByNumber;
 
   const glyphRuns = getTajweedGlyphRunsFromPages(pagesByNumber);
-  if (glyphRuns.length === 0) return {};
+  if (glyphRuns.length === 0) {
+    // No glyph runs available — return pages as-is so text_uthmani renders.
+    return pagesByNumber;
+  }
 
-  return areTajweedGlyphRunFontsLoaded(glyphRuns, {
-    resolvedTheme: options.tajweedTheme,
-    ...(options.tajweedTextColor ? { textColor: options.tajweedTextColor } : {}),
-  })
-    ? pagesByNumber
-    : {};
+  if (
+    areTajweedGlyphRunFontsLoaded(glyphRuns, {
+      resolvedTheme: options.tajweedTheme,
+      ...(options.tajweedTextColor ? { textColor: options.tajweedTextColor } : {}),
+    })
+  ) {
+    return pagesByNumber;
+  }
+
+  // Fonts not loaded yet — strip tajweedGlyphRuns so verses render
+  // immediately with plain Arabic text. Tajweed will be applied once
+  // fonts finish loading via the async enhancement pipeline.
+  const stripped: Record<number, SurahVerse[]> = {};
+  for (const [pageNumber, verses] of Object.entries(pagesByNumber)) {
+    stripped[Number(pageNumber)] = verses.map((verse) => ({
+      ...verse,
+      tajweedGlyphRuns: undefined,
+    }));
+  }
+  return stripped;
 }
 
 function getTajweedGlyphRunsFromVerses(
