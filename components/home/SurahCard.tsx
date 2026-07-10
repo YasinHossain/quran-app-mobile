@@ -3,9 +3,9 @@ import React from 'react';
 import { Platform, Pressable, Text, View } from 'react-native';
 
 import {
-  preloadOfflineSurahNavigationPage,
   primeOfflineSurahNavigationPage,
 } from '@/lib/surah/offlineSurahPageCache';
+import { warmSurahReaderBeforeNavigation } from '@/lib/surah/surahReaderWarmup';
 import { useSettings } from '@/providers/SettingsContext';
 import { useAppTheme } from '@/providers/ThemeContext';
 import { useUiTranslation } from '@/providers/UiLanguageContext';
@@ -39,9 +39,11 @@ function SurahCardComponent({ surah }: { surah: Surah }): React.JSX.Element {
     primeOfflineSurahNavigationPage({ surahId: surah.id, settings });
   }, [settings, surah.id]);
 
-  const handlePress = React.useCallback(async () => {
-    await preloadOfflineSurahNavigationPage({ surahId: surah.id, settings });
-    router.push({ pathname: '/surah/[surahId]', params: { surahId: String(surah.id) } });
+  const handlePress = React.useCallback(() => {
+    void (async () => {
+      await warmSurahReaderBeforeNavigation({ surahId: surah.id, settings });
+      router.push({ pathname: '/surah/[surahId]', params: { surahId: String(surah.id) } });
+    })();
   }, [router, settings, surah.id]);
 
   return (

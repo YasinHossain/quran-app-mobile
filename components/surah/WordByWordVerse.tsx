@@ -141,11 +141,14 @@ function WordToken({
     }
   }, [onWordPress, word, wordPosition]);
 
+  if (!isPressable) {
+    return <View style={wrapperStyle}>{content}</View>;
+  }
+
   return (
     <Pressable
       ref={pressableRef}
-      disabled={!isPressable}
-      onPress={isPressable ? handlePress : undefined}
+      onPress={handlePress}
       accessibilityRole="button"
       accessibilityLabel={pressBehavior === 'seek' ? 'Seek audio to word' : 'Show word translation'}
       style={({ pressed }) => [{ opacity: pressed ? 0.65 : 1 }, wrapperStyle]}

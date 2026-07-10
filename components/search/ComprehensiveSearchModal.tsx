@@ -21,7 +21,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useModalTransition, verticalSheetTransform } from '@/components/motion/modalTransition';
 import Colors from '@/constants/Colors';
 import { useQuickSearch } from '@/hooks/useQuickSearch';
-import { preloadOfflineSurahNavigationPage } from '@/lib/surah/offlineSurahPageCache';
+import { warmSurahReaderBeforeNavigation } from '@/lib/surah/surahReaderWarmup';
 import { highlightMissingQueryWords, isArabicQuery } from '@/lib/utils/searchHighlight';
 import { useSettings } from '@/providers/SettingsContext';
 import { useAppTheme } from '@/providers/ThemeContext';
@@ -253,13 +253,15 @@ export function ComprehensiveSearchModal({
   }, [closeAndReset, query, router]);
 
   const navigateToSurahVerse = React.useCallback(
-    async (surahId: number, verse?: number) => {
-      await preloadOfflineSurahNavigationPage({ surahId, verseNumber: verse, settings });
+    (surahId: number, verse?: number) => {
       closeAndReset();
-      router.push({
-        pathname: '/surah/[surahId]',
-        params: { surahId: String(surahId), ...(typeof verse === 'number' ? { startVerse: String(verse) } : {}) },
-      });
+      void (async () => {
+        await warmSurahReaderBeforeNavigation({ surahId, verseNumber: verse, settings });
+        router.push({
+          pathname: '/surah/[surahId]',
+          params: { surahId: String(surahId), ...(typeof verse === 'number' ? { startVerse: String(verse) } : {}) },
+        });
+      })();
     },
     [closeAndReset, router, settings]
   );

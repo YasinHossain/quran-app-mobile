@@ -7,7 +7,7 @@ import { CircularProgress } from '@/components/bookmarks/last-read/CircularProgr
 import { buildNormalizedLastReadEntries } from '@/components/bookmarks/last-read/lastReadEntries';
 import Colors from '@/constants/Colors';
 import { useChapters } from '@/hooks/useChapters';
-import { preloadOfflineSurahNavigationPage } from '@/lib/surah/offlineSurahPageCache';
+import { warmSurahReaderBeforeNavigation } from '@/lib/surah/surahReaderWarmup';
 import { useBookmarks } from '@/providers/BookmarkContext';
 import { useSettings } from '@/providers/SettingsContext';
 import { useAppTheme } from '@/providers/ThemeContext';
@@ -67,22 +67,24 @@ export function HomeRecentCard(): React.JSX.Element {
   const progressColor = palette.tint;
 
   const handlePress = React.useCallback(
-    async (entry: (typeof recentEntries)[number]) => {
+    (entry: (typeof recentEntries)[number]) => {
       const resolvedSurahId = Number(entry.surahId);
       if (!Number.isFinite(resolvedSurahId) || resolvedSurahId <= 0) return;
 
-      await preloadOfflineSurahNavigationPage({
-        surahId: resolvedSurahId,
-        verseNumber: entry.verseNumber,
-        settings,
-      });
-      router.push({
-        pathname: '/surah/[surahId]',
-        params: {
-          surahId: entry.surahId,
-          startVerse: String(entry.verseNumber),
-        },
-      });
+      void (async () => {
+        await warmSurahReaderBeforeNavigation({
+          surahId: resolvedSurahId,
+          verseNumber: entry.verseNumber,
+          settings,
+        });
+        router.push({
+          pathname: '/surah/[surahId]',
+          params: {
+            surahId: entry.surahId,
+            startVerse: String(entry.verseNumber),
+          },
+        });
+      })();
     },
     [router, settings]
   );

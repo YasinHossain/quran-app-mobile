@@ -19,7 +19,7 @@ import Colors from '@/constants/Colors';
 import { useChapters } from '@/hooks/useChapters';
 import { generateId } from '@/lib/id';
 import { getItem, parseJson, setItem } from '@/lib/storage/appStorage';
-import { preloadOfflineSurahNavigationPage } from '@/lib/surah/offlineSurahPageCache';
+import { warmSurahReaderBeforeNavigation } from '@/lib/surah/surahReaderWarmup';
 import { useSettings } from '@/providers/SettingsContext';
 import { useAppTheme } from '@/providers/ThemeContext';
 import { useUiTranslation } from '@/providers/UiLanguageContext';
@@ -139,24 +139,26 @@ export function HomeQuickLinksCard(): React.JSX.Element {
   }, []);
 
   const navigateToQuickLink = React.useCallback(
-    async (link: HomeQuickLink) => {
+    (link: HomeQuickLink) => {
       const chapter = getChapter(chapters, link.surahId);
       const verseNumber = chapter
         ? Math.min(link.verseNumber, chapter.verses_count)
         : link.verseNumber;
 
-      await preloadOfflineSurahNavigationPage({
-        surahId: link.surahId,
-        verseNumber,
-        settings,
-      });
-      router.push({
-        pathname: '/surah/[surahId]',
-        params: {
-          surahId: String(link.surahId),
-          startVerse: String(verseNumber),
-        },
-      });
+      void (async () => {
+        await warmSurahReaderBeforeNavigation({
+          surahId: link.surahId,
+          verseNumber,
+          settings,
+        });
+        router.push({
+          pathname: '/surah/[surahId]',
+          params: {
+            surahId: String(link.surahId),
+            startVerse: String(verseNumber),
+          },
+        });
+      })();
     },
     [chapters, router, settings]
   );

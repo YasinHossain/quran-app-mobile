@@ -3,6 +3,7 @@ import React from 'react';
 import { Keyboard, TextInput } from 'react-native';
 
 import { preloadOfflineSurahNavigationPage } from '@/lib/surah/offlineSurahPageCache';
+import { warmSurahReaderBeforeNavigation } from '@/lib/surah/surahReaderWarmup';
 import { useSettings } from '@/providers/SettingsContext';
 
 type CloseHeaderSearchOptions = {
@@ -47,12 +48,7 @@ export function useHeaderSearch({
   );
 
   const navigateToSurahVerse = React.useCallback(
-    async (surahId: number, verse?: number) => {
-      await preloadOfflineSurahNavigationPage({
-        surahId,
-        verseNumber: verse,
-        settings,
-      });
+    (surahId: number, verse?: number) => {
       close({ clearQuery: true });
       const route = {
         pathname: '/surah/[surahId]',
@@ -69,16 +65,29 @@ export function useHeaderSearch({
         pathname === `/surah/${surahId}` && Number(currentSurahParam) === surahId;
 
       if (replace && isSameSurahRoute && !preserveMushafView) {
+        void preloadOfflineSurahNavigationPage({
+          surahId,
+          verseNumber: verse,
+          settings,
+        });
         router.setParams({ startVerse: String(verse ?? 1) });
         return;
       }
 
-      if (replace) {
-        router.replace(route);
-        return;
-      }
+      void (async () => {
+        await warmSurahReaderBeforeNavigation({
+          surahId,
+          verseNumber: verse,
+          settings,
+        });
 
-      router.push(route);
+        if (replace) {
+          router.replace(route);
+          return;
+        }
+
+        router.push(route);
+      })();
     },
     [close, pathname, preserveMushafView, replace, routeParams.surahId, router, settings]
   );

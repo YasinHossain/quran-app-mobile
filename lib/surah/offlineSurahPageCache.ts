@@ -12,7 +12,7 @@ import type { MushafVerse, VerseWord } from '@/types';
 
 export const DEFAULT_SURAH_VERSES_PER_PAGE = 30;
 
-type SurahPageCacheSettings = {
+export type SurahPageCacheSettings = {
   translationIds?: number[] | null;
   translationId?: number | null;
   tajweed?: boolean | null;

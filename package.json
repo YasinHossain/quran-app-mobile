@@ -5,6 +5,9 @@
   "scripts": {
     "start": "npm run dev:android",
     "dev:android": "node scripts/start-android-emulator.js && node scripts/prepare-expo-start.js && expo start --android",
+    "start:perf": "npm run perf:android",
+    "perf:android": "node scripts/start-android-emulator.js && expo run:android --variant release --no-bundler",
+    "perf:android:clean": "node scripts/start-android-emulator.js && expo run:android --variant release --no-bundler --no-build-cache",
     "metro": "node scripts/prepare-expo-start.js && expo start",
     "emulator": "node scripts/start-android-emulator.js",
     "android": "expo run:android",
@@ -29,7 +32,7 @@
     "@expo/vector-icons": "^15.0.3",
     "@react-native-async-storage/async-storage": "^2.2.0",
     "@react-native-community/slider": "5.2.0",
-    "@shopify/flash-list": "2.0.2",
+    "@shopify/flash-list": "2.3.2",
     "expo": "~56.0.14",
     "expo-asset": "~56.0.17",
     "expo-audio": "~56.0.12",

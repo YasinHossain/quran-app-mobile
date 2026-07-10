@@ -204,6 +204,12 @@ function VerseCardComponent({
   const shouldRenderTajweedText =
     shouldUseTajweedMode && Boolean(tajweedGlyphRuns?.length);
   const isWaitingForTajweedText = shouldUseTajweedMode && !shouldRenderTajweedText;
+  const shouldRenderWordTokens = Boolean(
+    Array.isArray(words) &&
+      words.length &&
+      !shouldUseTajweedMode &&
+      (showByWords || isSeekEnabled)
+  );
 
   const handleSeekWordPress = React.useCallback(
     ({
@@ -280,15 +286,17 @@ function VerseCardComponent({
         >
           {sanitizedArabicText || ' '}
         </Text>
-      ) : Array.isArray(words) && words.length && !shouldUseTajweedMode ? (
+      ) : shouldRenderWordTokens ? (
         <WordByWordVerse
           verseKey={verseKey}
-          words={words}
+          words={words ?? []}
           arabicFontSize={arabicFontSize}
           arabicFontFamily={effectiveArabicFontFamily}
           showTranslations={Boolean(showByWords)}
-          pressBehavior={isSeekEnabled ? 'seek' : 'translation'}
-          onWordPress={isSeekEnabled ? handleSeekWordPress : handleTranslationWordPress}
+          pressBehavior={isSeekEnabled ? 'seek' : showByWords ? 'none' : 'translation'}
+          onWordPress={
+            isSeekEnabled ? handleSeekWordPress : showByWords ? undefined : handleTranslationWordPress
+          }
           registerWordHighlight={audioWordSync?.registerWordHighlight}
         />
       ) : (

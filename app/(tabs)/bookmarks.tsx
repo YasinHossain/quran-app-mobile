@@ -31,7 +31,7 @@ import { VerseActionsSheet } from '@/components/surah/VerseActionsSheet';
 import { VerseCard } from '@/components/surah/VerseCard';
 import { AddToPlannerModal, type VerseSummaryDetails } from '@/components/verse-planner-modal';
 import Colors from '@/constants/Colors';
-import { preloadOfflineSurahNavigationPage } from '@/lib/surah/offlineSurahPageCache';
+import { warmSurahReaderBeforeNavigation } from '@/lib/surah/surahReaderWarmup';
 import { primeVerseDetailsCache } from '@/lib/verse/verseDetailsCache';
 import { useBookmarks } from '@/providers/BookmarkContext';
 import { useAudioPlayer } from '@/providers/AudioPlayerContext';
@@ -169,18 +169,20 @@ export default function BookmarksScreen(): React.JSX.Element {
   }, []);
 
   const navigateToVerse = React.useCallback(
-    async (verseKey: string) => {
+    (verseKey: string) => {
       const parsed = parseVerseKey(verseKey);
       if (!parsed) return;
-      await preloadOfflineSurahNavigationPage({
-        surahId: Number(parsed.surahId),
-        verseNumber: Number(parsed.ayahId),
-        settings,
-      });
-      router.push({
-        pathname: '/surah/[surahId]',
-        params: { surahId: parsed.surahId, startVerse: parsed.ayahId },
-      });
+      void (async () => {
+        await warmSurahReaderBeforeNavigation({
+          surahId: Number(parsed.surahId),
+          verseNumber: Number(parsed.ayahId),
+          settings,
+        });
+        router.push({
+          pathname: '/surah/[surahId]',
+          params: { surahId: parsed.surahId, startVerse: parsed.ayahId },
+        });
+      })();
     },
     [router, settings]
   );

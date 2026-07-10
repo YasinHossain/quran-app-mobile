@@ -94,6 +94,32 @@ npm run dev:android
 
 Keep that terminal open for Metro logs. Stop Metro with `Ctrl+C`.
 
+## Android performance testing
+
+Use a release build when checking performance. This is the mobile equivalent of
+testing the web app after a production build: JavaScript is bundled into the app,
+Metro is not running, and dev-only overhead is removed.
+
+```bash
+npm run perf:android
+```
+
+This starts the emulator if needed, builds the Android `release` variant,
+installs it, and launches it on the emulator. The first run can take several
+minutes; later runs are usually faster because Gradle reuses previous build
+outputs.
+
+If the performance build ever looks stale or behaves strangely, rebuild without
+the native build cache:
+
+```bash
+npm run perf:android:clean
+```
+
+Use `npm start` while actively coding, then switch to `npm run perf:android`
+whenever you want to measure startup time, screen transitions, list scrolling,
+or other real app performance.
+
 To start the first installed Android emulator:
 
 ```bash

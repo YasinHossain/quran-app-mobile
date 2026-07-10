@@ -4,7 +4,7 @@ import React from 'react';
 import { Pressable, Text, View } from 'react-native';
 
 import Colors from '@/constants/Colors';
-import { preloadOfflineSurahNavigationPage } from '@/lib/surah/offlineSurahPageCache';
+import { warmSurahReaderBeforeNavigation } from '@/lib/surah/surahReaderWarmup';
 import { useSettings } from '@/providers/SettingsContext';
 import { useAppTheme } from '@/providers/ThemeContext';
 import { useUiTranslation } from '@/providers/UiLanguageContext';
@@ -46,20 +46,22 @@ export function LastReadCard({
       ? t('last_read_verse_of_total', { current: verseNumber, total })
       : `${t('verse')} ${verseNumber}`;
 
-  const handleNavigate = React.useCallback(async () => {
+  const handleNavigate = React.useCallback(() => {
     if (!Number.isFinite(displaySurahId) || displaySurahId <= 0) return;
-    await preloadOfflineSurahNavigationPage({
-      surahId: displaySurahId,
-      verseNumber,
-      settings,
-    });
-    router.push({
-      pathname: '/surah/[surahId]',
-      params: {
-        surahId: String(displaySurahId),
-        ...(Number.isFinite(verseNumber) && verseNumber > 0 ? { startVerse: String(verseNumber) } : {}),
-      },
-    });
+    void (async () => {
+      await warmSurahReaderBeforeNavigation({
+        surahId: displaySurahId,
+        verseNumber,
+        settings,
+      });
+      router.push({
+        pathname: '/surah/[surahId]',
+        params: {
+          surahId: String(displaySurahId),
+          ...(Number.isFinite(verseNumber) && verseNumber > 0 ? { startVerse: String(verseNumber) } : {}),
+        },
+      });
+    })();
   }, [displaySurahId, router, settings, verseNumber]);
 
   return (

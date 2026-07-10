@@ -117,6 +117,12 @@ const styles = StyleSheet.create({
   contentLayer: {
     ...StyleSheet.absoluteFill,
   },
+  translationPositioningHidden: {
+    opacity: 0,
+  },
+  initialTranslationPreview: {
+    ...StyleSheet.absoluteFill,
+  },
   mushafEntryLayer: {
     overflow: 'hidden',
   },
@@ -142,6 +148,28 @@ function MushafMessageState({ message }: { message: string }): React.JSX.Element
 }
 
 const FALLBACK_MUSHAF_TOTAL_PAGES = 604;
+const TRANSLATION_INITIAL_DRAW_BATCH_SIZE = 18;
+const TRANSLATION_ANDROID_DRAW_DISTANCE = 3200;
+const TRANSLATION_IOS_DRAW_DISTANCE = 2400;
+const TRANSLATION_TARGET_PREFETCH_RADIUS = 72;
+
+function getVerseLayoutBucket(verse: SurahVerse | undefined, showByWords: boolean): string {
+  if (!verse) return 'placeholder';
+
+  const arabicLength = (verse.text_uthmani ?? '').trim().length;
+  const translationLength = (verse.translationItems ?? verse.translationTexts ?? []).reduce(
+    (total, item) => total + String(typeof item === 'string' ? item : item.text ?? '').trim().length,
+    0
+  );
+  const wordCount = Array.isArray(verse.words) ? verse.words.length : 0;
+  const score = arabicLength * 1.8 + translationLength * 0.42 + (showByWords ? wordCount * 18 : 0);
+
+  if (score < 140) return 'verse-xs';
+  if (score < 260) return 'verse-sm';
+  if (score < 420) return 'verse-md';
+  if (score < 700) return 'verse-lg';
+  return 'verse-xl';
+}
 
 type ChapterPageRange = {
   firstPage: number;
@@ -291,6 +319,9 @@ export default function SurahScreen(): React.JSX.Element {
   }, [settings.tafsirIds]);
 
   const showTranslationAttribution = !isMushafView && verseTranslationIds.length > 1;
+  const shouldLoadVerseWords = Boolean(
+    !isMushafView && (settings.showByWords || audio.isVisible)
+  );
 
   React.useEffect(() => {
     readerHeader.resetHeader();
@@ -319,7 +350,7 @@ export default function SurahScreen(): React.JSX.Element {
     chapterNumber,
     translationIds: verseTranslationIds,
     wordLang: settings.wordLang,
-    includeWords: Boolean(!isMushafView),
+    includeWords: shouldLoadVerseWords,
     includeWordTranslations: Boolean(!isMushafView && settings.showByWords),
     tajweed: Boolean(!isMushafView && settings.tajweed),
     tajweedTextColor: palette.text,
@@ -340,6 +371,7 @@ export default function SurahScreen(): React.JSX.Element {
     () => chapter ?? navigationChapter,
     [chapter, navigationChapter]
   );
+  const shouldShowSurahIntro = Boolean(resolvedChapter);
   const mushafPageRange = React.useMemo(
     () => getChapterPageRange(navigationChapter),
     [navigationChapter]
@@ -526,7 +558,8 @@ export default function SurahScreen(): React.JSX.Element {
         closeSettingsSidebar();
         void (async () => {
           if (returnSurahId) {
-            await preloadOfflineSurahNavigationPage({
+            // Fire preload in background — don't block the mode switch.
+            void preloadOfflineSurahNavigationPage({
               surahId: returnSurahId,
               verseNumber: returnVerseNumber,
               settings,
@@ -908,13 +941,9 @@ export default function SurahScreen(): React.JSX.Element {
     }
   }, [activeVerse, chapter?.name_simple]);
 
-  const renderVerseItem = React.useCallback(
-    ({ item }: { item: number }) => {
-      const verse = getVerseByNumber(item);
-      if (!verse) {
-        return <VerseCardPlaceholder verseKey={`${chapterNumber}:${item}`} />;
-      }
-
+  const renderTranslationVerseCard = React.useCallback(
+    (verse: SurahVerse, options?: { actionsEnabled?: boolean }) => {
+      const actionsEnabled = options?.actionsEnabled ?? true;
       const translationTexts = verse.translationTexts ?? [];
       const translationItems = showTranslationAttribution
         ? (verse.translationItems ?? []).map((t) => {
@@ -953,13 +982,16 @@ export default function SurahScreen(): React.JSX.Element {
             tajweed={settings.tajweed}
             tajweedGlyphRuns={verse.tajweedGlyphRuns}
             renderSignal={tajweedRenderSignal}
-            onOpenActions={() =>
-              openVerseActions({
-                verseKey: verse.verse_key,
-                verseApiId,
-                arabicText: verse.text_uthmani ?? '',
-                translationTexts,
-              })
+            onOpenActions={
+              actionsEnabled
+                ? () =>
+                    openVerseActions({
+                      verseKey: verse.verse_key,
+                      verseApiId,
+                      arabicText: verse.text_uthmani ?? '',
+                      translationTexts,
+                    })
+                : undefined
             }
           />
         </View>
@@ -979,9 +1011,19 @@ export default function SurahScreen(): React.JSX.Element {
       translationHighlightVerseKey,
       translationsById,
       verseAudioWordSync,
-      chapterNumber,
-      getVerseByNumber,
     ]
+  );
+
+  const renderVerseItem = React.useCallback(
+    ({ item }: { item: number }) => {
+      const verse = getVerseByNumber(item);
+      if (!verse) {
+        return <VerseCardPlaceholder verseKey={`${chapterNumber}:${item}`} />;
+      }
+
+      return renderTranslationVerseCard(verse);
+    },
+    [chapterNumber, getVerseByNumber, renderTranslationVerseCard]
   );
 
   const flatListRef = React.useRef<FlatList<number> | null>(null);
@@ -996,11 +1038,79 @@ export default function SurahScreen(): React.JSX.Element {
   const [scrollTick, bumpScrollTick] = React.useReducer((value) => value + 1, 0);
   const scrollRetryCountRef = React.useRef(0);
   const scrollRetryTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hasPerformedTargetedProgrammaticScrollRef = React.useRef(false);
   const startVerseRef = React.useRef(startVerse);
   const [activeMushafPageNumber, setActiveMushafPageNumber] =
     React.useState(initialMushafPageNumber);
   const activeMushafPageNumberRef = React.useRef(initialMushafPageNumber);
   const isMushafPageScrubbingRef = React.useRef(false);
+  const initialVerseScrollIndex = React.useMemo(() => {
+    if (!Number.isFinite(startVerse) || startVerse <= 1 || verseCount <= 0) {
+      return undefined;
+    }
+
+    return Math.max(0, Math.min(Math.floor(startVerse) - 1, verseCount - 1));
+  }, [startVerse, verseCount]);
+  const translationListKey = React.useMemo(
+    () => `surah:${chapterNumber}`,
+    [chapterNumber]
+  );
+  const translationListOverrideProps = React.useMemo(
+    () => ({ initialDrawBatchSize: TRANSLATION_INITIAL_DRAW_BATCH_SIZE }),
+    []
+  );
+  const translationMaintainVisibleContentPosition = React.useMemo(
+    () => ({ disabled: true }),
+    []
+  );
+  const translationInitialScrollIndexParams = React.useMemo(
+    () =>
+      typeof initialVerseScrollIndex === 'number'
+        ? { viewOffset: nativeListScrollViewOffset }
+        : undefined,
+    [initialVerseScrollIndex, nativeListScrollViewOffset]
+  );
+  const [nativeListLoadTick, bumpNativeListLoadTick] = React.useReducer((value) => value + 1, 0);
+  const isNativeListLoadedRef = React.useRef(Platform.OS === 'web');
+  const targetedTranslationVerseNumber = React.useMemo(() => {
+    if (isMushafView) return null;
+    if (!Number.isFinite(startVerse) || startVerse <= 1) return null;
+    if (verseCount <= 0) return null;
+    return Math.max(1, Math.min(Math.floor(startVerse), verseCount));
+  }, [isMushafView, startVerse, verseCount]);
+  const targetedTranslationKey = React.useMemo(
+    () =>
+      targetedTranslationVerseNumber === null
+        ? null
+        : `${translationListKey}:${targetedTranslationVerseNumber}`,
+    [targetedTranslationVerseNumber, translationListKey]
+  );
+  const targetedTranslationKeyRef = React.useRef<string | null>(targetedTranslationKey);
+  const [positionedTranslationKey, setPositionedTranslationKey] = React.useState<string | null>(
+    targetedTranslationKey === null ? 'none' : null
+  );
+
+  React.useEffect(() => {
+    isNativeListLoadedRef.current = Platform.OS === 'web';
+  }, [translationListKey]);
+
+  React.useEffect(() => {
+    targetedTranslationKeyRef.current = targetedTranslationKey;
+    hasPerformedTargetedProgrammaticScrollRef.current = false;
+    setPositionedTranslationKey(targetedTranslationKey === null ? 'none' : null);
+  }, [targetedTranslationKey]);
+
+  const markTargetedTranslationPositionReady = React.useCallback((targetKey: string | null) => {
+    if (!targetKey) return;
+    setPositionedTranslationKey((currentKey) =>
+      currentKey === targetKey ? currentKey : targetKey
+    );
+  }, []);
+
+  const handleNativeListLoad = React.useCallback(() => {
+    isNativeListLoadedRef.current = true;
+    bumpNativeListLoadTick();
+  }, []);
 
   const chapterNumberRef = React.useRef(chapterNumber);
   React.useEffect(() => {
@@ -1026,6 +1136,11 @@ export default function SurahScreen(): React.JSX.Element {
   React.useEffect(() => {
     getVerseByNumberRef.current = getVerseByNumber;
   }, [getVerseByNumber]);
+
+  const getTranslationItemType = React.useCallback(
+    (item: number) => getVerseLayoutBucket(getVerseByNumberRef.current(item), settings.showByWords),
+    [settings.showByWords]
+  );
 
   const ensureVerseRangeLoadedRef = React.useRef(ensureVerseRangeLoaded);
   React.useEffect(() => {
@@ -1192,11 +1307,9 @@ export default function SurahScreen(): React.JSX.Element {
   }, [visibleVerseNumber]);
 
   const [prevSurahId, setPrevSurahId] = React.useState(surahId);
-  const [prevNormalizedStartVerse, setPrevNormalizedStartVerse] = React.useState(normalizedStartVerse);
 
-  if (surahId !== prevSurahId || normalizedStartVerse !== prevNormalizedStartVerse) {
+  if (surahId !== prevSurahId) {
     setPrevSurahId(surahId);
-    setPrevNormalizedStartVerse(normalizedStartVerse);
     lastReadReportedRef.current = null;
     visibleVerseKeyRef.current = null;
     visibleVerseNumberRef.current = normalizedStartVerse ?? 1;
@@ -1259,12 +1372,22 @@ export default function SurahScreen(): React.JSX.Element {
         targetStartVerse > 0
       ) {
         const targetIndex = Math.max(0, Math.floor(targetStartVerse) - 1);
-        if (targetIndex >= visibleRange.first && targetIndex <= visibleRange.last) {
-          didScrollToStartRef.current = true;
-          scrollRetryCountRef.current = 0;
-          if (scrollRetryTimeoutRef.current) {
-            clearTimeout(scrollRetryTimeoutRef.current);
-            scrollRetryTimeoutRef.current = null;
+        if (targetIndex === visibleRange.first) {
+          const activeTargetKey = targetedTranslationKeyRef.current;
+          const shouldWaitForProgrammaticTargetScroll = Boolean(
+            Platform.OS !== 'web' &&
+              activeTargetKey &&
+              !hasPerformedTargetedProgrammaticScrollRef.current
+          );
+
+          if (!shouldWaitForProgrammaticTargetScroll) {
+            didScrollToStartRef.current = true;
+            scrollRetryCountRef.current = 0;
+            if (scrollRetryTimeoutRef.current) {
+              clearTimeout(scrollRetryTimeoutRef.current);
+              scrollRetryTimeoutRef.current = null;
+            }
+            markTargetedTranslationPositionReady(activeTargetKey);
           }
         }
       }
@@ -1312,6 +1435,7 @@ export default function SurahScreen(): React.JSX.Element {
 
   React.useEffect(() => {
     didScrollToStartRef.current = false;
+    hasPerformedTargetedProgrammaticScrollRef.current = false;
     scrollRetryCountRef.current = 0;
     if (scrollRetryTimeoutRef.current) {
       clearTimeout(scrollRetryTimeoutRef.current);
@@ -1330,7 +1454,9 @@ export default function SurahScreen(): React.JSX.Element {
       return;
     }
 
-    ensureVerseRangeLoadedRef.current(startVerse, startVerse, 1);
+    if (Platform.OS !== 'web' && !isNativeListLoadedRef.current) {
+      return;
+    }
 
     const scheduleRetry = () => {
       if (didScrollToStartRef.current) return;
@@ -1343,9 +1469,22 @@ export default function SurahScreen(): React.JSX.Element {
       }, 140);
     };
 
-    const targetIndex = Math.max(0, Math.floor(startVerse) - 1);
+    const targetVerseNumber = Math.floor(startVerse);
+    const targetIndex = Math.max(0, targetVerseNumber - 1);
 
     if (targetIndex >= verseCountRef.current) return;
+
+    const verseCount = Math.max(1, verseCountRef.current);
+    ensureVerseRangeLoadedRef.current(
+      Math.max(1, targetVerseNumber - TRANSLATION_TARGET_PREFETCH_RADIUS),
+      Math.min(verseCount, targetVerseNumber + TRANSLATION_TARGET_PREFETCH_RADIUS),
+      1
+    );
+
+    if (!getVerseByNumberRef.current(targetVerseNumber) && scrollRetryCountRef.current < 6) {
+      scheduleRetry();
+      return;
+    }
 
     const list = Platform.OS === 'web' ? flatListRef.current : flashListRef.current;
     if (!list) {
@@ -1356,16 +1495,64 @@ export default function SurahScreen(): React.JSX.Element {
     const scrollViewOffset =
       Platform.OS === 'web' ? listScrollViewOffset : nativeListScrollViewOffset;
 
+    const completeProgrammaticScroll = () => {
+      flashListRef.current?.recomputeViewableItems?.();
+
+      const activeTargetKey = targetedTranslationKeyRef.current;
+      const visibleRange = visibleRangeRef.current;
+      const targetIsVisible = Boolean(
+        visibleRange && targetIndex >= visibleRange.first && targetIndex <= visibleRange.last
+      );
+
+      if (targetIsVisible || scrollRetryCountRef.current >= 8) {
+        didScrollToStartRef.current = true;
+        scrollRetryCountRef.current = 0;
+        if (scrollRetryTimeoutRef.current) {
+          clearTimeout(scrollRetryTimeoutRef.current);
+          scrollRetryTimeoutRef.current = null;
+        }
+        markTargetedTranslationPositionReady(activeTargetKey);
+        return;
+      }
+
+      scheduleRetry();
+    };
+
     try {
-      list.scrollToIndex({
+      hasPerformedTargetedProgrammaticScrollRef.current = true;
+      const scrollResult = list.scrollToIndex({
         index: targetIndex,
         animated: false,
-        viewPosition: 0,
+        viewPosition: 0.08,
         viewOffset: scrollViewOffset,
       });
-    } catch { }
-    scheduleRetry();
-  }, [listScrollViewOffset, nativeListScrollViewOffset, scrollTick, startVerse, verseCount]);
+      visibleVerseNumberRef.current = targetVerseNumber;
+      setVisibleVerseNumber((currentVerseNumber) =>
+        currentVerseNumber === targetVerseNumber ? currentVerseNumber : targetVerseNumber
+      );
+      if (scrollResult && typeof (scrollResult as Promise<void>).finally === 'function') {
+        void (scrollResult as Promise<void>)
+          .catch(() => {
+            scheduleRetry();
+          })
+          .finally(() => {
+            setTimeout(completeProgrammaticScroll, 60);
+          });
+      } else {
+        setTimeout(completeProgrammaticScroll, 60);
+      }
+    } catch {
+      scheduleRetry();
+    }
+  }, [
+    listScrollViewOffset,
+    markTargetedTranslationPositionReady,
+    nativeListLoadTick,
+    nativeListScrollViewOffset,
+    scrollTick,
+    startVerse,
+    verseCount,
+  ]);
 
   const handleScrubToVerse = React.useCallback(
     (verseNumber: number, options?: { isFinal?: boolean }) => {
@@ -1617,6 +1804,18 @@ export default function SurahScreen(): React.JSX.Element {
     shouldWaitForMushafPosition && !isMushafReaderPositioned && hasLoadedContent;
   const shouldMountMushafSurface =
     isMushafView || Boolean(availableInitialMushafPageData);
+  const shouldConcealTranslationPosition = Boolean(
+    targetedTranslationKey &&
+      positionedTranslationKey !== targetedTranslationKey &&
+      !isMushafView &&
+      verseCount > 0 &&
+      !(offlineNotInstalled && !hasLoadedContent) &&
+      !(errorMessage && !hasLoadedContent)
+  );
+  const initialTranslationPreviewVerse =
+    targetedTranslationVerseNumber === null
+      ? undefined
+      : getVerseByNumber(targetedTranslationVerseNumber);
 
   return (
     <View
@@ -1662,8 +1861,11 @@ export default function SurahScreen(): React.JSX.Element {
       <View style={styles.contentStage}>
         {!isMushafView || keepTranslationVisibleDuringMushafEntry ? (
           <View
-            style={styles.contentLayer}
-            pointerEvents={isMushafView ? 'none' : 'auto'}
+            style={[
+              styles.contentLayer,
+              shouldConcealTranslationPosition ? styles.translationPositioningHidden : null,
+            ]}
+            pointerEvents={isMushafView || shouldConcealTranslationPosition ? 'none' : 'auto'}
           >
             {!hasLoadedContent && offlineNotInstalled ? (
               <View className="flex-1 px-4" style={{ paddingTop: readerHeader.headerHeight + 16 }}>
@@ -1724,7 +1926,11 @@ export default function SurahScreen(): React.JSX.Element {
                 viewabilityConfig={viewabilityConfig}
                 onViewableItemsChanged={onViewableItemsChanged}
                 showsVerticalScrollIndicator={false}
-                ListHeaderComponent={resolvedChapter ? <SurahHeaderCard chapter={resolvedChapter} /> : null}
+                ListHeaderComponent={
+                  shouldShowSurahIntro && resolvedChapter
+                    ? <SurahHeaderCard chapter={resolvedChapter} />
+                    : null
+                }
                 ListFooterComponent={
                   isLoadingMore || (errorMessage && hasLoadedContent) ? (
                     <View className="mt-2 flex-row items-center gap-3">
@@ -1740,7 +1946,7 @@ export default function SurahScreen(): React.JSX.Element {
               />
             ) : (
               <FlashList
-                key={`surah:${chapterNumber}`}
+                key={translationListKey}
                 ref={(node) => {
                   flashListRef.current = node;
                 }}
@@ -1748,19 +1954,23 @@ export default function SurahScreen(): React.JSX.Element {
                 keyExtractor={(item) => `${chapterNumber}:${item}`}
                 extraData={listExtraData}
                 renderItem={renderVerseItem}
-                drawDistance={
-                  Platform.OS === 'android' ? 1200 : 800
-                }
+                getItemType={getTranslationItemType}
+                initialScrollIndex={initialVerseScrollIndex}
+                initialScrollIndexParams={translationInitialScrollIndexParams}
+                maintainVisibleContentPosition={translationMaintainVisibleContentPosition}
+                drawDistance={Platform.OS === 'android' ? TRANSLATION_ANDROID_DRAW_DISTANCE : TRANSLATION_IOS_DRAW_DISTANCE}
+                overrideProps={translationListOverrideProps}
                 contentContainerStyle={listContentContainerStyle}
                 refreshing={isRefreshing}
                 onRefresh={refresh}
+                onLoad={handleNativeListLoad}
                 onScroll={handleSurahListScroll}
                 scrollEventThrottle={16}
                 viewabilityConfig={viewabilityConfig}
                 onViewableItemsChanged={onViewableItemsChanged}
                 showsVerticalScrollIndicator={false}
                 ListHeaderComponent={
-                  resolvedChapter
+                  shouldShowSurahIntro && resolvedChapter
                     ? <SurahHeaderCard chapter={resolvedChapter} />
                     : null
                 }
@@ -1789,6 +1999,31 @@ export default function SurahScreen(): React.JSX.Element {
                 verseCount={verseCount}
               />
             ) : null}
+          </View>
+        ) : null}
+
+        {shouldConcealTranslationPosition ? (
+          <View
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
+            pointerEvents="none"
+            style={[
+              styles.initialTranslationPreview,
+              {
+                backgroundColor: palette.background,
+                paddingHorizontal: 16,
+                paddingTop: readerHeader.headerHeight + 16,
+                paddingBottom: 24 + audioPlayerBarHeight,
+              },
+            ]}
+          >
+            {initialTranslationPreviewVerse ? (
+              renderTranslationVerseCard(initialTranslationPreviewVerse, { actionsEnabled: false })
+            ) : (
+              <VerseCardPlaceholder
+                verseKey={`${chapterNumber}:${targetedTranslationVerseNumber ?? 1}`}
+              />
+            )}
           </View>
         ) : null}
 

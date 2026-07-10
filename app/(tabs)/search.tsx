@@ -24,7 +24,7 @@ import Colors from '@/constants/Colors';
 import { usePaginatedSearch } from '@/hooks/usePaginatedSearch';
 import { useChapters } from '@/hooks/useChapters';
 import { analyzeQuery } from '@/lib/api/search';
-import { preloadOfflineSurahNavigationPage } from '@/lib/surah/offlineSurahPageCache';
+import { warmSurahReaderBeforeNavigation } from '@/lib/surah/surahReaderWarmup';
 import { primeVerseDetailsCache } from '@/lib/verse/verseDetailsCache';
 import { preloadOfflineTafsirWindow } from '@/lib/tafsir/tafsirCache';
 import { useSettings } from '@/providers/SettingsContext';
@@ -258,16 +258,18 @@ export default function SearchScreen(): React.JSX.Element {
   });
 
   const handleNavigateToSurahVerse = React.useCallback(
-    async (surahId: number, verse?: number) => {
+    (surahId: number, verse?: number) => {
       Keyboard.dismiss();
-      await preloadOfflineSurahNavigationPage({ surahId, verseNumber: verse, settings });
-      router.push({
-        pathname: '/surah/[surahId]',
-        params: {
-          surahId: String(surahId),
-          ...(typeof verse === 'number' ? { startVerse: String(verse) } : {}),
-        },
-      });
+      void (async () => {
+        await warmSurahReaderBeforeNavigation({ surahId, verseNumber: verse, settings });
+        router.push({
+          pathname: '/surah/[surahId]',
+          params: {
+            surahId: String(surahId),
+            ...(typeof verse === 'number' ? { startVerse: String(verse) } : {}),
+          },
+        });
+      })();
     },
     [router, settings]
   );

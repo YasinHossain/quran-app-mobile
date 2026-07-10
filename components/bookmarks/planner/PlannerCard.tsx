@@ -13,7 +13,7 @@ import Animated, {
 
 import Colors from '@/constants/Colors';
 import { localizePlannerText } from '@/lib/i18n/plannerText';
-import { preloadOfflineSurahNavigationPage } from '@/lib/surah/offlineSurahPageCache';
+import { warmSurahReaderBeforeNavigation } from '@/lib/surah/surahReaderWarmup';
 import { useSettings } from '@/providers/SettingsContext';
 import { useAppTheme } from '@/providers/ThemeContext';
 import { useUiTranslation } from '@/providers/UiLanguageContext';
@@ -264,7 +264,7 @@ function usePlannerNavigation(
   const router = useRouter();
   const { settings } = useSettings();
 
-  return React.useCallback(async () => {
+  return React.useCallback(() => {
     const parsedSurahId = Number.parseInt(surahId, 10);
     const fallbackSurahId = Number.isFinite(parsedSurahId) ? parsedSurahId : Number(surahId);
     const resolvedSurahId =
@@ -276,17 +276,19 @@ function usePlannerNavigation(
       return;
     }
 
-    await preloadOfflineSurahNavigationPage({
-      surahId: resolvedSurahId,
-      verseNumber: resolvedStartVerse,
-      settings,
-    });
-    router.push({
-      pathname: '/surah/[surahId]',
-      params: {
-        surahId: String(resolvedSurahId),
-        ...(resolvedStartVerse ? { startVerse: String(resolvedStartVerse) } : {}),
-      },
-    });
+    void (async () => {
+      await warmSurahReaderBeforeNavigation({
+        surahId: resolvedSurahId,
+        verseNumber: resolvedStartVerse,
+        settings,
+      });
+      router.push({
+        pathname: '/surah/[surahId]',
+        params: {
+          surahId: String(resolvedSurahId),
+          ...(resolvedStartVerse ? { startVerse: String(resolvedStartVerse) } : {}),
+        },
+      });
+    })();
   }, [continueVerse?.surahId, continueVerse?.verse, router, settings, surahId]);
 }
