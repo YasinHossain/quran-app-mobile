@@ -45,7 +45,7 @@ import { useChapters } from '@/hooks/useChapters';
 import { useMushafPageData } from '@/hooks/useMushafPageData';
 import { useSurahVerses, type SurahVerse } from '@/hooks/useSurahVerses';
 import { useTranslationResources } from '@/hooks/useTranslationResources';
-import { preloadOfflineSurahNavigationPage } from '@/lib/surah/offlineSurahPageCache';
+import { warmSurahReaderBeforeNavigation } from '@/lib/surah/surahReaderWarmup';
 import { preloadOfflineTafsirWindow } from '@/lib/tafsir/tafsirCache';
 import { primeVerseDetailsCache } from '@/lib/verse/verseDetailsCache';
 import { useAudioPlayer } from '@/providers/AudioPlayerContext';
@@ -245,6 +245,8 @@ export default function SurahScreen(): React.JSX.Element {
     React.useState<string | null>(null);
   const [translationHighlightVerseKey, setTranslationHighlightVerseKey] =
     React.useState<string | null>(null);
+  const [translationListGeneration, bumpTranslationListGeneration] =
+    React.useReducer((value) => value + 1, 0);
   const mushafOriginVerseKeyRef = React.useRef<string | null>(null);
   const activeMushafVerseKeyRef = React.useRef<string | null>(null);
   const translationModeSwitchRequestIdRef = React.useRef(0);
@@ -555,11 +557,12 @@ export default function SurahScreen(): React.JSX.Element {
         const returnVerseNumber = parsedReturnVerseKey?.verseNumber ?? 1;
         const returnSurahId = parsedReturnVerseKey?.surahId ?? currentChapterNumber;
         const requestId = ++translationModeSwitchRequestIdRef.current;
+        bumpTranslationListGeneration();
         closeSettingsSidebar();
         void (async () => {
           if (returnSurahId) {
-            // Fire preload in background — don't block the mode switch.
-            void preloadOfflineSurahNavigationPage({
+            // Fire warmup in background so the mode switch can reveal the target immediately.
+            void warmSurahReaderBeforeNavigation({
               surahId: returnSurahId,
               verseNumber: returnVerseNumber,
               settings,
@@ -1052,8 +1055,8 @@ export default function SurahScreen(): React.JSX.Element {
     return Math.max(0, Math.min(Math.floor(startVerse) - 1, verseCount - 1));
   }, [startVerse, verseCount]);
   const translationListKey = React.useMemo(
-    () => `surah:${chapterNumber}`,
-    [chapterNumber]
+    () => `surah:${chapterNumber}:translations:${translationListGeneration}`,
+    [chapterNumber, translationListGeneration]
   );
   const translationListOverrideProps = React.useMemo(
     () => ({ initialDrawBatchSize: TRANSLATION_INITIAL_DRAW_BATCH_SIZE }),
@@ -1141,6 +1144,47 @@ export default function SurahScreen(): React.JSX.Element {
     (item: number) => getVerseLayoutBucket(getVerseByNumberRef.current(item), settings.showByWords),
     [settings.showByWords]
   );
+
+  const hasUnloadedTranslationRows = React.useMemo(
+    () =>
+      !isMushafView &&
+      verseCount > 0 &&
+      verseNumbers.some((verseNumber) => !getVerseByNumber(verseNumber)),
+    [getVerseByNumber, isMushafView, verseCount, verseNumbers]
+  );
+
+  const translationLayoutSignature = React.useMemo(
+    () =>
+      [
+        translationListKey,
+        pagesSignature,
+        settings.arabicFontFace,
+        settings.arabicFontSize,
+        settings.translationFontSize,
+        settings.showByWords ? 'words' : 'plain',
+        settings.tajweed ? 'tajweed' : 'no-tajweed',
+        showTranslationAttribution ? 'attribution' : 'no-attribution',
+        readerHeader.headerHeight,
+        audioPlayerBarHeight,
+      ].join('|'),
+    [
+      audioPlayerBarHeight,
+      pagesSignature,
+      readerHeader.headerHeight,
+      settings.arabicFontFace,
+      settings.arabicFontSize,
+      settings.showByWords,
+      settings.tajweed,
+      settings.translationFontSize,
+      showTranslationAttribution,
+      translationListKey,
+    ]
+  );
+  const lastTranslationLayoutSignatureRef = React.useRef(translationLayoutSignature);
+  if (lastTranslationLayoutSignatureRef.current !== translationLayoutSignature) {
+    lastTranslationLayoutSignatureRef.current = translationLayoutSignature;
+    flashListRef.current?.clearLayoutCacheOnUpdate?.();
+  }
 
   const ensureVerseRangeLoadedRef = React.useRef(ensureVerseRangeLoaded);
   React.useEffect(() => {
@@ -1272,7 +1316,7 @@ export default function SurahScreen(): React.JSX.Element {
           )?.verseNumber ??
           normalizedStartVerse ??
           1;
-        void preloadOfflineSurahNavigationPage({
+        void warmSurahReaderBeforeNavigation({
           surahId: currentChapterNumber,
           verseNumber: focusVerseNumber,
           settings,
@@ -1958,6 +2002,7 @@ export default function SurahScreen(): React.JSX.Element {
                 initialScrollIndex={initialVerseScrollIndex}
                 initialScrollIndexParams={translationInitialScrollIndexParams}
                 maintainVisibleContentPosition={translationMaintainVisibleContentPosition}
+                maxItemsInRecyclePool={hasUnloadedTranslationRows ? 0 : undefined}
                 drawDistance={Platform.OS === 'android' ? TRANSLATION_ANDROID_DRAW_DISTANCE : TRANSLATION_IOS_DRAW_DISTANCE}
                 overrideProps={translationListOverrideProps}
                 contentContainerStyle={listContentContainerStyle}

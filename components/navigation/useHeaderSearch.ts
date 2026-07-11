@@ -2,7 +2,6 @@ import { useLocalSearchParams, usePathname, useRouter } from 'expo-router';
 import React from 'react';
 import { Keyboard, TextInput } from 'react-native';
 
-import { preloadOfflineSurahNavigationPage } from '@/lib/surah/offlineSurahPageCache';
 import { warmSurahReaderBeforeNavigation } from '@/lib/surah/surahReaderWarmup';
 import { useSettings } from '@/providers/SettingsContext';
 
@@ -65,7 +64,7 @@ export function useHeaderSearch({
         pathname === `/surah/${surahId}` && Number(currentSurahParam) === surahId;
 
       if (replace && isSameSurahRoute && !preserveMushafView) {
-        void preloadOfflineSurahNavigationPage({
+        void warmSurahReaderBeforeNavigation({
           surahId,
           verseNumber: verse,
           settings,

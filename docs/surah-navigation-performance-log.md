@@ -402,22 +402,81 @@ Tradeoffs/problems:
 Files touched:
 
 - `hooks/useSurahVerses.ts`
+- `lib/surah/surahTranslationNetworkCache.ts`
+- `lib/surah/surahReaderWarmup.ts`
 
 What changed:
 
 - Added a light-path network load that requests `/verses/by_chapter/:id` with `per_page=all` after offline cache lookup fails.
 - This path is intentionally skipped when word payloads or Tajweed glyph hydration are active, because whole-Surah word data can be very large.
 - If the full-Surah request fails, the hook falls back to the previous paged target-window loading.
+- Added a short-lived shared in-memory cache for full-Surah translation responses, keyed by Surah, selected translations, and word language.
+- The navigation warmup now primes that same network cache only when the offline preload cannot provide a complete local Surah for the selected translations.
 
 What improved:
 
 - Long Surahs such as `2`, `3`, `5`, and `6` no longer need several separate network page requests before surrounding verses are available.
 - In normal translation mode, all verses for the current Surah can hydrate from one request, reducing the "only target area is loaded, other rows fill in for seconds" behavior.
+- Entry points that already use `warmSurahReaderBeforeNavigation` can now benefit from the same full-Surah light cache when they are in online/fallback mode instead of only warming the small offline page window.
 
 Tradeoffs/problems:
 
 - Online-only translation reading still depends on network latency. Downloaded translations remain the best path for consistently instant navigation.
 - Whole-Surah fetches increase one response payload size, but avoid request waterfalls. This is acceptable for the light translation path and should be validated in release builds.
+- This path is intentionally not used for word-by-word or Tajweed mode. Those modes still need separate performance work because their payload and render cost are much heavier.
+
+### 16. Shared Warmup Coverage For Non-Go-To Entry Points
+
+Files touched:
+
+- `components/navigation/useHeaderSearch.ts`
+- `app/surah/[surahId].tsx`
+- existing entry points already using `warmSurahReaderBeforeNavigation`, including Search, Comprehensive Search, Home Quick Links, Recent, Last Read, Bookmarks/folders, Planner Continue Reading, and Surah cards.
+
+What changed:
+
+- The same-Surah header Go To path now uses the shared warmup instead of only `preloadOfflineSurahNavigationPage`.
+- The Surah Mushaf-to-translation switch now triggers the shared warmup in the background for the return verse.
+- Opening the settings sidebar while in Surah Mushaf mode also warms the translation reader with the shared helper.
+
+What improved:
+
+- Go To is no longer the only path that can benefit from the full-Surah light network cache.
+- Quick links, recents, bookmark/folder verse cards, search result verse links, planner continue reading, and same-Surah header jumps now share the same warmup/cached response path.
+- Switching from Surah Mushaf back to translation has a better chance of landing with the surrounding translation verses already available.
+
+Tradeoffs/problems:
+
+- Warmup remains offline-first: downloaded selected translations should satisfy the warmup without starting the full-Surah network cache.
+- Warmup is capped to avoid blocking navigation, so very slow offline checks or network responses can still finish after the screen opens.
+- If the user immediately scrolls before the full-Surah response resolves, the reader can still briefly show only the target/nearby loaded rows.
+- Downloaded translations remain the only fully deterministic way to avoid online fetch latency.
+
+### 17. Rare Full-Surah Fallback Stall and Placeholder Layout Corruption
+
+Files touched:
+
+- `hooks/useSurahVerses.ts`
+- `app/surah/[surahId].tsx`
+
+What changed:
+
+- The online full-Surah hydration request now gets a short fast-path window. If it does not resolve quickly, the reader immediately loads the target page window while the full-Surah request continues in the background.
+- FlashList layout cache is cleared when loaded verse content changes from placeholders to real rows.
+- The translation FlashList remounts on Surah Mushaf-to-translation handoff.
+- FlashList recycling is disabled while some translation rows are still placeholders, then normal recycling resumes once all rows are hydrated.
+
+What improved:
+
+- A random slow `per_page=all` online fallback should no longer block the target window for `5-6 seconds`.
+- Mushaf-to-translation switches should no longer expose rows overlapping after nearby/remaining verses load.
+- Placeholder rows are no longer allowed to poison the measured layout for taller real verse rows.
+
+Tradeoffs/problems:
+
+- During incomplete online hydration, disabling recycling prioritizes correctness over maximum scroll efficiency.
+- If the target-page request itself is slow, the reader can still wait on network fallback. Downloaded selected translations remain the strongest fix for deterministic speed.
+- This does not solve word-by-word/Tajweed render cost; it only protects the light translation path and mode-switch handoff.
 
 ## Current Known Problem
 
@@ -436,6 +495,9 @@ After the later workaround, the current intended behavior is different:
 - Revealing the real list before hidden correction finishes can expose random/wrong FlashList positions.
 - Keeping the preview too strict can make the screen look stuck on one verse, so reveal uses target-visible plus retry fallback.
 - Long-Surah delayed row hydration is primarily a data-loading issue; the light translation path now uses full-Surah network hydration to avoid request waterfalls.
+- Non-Go-To Surah entry points should use `warmSurahReaderBeforeNavigation`; direct calls to `preloadOfflineSurahNavigationPage` only warm offline data and miss the shared full-Surah network fallback cache.
+- A slow full-Surah network fallback should not block target-page loading. Keep the fast-path race so random API stalls do not become blank entry delays.
+- Placeholder-to-real row replacement can corrupt FlashList measurements. Clear layout cache when verse content signatures change, and avoid recycling placeholder cells while rows are still incomplete.
 - If this still fails in release/performance testing, the next serious step is a native/measured reader surface or a deterministic offset model, not more FlashList estimate tuning.
 
 ## Files Most Involved
@@ -451,7 +513,9 @@ After the later workaround, the current intended behavior is different:
 - `lib/surah/offlineSurahPageCache.ts`
   - Offline page preloading/cache behavior.
 - `lib/surah/surahReaderWarmup.ts`
-  - Warm-before-navigation helper added during this work.
+  - Warm-before-navigation helper for offline page/surah data plus light full-Surah network cache.
+- `lib/surah/surahTranslationNetworkCache.ts`
+  - Shared full-Surah network response cache for light translation-mode navigation.
 
 ## Observed Tradeoff Summary
 
@@ -472,6 +536,9 @@ After the later workaround, the current intended behavior is different:
 | Restore intro under hidden handoff | Keeps full Surah context | Adds dynamic height before verse 1 |
 | Wider target prefetch | Nearby verses ready sooner | More upfront work around Go To |
 | Full-Surah light network fetch | Avoids long-Surah page request waterfall | Larger single response; skipped for word-heavy modes |
+| Shared full-Surah warmup cache | Other verse-entry paths benefit like Go To in online fallback mode | Slow network can still resolve after navigation |
+| Full-Surah fast-path race | Prevents rare full-request stall from blocking target pages | Target pages can still depend on network if not downloaded |
+| Clear layout cache / disable recycling during placeholders | Prevents overlap after rows hydrate | Temporarily less recycling while incomplete |
 | Stop hidden word rendering | Major speed gain | Word tap behavior reduced outside word mode |
 | Reduce word Pressables | Lower word-mode overhead | Word-by-word still heavy |
 
@@ -487,5 +554,7 @@ This section records observations only.
 - Current workaround depends on a careful handoff: hidden real list positions first, preview covers it, then reveal after target visibility.
 - If immediate scrolling after Go To still exposes unloaded rows, tune the target window carefully; too small feels hollow, too large delays entry.
 - If normal translation mode still takes multiple seconds to hydrate a long Surah, check whether the full-Surah `per_page=all` request is failing and falling back to paged loading.
+- If a new card/link opens `/surah/[surahId]`, route it through `warmSurahReaderBeforeNavigation` instead of calling the offline preload directly. The shared warmup should remain offline-first and only start network fallback after local data is incomplete/missing.
+- If overlap appears after data loads, check whether placeholder rows are being measured and then replaced by taller real rows without a FlashList layout cache clear.
 - Word-by-word mode remains a separate performance problem because many word views are expensive in React Native.
 - Competitor apps appear to avoid this by using native/Flutter text/span rendering rather than many native controls per word.

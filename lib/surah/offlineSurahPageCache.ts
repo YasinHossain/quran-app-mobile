@@ -16,6 +16,7 @@ export type SurahPageCacheSettings = {
   translationIds?: number[] | null;
   translationId?: number | null;
   tajweed?: boolean | null;
+  showByWords?: boolean | null;
   wordLang?: string | null;
 };
 
@@ -889,26 +890,32 @@ export function preloadOfflineSurahNavigationPage(params: {
   verseNumber?: number;
   settings: SurahPageCacheSettings;
   perPage?: number;
-}): Promise<void> {
+}): Promise<boolean> {
   const perPage = normalizePositiveInt(params.perPage) || DEFAULT_SURAH_VERSES_PER_PAGE;
   const surahId = normalizePositiveInt(params.surahId);
+  const translationIds = getSelectedTranslationIds(params.settings);
 
-  if (surahId <= 0) return Promise.resolve();
+  if (surahId <= 0) return Promise.resolve(false);
 
   return getOfflineSurahCached({
     surahId,
-    translationIds: getSelectedTranslationIds(params.settings),
+    translationIds,
     wordLang: params.settings.wordLang ?? undefined,
     perPage,
   }).then(
     (surahVerses) => {
+      const hasCompleteOfflineSurah = canCacheOfflineVerses(surahVerses, translationIds);
+      if (!hasCompleteOfflineSurah) return false;
+
       if (params.settings.tajweed) {
         const page = getSurahPageNumber(params.verseNumber, perPage);
         const pageVerses = sliceSurahPage({ surahVerses, page, perPage });
         void preloadTajweedFontsForOfflineVerses(pageVerses).catch(() => {});
       }
+
+      return true;
     },
-    () => undefined
+    () => false
   );
 }
 

@@ -16,6 +16,10 @@ import {
   peekOfflineSurahCache,
   peekOfflineSurahPageCache,
 } from '@/lib/surah/offlineSurahPageCache';
+import {
+  getNetworkSurahTranslationCached,
+  peekNetworkSurahTranslationSnapshot,
+} from '@/lib/surah/surahTranslationNetworkCache';
 import { primeVerseDetailsCache } from '@/lib/verse/verseDetailsCache';
 import type { OfflineVerseWithTranslations } from '@/src/core/domain/repositories/ITranslationOfflineStore';
 import { apiFetch } from '@/src/core/infrastructure/api/apiFetch';
@@ -66,9 +70,18 @@ type ApiVersesResponse = {
 };
 
 type ApiWord = NonNullable<ApiVersesResponse['verses'][number]['words']>[number];
+type ApiVerse = ApiVersesResponse['verses'][number];
+
+const FULL_SURAH_NETWORK_FAST_PATH_TIMEOUT_MS = 650;
 
 let bundledVerseWordsByKey: Map<string, VerseWord[]> | null = null;
 let bundledSurahVersesByChapter: Map<number, OfflineVerseWithTranslations[]> | null = null;
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
 
 function parseChapterNumberFromVerseKey(verseKey: string): number {
   const [chapterPart] = verseKey.split(':');
@@ -1156,7 +1169,7 @@ export function useSurahVerses({
   );
 
   const fetchFullNetworkSurah = React.useCallback(
-    async (token: number): Promise<boolean> => {
+    async (token: number, options?: { silentErrors?: boolean }): Promise<boolean> => {
       if (!enabled) return false;
       if (!Number.isFinite(chapterNumber) || chapterNumber <= 0) return false;
       if (includeWords || tajweed) return false;
@@ -1164,21 +1177,21 @@ export function useSurahVerses({
       setPendingPageCount((current) => current + 1);
 
       try {
-        const versesJson = await apiFetch<ApiVersesResponse>(
-          `/verses/by_chapter/${chapterNumber}`,
-          {
-            language: resolvedWordLang,
-            words: 'false',
-            fields: 'text_uthmani',
-            ...(translationsKey ? { translations: translationsKey } : {}),
-            per_page: 'all',
-          },
-          'Failed to load verses'
-        );
+        const cachedNetworkVerses =
+          peekNetworkSurahTranslationSnapshot({
+            surahId: chapterNumber,
+            translationIds: resolvedTranslationIds,
+            wordLang: resolvedWordLang,
+          }) ??
+          (await getNetworkSurahTranslationCached({
+            surahId: chapterNumber,
+            translationIds: resolvedTranslationIds,
+            wordLang: resolvedWordLang,
+          }));
 
         if (requestTokenRef.current !== token) return false;
 
-        const surahVerses = normalizeVersePage(versesJson.verses ?? []);
+        const surahVerses = normalizeVersePage(cachedNetworkVerses as ApiVerse[]);
         if (!surahVerses.length) return false;
 
         dataSourceRef.current = 'network';
@@ -1188,6 +1201,7 @@ export function useSurahVerses({
         return true;
       } catch (error) {
         if (requestTokenRef.current !== token) return false;
+        if (options?.silentErrors) return false;
 
         if (isNetworkError(error)) {
           setOfflineNotInstalled(true);
@@ -1206,6 +1220,7 @@ export function useSurahVerses({
       enabled,
       includeWords,
       normalizeVersePage,
+      resolvedTranslationIds,
       resolvedWordLang,
       setNetworkSurahData,
       tajweed,
@@ -1747,7 +1762,11 @@ export function useSurahVerses({
         if (requestTokenRef.current !== token) return;
         if (loadedOfflineFirst) return;
 
-        const loadedFullNetworkSurah = await fetchFullNetworkSurah(token);
+        const fullNetworkSurahPromise = fetchFullNetworkSurah(token, { silentErrors: true });
+        const loadedFullNetworkSurah = await Promise.race([
+          fullNetworkSurahPromise,
+          wait(FULL_SURAH_NETWORK_FAST_PATH_TIMEOUT_MS).then(() => null),
+        ]);
         if (requestTokenRef.current !== token) return;
         if (loadedFullNetworkSurah) return;
 
