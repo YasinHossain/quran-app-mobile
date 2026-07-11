@@ -394,6 +394,28 @@ function buildOfflinePagesByNumber(params: {
   return nextPages;
 }
 
+function buildSurahVersePagesByNumber(
+  verses: SurahVerse[],
+  perPage: number
+): Record<number, SurahVerse[]> {
+  const resolvedPerPage =
+    Number.isFinite(perPage) && perPage > 0 ? Math.trunc(perPage) : DEFAULT_SURAH_VERSES_PER_PAGE;
+  const pages: Record<number, SurahVerse[]> = {};
+
+  for (const verse of verses) {
+    if (!Number.isFinite(verse.verse_number) || verse.verse_number <= 0) continue;
+    const pageNumber = Math.max(1, Math.floor((verse.verse_number - 1) / resolvedPerPage) + 1);
+    if (!pages[pageNumber]) pages[pageNumber] = [];
+    pages[pageNumber]!.push(verse);
+  }
+
+  for (const pageVerses of Object.values(pages)) {
+    pageVerses.sort((left, right) => left.verse_number - right.verse_number);
+  }
+
+  return pages;
+}
+
 function getTajweedGlyphRunsFromPages(
   pagesByNumber: Record<number, SurahVerse[]>
 ): NonNullable<SurahVerse['tajweedGlyphRuns']> {
@@ -1100,6 +1122,97 @@ export function useSurahVerses({
     [resolvedTranslationIds, tajweed]
   );
 
+  const setNetworkSurahData = React.useCallback(
+    (surahVerses: SurahVerse[]): void => {
+      if (!surahVerses.length) return;
+
+      const nextPages = buildSurahVersePagesByNumber(surahVerses, perPage);
+      if (Object.keys(nextPages).length === 0) return;
+
+      pagesByNumberRef.current = nextPages;
+      totalPagesRef.current =
+        verseCount > 0 && Number.isFinite(perPage) && perPage > 0
+          ? Math.max(1, Math.ceil(verseCount / perPage))
+          : Math.max(1, Object.keys(nextPages).length);
+
+      setPagesByNumber((previous) => {
+        const previousPageNumbers = Object.keys(previous);
+        const nextPageNumbers = Object.keys(nextPages);
+        if (previousPageNumbers.length !== nextPageNumbers.length) return nextPages;
+
+        for (const pageNumber of nextPageNumbers) {
+          const numericPageNumber = Number(pageNumber);
+          const previousPage = previous[numericPageNumber];
+          const nextPage = nextPages[numericPageNumber];
+          if (!previousPage || !nextPage || !arePageVersesEquivalent(previousPage, nextPage)) {
+            return nextPages;
+          }
+        }
+
+        return previous;
+      });
+    },
+    [perPage, verseCount]
+  );
+
+  const fetchFullNetworkSurah = React.useCallback(
+    async (token: number): Promise<boolean> => {
+      if (!enabled) return false;
+      if (!Number.isFinite(chapterNumber) || chapterNumber <= 0) return false;
+      if (includeWords || tajweed) return false;
+
+      setPendingPageCount((current) => current + 1);
+
+      try {
+        const versesJson = await apiFetch<ApiVersesResponse>(
+          `/verses/by_chapter/${chapterNumber}`,
+          {
+            language: resolvedWordLang,
+            words: 'false',
+            fields: 'text_uthmani',
+            ...(translationsKey ? { translations: translationsKey } : {}),
+            per_page: 'all',
+          },
+          'Failed to load verses'
+        );
+
+        if (requestTokenRef.current !== token) return false;
+
+        const surahVerses = normalizeVersePage(versesJson.verses ?? []);
+        if (!surahVerses.length) return false;
+
+        dataSourceRef.current = 'network';
+        setNetworkSurahData(surahVerses);
+        setOfflineNotInstalled(false);
+        setErrorMessage(null);
+        return true;
+      } catch (error) {
+        if (requestTokenRef.current !== token) return false;
+
+        if (isNetworkError(error)) {
+          setOfflineNotInstalled(true);
+          setErrorMessage(null);
+          return false;
+        }
+
+        setErrorMessage((error as Error).message);
+        return false;
+      } finally {
+        setPendingPageCount((current) => Math.max(0, current - 1));
+      }
+    },
+    [
+      chapterNumber,
+      enabled,
+      includeWords,
+      normalizeVersePage,
+      resolvedWordLang,
+      setNetworkSurahData,
+      tajweed,
+      translationsKey,
+    ]
+  );
+
   const setPageData = React.useCallback((pageNumber: number, pageVerses: SurahVerse[]) => {
     if (!pageVerses.length) return;
 
@@ -1634,6 +1747,10 @@ export function useSurahVerses({
         if (requestTokenRef.current !== token) return;
         if (loadedOfflineFirst) return;
 
+        const loadedFullNetworkSurah = await fetchFullNetworkSurah(token);
+        if (requestTokenRef.current !== token) return;
+        if (loadedFullNetworkSurah) return;
+
         if (canPreserveCurrentPages && !hasWarmOfflinePages) {
           pagesByNumberRef.current = {};
           setPagesByNumber({});
@@ -1668,6 +1785,7 @@ export function useSurahVerses({
       chapterNumber,
       enabled,
       fetchPage,
+      fetchFullNetworkSurah,
       includeWords,
       tajweed,
       loadOfflineFirstData,

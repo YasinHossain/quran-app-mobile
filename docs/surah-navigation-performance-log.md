@@ -301,6 +301,124 @@ Outcome:
 - This approach avoids blank in one measured path but creates layer-overlap bugs.
 - It should be considered risky and not a clean long-term solution.
 
+### 11. FlashList v2 Update, Row Buckets, and MVCP Disabled
+
+Files touched:
+
+- `package.json`
+- `package-lock.json`
+- `app/surah/[surahId].tsx`
+
+What changed:
+
+- Updated `@shopify/flash-list` from `2.0.2` to `2.3.2`.
+- Added `initialScrollIndexParams.viewOffset` so the header offset is applied during initial indexed render.
+- Added `getItemType` layout buckets (`verse-xs` through `verse-xl`) based on Arabic/translation/word length.
+- Disabled FlashList `maintainVisibleContentPosition` for the translation reader.
+
+What improved:
+
+- Reduced cases where one unusually tall measured verse poisoned the estimated height for all rows.
+- Reduced extreme wrong landings such as a requested early verse landing much farther down the Surah.
+
+Tradeoffs/problems:
+
+- Still relies on FlashList estimated layouts for unknown dynamic-height rows.
+- Did not fully remove the initial visible settle/jump by itself.
+
+### 12. Hidden Real List + Opaque Target Preview Handoff
+
+Files touched:
+
+- `app/surah/[surahId].tsx`
+
+What changed:
+
+- Reintroduced a preview, but with a stricter contract than the earlier broken overlay:
+  - the real FlashList is opacity-hidden and non-interactive while positioning;
+  - the preview has an opaque background;
+  - the real list is revealed only after hidden programmatic scrolling confirms the target verse is visible.
+- Removed the experiment that skipped the first corrective scroll, because it could remove the visible jump but allow wrong landings.
+
+What improved:
+
+- The user should no longer see the quick correction jump during direct Go To entry.
+- Wrong initial estimates can be corrected behind the preview instead of being exposed visually.
+
+Tradeoffs/problems:
+
+- This is still a masking/handoff workaround, not a true pre-measured reader.
+- If FlashList viewability does not update promptly, the preview can remain visible longer than desired.
+- The first visible screen may show only the target preview until the hidden real list reports a usable target range.
+
+### 13. Surah Intro Restored for Go To
+
+Files touched:
+
+- `app/surah/[surahId].tsx`
+
+What changed:
+
+- The Surah intro/header card is rendered again even for direct verse jumps.
+- Earlier, it was skipped for `startVerse > 1` because its dynamic height made initial offset estimation worse.
+
+What improved:
+
+- Scrolling upward from a direct target preserves the complete Surah context, including the intro.
+- The intro no longer creates a visible startup jump because the real list is hidden during initial positioning.
+
+Tradeoffs/problems:
+
+- The intro still increases dynamic content before verse 1, so it can affect FlashList offset estimation internally.
+- The handoff must stay correct; otherwise the intro can reintroduce wrong-offset behavior.
+
+### 14. Wider Target Window and Stuck Preview Fix
+
+Files touched:
+
+- `app/surah/[surahId].tsx`
+- `hooks/useSurahVerses.ts`
+
+What changed:
+
+- Increased screen-level target prefetch to roughly `±72` verses around the requested verse.
+- Increased initial hook loading from a 3-page target window to a 5-page target window.
+- Forced FlashList viewability recomputation after hidden programmatic scroll.
+- Relaxed reveal from "target must be first visible row" to "target must be visible", with a retry fallback so the preview does not get stuck forever.
+
+What improved:
+
+- Reduces the case where the user jumps to a target and immediately scrolling shows only one loaded verse.
+- Makes nearby verses load sooner around the target, especially in long Surahs.
+
+Tradeoffs/problems:
+
+- Loads more data up front around direct Go To targets, so cold entry may do more work.
+- This should be validated in release/performance builds, because dev-mode timing can exaggerate both blankness and jumpiness.
+- If the reader still lands randomly or stalls, further tuning FlashList is likely the wrong direction.
+
+### 15. Full-Surah Network Hydration for Light Translation Mode
+
+Files touched:
+
+- `hooks/useSurahVerses.ts`
+
+What changed:
+
+- Added a light-path network load that requests `/verses/by_chapter/:id` with `per_page=all` after offline cache lookup fails.
+- This path is intentionally skipped when word payloads or Tajweed glyph hydration are active, because whole-Surah word data can be very large.
+- If the full-Surah request fails, the hook falls back to the previous paged target-window loading.
+
+What improved:
+
+- Long Surahs such as `2`, `3`, `5`, and `6` no longer need several separate network page requests before surrounding verses are available.
+- In normal translation mode, all verses for the current Surah can hydrate from one request, reducing the "only target area is loaded, other rows fill in for seconds" behavior.
+
+Tradeoffs/problems:
+
+- Online-only translation reading still depends on network latency. Downloaded translations remain the best path for consistently instant navigation.
+- Whole-Surah fetches increase one response payload size, but avoid request waterfalls. This is acceptable for the light translation path and should be validated in release builds.
+
 ## Current Known Problem
 
 As of this log, the remaining hard problem is:
@@ -311,6 +429,14 @@ As of this log, the remaining hard problem is:
 - Showing a preview overlay can create duplicated/overlapping content if the gate and real list are not perfectly synchronized.
 
 The screenshot provided after the preview overlay attempt is evidence that overlay-based masking can break the reader visually.
+
+After the later workaround, the current intended behavior is different:
+
+- The target preview is allowed, but it must be opaque and the real list must be hidden until positioning is complete.
+- Revealing the real list before hidden correction finishes can expose random/wrong FlashList positions.
+- Keeping the preview too strict can make the screen look stuck on one verse, so reveal uses target-visible plus retry fallback.
+- Long-Surah delayed row hydration is primarily a data-loading issue; the light translation path now uses full-Surah network hydration to avoid request waterfalls.
+- If this still fails in release/performance testing, the next serious step is a native/measured reader surface or a deterministic offset model, not more FlashList estimate tuning.
 
 ## Files Most Involved
 
@@ -340,6 +466,12 @@ The screenshot provided after the preview overlay attempt is evidence that overl
 | Allow correction | Lands correctly | Visible settle/jump |
 | Hide list during correction | Hides settle | Creates blank delay |
 | Preview overlay | Avoids blank in sample | Can overlap/duplicate content badly |
+| FlashList 2.3.2 + row buckets | Reduces extreme wrong estimates | Still estimated, not exact |
+| Disable MVCP | Stops chat-style anchor preservation from fighting jumps | Loses MVCP behavior, acceptable for reader |
+| Hidden real list + opaque target preview | Hides correction jump and wrong first estimate | Can feel like one-verse preview if reveal stalls |
+| Restore intro under hidden handoff | Keeps full Surah context | Adds dynamic height before verse 1 |
+| Wider target prefetch | Nearby verses ready sooner | More upfront work around Go To |
+| Full-Surah light network fetch | Avoids long-Surah page request waterfall | Larger single response; skipped for word-heavy modes |
 | Stop hidden word rendering | Major speed gain | Word tap behavior reduced outside word mode |
 | Reduce word Pressables | Lower word-mode overhead | Word-by-word still heavy |
 
@@ -352,6 +484,8 @@ This section records observations only.
 - Any overlay/preview approach can introduce duplicate layers, wrong visible verse context, and text overlap.
 - Any approach that skips exact correction can land on the wrong verse.
 - Any approach that loads too much up front can reintroduce the long blank delay.
+- Current workaround depends on a careful handoff: hidden real list positions first, preview covers it, then reveal after target visibility.
+- If immediate scrolling after Go To still exposes unloaded rows, tune the target window carefully; too small feels hollow, too large delays entry.
+- If normal translation mode still takes multiple seconds to hydrate a long Surah, check whether the full-Surah `per_page=all` request is failing and falling back to paged loading.
 - Word-by-word mode remains a separate performance problem because many word views are expensive in React Native.
 - Competitor apps appear to avoid this by using native/Flutter text/span rendering rather than many native controls per word.
-
