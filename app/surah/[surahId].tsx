@@ -37,6 +37,17 @@ import { getSurahHeaderPresentation } from '@/components/surah/surahHeaderPresen
 import { useVerseAudioWordSync } from '@/components/surah/useVerseAudioWordSync';
 import { VerseActionsSheet } from '@/components/surah/VerseActionsSheet';
 import { VerseCard } from '@/components/surah/VerseCard';
+import {
+  NativeSurahReader,
+  type NativeSurahReaderHandle,
+} from '@/components/surah/native/NativeSurahReader';
+import { buildNativeLightSurahVerses } from '@/components/surah/native/NativeSurahReader.mapper';
+import {
+  buildNativeLightSurahReaderSettings,
+  buildNativeLightSurahReaderTheme,
+} from '@/components/surah/native/NativeSurahReader.theme';
+import { useNativeSurahReaderEvents } from '@/components/surah/native/useNativeSurahReaderEvents';
+import { useNativeSurahReaderGate } from '@/components/surah/native/useNativeSurahReaderGate';
 import { VerseScrubber, type VerseScrubberHandle } from '@/components/surah/VerseScrubber';
 import { AddToPlannerModal, type VerseSummaryDetails } from '@/components/verse-planner-modal';
 import Colors from '@/constants/Colors';
@@ -1031,6 +1042,7 @@ export default function SurahScreen(): React.JSX.Element {
 
   const flatListRef = React.useRef<FlatList<number> | null>(null);
   const flashListRef = React.useRef<FlashListRef<number> | null>(null);
+  const nativeSurahReaderRef = React.useRef<NativeSurahReaderHandle | null>(null);
   const verseScrubberRef = React.useRef<VerseScrubberHandle | null>(null);
   const mushafReaderRef = React.useRef<MushafSingleDocumentReaderHandle | null>(null);
   const mushafPageScrubberRef = React.useRef<IndexScrubberHandle | null>(null);
@@ -1152,6 +1164,59 @@ export default function SurahScreen(): React.JSX.Element {
       verseNumbers.some((verseNumber) => !getVerseByNumber(verseNumber)),
     [getVerseByNumber, isMushafView, verseCount, verseNumbers]
   );
+  const supportsNativeLightSurahReader = useNativeSurahReaderGate({
+    hasLoadedContent,
+    isMushafView,
+    showByWords: Boolean(settings.showByWords),
+    tajweed: Boolean(settings.tajweed),
+    verseCount,
+  });
+  const nativeLightSurahVerses = React.useMemo(
+    () =>
+      buildNativeLightSurahVerses({
+        getVerseByNumber,
+        showTranslationAttribution,
+        supportsNativeLightSurahReader,
+        translationsById,
+        verseNumbers,
+      }),
+    [
+      getVerseByNumber,
+      showTranslationAttribution,
+      supportsNativeLightSurahReader,
+      translationsById,
+      verseNumbers,
+    ]
+  );
+  const shouldUseNativeLightSurahReader = Boolean(
+    supportsNativeLightSurahReader && nativeLightSurahVerses.length === verseCount
+  );
+  const nativeLightSurahReaderSettings = React.useMemo(
+    () =>
+      buildNativeLightSurahReaderSettings({
+        arabicFontFace: settings.arabicFontFace,
+        arabicFontSize: settings.arabicFontSize,
+        showTranslationAttribution,
+        translationFontSize: settings.translationFontSize,
+      }),
+    [
+      settings.arabicFontFace,
+      settings.arabicFontSize,
+      settings.translationFontSize,
+      showTranslationAttribution,
+    ]
+  );
+  const nativeLightSurahReaderTheme = React.useMemo(
+    () => buildNativeLightSurahReaderTheme(palette),
+    [palette]
+  );
+
+  React.useEffect(() => {
+    if (!supportsNativeLightSurahReader) return;
+    if (verseCount <= 0) return;
+    if (nativeLightSurahVerses.length === verseCount) return;
+    ensureVerseRangeLoadedRef.current(1, verseCount, 2);
+  }, [nativeLightSurahVerses.length, supportsNativeLightSurahReader, verseCount]);
 
   const translationLayoutSignature = React.useMemo(
     () =>
@@ -1530,6 +1595,19 @@ export default function SurahScreen(): React.JSX.Element {
       return;
     }
 
+    if (shouldUseNativeLightSurahReader) {
+      hasPerformedTargetedProgrammaticScrollRef.current = true;
+      nativeSurahReaderRef.current?.scrollToVerse(targetVerseNumber, false);
+      visibleVerseNumberRef.current = targetVerseNumber;
+      setVisibleVerseNumber((currentVerseNumber) =>
+        currentVerseNumber === targetVerseNumber ? currentVerseNumber : targetVerseNumber
+      );
+      didScrollToStartRef.current = true;
+      scrollRetryCountRef.current = 0;
+      markTargetedTranslationPositionReady(targetedTranslationKeyRef.current);
+      return;
+    }
+
     const list = Platform.OS === 'web' ? flatListRef.current : flashListRef.current;
     if (!list) {
       scheduleRetry();
@@ -1594,6 +1672,7 @@ export default function SurahScreen(): React.JSX.Element {
     nativeListLoadTick,
     nativeListScrollViewOffset,
     scrollTick,
+    shouldUseNativeLightSurahReader,
     startVerse,
     verseCount,
   ]);
@@ -1639,6 +1718,10 @@ export default function SurahScreen(): React.JSX.Element {
         );
       }
 
+      if (shouldUseNativeLightSurahReader) {
+        nativeSurahReaderRef.current?.scrollToVerse(targetVerseNumber, false);
+        return;
+      }
       const list = Platform.OS === 'web' ? flatListRef.current : flashListRef.current;
       if (!list) return;
 
@@ -1678,8 +1761,26 @@ export default function SurahScreen(): React.JSX.Element {
         ensureVerseRangeLoadedRef.current(targetVerseNumber, targetVerseNumber, 2);
       }
     },
-    [listScrollViewOffset, nativeListScrollViewOffset]
+    [listScrollViewOffset, nativeListScrollViewOffset, shouldUseNativeLightSurahReader]
   );
+
+  const {
+    handleNativeScroll,
+    handleNativeVerseActionPress,
+    handleNativeVisibleVerseChange,
+  } = useNativeSurahReaderEvents({
+    chapterNumber,
+    getVerseByNumberRef,
+    isVerseScrubbingRef,
+    lastReadReportedRef,
+    openVerseActions,
+    readerHeader,
+    setLastReadRef,
+    setVisibleVerseNumber,
+    verseScrubberRef,
+    visibleVerseKeyRef,
+    visibleVerseNumberRef,
+  });
 
   React.useEffect(() => {
     if (isMushafView || !pendingTranslationVerseKey || !hasLoadedContent) return;
@@ -1730,9 +1831,6 @@ export default function SurahScreen(): React.JSX.Element {
     readerHeader.handleScroll(event);
     verseScrubberRef.current?.show();
   }, [readerHeader]);
-
-  // No-op: native list load handler removed. Scroll-to-start is handled by
-  // the unified useEffect above.
 
   const mushafPageScrubberIndex = React.useMemo(
     () => resolvePageIndexInList(activeMushafPageNumber, mushafSurahPageNumbers),
@@ -1953,6 +2051,23 @@ export default function SurahScreen(): React.JSX.Element {
                   No verses found for this surah.
                 </Text>
               </View>
+            ) : shouldUseNativeLightSurahReader ? (
+              <NativeSurahReader
+                ref={nativeSurahReaderRef}
+                style={styles.contentLayer}
+                surahId={chapterNumber}
+                targetVerse={normalizedStartVerse ?? 1}
+                verses={nativeLightSurahVerses}
+                settings={nativeLightSurahReaderSettings}
+                activeVerseKey={audio.activeVerseKey}
+                topInsetPx={readerHeader.headerHeight + 16}
+                bottomInsetPx={24 + audioPlayerBarHeight}
+                theme={nativeLightSurahReaderTheme}
+                onReady={handleNativeListLoad}
+                onVisibleVerseChange={handleNativeVisibleVerseChange}
+                onVerseActionPress={handleNativeVerseActionPress}
+                onScroll={handleNativeScroll}
+              />
             ) : Platform.OS === 'web' ? (
               <FlatList
                 ref={(node) => {

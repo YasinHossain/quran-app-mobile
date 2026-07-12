@@ -44,3 +44,23 @@ scratch/android-debug/
 # generated native folders
 /ios
 /android
+!/android/
+/android/*
+!/android/app/
+/android/app/*
+!/android/app/build.gradle
+!/android/app/src/
+/android/app/src/*
+!/android/app/src/main/
+/android/app/src/main/*
+!/android/app/src/main/java/
+/android/app/src/main/java/*
+!/android/app/src/main/java/com/
+/android/app/src/main/java/com/*
+!/android/app/src/main/java/com/anonymous/
+/android/app/src/main/java/com/anonymous/*
+!/android/app/src/main/java/com/anonymous/quranappmobile/
+/android/app/src/main/java/com/anonymous/quranappmobile/*
+!/android/app/src/main/java/com/anonymous/quranappmobile/MainApplication.kt
+!/android/app/src/main/java/com/anonymous/quranappmobile/nativesurahreader/
+!/android/app/src/main/java/com/anonymous/quranappmobile/nativesurahreader/**

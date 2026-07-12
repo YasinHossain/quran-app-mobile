@@ -1,357 +1,447 @@
 # Native Surah Reader Migration Plan
 
-## Summary
+## Current Status
 
-Build a small Android native reader proof first, then migrate only if it proves the performance hypothesis.
+Branch: `native-surah-reader-android-poc`
 
-The first milestone is not a full rewrite and not another FlashList targeting workaround. It is a native rendering experiment:
+The Android native reader proof is now past the original "should we try native?" stage.
 
-- React Native keeps data loading, settings, offline checks, network fallback, verse actions, audio state, header, and scrubber orchestration.
-- Android Kotlin owns only the scroll surface and verse row rendering for normal translation mode.
-- The first native reader receives already-normalized full-Surah light verse data from React Native.
-- Word-by-word, Tajweed, and audio word sync stay on the existing React Native path until native rendering is proven.
+Current implementation:
 
-If the Android proof works in release/performance testing, continue toward full Android replacement for normal translation reading. iOS gets the same component contract later.
+- Android has a Kotlin `NativeSurahReader` backed by `RecyclerView`.
+- React Native exposes `components/surah/native/NativeSurahReader.tsx`.
+- `app/surah/[surahId].tsx` uses the native reader for Android normal light translation mode.
+- React Native still owns data loading, selected translations, offline/download state, network fallback, settings, verse actions, header, scrubber, audio state, and Mushaf switching.
+- Native currently renders real full-Surah light verse data from React Native.
+- Native currently supports:
+  - direct target verse landing
+  - native scrolling
+  - verse action press back to React Native
+  - visible verse reporting
+  - last-read updates
+  - scrubber scroll commands
+  - verse-level active audio highlight
+  - light/dark theme colors
+  - Arabic and translation font sizes
+  - multi-translation attribution
 
-## Why This Direction
+Current native gate:
 
-The work log in `docs/surah-navigation-performance-log.md` shows that FlashList tuning helped but did not remove the core issue:
+- Android only
+- translation view only
+- content loaded
+- not word-by-word
+- not Tajweed
 
-- Dynamic verse heights make initial offset estimation imprecise.
-- Exact correction can be visibly noticeable.
-- Hiding the list creates blank delay.
-- Preview overlays can duplicate or overlap content if handoff timing is imperfect.
-- Word-heavy React Native rows are expensive, especially when every word becomes a native control.
+The direction looks correct if the native reader feels significantly faster and closer to a real native Quran reader. From here, the plan should shift from "prove native" to "complete native reader parity in controlled modules."
 
-The next serious experiment should therefore be a native measured reader surface, not more preview, hidden-list, target-window, or correction-retry tuning.
+## Important Principle
 
-## Key Correction To The Original Plan
+Do not rebuild the whole app in native.
 
-Do not make Kotlin own offline SQLite loading in the MVP.
+Keep React Native responsible for app orchestration:
 
-The existing TypeScript side already handles:
-
+- route params
+- settings sidebar
 - selected translations
-- offline/download state
-- bundled Arabic text fallback
-- online full-Surah fallback
-- cache warmup
-- word language
-- settings
-- verse action payloads
-- last-read reporting
-- Mushaf-to-translation return flow
+- downloads/offline state
+- audio player state and controls
+- verse action sheet
+- bookmarks/planner/tafsir/share
+- search/header/scrubber overlays
+- Mushaf-to-translation switching
 
-Duplicating that in Kotlin would create a second data pipeline too early. The MVP should pass complete light Surah data from React Native into the native reader and let Kotlin focus on rendering and exact scroll behavior.
+Make Kotlin responsible for the reading surface:
 
-## Native Reader Contract
+- row rendering
+- exact scrolling
+- native text layout
+- word token layout
+- Tajweed spans
+- word-sync highlight rendering
+- selection/tap behavior inside the verse row
 
-Create one React Native-facing component:
+This keeps the native migration focused on the real bottleneck: the reader surface.
 
-`NativeSurahReader`
+## Architecture Guardrail
 
-### Props
+Do not let the new native reader become another single 2000-line feature file.
 
-- `surahId`
-- `targetVerse`
-- `verses`
-- `settings`
-- `activeVerseKey`
-- `topInsetPx`
-- `bottomInsetPx`
-- `theme`
+The old Surah screen already carries too many responsibilities:
 
-### Verse Shape
+- route parsing
+- data loading
+- mode selection
+- list rendering
+- settings wiring
+- audio wiring
+- scrubber wiring
+- verse actions
+- Mushaf switching
+- navigation warmup
+- performance workarounds
 
-Use only light translation fields in the first version:
+Future native-reader work should be split by responsibility before adding advanced modes.
 
-- `verseKey`
-- `verseNumber`
-- `verseApiId`
-- `arabicText`
-- `translationItems`
+Recommended React Native structure:
 
-Do not include word-by-word payloads or Tajweed glyph runs in the MVP.
+```text
+components/surah/native/
+  NativeSurahReader.tsx
+  NativeSurahReader.types.ts
+  NativeSurahReader.mapper.ts
+  NativeSurahReader.theme.ts
+  useNativeSurahReaderGate.ts
+  useNativeSurahReaderEvents.ts
+  useNativeSurahReaderCommands.ts
+```
 
-### Events
+Recommended Android structure:
 
-- `onReady`
-- `onVisibleVerseChange`
-- `onVerseActionPress`
-- `onScroll`
+```text
+android/app/src/main/java/com/anonymous/quranappmobile/nativesurahreader/
+  NativeSurahReaderView.kt
+  NativeSurahReaderViewManager.kt
+  NativeSurahReaderPackage.kt
+  NativeVerse.kt
+  NativeReaderTheme.kt
+  NativeVerseAdapter.kt
+  NativeVerseViewHolder.kt
+  NativeVerseRowView.kt
+  NativeWordLayoutView.kt
+  NativeTajweedTextFactory.kt
+  ReadableMapExtensions.kt
+```
 
-### Command
+Ownership guidance:
 
-- `scrollToVerse(verseNumber, animated)`
+- `app/surah/[surahId].tsx` should decide which reader mode is active and compose the screen.
+- Native reader mapping should live outside the route file.
+- Native reader event handlers should live in a hook.
+- Native command/ref handling should live in a hook.
+- Kotlin parsing/data classes should not live inside the view file.
+- Kotlin row rendering should not live inside the view manager.
+- Word-by-word, Tajweed, and audio sync should be separate renderer modules, not conditional blocks piled into one method.
 
-## Phase 0 - Branch And Baseline
+Exit rule:
 
-Goal: prepare a safe branch and record current behavior before changing the reader.
+- If a single file grows past roughly 400-500 lines, split it before adding the next feature.
+- If a function grows past roughly 80-100 lines, extract the responsibility before adding branches.
+- Do not add new mode logic directly into `app/surah/[surahId].tsx` unless it is only a small composition decision.
+
+## Immediate Recommendation
+
+Do not jump directly into every advanced mode.
+
+Next practical step:
+
+1. Split the current native-reader integration into standard modules.
+2. Stabilize the native light reader as the permanent Android normal reader.
+3. Define the expanded native verse contract once.
+4. Add native word-by-word.
+5. Add native Tajweed.
+6. Add native audio word sync.
+7. Only then remove the FlashList reader for Android.
+
+The old FlashList path should remain temporarily as a safety path until the native reader supports all Android translation modes.
+
+## Phase 0 - Modularize Current Native Reader Integration
+
+Goal: prevent the native migration from becoming another oversized Surah route file or oversized Kotlin view file.
 
 Tasks:
 
-- Create a branch such as `native-surah-reader-android-poc`.
-- Keep the current React Native FlashList reader intact.
-- Record baseline release/performance behavior for direct Go To:
+- Move native reader TypeScript types into `components/surah/native/NativeSurahReader.types.ts`.
+- Move Surah-verse-to-native-verse mapping into `components/surah/native/NativeSurahReader.mapper.ts`.
+- Move native theme construction into `components/surah/native/NativeSurahReader.theme.ts`.
+- Move the native-mode eligibility logic into `components/surah/native/useNativeSurahReaderGate.ts`.
+- Move native reader event handlers into `components/surah/native/useNativeSurahReaderEvents.ts`.
+- Move native scroll command helpers into `components/surah/native/useNativeSurahReaderCommands.ts` if command logic grows.
+- Split Kotlin data classes and parsing helpers out of `NativeSurahReaderView.kt`.
+- Split Kotlin adapter/row rendering out of `NativeSurahReaderView.kt`.
+- Keep behavior unchanged.
+
+Exit criteria:
+
+- Native light reader behavior is unchanged.
+- `app/surah/[surahId].tsx` gets smaller or at least stops growing.
+- Kotlin native reader files are split by responsibility.
+- `npm run verify` passes.
+- Android Kotlin compile passes.
+
+Suggested handoff prompt:
+
+> Refactor the current NativeSurahReader integration into smaller TypeScript and Kotlin modules before adding new features. Keep behavior unchanged. Do not implement word-by-word or Tajweed yet.
+
+## Phase A - Stabilize Native Light Reader
+
+Goal: make the current native light reader robust before layering heavy features onto it.
+
+Tasks:
+
+- Verify target landing in release/performance build:
   - `2:255`
   - `3:1`
   - `5:1`
   - `6:1`
   - `70:41`
-- Record whether the current path shows blank delay, visible correction, wrong landing, overlap, or delayed hydration.
+- Verify same-Surah Go To.
+- Verify Search, Recent, Last Read, bookmarks/folders, Planner continue, and Mushaf-to-Translation.
+- Verify airplane mode with downloaded selected translations.
+- Verify selected translation not downloaded while offline.
+- Add Arabic font face support to native rows.
+- Confirm top header inset and bottom audio inset still line up after orientation/font-size/theme changes.
+- Confirm native row action opens the existing `VerseActionsSheet` with correct data.
+- Confirm native `onVisibleVerseChange` does not spam last-read writes during fast scrolling.
 
 Exit criteria:
 
-- Branch exists.
-- Baseline notes are added to this document or a new dated log entry.
-- No behavior change yet.
-
-Suggested handoff prompt:
-
-> Create the native-surah-reader-android-poc branch and add a short baseline note for the current Surah Go To behavior. Do not implement the native reader yet.
-
-## Phase 1 - Native Component Shell
-
-Goal: prove the Expo/React Native native-view plumbing works before adding real reader behavior.
-
-Tasks:
-
-- Add an Android native view named `NativeSurahReader`.
-- Expose it to React Native.
-- Render a simple native placeholder view on Android.
-- Add a TypeScript wrapper component.
-- Keep iOS/web using the existing React Native reader.
-- Do not replace the Surah screen yet.
-
-Exit criteria:
-
-- App builds on Android.
-- Placeholder native component can be mounted in a temporary/local test surface.
-- `npm run type-check` passes.
-
-Suggested handoff prompt:
-
-> Implement only the Android NativeSurahReader shell and TypeScript wrapper. It should render a simple native placeholder and not replace the production Surah reader yet.
-
-## Phase 2 - Static RecyclerView Proof
-
-Goal: verify native RecyclerView renders rows and can jump exactly with fixed/static sample data.
-
-Tasks:
-
-- Implement Kotlin `RecyclerView`.
-- Render simple verse rows using native `TextView`.
-- Use `LinearLayoutManager`.
-- Use stable adapter IDs:
-  - prefer `verseApiId` when available
-  - otherwise use `surahId * 1000 + verseNumber`
-- Use `setHasStableIds(true)`.
-- Expose `scrollToVerse(verseNumber, animated)`.
-- Implement `scrollToPositionWithOffset(targetIndex, topInsetPx)`.
-- Add `clipToPadding=false`.
-- Apply top and bottom padding from `topInsetPx` and `bottomInsetPx`.
-
-Exit criteria:
-
-- Static rows render on Android.
-- Calling `scrollToVerse` lands on the requested row.
-- No production Surah screen replacement yet.
-
-Suggested handoff prompt:
-
-> Extend the NativeSurahReader shell into a static RecyclerView proof with sample verse rows and an imperative scrollToVerse command. Do not wire real Surah data yet.
-
-## Phase 3 - Real Light Surah Data From React Native
-
-Goal: feed real complete light Surah data from the existing React Native data path.
-
-Tasks:
-
-- Reuse `useSurahVerses` from `app/surah/[surahId].tsx`.
-- Mount the native reader only when normal light translation data is ready.
-- Pass complete available `verses` into native.
-- Keep offline-not-installed and error states in React Native.
-- Keep network/offline hydration logic in React Native.
-- Do not let Kotlin query SQLite in this phase.
-
-Normal light mode means:
-
-- `!isMushafView`
-- `!settings.showByWords`
-- `!settings.tajweed`
-- no audio word sync requirement
-
-Exit criteria:
-
-- Android native reader renders real Surah translation rows.
-- Verse text and selected translations match the existing React Native reader.
-- Unsupported modes still use the existing React Native FlashList path.
-
-Suggested handoff prompt:
-
-> Wire NativeSurahReader to real Surah light translation data from the existing useSurahVerses path. Keep Kotlin out of SQLite. Use the native reader only for normal Android translation mode.
-
-## Phase 4 - Replace Android Normal Translation Mode
-
-Goal: use native rendering for the real Android normal translation reader path.
-
-Tasks:
-
-- In `app/surah/[surahId].tsx`, choose native reader only for Android normal light translation mode.
-- Keep React Native FlashList for:
-  - web
-  - iOS
-  - word-by-word
-  - Tajweed
-  - audio word sync
-  - any unsupported state
-- Remove native-reader preview experiments from this path if they are no longer needed.
-- Keep `VerseActionsSheet` in React Native.
-- Native action button sends verse payload to React Native.
-
-Exit criteria:
-
-- Android normal translation mode uses native reader.
-- All unsupported modes still work through the existing reader.
-- Verse action sheet opens from native row action button.
-
-Suggested handoff prompt:
-
-> Replace only Android normal light translation mode with NativeSurahReader. Keep all unsupported modes on the existing FlashList reader and keep the existing VerseActionsSheet.
-
-## Phase 5 - Reader State Wiring
-
-Goal: connect native scrolling to existing app behavior.
-
-Tasks:
-
-- Native `onVisibleVerseChange` updates:
-  - visible verse number
-  - last-read state
-  - scrubber state
-- Existing scrubber calls native `scrollToVerse`.
-- Native `onScroll` feeds the collapsible reader header.
-- `activeVerseKey` updates native row highlight for verse-level audio playback.
-- Keep existing Mushaf-to-translation route behavior.
-
-Exit criteria:
-
-- Header collapse still works.
-- Verse scrubber still works.
-- Last Read updates correctly.
-- Active audio verse highlight works at verse level.
-- Mushaf-to-translation returns to the intended verse.
-
-Suggested handoff prompt:
-
-> Wire NativeSurahReader visible-verse, scroll, scrubber, last-read, and activeVerseKey behavior into the existing Surah screen. Do not add word-by-word or Tajweed yet.
-
-## Phase 6 - Styling And Parity Polish
-
-Goal: make the native normal reader visually match the current reader closely enough to ship behind Android normal mode.
-
-Tasks:
-
-- Match light and dark colors.
-- Match Arabic font size.
-- Match translation font size.
-- Match row spacing.
-- Match verse number/action placement.
-- Match top header inset and bottom audio inset.
-- Match selected translation attribution when multiple translations are enabled.
-
-Exit criteria:
-
-- Normal translation rows visually match the existing reader closely.
+- Native light reader is clearly faster than FlashList.
+- No blank delay.
+- No visible correction jump.
+- No wrong target landing.
 - No row overlap.
-- Text remains readable across configured font sizes.
-- Dark and light mode both pass manual review.
+- `npm run verify` passes.
+- Android native build passes.
 
 Suggested handoff prompt:
 
-> Polish NativeSurahReader styling for parity with the existing normal translation reader, including dark/light theme, font sizes, spacing, insets, and multi-translation attribution.
+> Stabilize the current Android NativeSurahReader light mode. Add missing Arabic font face support, validate target landing and entry paths, and keep React Native orchestration unchanged.
 
-## Phase 7 - Performance Acceptance
+## Phase B - Freeze The Native Reader Contract
 
-Goal: decide whether native Android reader should continue toward full adoption.
+Goal: expand the data contract before implementing word-by-word/Tajweed/audio sync so each mode does not invent its own payload shape.
 
-Test in Android release/performance build, not only Expo dev mode.
+Extend `NativeSurahReaderVerse` to support optional native-only fields:
 
-Acceptance targets:
+- `words`
+- `tajweedRuns`
+- `audioWordSync`
+- `displayMode`
 
-- Direct Go To `2:255` shows the correct target verse on first visible render.
-- Direct Go To does not visibly scroll from top.
-- Direct Go To does not show a correction jump.
-- No blank screen before first useful content.
-- Scrolling up from target preserves full Surah context.
-- Fast scrubber jumps remain responsive.
-- No overlap after data/settings changes.
-- Memory and native view count are materially lower than the previous word-heavy path.
+Suggested word shape:
 
-Required test cases:
+- `id`
+- `position`
+- `uthmani`
+- `translationText`
+- `charTypeName`
+- `codeV2`
+- `pageNumber`
 
-- `2:255`
-- `3:1`
-- `5:1`
-- `6:1`
-- `70:41`
-- same-Surah Go To
-- Search result to verse
-- Recent/Last Read to verse
-- Bookmark/folder verse card to verse
-- Planner continue reading
-- Mushaf to Translation
-- airplane mode with downloaded selected translations
-- selected translation not downloaded while offline
+Suggested settings shape:
+
+- `arabicFontSize`
+- `translationFontSize`
+- `arabicFontFace`
+- `showTranslationAttribution`
+- `showByWords`
+- `tajweed`
+- `wordLang`
+- `audioWordSyncEnabled`
+
+Suggested native row modes:
+
+- `plain`
+- `wordByWord`
+- `tajweed`
+- `audioWordSync`
 
 Exit criteria:
 
-- Performance result is clearly better than FlashList.
-- No correctness regression in normal Android translation mode.
-- Decision is recorded: continue native migration, pause, or revert.
+- TypeScript types and Kotlin parsing support the expanded optional payload.
+- Plain native reader behavior is unchanged.
+- Unsupported optional data can be omitted without breaking rows.
 
 Suggested handoff prompt:
 
-> Run release/performance validation for the Android native normal translation reader using the acceptance checklist in docs/native-surah-reader-migration-plan.md. Record findings and decide whether to continue.
+> Expand the NativeSurahReader TypeScript and Kotlin data contract for optional words, Tajweed, and audio word sync payloads, but keep rendering behavior unchanged for plain mode.
 
-## Phase 8 - Later Native Feature Expansion
+## Phase C - Native Word-By-Word Rendering
 
-Only after Phase 7 passes:
+Goal: replace the React Native word-by-word row cost with native row rendering.
 
-- Implement word-by-word natively using spans or efficient native text/token rendering.
-- Implement Tajweed natively using `Spannable` or a dedicated native text renderer.
-- Implement audio word sync natively.
-- Consider moving offline SQLite reads native-side only if there is a measured reason.
+Tasks:
 
-Do not block the initial native reader decision on these modes.
+- Allow native reader when `settings.showByWords` is true.
+- Pass words from the existing `useSurahVerses` path.
+- Render Arabic word tokens natively.
+- Render visible word translations under tokens.
+- Avoid one native `Button` per word.
+- Use lightweight native views or spans.
+- Keep row action menu behavior intact.
+- Preserve accessibility without creating noisy repeated "Show word translation" controls.
+- Keep word-by-word disabled from native only if required data is missing.
 
-## Phase 9 - iOS After Android Is Proven
+Design direction:
 
-After Android native normal reader is accepted:
+- Prefer a custom native token layout or efficient span/text layout.
+- Avoid a deeply nested layout per word if performance starts regressing.
+- Word tap translation can be added later if visible word-by-word translations are already present.
 
-- Port the same `NativeSurahReader` contract to Swift.
-- Use `UICollectionView` or `UITableView`.
-- Keep React Native data ownership at first.
-- Use the same phased approach: shell, static proof, real light data, state wiring, parity, performance.
+Exit criteria:
 
-## Non-Goals For The MVP
+- Android word-by-word no longer falls back to FlashList.
+- Scrolling remains smooth in long Surahs.
+- View count/memory are materially better than old RN word-by-word.
+- Existing settings toggle works.
 
-- No Kotlin SQLite data pipeline.
-- No permanent redesign of the Surah screen.
-- No native word-by-word mode.
-- No native Tajweed mode.
-- No native audio word sync.
-- No removal of the existing FlashList path until unsupported modes have replacements.
-- No more preview-overlay or hidden-list masking experiments as the main strategy.
+Suggested handoff prompt:
 
-## Final Decision Rule
+> Implement native Android word-by-word rendering in NativeSurahReader using the existing word data from useSurahVerses. Avoid one Button per word and keep the existing React Native action sheet.
 
-Continue the native migration only if the small Android native proof demonstrates a real improvement:
+## Phase D - Native Tajweed Rendering
 
-- correct first landing
-- no blank delay
-- no visible correction jump
-- smooth normal scrolling
-- acceptable visual parity
+Goal: support Tajweed mode without falling back to React Native FlashList.
 
-If the native proof does not beat the current reader in release/performance testing, stop and reassess before expanding the migration.
+Tasks:
+
+- Allow native reader when `settings.tajweed` is true.
+- Reuse existing Tajweed glyph/run data where possible.
+- Render Tajweed coloring with Android `Spannable` or a dedicated native text renderer.
+- Respect selected Arabic font face and font size.
+- Preserve plain fallback if Tajweed data/fonts are not ready.
+- Avoid blocking first render on expensive parsing when plain text can appear first.
+
+Exit criteria:
+
+- Android Tajweed mode renders in native reader.
+- No visible row overlap after Tajweed data/fonts load.
+- Switching Tajweed on/off from settings does not corrupt scroll position.
+- Target landing remains correct.
+
+Suggested handoff prompt:
+
+> Add native Android Tajweed rendering to NativeSurahReader using Spannable or an efficient native text renderer. Keep target landing stable and preserve plain fallback while Tajweed assets load.
+
+## Phase E - Audio Playback And Word Sync
+
+Goal: keep the audio system in React Native but render active verse and word sync highlights natively.
+
+React Native should continue to own:
+
+- play/pause
+- reciter/audio source
+- audio bar
+- verse-level playback state
+- timing data source
+
+Native reader should own:
+
+- active verse row highlight
+- active word highlight
+- optional tap-to-seek word event
+
+Tasks:
+
+- Pass active verse key to native.
+- Pass active word position/id to native when available.
+- Add event from native word tap to React Native if tap-to-seek is supported.
+- Ensure rows update efficiently when active word changes rapidly.
+- Avoid full adapter refresh on every word tick if possible.
+
+Exit criteria:
+
+- Verse-level audio highlight still works.
+- Word-level sync works without FlashList.
+- Audio playback controls remain unchanged.
+- Fast word highlight updates do not jank scrolling.
+
+Suggested handoff prompt:
+
+> Add native active-word audio sync rendering to NativeSurahReader while keeping audio playback ownership in React Native. Avoid full row refreshes on every word tick.
+
+## Phase F - Settings Parity
+
+Goal: make every reader-affecting setting update the native reader correctly.
+
+Verify these settings:
+
+- Arabic font size
+- Translation font size
+- Arabic font face
+- Translation selection
+- Multiple translations and attribution
+- Word-by-word toggle
+- Tajweed toggle
+- Theme
+- Content language where it affects labels/resources
+- Word language
+- Mushaf/translation switch
+
+Exit criteria:
+
+- Settings sidebar behavior remains React Native.
+- Native reader updates without remounting unless remount is intentionally required.
+- Scroll position is preserved when reasonable.
+- Unsupported/temporarily unavailable settings are clearly gated, not silently broken.
+
+Suggested handoff prompt:
+
+> Audit and complete settings parity for NativeSurahReader. Keep the settings UI in React Native and make native rows respond correctly to every reader setting.
+
+## Phase G - Remove Android FlashList Translation Reader
+
+Goal: ditch FlashList for Android translation reading only after native supports all Android translation modes.
+
+Tasks:
+
+- Remove Android translation-mode FlashList usage.
+- Keep web/iOS FlashList or platform fallback until iOS native reader exists.
+- Remove Android-only preview/handoff/correction code made obsolete by native reader.
+- Keep shared route/search/settings/audio/action-sheet logic.
+- Update docs:
+  - `docs/ui-parity.md`
+  - `docs/components.md` if native component docs are useful
+  - `docs/surah-navigation-performance-log.md`
+
+Exit criteria:
+
+- Android translation reader never uses FlashList.
+- Web/iOS still work.
+- `npm run verify` passes.
+- Android native build passes.
+- Release/performance testing passes.
+
+Suggested handoff prompt:
+
+> Remove the Android FlashList translation-reader path now that NativeSurahReader supports plain, word-by-word, Tajweed, and audio word sync. Preserve web/iOS fallback.
+
+## Phase H - iOS Native Reader
+
+Goal: port the proven native reader contract to iOS.
+
+Tasks:
+
+- Implement Swift `NativeSurahReader` using `UICollectionView` or `UITableView`.
+- Keep the same React Native props/events/commands.
+- Start with plain light translation mode.
+- Then port word-by-word, Tajweed, and audio word sync.
+- Remove iOS FlashList only after iOS reaches parity.
+
+Exit criteria:
+
+- iOS native reader reaches the same feature set as Android native reader.
+- The shared React Native Surah screen can select native reader on both Android and iOS.
+
+Suggested handoff prompt:
+
+> Port the proven NativeSurahReader contract to iOS, starting with plain light translation mode and keeping React Native data ownership.
+
+## Current Known Gaps
+
+- Native reader does not yet support word-by-word.
+- Native reader does not yet support Tajweed.
+- Native reader does not yet support word-level audio sync.
+- Native reader does not yet appear to support Arabic font face selection.
+- Current native mode may still be active while audio is visible; decide whether verse-level highlight is acceptable until word sync lands, or temporarily fall back when word sync is required.
+- Kotlin currently uses `notifyDataSetChanged()` broadly; optimize updates before word-sync ticks.
+- Android native files are intentionally tracked inside an otherwise generated `/android` folder. Keep `.gitignore` exceptions tight.
+
+## Recommended Next Step
+
+Do **Phase A** next.
+
+Even though the reader feels fast now, stabilize the plain native path before adding word-by-word/Tajweed/audio sync. Once the base native row is solid, each advanced mode becomes an additive native rendering feature instead of a moving target.
+
+After Phase A, do Phase B immediately. Freezing the contract before adding word-by-word will save a lot of churn.
