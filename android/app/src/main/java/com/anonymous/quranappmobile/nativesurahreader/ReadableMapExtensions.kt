@@ -12,6 +12,10 @@ internal fun ReadableMap.getArrayIfPresent(key: String): ReadableArray? {
   return if (hasKey(key) && !isNull(key)) getArray(key) else null
 }
 
+internal fun ReadableMap.getMapIfPresent(key: String): ReadableMap? {
+  return if (hasKey(key) && !isNull(key)) getMap(key) else null
+}
+
 internal fun ReadableMap.getDoubleIfPresent(key: String): Double? {
   return if (hasKey(key) && !isNull(key)) getDouble(key) else null
 }

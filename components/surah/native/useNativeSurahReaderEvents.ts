@@ -35,6 +35,7 @@ type UseNativeSurahReaderEventsParams = {
   >;
   setVisibleVerseNumber: React.Dispatch<React.SetStateAction<number>>;
   verseScrubberRef: React.RefObject<{ show: () => void } | null>;
+  suppressReaderFeedbackRef?: React.RefObject<boolean>;
   visibleVerseKeyRef: React.RefObject<string | null>;
   visibleVerseNumberRef: React.RefObject<number>;
 };
@@ -49,6 +50,7 @@ export function useNativeSurahReaderEvents({
   setLastReadRef,
   setVisibleVerseNumber,
   verseScrubberRef,
+  suppressReaderFeedbackRef,
   visibleVerseKeyRef,
   visibleVerseNumberRef,
 }: UseNativeSurahReaderEventsParams): {
@@ -96,6 +98,7 @@ export function useNativeSurahReaderEvents({
       }
 
       if (!Number.isFinite(chapterNumber) || chapterNumber <= 0) return;
+      if (suppressReaderFeedbackRef?.current) return;
       const key = `${Math.trunc(chapterNumber)}:${normalizedVerseNumber}`;
       if (lastReadReportedRef.current === key) return;
       if (pendingLastReadKeyRef.current === key) return;
@@ -124,6 +127,7 @@ export function useNativeSurahReaderEvents({
       lastReadReportedRef,
       setLastReadRef,
       setVisibleVerseNumber,
+      suppressReaderFeedbackRef,
       visibleVerseKeyRef,
       visibleVerseNumberRef,
     ]
@@ -131,10 +135,11 @@ export function useNativeSurahReaderEvents({
 
   const handleNativeScroll = React.useCallback(
     (event: NativeSyntheticEvent<NativeSurahReaderScrollEvent>) => {
+      if (suppressReaderFeedbackRef?.current) return;
       readerHeader.handleScrollOffset(event.nativeEvent.contentOffsetY);
       verseScrubberRef.current?.show();
     },
-    [readerHeader, verseScrubberRef]
+    [readerHeader, suppressReaderFeedbackRef, verseScrubberRef]
   );
 
   const handleNativeVerseActionPress = React.useCallback(

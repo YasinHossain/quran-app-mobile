@@ -20,6 +20,8 @@ class NativeSurahReaderViewManager : SimpleViewManager<NativeSurahReaderView>() 
   override fun getExportedCustomDirectEventTypeConstants(): MutableMap<String, Any> {
     return mutableMapOf(
         NativeSurahReaderView.EVENT_READY to mutableMapOf("registrationName" to "onReady"),
+        NativeSurahReaderView.EVENT_INITIAL_POSITIONED to
+            mutableMapOf("registrationName" to "onInitialPositioned"),
         NativeSurahReaderView.EVENT_VISIBLE_VERSE_CHANGE to
             mutableMapOf("registrationName" to "onVisibleVerseChange"),
         NativeSurahReaderView.EVENT_VERSE_ACTION_PRESS to
@@ -45,6 +47,11 @@ class NativeSurahReaderViewManager : SimpleViewManager<NativeSurahReaderView>() 
   @ReactProp(name = "surahId")
   fun setSurahId(view: NativeSurahReaderView, surahId: Int) {
     view.setSurahId(surahId)
+  }
+
+  @ReactProp(name = "readerState")
+  fun setReaderState(view: NativeSurahReaderView, readerState: ReadableMap?) {
+    view.setReaderState(readerState)
   }
 
   @ReactProp(name = "targetVerse")

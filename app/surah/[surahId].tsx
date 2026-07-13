@@ -40,6 +40,8 @@ import { VerseCard } from '@/components/surah/VerseCard';
 import {
   NativeSurahReader,
   type NativeSurahReaderHandle,
+  type NativeSurahReaderInitialPositionedEvent,
+  type NativeSurahReaderState,
 } from '@/components/surah/native/NativeSurahReader';
 import { buildNativeLightSurahVerses } from '@/components/surah/native/NativeSurahReader.mapper';
 import {
@@ -1055,6 +1057,7 @@ export default function SurahScreen(): React.JSX.Element {
   const scrollRetryCountRef = React.useRef(0);
   const scrollRetryTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasPerformedTargetedProgrammaticScrollRef = React.useRef(false);
+  const nativeInitialPositioningRef = React.useRef(false);
   const startVerseRef = React.useRef(startVerse);
   const [activeMushafPageNumber, setActiveMushafPageNumber] =
     React.useState(initialMushafPageNumber);
@@ -1197,11 +1200,9 @@ export default function SurahScreen(): React.JSX.Element {
   const shouldUseNativeLightSurahReader = Boolean(
     supportsNativeLightSurahReader && nativeLightSurahVerses.length === verseCount
   );
-  const nativeLightSurahReaderMode = settings.showByWords
-    ? 'wordByWord'
-    : settings.tajweed
-      ? 'tajweed'
-      : 'plain';
+  React.useEffect(() => {
+    nativeInitialPositioningRef.current = Boolean(shouldUseNativeLightSurahReader && !isMushafView);
+  }, [isMushafView, shouldUseNativeLightSurahReader, startVerseParam, translationListKey]);
   const nativeLightSurahReaderSettings = React.useMemo(
     () =>
       buildNativeLightSurahReaderSettings({
@@ -1224,6 +1225,30 @@ export default function SurahScreen(): React.JSX.Element {
   const nativeLightSurahReaderTheme = React.useMemo(
     () => buildNativeLightSurahReaderTheme(palette),
     [palette]
+  );
+  const nativeLightSurahReaderState = React.useMemo<NativeSurahReaderState>(
+    () => ({
+      surahId: chapterNumber,
+      targetVerse: normalizedStartVerse ?? 1,
+      surahIntro: shouldShowSurahIntro ? mushafSurahIntro : undefined,
+      verses: nativeLightSurahVerses,
+      settings: nativeLightSurahReaderSettings,
+      activeVerseKey: audio.activeVerseKey,
+      topInsetPx: 16,
+      bottomInsetPx: 24 + audioPlayerBarHeight,
+      theme: nativeLightSurahReaderTheme,
+    }),
+    [
+      audio.activeVerseKey,
+      audioPlayerBarHeight,
+      chapterNumber,
+      mushafSurahIntro,
+      nativeLightSurahReaderSettings,
+      nativeLightSurahReaderTheme,
+      nativeLightSurahVerses,
+      normalizedStartVerse,
+      shouldShowSurahIntro,
+    ]
   );
   const translationListHeader = React.useMemo(
     () =>
@@ -1801,12 +1826,15 @@ export default function SurahScreen(): React.JSX.Element {
     setLastReadRef,
     setVisibleVerseNumber,
     verseScrubberRef,
+    suppressReaderFeedbackRef: nativeInitialPositioningRef,
     visibleVerseKeyRef,
     visibleVerseNumberRef,
   });
   const handleNativeVisibleVerseChangeAndPosition = React.useCallback(
     (event: Parameters<typeof handleNativeVisibleVerseChange>[0]) => {
       handleNativeVisibleVerseChange(event);
+
+      if (shouldUseNativeLightSurahReader) return;
 
       const activeTargetKey = targetedTranslationKeyRef.current ?? targetedTranslationKey;
       if (!activeTargetKey) return;
@@ -1826,7 +1854,26 @@ export default function SurahScreen(): React.JSX.Element {
       markTargetedTranslationPositionReady,
       targetedTranslationKey,
       targetedTranslationVerseNumber,
+      shouldUseNativeLightSurahReader,
     ]
+  );
+  const handleNativeInitialPositioned = React.useCallback(
+    (event: NativeSyntheticEvent<NativeSurahReaderInitialPositionedEvent>) => {
+      const positionedVerseNumber = event.nativeEvent.verseNumber;
+      if (Number.isFinite(positionedVerseNumber) && positionedVerseNumber > 0) {
+        visibleVerseNumberRef.current = Math.trunc(positionedVerseNumber);
+        setVisibleVerseNumber((currentVerseNumber) =>
+          currentVerseNumber === Math.trunc(positionedVerseNumber)
+            ? currentVerseNumber
+            : Math.trunc(positionedVerseNumber)
+        );
+      }
+
+      const activeTargetKey = targetedTranslationKeyRef.current ?? targetedTranslationKey;
+      markTargetedTranslationPositionReady(activeTargetKey);
+      nativeInitialPositioningRef.current = false;
+    },
+    [markTargetedTranslationPositionReady, targetedTranslationKey]
   );
 
   React.useEffect(() => {
@@ -2103,19 +2150,12 @@ export default function SurahScreen(): React.JSX.Element {
               </View>
             ) : shouldUseNativeLightSurahReader ? (
               <NativeSurahReader
-                key={`${translationListKey}:${nativeLightSurahReaderMode}`}
+                key={translationListKey}
                 ref={nativeSurahReaderRef}
                 style={styles.contentLayer}
-                surahId={chapterNumber}
-                targetVerse={normalizedStartVerse ?? 1}
-                surahIntro={shouldShowSurahIntro ? mushafSurahIntro : undefined}
-                verses={nativeLightSurahVerses}
-                settings={nativeLightSurahReaderSettings}
-                activeVerseKey={audio.activeVerseKey}
-                topInsetPx={16}
-                bottomInsetPx={24 + audioPlayerBarHeight}
-                theme={nativeLightSurahReaderTheme}
+                readerState={nativeLightSurahReaderState}
                 onReady={handleNativeListLoad}
+                onInitialPositioned={handleNativeInitialPositioned}
                 onVisibleVerseChange={handleNativeVisibleVerseChangeAndPosition}
                 onVerseActionPress={handleNativeVerseActionPress}
                 onScroll={handleNativeScroll}

@@ -67,6 +67,12 @@ export type NativeSurahReaderVisibleVerseChangeEvent = {
   verseApiId?: number;
 };
 
+export type NativeSurahReaderInitialPositionedEvent = {
+  verseNumber: number;
+  verseKey: string;
+  verseApiId?: number;
+};
+
 export type NativeSurahReaderScrollEvent = {
   contentOffsetY: number;
 };
@@ -80,16 +86,11 @@ export type NativeSurahReaderActionPressEvent = {
 };
 
 export type NativeSurahReaderProps = ViewProps & {
-  surahId?: number;
-  targetVerse?: number;
-  surahIntro?: NativeSurahReaderSurahIntro;
-  verses?: NativeSurahReaderVerse[];
-  settings?: NativeSurahReaderSettings;
-  activeVerseKey?: string | null;
-  topInsetPx?: number;
-  bottomInsetPx?: number;
-  theme?: NativeSurahReaderTheme;
+  readerState?: NativeSurahReaderState;
   onReady?: () => void;
+  onInitialPositioned?: (
+    event: NativeSyntheticEvent<NativeSurahReaderInitialPositionedEvent>
+  ) => void;
   onVisibleVerseChange?: (
     event: NativeSyntheticEvent<NativeSurahReaderVisibleVerseChangeEvent>
   ) => void;
@@ -99,4 +100,16 @@ export type NativeSurahReaderProps = ViewProps & {
 
 export type NativeSurahReaderHandle = {
   scrollToVerse: (verseNumber: number, animated?: boolean) => void;
+};
+
+export type NativeSurahReaderState = {
+  surahId: number;
+  targetVerse: number;
+  surahIntro?: NativeSurahReaderSurahIntro;
+  verses: NativeSurahReaderVerse[];
+  settings: NativeSurahReaderSettings;
+  activeVerseKey?: string | null;
+  topInsetPx: number;
+  bottomInsetPx: number;
+  theme: NativeSurahReaderTheme;
 };

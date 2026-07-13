@@ -7,9 +7,11 @@ import type { NativeSurahReaderHandle, NativeSurahReaderProps } from './NativeSu
 export type {
   NativeSurahReaderActionPressEvent,
   NativeSurahReaderHandle,
+  NativeSurahReaderInitialPositionedEvent,
   NativeSurahReaderProps,
   NativeSurahReaderScrollEvent,
   NativeSurahReaderSettings,
+  NativeSurahReaderState,
   NativeSurahReaderSurahIntro,
   NativeSurahReaderTajweedGlyphRun,
   NativeSurahReaderTheme,
