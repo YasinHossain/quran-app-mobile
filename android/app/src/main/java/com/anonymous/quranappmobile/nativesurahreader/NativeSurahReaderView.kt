@@ -54,27 +54,53 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Line
   private var bottomInsetPx: Int = 0
   private var lastVisibleVerseKey: String? = null
   private var pendingTargetVerse: Int? = null
+  private var hasReceivedSettings = false
+  private var hasReceivedTheme = false
+  private var hasReceivedVerses = false
+  private var hasDispatchedInitialReady = false
+  private var isInitialContentVisible = false
 
   init {
     orientation = VERTICAL
+    recyclerView.alpha = 0f
     addView(recyclerView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
   }
 
   fun setSurahId(surahId: Int) {
+    if (this.surahId == surahId) return
     this.surahId = surahId
     adapter.surahId = surahId
     adapter.notifyDataSetChanged()
   }
 
   fun setTargetVerse(targetVerse: Int) {
-    if (targetVerse > 0) {
-      pendingTargetVerse = targetVerse
-      post { scrollToVerse(targetVerse, false) }
+    if (targetVerse <= 0) {
+      return
     }
+
+    if (targetVerse == 1) {
+      pendingTargetVerse = null
+      post {
+        layoutManager.scrollToPositionWithOffset(0, 0)
+        dispatchVisibleVerseEvent(force = true)
+      }
+      return
+    }
+
+    pendingTargetVerse = targetVerse
+    post { scrollToVerse(targetVerse, false) }
+  }
+
+  fun setSurahIntro(incomingSurahIntro: ReadableMap?) {
+    adapter.surahIntro = incomingSurahIntro?.toNativeSurahIntro()
+    adapter.notifyDataSetChanged()
+    completeInitialPlacementIfReady()
   }
 
   fun setVerses(incomingVerses: ReadableArray?) {
     verses.clear()
+    hasReceivedVerses = true
+    lastVisibleVerseKey = null
     if (incomingVerses != null) {
       for (index in 0 until incomingVerses.size()) {
         val map = incomingVerses.getMap(index) ?: continue
@@ -83,28 +109,58 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Line
       }
     }
     adapter.notifyDataSetChanged()
-    post {
-      pendingTargetVerse?.let { targetVerse ->
-        scrollToVerse(targetVerse, false)
-      }
-      dispatchEvent(EVENT_READY, Arguments.createMap())
-      dispatchVisibleVerseEvent(force = true)
-    }
+    completeInitialPlacementIfReady()
   }
 
   fun setSettings(settings: ReadableMap?) {
-    adapter.arabicFontFace = settings?.getStringIfPresent("arabicFontFace")
-    adapter.arabicFontSize = settings?.getDoubleIfPresent("arabicFontSize")?.toFloat() ?: 25f
-    adapter.translationFontSize =
+    hasReceivedSettings = true
+    val nextArabicFontFace = settings?.getStringIfPresent("arabicFontFace")
+    val nextArabicFontSize = settings?.getDoubleIfPresent("arabicFontSize")?.toFloat() ?: 25f
+    val nextTranslationFontSize =
         settings?.getDoubleIfPresent("translationFontSize")?.toFloat() ?: 16f
-    adapter.showTranslationAttribution =
+    val nextShowByWords = settings?.getBooleanIfPresent("showByWords") ?: false
+    val nextTajweed = settings?.getBooleanIfPresent("tajweed") ?: false
+    val nextDisplayMode =
+        settings?.getStringIfPresent("displayMode")?.takeIf {
+          it == DISPLAY_MODE_WORD_BY_WORD || it == DISPLAY_MODE_TAJWEED
+        } ?: if (nextShowByWords) {
+          DISPLAY_MODE_WORD_BY_WORD
+        } else if (nextTajweed) {
+          DISPLAY_MODE_TAJWEED
+        } else {
+          DISPLAY_MODE_PLAIN
+        }
+    val nextShowTranslationAttribution =
         settings?.getBooleanIfPresent("showTranslationAttribution") ?: false
+
+    if (adapter.arabicFontFace == nextArabicFontFace &&
+        adapter.arabicFontSize == nextArabicFontSize &&
+        adapter.translationFontSize == nextTranslationFontSize &&
+        adapter.displayMode == nextDisplayMode &&
+        adapter.showByWords == nextShowByWords &&
+        adapter.showTranslationAttribution == nextShowTranslationAttribution) {
+      completeInitialPlacementIfReady()
+      return
+    }
+
+    adapter.arabicFontFace = nextArabicFontFace
+    adapter.arabicFontSize = nextArabicFontSize
+    adapter.translationFontSize = nextTranslationFontSize
+    adapter.displayMode = nextDisplayMode
+    adapter.showByWords = nextShowByWords
+    adapter.showTranslationAttribution = nextShowTranslationAttribution
     adapter.notifyDataSetChanged()
+    completeInitialPlacementIfReady()
   }
 
   fun setActiveVerseKey(activeVerseKey: String?) {
-    adapter.activeVerseKey = activeVerseKey?.takeIf { it.isNotBlank() }
-    adapter.notifyDataSetChanged()
+    val nextActiveVerseKey = activeVerseKey?.takeIf { it.isNotBlank() }
+    val previousActiveVerseKey = adapter.activeVerseKey
+    if (previousActiveVerseKey == nextActiveVerseKey) return
+
+    adapter.activeVerseKey = nextActiveVerseKey
+    notifyVerseChanged(previousActiveVerseKey)
+    notifyVerseChanged(nextActiveVerseKey)
   }
 
   fun setTopInsetPx(topInsetPx: Float) {
@@ -118,11 +174,17 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Line
   }
 
   fun setTheme(theme: ReadableMap?) {
+    hasReceivedTheme = true
     val readerTheme = NativeReaderTheme.fromReadableMap(theme)
+    if (adapter.theme == readerTheme) {
+      completeInitialPlacementIfReady()
+      return
+    }
     setBackgroundColor(readerTheme.backgroundColor)
     recyclerView.setBackgroundColor(readerTheme.backgroundColor)
     adapter.theme = readerTheme
     adapter.notifyDataSetChanged()
+    completeInitialPlacementIfReady()
   }
 
   fun scrollToVerse(verseNumber: Int, animated: Boolean) {
@@ -135,11 +197,11 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Line
     }
 
     if (animated) {
-      recyclerView.smoothScrollToPosition(index)
+      recyclerView.smoothScrollToPosition(adapter.adapterPositionForVerseIndex(index))
       return
     }
 
-    layoutManager.scrollToPositionWithOffset(index, topInsetPx)
+    layoutManager.scrollToPositionWithOffset(adapter.adapterPositionForVerseIndex(index), 0)
     post { dispatchVisibleVerseEvent(force = true) }
   }
 
@@ -156,6 +218,33 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Line
     return (value * resources.displayMetrics.density).toInt()
   }
 
+  private fun notifyVerseChanged(verseKey: String?) {
+    if (verseKey.isNullOrBlank()) return
+    val index = verses.indexOfFirst { it.verseKey == verseKey }
+    if (index >= 0) {
+      adapter.notifyItemChanged(adapter.adapterPositionForVerseIndex(index))
+    }
+  }
+
+  private fun completeInitialPlacementIfReady() {
+    if (!hasReceivedVerses || !hasReceivedSettings || !hasReceivedTheme) return
+
+    post {
+      pendingTargetVerse?.let { targetVerse ->
+        scrollToVerse(targetVerse, false)
+      }
+      if (!hasDispatchedInitialReady) {
+        hasDispatchedInitialReady = true
+        dispatchEvent(EVENT_READY, Arguments.createMap())
+      }
+      dispatchVisibleVerseEvent(force = true)
+      if (!isInitialContentVisible) {
+        isInitialContentVisible = true
+        recyclerView.alpha = 1f
+      }
+    }
+  }
+
   private fun dispatchScrollEvent() {
     dispatchEvent(
         EVENT_SCROLL,
@@ -166,9 +255,19 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Line
   }
 
   private fun dispatchVisibleVerseEvent(force: Boolean = false) {
-    val index = layoutManager.findFirstVisibleItemPosition()
-    if (index < 0 || index >= verses.size) return
-    val verse = verses[index]
+    val firstPosition = layoutManager.findFirstVisibleItemPosition()
+    if (firstPosition < 0) return
+
+    val lastPosition = layoutManager.findLastVisibleItemPosition().takeIf { it >= firstPosition } ?: firstPosition
+    var verse: NativeVerse? = null
+    for (position in firstPosition..lastPosition) {
+      val verseIndex = adapter.verseIndexForAdapterPosition(position)
+      if (verseIndex >= 0 && verseIndex < verses.size) {
+        verse = verses[verseIndex]
+        break
+      }
+    }
+    if (verse == null) return
     if (!force && lastVisibleVerseKey == verse.verseKey) return
     lastVisibleVerseKey = verse.verseKey
     dispatchEvent(

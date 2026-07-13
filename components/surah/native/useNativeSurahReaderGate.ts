@@ -4,16 +4,12 @@ import { Platform } from 'react-native';
 type UseNativeSurahReaderGateParams = {
   hasLoadedContent: boolean;
   isMushafView: boolean;
-  showByWords: boolean;
-  tajweed: boolean;
   verseCount: number;
 };
 
 export function useNativeSurahReaderGate({
   hasLoadedContent,
   isMushafView,
-  showByWords,
-  tajweed,
   verseCount,
 }: UseNativeSurahReaderGateParams): boolean {
   return React.useMemo(
@@ -22,10 +18,8 @@ export function useNativeSurahReaderGate({
         Platform.OS === 'android' &&
           !isMushafView &&
           hasLoadedContent &&
-          verseCount > 0 &&
-          !showByWords &&
-          !tajweed
+          verseCount > 0
       ),
-    [hasLoadedContent, isMushafView, showByWords, tajweed, verseCount]
+    [hasLoadedContent, isMushafView, verseCount]
   );
 }

@@ -7,6 +7,7 @@ import android.graphics.drawable.GradientDrawable
 import android.text.TextUtils
 import android.util.TypedValue
 import android.view.Gravity
+import android.view.View
 import android.widget.LinearLayout
 import android.widget.TextView
 
@@ -38,6 +39,8 @@ internal class NativeVerseRowView(
         includeFontPadding = true
       }
 
+  private val wordLayoutView = NativeWordLayoutView(context)
+
   private val translationContainer =
       LinearLayout(context).apply {
         orientation = VERTICAL
@@ -68,6 +71,12 @@ internal class NativeVerseRowView(
         },
     )
     addView(
+        wordLayoutView,
+        LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
+          topMargin = margin
+        },
+    )
+    addView(
         translationContainer,
         LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
           topMargin = margin
@@ -91,17 +100,60 @@ internal class NativeVerseRowView(
       arabicFontFace: String?,
       arabicFontSize: Float,
       translationFontSize: Float,
+      displayMode: String,
+      showByWords: Boolean,
       showTranslationAttribution: Boolean,
       theme: NativeReaderTheme,
   ) {
     boundVerse = verse
     referenceView.text = verse.verseKey
     referenceView.setTextColor(theme.tintColor)
-    arabicView.text = verse.arabicText
-    arabicView.typeface = NativeArabicFontResolver.resolve(context, arabicFontFace, verse.arabicText)
-    arabicView.textSize = arabicFontSize
-    arabicView.setTextColor(theme.textColor)
-    arabicView.setLineSpacing(lineSpacingExtra(arabicFontSize, arabicLineHeight(arabicFontSize)), 1.0f)
+    val shouldShowWordLayout =
+        (displayMode == DISPLAY_MODE_WORD_BY_WORD || showByWords) &&
+            verse.words.isNotEmpty()
+    if (shouldShowWordLayout) {
+      arabicView.visibility = View.GONE
+      wordLayoutView.visibility = View.VISIBLE
+      wordLayoutView.bind(
+          verse.words,
+          arabicFontFace,
+          arabicFontSize,
+          true,
+          theme,
+      )
+    } else {
+      val tajweedText =
+          if (displayMode == DISPLAY_MODE_TAJWEED && !showByWords) {
+            NativeTajweedTextFactory.buildSpannable(
+                verse.tajweedGlyphRuns,
+                sp(tajweedLineHeight(arabicFontSize)).toInt(),
+            )
+          } else {
+            null
+          }
+      wordLayoutView.visibility = View.GONE
+      wordLayoutView.bind(emptyList(), arabicFontFace, arabicFontSize, false, theme)
+      arabicView.visibility = View.VISIBLE
+      arabicView.text = tajweedText ?: verse.arabicText
+      arabicView.contentDescription = verse.arabicText
+      arabicView.typeface =
+          if (tajweedText == null) {
+            NativeArabicFontResolver.resolve(context, arabicFontFace, verse.arabicText)
+          } else {
+            Typeface.DEFAULT
+          }
+      arabicView.includeFontPadding = tajweedText == null
+      arabicView.textSize = arabicFontSize
+      arabicView.setTextColor(theme.textColor)
+      val lineHeight =
+          if (tajweedText == null) {
+            arabicLineHeight(arabicFontSize)
+          } else {
+            tajweedLineHeight(arabicFontSize)
+          }
+      arabicView.setLineSpacing(lineSpacingExtra(arabicFontSize, lineHeight), 1.0f)
+      arabicView.minHeight = sp(lineHeight).toInt()
+    }
     actionButton.setTextColor(theme.mutedColor)
     actionButton.background = circleDrawable(Color.TRANSPARENT)
     translationContainer.removeAllViews()
@@ -162,7 +214,11 @@ internal class NativeVerseRowView(
   }
 
   private fun arabicLineHeight(fontSizeSp: Float): Float {
-    return maxOf(fontSizeSp + 14f, fontSizeSp * 2.2f)
+    return maxOf(fontSizeSp + 3f, fontSizeSp * 1.18f)
+  }
+
+  private fun tajweedLineHeight(fontSizeSp: Float): Float {
+    return maxOf(fontSizeSp + 7f, fontSizeSp * 1.42f)
   }
 
   private fun translationLineHeight(fontSizeSp: Float): Float {

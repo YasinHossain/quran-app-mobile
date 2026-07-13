@@ -61,6 +61,7 @@ export function useNativeSurahReaderEvents({
   ) => void;
 } {
   const lastReadWriteTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingLastReadKeyRef = React.useRef<string | null>(null);
 
   React.useEffect(() => {
     return () => {
@@ -68,8 +69,17 @@ export function useNativeSurahReaderEvents({
         clearTimeout(lastReadWriteTimeoutRef.current);
         lastReadWriteTimeoutRef.current = null;
       }
+      pendingLastReadKeyRef.current = null;
     };
   }, []);
+
+  React.useEffect(() => {
+    if (lastReadWriteTimeoutRef.current) {
+      clearTimeout(lastReadWriteTimeoutRef.current);
+      lastReadWriteTimeoutRef.current = null;
+    }
+    pendingLastReadKeyRef.current = null;
+  }, [chapterNumber]);
 
   const handleNativeVisibleVerseChange = React.useCallback(
     (event: NativeSyntheticEvent<NativeSurahReaderVisibleVerseChangeEvent>) => {
@@ -88,22 +98,25 @@ export function useNativeSurahReaderEvents({
       if (!Number.isFinite(chapterNumber) || chapterNumber <= 0) return;
       const key = `${Math.trunc(chapterNumber)}:${normalizedVerseNumber}`;
       if (lastReadReportedRef.current === key) return;
-      lastReadReportedRef.current = key;
+      if (pendingLastReadKeyRef.current === key) return;
 
       if (lastReadWriteTimeoutRef.current) {
         clearTimeout(lastReadWriteTimeoutRef.current);
       }
+      pendingLastReadKeyRef.current = key;
       const normalizedChapterNumber = Math.trunc(chapterNumber);
       const verseApiId = event.nativeEvent.verseApiId;
       lastReadWriteTimeoutRef.current = setTimeout(() => {
         lastReadWriteTimeoutRef.current = null;
+        pendingLastReadKeyRef.current = null;
+        lastReadReportedRef.current = key;
         setLastReadRef.current(
           String(normalizedChapterNumber),
           normalizedVerseNumber,
           verseKey,
           verseApiId
         );
-      }, 250);
+      }, 700);
     },
     [
       chapterNumber,

@@ -10,9 +10,12 @@ export type {
   NativeSurahReaderProps,
   NativeSurahReaderScrollEvent,
   NativeSurahReaderSettings,
+  NativeSurahReaderSurahIntro,
+  NativeSurahReaderTajweedGlyphRun,
   NativeSurahReaderTheme,
   NativeSurahReaderTranslationItem,
   NativeSurahReaderVerse,
+  NativeSurahReaderWord,
   NativeSurahReaderVisibleVerseChangeEvent,
 } from './NativeSurahReader.types';
 

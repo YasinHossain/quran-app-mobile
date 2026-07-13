@@ -285,11 +285,70 @@ function hasCompleteTajweedGlyphMetadata(
   );
 }
 
+function offlineVerseHasWordTranslations(verse: OfflineVerseWithTranslations): boolean {
+  if (!verse.wordsJson) return false;
+
+  try {
+    const words = JSON.parse(verse.wordsJson) as VerseWord[];
+    return (
+      Array.isArray(words) &&
+      words.some(
+        (word) =>
+          typeof word?.translationText === 'string' &&
+          word.translationText.trim().length > 0
+      )
+    );
+  } catch {
+    return false;
+  }
+}
+
+function hasCompleteWordTranslations(
+  offlineVerses: OfflineVerseWithTranslations[]
+): boolean {
+  return (
+    offlineVerses.length > 0 &&
+    offlineVerses.every((verse) => offlineVerseHasWordTranslations(verse))
+  );
+}
+
+function verseHasRequestedWordData(
+  verse: SurahVerse,
+  options: {
+    includeWords: boolean;
+    includeWordTranslations: boolean;
+  }
+): boolean {
+  if (!options.includeWords && !options.includeWordTranslations) return true;
+  const words = verse.words ?? [];
+  if (!Array.isArray(words) || words.length === 0) return false;
+  if (!options.includeWordTranslations) return true;
+
+  return words.some(
+    (word) =>
+      typeof word.translationText === 'string' &&
+      word.translationText.trim().length > 0
+  );
+}
+
+function pageHasRequestedWordData(
+  pageVerses: SurahVerse[],
+  options: {
+    includeWords: boolean;
+    includeWordTranslations: boolean;
+  }
+): boolean {
+  if (!options.includeWords && !options.includeWordTranslations) return true;
+  if (!pageVerses.length) return false;
+  return pageVerses.every((verse) => verseHasRequestedWordData(verse, options));
+}
+
 function isCompleteOfflineVerseSet(params: {
   offlineVerses: OfflineVerseWithTranslations[];
   translationIds: number[];
   expectedVerseCount?: number;
   requireTajweedGlyphs?: boolean;
+  requireWordTranslations?: boolean;
 }): boolean {
   if (params.offlineVerses.length === 0) return false;
   if (
@@ -301,6 +360,10 @@ function isCompleteOfflineVerseSet(params: {
   }
 
   if (params.requireTajweedGlyphs && !hasCompleteTajweedGlyphMetadata(params.offlineVerses)) {
+    return false;
+  }
+
+  if (params.requireWordTranslations && !hasCompleteWordTranslations(params.offlineVerses)) {
     return false;
   }
 
@@ -440,12 +503,14 @@ function getTajweedGlyphRunsFromPages(
 function getTajweedReadyPagesForImmediateRender(
   pagesByNumber: Record<number, SurahVerse[]>,
   options: {
+    deferGlyphRunsUntilFontsReady: boolean;
     tajweed: boolean;
     tajweedTheme: 'light' | 'dark';
     tajweedTextColor?: string;
   }
 ): Record<number, SurahVerse[]> {
   if (!options.tajweed) return pagesByNumber;
+  if (!options.deferGlyphRunsUntilFontsReady) return pagesByNumber;
   if (Object.keys(pagesByNumber).length === 0) return pagesByNumber;
 
   const glyphRuns = getTajweedGlyphRunsFromPages(pagesByNumber);
@@ -597,6 +662,7 @@ function getInitialOfflinePagesSnapshot(params: {
   chapterNumber: number;
   includeTajweedGlyphs: boolean;
   includeWords: boolean;
+  includeWordTranslations: boolean;
   translationIds: number[];
   wordLang: string;
   perPage: number;
@@ -612,13 +678,14 @@ function getInitialOfflinePagesSnapshot(params: {
     wordLang: params.wordLang,
   });
 
-  const offlineSurah =
+  const candidateOfflineSurah =
     cachedSurah &&
       isCompleteOfflineVerseSet({
         offlineVerses: cachedSurah,
         translationIds: params.translationIds,
         expectedVerseCount: params.verseCount,
         requireTajweedGlyphs: false,
+        requireWordTranslations: params.includeWordTranslations,
       })
       ? cachedSurah
       : getOfflineSurahSnapshot({
@@ -628,10 +695,23 @@ function getInitialOfflinePagesSnapshot(params: {
         perPage: params.perPage,
         expectedVerseCount: params.verseCount,
       });
+  const offlineSurah =
+    candidateOfflineSurah &&
+      isCompleteOfflineVerseSet({
+        offlineVerses: candidateOfflineSurah,
+        translationIds: params.translationIds,
+        expectedVerseCount: params.verseCount,
+        requireTajweedGlyphs: false,
+        requireWordTranslations: params.includeWordTranslations,
+      })
+      ? candidateOfflineSurah
+      : null;
 
   const resolvedOfflineSurah =
     offlineSurah ??
-    (params.translationIds.length === 0 ? getBundledSurahVerses(params.chapterNumber) : null);
+    (params.translationIds.length === 0 && !params.includeWordTranslations
+      ? getBundledSurahVerses(params.chapterNumber)
+      : null);
 
   if (!resolvedOfflineSurah) {
     return {};
@@ -812,6 +892,7 @@ export function useSurahVerses({
   includeWords = false,
   includeWordTranslations = false,
   tajweed = false,
+  deferTajweedGlyphRunsUntilFontsReady = true,
   tajweedTheme = 'light',
   tajweedTextColor,
   initialVerseNumber,
@@ -824,6 +905,7 @@ export function useSurahVerses({
   includeWords?: boolean;
   includeWordTranslations?: boolean;
   tajweed?: boolean;
+  deferTajweedGlyphRunsUntilFontsReady?: boolean;
   tajweedTheme?: 'light' | 'dark';
   tajweedTextColor?: string;
   initialVerseNumber?: number;
@@ -881,6 +963,7 @@ export function useSurahVerses({
       chapterNumber,
       includeTajweedGlyphs: tajweed,
       includeWords,
+      includeWordTranslations,
       translationIds: resolvedTranslationIds,
       wordLang: resolvedWordLang,
       perPage,
@@ -889,6 +972,7 @@ export function useSurahVerses({
     });
 
     return getTajweedReadyPagesForImmediateRender(pages, {
+      deferGlyphRunsUntilFontsReady: deferTajweedGlyphRunsUntilFontsReady,
       tajweed,
       tajweedTheme,
       ...(tajweedTextColor ? { tajweedTextColor } : {}),
@@ -898,6 +982,7 @@ export function useSurahVerses({
     chapterNumber,
     translationsKey,
     perPage,
+    deferTajweedGlyphRunsUntilFontsReady,
     tajweed,
     tajweedTextColor,
     tajweedTheme,
@@ -957,6 +1042,7 @@ export function useSurahVerses({
       chapterNumber,
       includeTajweedGlyphs: tajweed,
       includeWords,
+      includeWordTranslations,
       translationIds: resolvedTranslationIds,
       wordLang: resolvedWordLang,
       perPage,
@@ -964,6 +1050,7 @@ export function useSurahVerses({
       requireTajweedGlyphs: false,
     });
     const visibleWarmOfflinePages = getTajweedReadyPagesForImmediateRender(warmOfflinePages, {
+      deferGlyphRunsUntilFontsReady: deferTajweedGlyphRunsUntilFontsReady,
       tajweed,
       tajweedTheme,
       ...(tajweedTextColor ? { tajweedTextColor } : {}),
@@ -1074,6 +1161,10 @@ export function useSurahVerses({
       const requestedGlyphRuns = pageNumbers.flatMap((pageNumber) =>
         pages[pageNumber]?.flatMap((verse) => verse.tajweedGlyphRuns ?? []) ?? []
       );
+      if (requestedGlyphRuns.length > 0 && !deferTajweedGlyphRunsUntilFontsReady) {
+        void preloadTajweedFontsForGlyphRuns(requestedGlyphRuns).catch(() => {});
+        return pages;
+      }
       if (
         requestedGlyphRuns.length > 0 &&
         areTajweedGlyphRunFontsLoaded(requestedGlyphRuns, {
@@ -1092,7 +1183,11 @@ export function useSurahVerses({
           if (!pageVerses?.length) return;
 
           const enrichedVerses = await enrichVersesWithLocalTajweedGlyphs(pageVerses);
-          await preloadTajweedFontsForVerses(enrichedVerses);
+          if (deferTajweedGlyphRunsUntilFontsReady) {
+            await preloadTajweedFontsForVerses(enrichedVerses);
+          } else {
+            void preloadTajweedFontsForVerses(enrichedVerses).catch(() => {});
+          }
 
           if (!arePageVersesEquivalent(pageVerses, enrichedVerses)) {
             nextPages = { ...nextPages, [pageNumber]: enrichedVerses };
@@ -1102,7 +1197,14 @@ export function useSurahVerses({
 
       return nextPages;
     },
-    [preloadTajweedFontsForVerses, tajweed, tajweedTextColor, tajweedTheme]
+    [
+      deferTajweedGlyphRunsUntilFontsReady,
+      preloadTajweedFontsForGlyphRuns,
+      preloadTajweedFontsForVerses,
+      tajweed,
+      tajweedTextColor,
+      tajweedTheme,
+    ]
   );
 
   const normalizeVersePage = React.useCallback(
@@ -1351,6 +1453,7 @@ export function useSurahVerses({
           translationIds: resolvedTranslationIds,
           expectedVerseCount,
           requireTajweedGlyphs: false,
+          requireWordTranslations: includeWordTranslations,
         })
       ) {
         dataSourceRef.current = 'offline';
@@ -1371,6 +1474,7 @@ export function useSurahVerses({
       const offlineVerses = await getOfflineSurahPageCached({
         surahId: chapterNumber,
         translationIds: resolvedTranslationIds,
+        wordLang: resolvedWordLang,
         page: pageNumber,
         perPage,
         expectedVerseCount,
@@ -1383,6 +1487,7 @@ export function useSurahVerses({
           translationIds: resolvedTranslationIds,
           expectedVerseCount,
           requireTajweedGlyphs: false,
+          requireWordTranslations: includeWordTranslations,
         })
       ) {
         return false;
@@ -1409,10 +1514,12 @@ export function useSurahVerses({
     [
       chapterNumber,
       enabled,
+      includeWordTranslations,
       normalizeOfflineVersePage,
       perPage,
       prepareTajweedPagesForRender,
       resolvedTranslationIds,
+      resolvedWordLang,
       scheduleTajweedEnhancement,
       setPageData,
       verseCount,
@@ -1427,6 +1534,7 @@ export function useSurahVerses({
     const cachedSurah = peekOfflineSurahCache({
       surahId: chapterNumber,
       translationIds: resolvedTranslationIds,
+      wordLang: resolvedWordLang,
     });
 
     if (
@@ -1436,6 +1544,7 @@ export function useSurahVerses({
         translationIds: resolvedTranslationIds,
         expectedVerseCount: verseCount,
         requireTajweedGlyphs: false,
+        requireWordTranslations: includeWordTranslations,
       })
     ) {
       dataSourceRef.current = 'offline';
@@ -1482,6 +1591,7 @@ export function useSurahVerses({
         translationIds: resolvedTranslationIds,
         expectedVerseCount: verseCount,
         requireTajweedGlyphs: false,
+        requireWordTranslations: includeWordTranslations,
       })
     ) {
       return false;
@@ -1516,6 +1626,7 @@ export function useSurahVerses({
   }, [
     chapterNumber,
     enabled,
+    includeWordTranslations,
     includeWords,
     perPage,
     prepareTajweedPagesForRender,
@@ -1534,7 +1645,13 @@ export function useSurahVerses({
       if (!Number.isFinite(pageNumber) || pageNumber <= 0) return;
       if (verseCount > 0 && pageNumber > totalPagesRef.current) return;
       const existingPage = pagesByNumberRef.current[pageNumber];
-      if (existingPage) {
+      if (
+        existingPage &&
+        pageHasRequestedWordData(existingPage, {
+          includeWords,
+          includeWordTranslations,
+        })
+      ) {
         scheduleTajweedEnhancement(pageNumber, existingPage, token);
         return;
       }
@@ -1687,6 +1804,7 @@ export function useSurahVerses({
         chapterNumber,
         includeTajweedGlyphs: tajweed,
         includeWords,
+        includeWordTranslations,
         translationIds: resolvedTranslationIds,
         wordLang: resolvedWordLang,
         perPage,

@@ -52,6 +52,11 @@ class NativeSurahReaderViewManager : SimpleViewManager<NativeSurahReaderView>() 
     view.setTargetVerse(targetVerse)
   }
 
+  @ReactProp(name = "surahIntro")
+  fun setSurahIntro(view: NativeSurahReaderView, surahIntro: ReadableMap?) {
+    view.setSurahIntro(surahIntro)
+  }
+
   @ReactProp(name = "verses")
   fun setVerses(view: NativeSurahReaderView, verses: ReadableArray?) {
     view.setVerses(verses)

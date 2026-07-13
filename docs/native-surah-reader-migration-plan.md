@@ -24,14 +24,15 @@ Current implementation:
   - light/dark theme colors
   - Arabic and translation font sizes
   - multi-translation attribution
+  - native word-by-word rows
+  - native Tajweed glyph-run rows
 
 Current native gate:
 
 - Android only
 - translation view only
 - content loaded
-- not word-by-word
-- not Tajweed
+- full native payload available for the selected translation mode
 
 The direction looks correct if the native reader feels significantly faster and closer to a real native Quran reader. From here, the plan should shift from "prove native" to "complete native reader parity in controlled modules."
 
@@ -294,6 +295,8 @@ Suggested handoff prompt:
 
 Goal: support Tajweed mode without falling back to React Native FlashList.
 
+Status: implemented for Android translation mode. React Native still owns loading/enrichment of QCF Tajweed V4 glyph runs and font files; Kotlin renders ready runs with `Spannable` typeface spans and falls back to plain Arabic text when run/font data is unavailable.
+
 Tasks:
 
 - Allow native reader when `settings.tajweed` is true.
@@ -430,10 +433,7 @@ Suggested handoff prompt:
 
 ## Current Known Gaps
 
-- Native reader does not yet support word-by-word.
-- Native reader does not yet support Tajweed.
 - Native reader does not yet support word-level audio sync.
-- Native reader does not yet appear to support Arabic font face selection.
 - Current native mode may still be active while audio is visible; decide whether verse-level highlight is acceptable until word sync lands, or temporarily fall back when word sync is required.
 - Kotlin currently uses `notifyDataSetChanged()` broadly; optimize updates before word-sync ticks.
 - Android native files are intentionally tracked inside an otherwise generated `/android` folder. Keep `.gitignore` exceptions tight.

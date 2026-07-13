@@ -6,16 +6,46 @@ export type NativeSurahReaderTranslationItem = {
   text: string;
 };
 
+export type NativeSurahReaderWord = {
+  id: number;
+  position?: number;
+  uthmani: string;
+  translationText?: string;
+  charTypeName?: string;
+  codeV2?: string;
+  pageNumber?: number;
+};
+
+export type NativeSurahReaderTajweedGlyphRun = {
+  fontFamily: string;
+  fontFileUri: string;
+  glyphs: string[];
+};
+
 export type NativeSurahReaderVerse = {
   verseKey: string;
   verseNumber: number;
   verseApiId?: number;
   arabicText: string;
+  words?: NativeSurahReaderWord[];
+  tajweedGlyphRuns?: NativeSurahReaderTajweedGlyphRun[];
   translationItems: NativeSurahReaderTranslationItem[];
 };
 
+export type NativeSurahReaderSurahIntro = {
+  chapterId: number;
+  infoLabel: string;
+  isMakkah: boolean;
+  showBismillah: boolean;
+  surahName: string;
+};
+
 export type NativeSurahReaderSettings = {
+  arabicFontFace?: string;
   arabicFontSize?: number;
+  displayMode?: 'plain' | 'wordByWord' | 'tajweed';
+  showByWords?: boolean;
+  tajweed?: boolean;
   translationFontSize?: number;
   showTranslationAttribution?: boolean;
   [key: string]: unknown;
@@ -52,6 +82,7 @@ export type NativeSurahReaderActionPressEvent = {
 export type NativeSurahReaderProps = ViewProps & {
   surahId?: number;
   targetVerse?: number;
+  surahIntro?: NativeSurahReaderSurahIntro;
   verses?: NativeSurahReaderVerse[];
   settings?: NativeSurahReaderSettings;
   activeVerseKey?: string | null;
