@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "scripts": {
     "start": "npm run dev:android",
-    "dev:android": "node scripts/start-android-emulator.js && node scripts/prepare-expo-start.js && expo start --android",
+    "dev:android": "node scripts/dev-android.js",
     "start:perf": "npm run perf:android",
     "perf:android": "node scripts/start-android-emulator.js && expo run:android --variant release --no-bundler",
     "perf:android:clean": "node scripts/start-android-emulator.js && expo run:android --variant release --no-bundler --no-build-cache",

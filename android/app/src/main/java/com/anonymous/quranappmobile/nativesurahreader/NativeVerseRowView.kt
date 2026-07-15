@@ -14,6 +14,7 @@ import android.widget.TextView
 internal class NativeVerseRowView(
     context: Context,
     private val onActionPress: (NativeVerse) -> Unit,
+    private val onWordPress: (NativeVerse, NativeWord) -> Unit,
 ) : LinearLayout(context) {
   private val referenceView =
       TextView(context).apply {
@@ -49,6 +50,7 @@ internal class NativeVerseRowView(
   private val dividerView = android.view.View(context)
 
   private var boundVerse: NativeVerse? = null
+  private var boundTheme: NativeReaderTheme = NativeReaderTheme.default()
 
   init {
     orientation = VERTICAL
@@ -97,29 +99,37 @@ internal class NativeVerseRowView(
   fun bind(
       verse: NativeVerse,
       activeVerseKey: String?,
+      activeWord: NativeActiveWord?,
       arabicFontFace: String?,
       arabicFontSize: Float,
       translationFontSize: Float,
       displayMode: String,
       showByWords: Boolean,
+      audioWordSyncEnabled: Boolean,
+      wordAudioSeekEnabled: Boolean,
       showTranslationAttribution: Boolean,
       theme: NativeReaderTheme,
   ) {
     boundVerse = verse
+    boundTheme = theme
     referenceView.text = verse.verseKey
     referenceView.setTextColor(theme.tintColor)
     val shouldShowWordLayout =
-        (displayMode == DISPLAY_MODE_WORD_BY_WORD || showByWords) &&
+        (displayMode == DISPLAY_MODE_WORD_BY_WORD || showByWords || audioWordSyncEnabled) &&
             verse.words.isNotEmpty()
     if (shouldShowWordLayout) {
       arabicView.visibility = View.GONE
       wordLayoutView.visibility = View.VISIBLE
       wordLayoutView.bind(
           verse.words,
+          verse,
           arabicFontFace,
           arabicFontSize,
-          true,
+          showByWords,
+          wordAudioSeekEnabled,
+          activeWord,
           theme,
+          onWordPress,
       )
     } else {
       val tajweedText =
@@ -130,9 +140,19 @@ internal class NativeVerseRowView(
             )
           } else {
             null
-          }
+      }
       wordLayoutView.visibility = View.GONE
-      wordLayoutView.bind(emptyList(), arabicFontFace, arabicFontSize, false, theme)
+      wordLayoutView.bind(
+          emptyList(),
+          verse,
+          arabicFontFace,
+          arabicFontSize,
+          false,
+          false,
+          null,
+          theme,
+          onWordPress,
+      )
       arabicView.visibility = View.VISIBLE
       arabicView.text = tajweedText ?: verse.arabicText
       arabicView.contentDescription = verse.arabicText
@@ -198,7 +218,13 @@ internal class NativeVerseRowView(
       translationContainer.addView(itemLayout, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
     }
     dividerView.setBackgroundColor(theme.borderColor)
-    setBackgroundColor(if (activeVerseKey == verse.verseKey) theme.activeBackgroundColor else Color.TRANSPARENT)
+    bindActiveAudio(activeVerseKey, activeWord)
+  }
+
+  fun bindActiveAudio(activeVerseKey: String?, activeWord: NativeActiveWord?) {
+    val verse = boundVerse ?: return
+    setBackgroundColor(if (activeVerseKey == verse.verseKey) boundTheme.activeBackgroundColor else Color.TRANSPARENT)
+    wordLayoutView.updateActiveWord(activeWord)
   }
 
   private fun dp(value: Int): Int {

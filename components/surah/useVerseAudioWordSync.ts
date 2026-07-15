@@ -44,7 +44,13 @@ export type RegisterWordHighlight = (params: {
   setHighlighted: (highlighted: boolean) => void;
 }) => () => void;
 
+export type ActiveAudioWord = {
+  verseKey: string;
+  wordPosition: number;
+};
+
 export type VerseAudioWordSync = {
+  activeWord: ActiveAudioWord | null;
   isSeekEnabled: boolean;
   registerWordHighlight: RegisterWordHighlight;
   seekToWord: (params: { verseKey: string; wordPosition: number }) => void;
@@ -75,8 +81,23 @@ export function useVerseAudioWordSync(chapterId?: number | null): VerseAudioWord
 
   const registryRef = React.useRef(new Map<string, (highlighted: boolean) => void>());
   const highlightedKeyRef = React.useRef<string | null>(null);
+  const activeWordRef = React.useRef<ActiveAudioWord | null>(null);
+  const [activeWord, setActiveWord] = React.useState<ActiveAudioWord | null>(null);
 
   const pendingSeekRef = React.useRef<{ verseKey: string; wordPosition: number } | null>(null);
+
+  const updateActiveWord = React.useCallback((nextActiveWord: ActiveAudioWord | null) => {
+    const previous = activeWordRef.current;
+    if (
+      previous?.verseKey === nextActiveWord?.verseKey &&
+      previous?.wordPosition === nextActiveWord?.wordPosition
+    ) {
+      return;
+    }
+
+    activeWordRef.current = nextActiveWord;
+    setActiveWord(nextActiveWord);
+  }, []);
 
   const clearHighlight = React.useCallback(() => {
     const previousKey = highlightedKeyRef.current;
@@ -84,7 +105,8 @@ export function useVerseAudioWordSync(chapterId?: number | null): VerseAudioWord
       registryRef.current.get(previousKey)?.(false);
     }
     highlightedKeyRef.current = null;
-  }, []);
+    updateActiveWord(null);
+  }, [updateActiveWord]);
 
   const registerWordHighlight = React.useCallback<RegisterWordHighlight>(
     ({ verseKey, wordPosition, setHighlighted }) => {
@@ -128,6 +150,7 @@ export function useVerseAudioWordSync(chapterId?: number | null): VerseAudioWord
     const currentMs = (audio.segmentStartSec + audio.positionSec) * 1000;
     const activeWord = findActiveWord(activeSegments, currentMs);
     const nextKey = activeWord ? buildRegistryKey(verseKey, activeWord) : null;
+    updateActiveWord(activeWord ? { verseKey, wordPosition: activeWord } : null);
 
     if (nextKey && highlightedKeyRef.current === nextKey) return;
     if (!nextKey && !highlightedKeyRef.current) return;
@@ -153,6 +176,7 @@ export function useVerseAudioWordSync(chapterId?: number | null): VerseAudioWord
     audio.segmentEndSec,
     audio.segmentStartSec,
     clearHighlight,
+    updateActiveWord,
   ]);
 
   const isSeekEnabled = Boolean(audio.isVisible);
@@ -230,7 +254,7 @@ export function useVerseAudioWordSync(chapterId?: number | null): VerseAudioWord
   ]);
 
   return React.useMemo(
-    () => ({ isSeekEnabled, registerWordHighlight, seekToWord }),
-    [isSeekEnabled, registerWordHighlight, seekToWord]
+    () => ({ activeWord, isSeekEnabled, registerWordHighlight, seekToWord }),
+    [activeWord, isSeekEnabled, registerWordHighlight, seekToWord]
   );
 }

@@ -26,6 +26,7 @@ class NativeSurahReaderViewManager : SimpleViewManager<NativeSurahReaderView>() 
             mutableMapOf("registrationName" to "onVisibleVerseChange"),
         NativeSurahReaderView.EVENT_VERSE_ACTION_PRESS to
             mutableMapOf("registrationName" to "onVerseActionPress"),
+        NativeSurahReaderView.EVENT_WORD_PRESS to mutableMapOf("registrationName" to "onWordPress"),
         NativeSurahReaderView.EVENT_SCROLL to mutableMapOf("registrationName" to "onScroll"),
     )
   }
@@ -77,6 +78,16 @@ class NativeSurahReaderViewManager : SimpleViewManager<NativeSurahReaderView>() 
   @ReactProp(name = "activeVerseKey")
   fun setActiveVerseKey(view: NativeSurahReaderView, activeVerseKey: String?) {
     view.setActiveVerseKey(activeVerseKey)
+  }
+
+  @ReactProp(name = "activeWord")
+  fun setActiveWord(view: NativeSurahReaderView, activeWord: ReadableMap?) {
+    view.setActiveWord(activeWord)
+  }
+
+  @ReactProp(name = "wordAudioSeekEnabled", defaultBoolean = false)
+  fun setWordAudioSeekEnabled(view: NativeSurahReaderView, enabled: Boolean) {
+    view.setWordAudioSeekEnabled(enabled)
   }
 
   @ReactProp(name = "topInsetPx")

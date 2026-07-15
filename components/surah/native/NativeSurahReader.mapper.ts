@@ -11,6 +11,7 @@ type TranslationResource = {
 };
 
 type BuildNativeLightSurahVersesParams = {
+  audioWordSyncEnabled?: boolean;
   getVerseByNumber: (verseNumber: number) => SurahVerse | undefined;
   showTranslationAttribution: boolean;
   showByWords: boolean;
@@ -49,6 +50,18 @@ function buildNativeWords(verse: SurahVerse): NativeSurahReaderWord[] {
     .filter((word) => word.uthmani.length > 0);
 }
 
+function buildFallbackNativeWords(verse: SurahVerse): NativeSurahReaderWord[] {
+  return (verse.text_uthmani ?? '')
+    .split(/\s+/)
+    .map((text) => text.trim())
+    .filter((text) => text.length > 0)
+    .map((uthmani, index) => ({
+      id: index + 1,
+      position: index + 1,
+      uthmani,
+    }));
+}
+
 function buildNativeTajweedGlyphRuns(verse: SurahVerse): NativeSurahReaderTajweedGlyphRun[] {
   return (verse.tajweedGlyphRuns ?? [])
     .map((run) => ({
@@ -60,6 +73,7 @@ function buildNativeTajweedGlyphRuns(verse: SurahVerse): NativeSurahReaderTajwee
 }
 
 export function buildNativeLightSurahVerses({
+  audioWordSyncEnabled = false,
   getVerseByNumber,
   showTranslationAttribution,
   showByWords,
@@ -74,8 +88,15 @@ export function buildNativeLightSurahVerses({
   for (const verseNumber of verseNumbers) {
     const verse = getVerseByNumber(verseNumber);
     if (!verse) return [];
-    const words = showByWords ? buildNativeWords(verse) : undefined;
-    if (showByWords && !words?.length) return [];
+    const shouldIncludeWords = showByWords || audioWordSyncEnabled;
+    const nativeWords = shouldIncludeWords ? buildNativeWords(verse) : undefined;
+    const words =
+      shouldIncludeWords && nativeWords?.length
+        ? nativeWords
+        : shouldIncludeWords
+          ? buildFallbackNativeWords(verse)
+          : undefined;
+    if (shouldIncludeWords && !words?.length) return [];
     const tajweedGlyphRuns = tajweed && !showByWords ? buildNativeTajweedGlyphRuns(verse) : undefined;
 
     nativeVerses.push({

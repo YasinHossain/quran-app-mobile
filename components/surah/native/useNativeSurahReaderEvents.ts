@@ -7,6 +7,7 @@ import type {
   NativeSurahReaderActionPressEvent,
   NativeSurahReaderScrollEvent,
   NativeSurahReaderVisibleVerseChangeEvent,
+  NativeSurahReaderWordPressEvent,
 } from './NativeSurahReader.types';
 
 type OpenVerseActionsParams = {
@@ -25,6 +26,7 @@ type UseNativeSurahReaderEventsParams = {
   readerHeader: {
     handleScrollOffset: (offset: number) => void;
   };
+  seekToWord: (params: { verseKey: string; wordPosition: number }) => void;
   setLastReadRef: React.RefObject<
     (
       surahId: string,
@@ -47,6 +49,7 @@ export function useNativeSurahReaderEvents({
   lastReadReportedRef,
   openVerseActions,
   readerHeader,
+  seekToWord,
   setLastReadRef,
   setVisibleVerseNumber,
   verseScrubberRef,
@@ -58,6 +61,7 @@ export function useNativeSurahReaderEvents({
   handleNativeVerseActionPress: (
     event: NativeSyntheticEvent<NativeSurahReaderActionPressEvent>
   ) => void;
+  handleNativeWordPress: (event: NativeSyntheticEvent<NativeSurahReaderWordPressEvent>) => void;
   handleNativeVisibleVerseChange: (
     event: NativeSyntheticEvent<NativeSurahReaderVisibleVerseChangeEvent>
   ) => void;
@@ -161,9 +165,24 @@ export function useNativeSurahReaderEvents({
     [getVerseByNumberRef, openVerseActions]
   );
 
+  const handleNativeWordPress = React.useCallback(
+    (event: NativeSyntheticEvent<NativeSurahReaderWordPressEvent>) => {
+      const verseKey = event.nativeEvent.verseKey?.trim();
+      const wordPosition = event.nativeEvent.wordPosition;
+      if (!verseKey) return;
+      if (typeof wordPosition !== 'number' || !Number.isFinite(wordPosition) || wordPosition <= 0) {
+        return;
+      }
+
+      seekToWord({ verseKey, wordPosition: Math.trunc(wordPosition) });
+    },
+    [seekToWord]
+  );
+
   return {
     handleNativeScroll,
     handleNativeVerseActionPress,
+    handleNativeWordPress,
     handleNativeVisibleVerseChange,
   };
 }

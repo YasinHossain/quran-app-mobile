@@ -358,6 +358,10 @@ Suggested handoff prompt:
 
 Goal: make every reader-affecting setting update the native reader correctly.
 
+Status: implemented for mounted Android readers. Kotlin rebinds attached `RecyclerView` holders and
+runs an explicit next-frame native measure/layout pass after reader-state changes, so theme, font,
+translation, word-by-word, and Tajweed updates no longer wait for a user-initiated scroll.
+
 Verify these settings:
 
 - Arabic font size
@@ -386,6 +390,8 @@ Suggested handoff prompt:
 ## Phase G - Remove Android FlashList Translation Reader
 
 Goal: ditch FlashList for Android translation reading only after native supports all Android translation modes.
+
+Status: implemented for the Surah translation reader. Android now gates translation mode to `NativeSurahReader`; FlashList remains available for iOS until an iOS native reader exists, and web keeps its FlatList path.
 
 Tasks:
 

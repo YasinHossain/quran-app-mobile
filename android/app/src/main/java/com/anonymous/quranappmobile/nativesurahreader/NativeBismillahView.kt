@@ -40,17 +40,16 @@ internal class NativeBismillahView(context: Context) : FrameLayout(context) {
     val width = MeasureSpec.getSize(widthMeasureSpec)
     val desiredHeight = (width * BISMILLAH_FRAME_HEIGHT / BISMILLAH_FRAME_WIDTH).toInt().coerceAtLeast(dp(58))
     val resolvedHeight = resolveSize(desiredHeight, heightMeasureSpec)
+    updateCalligraphyInsets(width, resolvedHeight)
     super.onMeasure(widthMeasureSpec, MeasureSpec.makeMeasureSpec(resolvedHeight, MeasureSpec.EXACTLY))
   }
 
-  override fun onSizeChanged(width: Int, height: Int, oldWidth: Int, oldHeight: Int) {
-    super.onSizeChanged(width, height, oldWidth, oldHeight)
+  private fun updateCalligraphyInsets(width: Int, height: Int) {
     val params = calligraphyView.layoutParams as LayoutParams
     params.leftMargin = (width * 0.20f).toInt()
     params.rightMargin = (width * 0.20f).toInt()
     params.topMargin = (height * 0.23f).toInt()
     params.bottomMargin = (height * 0.23f).toInt()
-    calligraphyView.layoutParams = params
   }
 
   private fun luminance(color: Int): Float {

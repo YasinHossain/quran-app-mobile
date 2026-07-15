@@ -1,6 +1,7 @@
 package com.anonymous.quranappmobile.nativesurahreader
 
 import android.content.Context
+import android.graphics.drawable.GradientDrawable
 import android.text.TextUtils
 import android.util.TypedValue
 import android.view.Gravity
@@ -15,13 +16,21 @@ internal class NativeWordLayoutView(context: Context) : ViewGroup(context) {
   private var arabicFontSize: Float = 25f
   private var theme: NativeReaderTheme = NativeReaderTheme.default()
   private var showTranslations: Boolean = false
+  private var verse: NativeVerse? = null
+  private var activeWord: NativeActiveWord? = null
+  private var wordAudioSeekEnabled: Boolean = false
+  private var onWordPress: ((NativeVerse, NativeWord) -> Unit)? = null
 
   fun bind(
       words: List<NativeWord>,
+      verse: NativeVerse?,
       arabicFontFace: String?,
       arabicFontSize: Float,
       showTranslations: Boolean,
+      wordAudioSeekEnabled: Boolean,
+      activeWord: NativeActiveWord?,
       theme: NativeReaderTheme,
+      onWordPress: (NativeVerse, NativeWord) -> Unit,
   ) {
     val filteredWords =
         words.filter { word ->
@@ -32,7 +41,11 @@ internal class NativeWordLayoutView(context: Context) : ViewGroup(context) {
     this.arabicFontFace = arabicFontFace
     this.arabicFontSize = arabicFontSize
     this.showTranslations = showTranslations
+    this.verse = verse
+    this.activeWord = activeWord
+    this.wordAudioSeekEnabled = wordAudioSeekEnabled
     this.theme = theme
+    this.onWordPress = onWordPress
     contentDescription = filteredWords.joinToString(" ") { it.uthmani }
 
     removeAllViews()
@@ -40,6 +53,15 @@ internal class NativeWordLayoutView(context: Context) : ViewGroup(context) {
       addView(createTokenView(word))
     }
     requestLayout()
+  }
+
+  fun updateActiveWord(activeWord: NativeActiveWord?) {
+    this.activeWord = activeWord
+    for (index in 0 until childCount) {
+      val token = getChildAt(index)
+      val word = token.tag as? NativeWord ?: continue
+      applyTokenHighlight(token, isActiveWord(word))
+    }
   }
 
   override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
@@ -134,6 +156,7 @@ internal class NativeWordLayoutView(context: Context) : ViewGroup(context) {
         LinearLayout(context).apply {
           orientation = LinearLayout.VERTICAL
           gravity = Gravity.CENTER
+          tag = word
           importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
           setPadding(
               dp(if (showTranslations) 10 else 2),
@@ -141,6 +164,14 @@ internal class NativeWordLayoutView(context: Context) : ViewGroup(context) {
               dp(if (showTranslations) 10 else 2),
               dp(if (showTranslations) 10 else 1),
           )
+          if (wordAudioSeekEnabled) {
+            isClickable = true
+            isFocusable = true
+            setOnClickListener {
+              val boundVerse = verse ?: return@setOnClickListener
+              onWordPress?.invoke(boundVerse, word)
+            }
+          }
         }
 
     token.addView(
@@ -151,7 +182,7 @@ internal class NativeWordLayoutView(context: Context) : ViewGroup(context) {
           textDirection = TEXT_DIRECTION_RTL
           includeFontPadding = true
           typeface = NativeArabicFontResolver.resolve(context, arabicFontFace, word.uthmani)
-          setTextColor(theme.textColor)
+          setTextColor(if (isActiveWord(word)) theme.tintColor else theme.textColor)
           setLineSpacing(lineSpacingExtra(arabicFontSize, arabicLineHeight(arabicFontSize)), 1.0f)
         },
         LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT),
@@ -182,8 +213,38 @@ internal class NativeWordLayoutView(context: Context) : ViewGroup(context) {
       }
     }
 
+    applyTokenHighlight(token, isActiveWord(word))
     return token
   }
+
+  private fun isActiveWord(word: NativeWord): Boolean {
+    val current = activeWord ?: return false
+    val boundVerse = verse ?: return false
+    if (current.verseKey != boundVerse.verseKey) return false
+
+    val wordPosition = word.position
+    if (current.wordPosition != null && wordPosition != null) {
+      return current.wordPosition == wordPosition
+    }
+
+    return current.wordId != null && current.wordId == word.id
+  }
+
+  private fun applyTokenHighlight(token: View, isActive: Boolean) {
+    token.background = if (isActive) roundedDrawable(theme.activeBackgroundColor) else null
+    val tokenLayout = token as? LinearLayout ?: return
+    val arabicText = tokenLayout.getChildAt(0) as? TextView ?: return
+    arabicText.setTextColor(if (isActive) theme.tintColor else theme.textColor)
+  }
+
+  private fun roundedDrawable(color: Int): GradientDrawable {
+    return GradientDrawable().apply {
+      shape = GradientDrawable.RECTANGLE
+      cornerRadius = dp(8).toFloat()
+      setColor(color)
+    }
+  }
+
 
   private fun dp(value: Int): Int {
     return (value * resources.displayMetrics.density).toInt()

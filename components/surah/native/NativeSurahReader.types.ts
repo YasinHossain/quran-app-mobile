@@ -43,11 +43,14 @@ export type NativeSurahReaderSurahIntro = {
 export type NativeSurahReaderSettings = {
   arabicFontFace?: string;
   arabicFontSize?: number;
+  contentLanguage?: string;
   displayMode?: 'plain' | 'wordByWord' | 'tajweed';
   showByWords?: boolean;
   tajweed?: boolean;
+  translationIds?: number[];
   translationFontSize?: number;
   showTranslationAttribution?: boolean;
+  wordLang?: string;
   [key: string]: unknown;
 };
 
@@ -59,6 +62,12 @@ export type NativeSurahReaderTheme = {
   textColor?: string;
   tintColor?: string;
   [key: string]: unknown;
+};
+
+export type NativeSurahReaderActiveWord = {
+  verseKey: string;
+  wordPosition?: number;
+  wordId?: number;
 };
 
 export type NativeSurahReaderVisibleVerseChangeEvent = {
@@ -85,8 +94,19 @@ export type NativeSurahReaderActionPressEvent = {
   translationTexts?: string[];
 };
 
+export type NativeSurahReaderWordPressEvent = {
+  verseNumber: number;
+  verseKey: string;
+  verseApiId?: number;
+  wordId?: number;
+  wordPosition?: number;
+};
+
 export type NativeSurahReaderProps = ViewProps & {
   readerState?: NativeSurahReaderState;
+  activeVerseKey?: string | null;
+  activeWord?: NativeSurahReaderActiveWord | null;
+  wordAudioSeekEnabled?: boolean;
   onReady?: () => void;
   onInitialPositioned?: (
     event: NativeSyntheticEvent<NativeSurahReaderInitialPositionedEvent>
@@ -95,6 +115,7 @@ export type NativeSurahReaderProps = ViewProps & {
     event: NativeSyntheticEvent<NativeSurahReaderVisibleVerseChangeEvent>
   ) => void;
   onVerseActionPress?: (event: NativeSyntheticEvent<NativeSurahReaderActionPressEvent>) => void;
+  onWordPress?: (event: NativeSyntheticEvent<NativeSurahReaderWordPressEvent>) => void;
   onScroll?: (event: NativeSyntheticEvent<NativeSurahReaderScrollEvent>) => void;
 };
 
@@ -109,6 +130,7 @@ export type NativeSurahReaderState = {
   verses: NativeSurahReaderVerse[];
   settings: NativeSurahReaderSettings;
   activeVerseKey?: string | null;
+  activeWord?: NativeSurahReaderActiveWord | null;
   topInsetPx: number;
   bottomInsetPx: number;
   theme: NativeSurahReaderTheme;

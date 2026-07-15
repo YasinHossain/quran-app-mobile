@@ -480,7 +480,7 @@ Tradeoffs/problems:
 
 ## Current Known Problem
 
-As of this log, the remaining hard problem is:
+As of the historical FlashList reader work, the remaining hard problem was:
 
 - `initialScrollIndex` gets close quickly, but row-height estimation is not exact.
 - The exact non-animated correction can still be visually noticeable.
@@ -500,10 +500,40 @@ After the later workaround, the current intended behavior is different:
 - Placeholder-to-real row replacement can corrupt FlashList measurements. Clear layout cache when verse content signatures change, and avoid recycling placeholder cells while rows are still incomplete.
 - If this still fails in release/performance testing, the next serious step is a native/measured reader surface or a deterministic offset model, not more FlashList estimate tuning.
 
+## Phase G Update - Android Native Reader Becomes Permanent
+
+Files touched:
+
+- `app/surah/[surahId].tsx`
+- `components/surah/native/NativeSurahReader.types.ts`
+- `components/surah/native/NativeSurahReader.theme.ts`
+- `android/app/src/main/java/com/anonymous/quranappmobile/nativesurahreader/*`
+
+What changed:
+
+- Android translation mode no longer falls back to the FlashList reader.
+- Android waits for the native full-Surah payload and shows an explicit lightweight loading state while that payload is being prepared.
+- FlashList target-position preview/handoff behavior is now non-Android fallback behavior only.
+- iOS keeps the existing FlashList translation reader until an iOS native reader exists.
+- Web keeps the FlatList reader path.
+
+What improved:
+
+- Android no longer depends on FlashList dynamic row-height estimation for Surah translation navigation.
+- Plain, word-by-word, Tajweed, and active word-sync rows share the same Kotlin-backed scrolling surface.
+- The Android reader path now matches the native migration direction: React Native owns orchestration; Kotlin owns row rendering and scroll positioning.
+- Targeted entry now queues the requested adapter position synchronously during native state application, before RecyclerView can perform a first layout at the intro row. The list stays transparent until RecyclerView has laid out the requested row as the first visible row, or reached the stable end boundary with the requested final row visible when there is not enough trailing content to place it at the top. Ready/positioned events and reveal happen only after that check. This removes the brief Surah-intro/verse-1 frame that was most noticeable while Tajweed rows were binding without blanking short Surahs near their final verse.
+
+Tradeoffs/problems:
+
+- Android native mode now requires complete native payload availability before showing the reader.
+- If a selected translation, word language, or Tajweed resource is not ready, Android shows loading/error/settings states instead of silently using the old FlashList safety path.
+- iOS still has the historical FlashList caveats until Phase H.
+
 ## Files Most Involved
 
 - `app/surah/[surahId].tsx`
-  - Route params, Surah/Mushaf mode, FlashList, initial jump logic, scrubber, overlay/header.
+  - Route params, Surah/Mushaf mode, Android native reader selection, iOS FlashList fallback, web FlatList fallback, initial jump logic, scrubber, overlay/header.
 - `hooks/useSurahVerses.ts`
   - Offline/network verse page loading, words/tajweed inclusion, initial snapshots.
 - `components/surah/VerseCard.tsx`

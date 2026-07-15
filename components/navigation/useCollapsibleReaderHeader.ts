@@ -53,9 +53,8 @@ export function useCollapsibleReaderHeader() {
         toValue: hidden ? 1 : 0,
         duration: HEADER_ANIMATION_DURATION,
         easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
+        useNativeDriver: false,
       }).start();
-
       setHeaderPointerEvents(hidden ? 'none' : 'box-none');
       suppressScrollUntilRef.current = Date.now() + TOGGLE_SCROLL_SUPPRESSION_MS;
     },
@@ -182,8 +181,8 @@ export function useCollapsibleReaderHeader() {
   const translateY = React.useMemo(
     () =>
       hiddenProgress.interpolate({
-        inputRange: [0, 0.999, 1],
-        outputRange: [0, 0, -headerHeight],
+        inputRange: [0, 1],
+        outputRange: [0, -headerHeight],
       }),
     [hiddenProgress, headerHeight]
   );
@@ -196,6 +195,24 @@ export function useCollapsibleReaderHeader() {
     [opacity, translateY]
   );
 
+  const contentAnimatedStyle = React.useMemo(
+    () => ({
+      marginBottom: hiddenProgress.interpolate({
+        inputRange: [0, 1],
+        outputRange: [0, -headerHeight],
+      }),
+      transform: [
+        {
+          translateY: hiddenProgress.interpolate({
+            inputRange: [0, 1],
+            outputRange: [0, -headerHeight],
+          }),
+        },
+      ],
+    }),
+    [headerHeight, hiddenProgress]
+  );
+
   const suppressScroll = React.useCallback((durationMs: number) => {
     suppressScrollUntilRef.current = Date.now() + durationMs;
     directionalScrollDistanceRef.current = 0;
@@ -205,6 +222,7 @@ export function useCollapsibleReaderHeader() {
     handleHeaderLayout,
     handleScroll,
     handleScrollOffset,
+    contentAnimatedStyle,
     headerAnimatedStyle,
     headerHeight,
     headerPointerEvents,

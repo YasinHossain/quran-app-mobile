@@ -5,6 +5,7 @@ import { useNativeSurahReaderCommands } from './useNativeSurahReaderCommands';
 import type { NativeSurahReaderHandle, NativeSurahReaderProps } from './NativeSurahReader.types';
 
 export type {
+  NativeSurahReaderActiveWord,
   NativeSurahReaderActionPressEvent,
   NativeSurahReaderHandle,
   NativeSurahReaderInitialPositionedEvent,
@@ -18,6 +19,7 @@ export type {
   NativeSurahReaderTranslationItem,
   NativeSurahReaderVerse,
   NativeSurahReaderWord,
+  NativeSurahReaderWordPressEvent,
   NativeSurahReaderVisibleVerseChangeEvent,
 } from './NativeSurahReader.types';
 

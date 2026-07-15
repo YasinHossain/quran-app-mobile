@@ -22,6 +22,12 @@ internal data class NativeWord(
     val pageNumber: Int?,
 )
 
+internal data class NativeActiveWord(
+    val verseKey: String,
+    val wordPosition: Int?,
+    val wordId: Int?,
+)
+
 internal data class NativeTajweedGlyphRun(
     val fontFamily: String,
     val fontFileUri: String,
@@ -58,6 +64,21 @@ internal fun ReadableMap.toNativeSurahIntro(): NativeSurahIntro? {
       isMakkah = getBooleanIfPresent("isMakkah") ?: false,
       showBismillah = getBooleanIfPresent("showBismillah") ?: false,
       surahName = surahName,
+  )
+}
+
+internal fun ReadableMap.toNativeActiveWord(): NativeActiveWord? {
+  val verseKey = getStringIfPresent("verseKey")?.trim().orEmpty()
+  if (verseKey.isBlank()) return null
+
+  val wordPosition = getDoubleIfPresent("wordPosition")?.toInt()?.takeIf { it > 0 }
+  val wordId = getDoubleIfPresent("wordId")?.toInt()?.takeIf { it > 0 }
+  if (wordPosition == null && wordId == null) return null
+
+  return NativeActiveWord(
+      verseKey = verseKey,
+      wordPosition = wordPosition,
+      wordId = wordId,
   )
 }
 

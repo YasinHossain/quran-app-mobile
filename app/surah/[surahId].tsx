@@ -4,6 +4,7 @@ import { ArrowLeft, Settings } from 'lucide-react-native';
 import React from 'react';
 import {
   ActivityIndicator,
+  Animated,
   FlatList,
   InteractionManager,
   Platform,
@@ -162,7 +163,6 @@ function MushafMessageState({ message }: { message: string }): React.JSX.Element
 
 const FALLBACK_MUSHAF_TOTAL_PAGES = 604;
 const TRANSLATION_INITIAL_DRAW_BATCH_SIZE = 18;
-const TRANSLATION_ANDROID_DRAW_DISTANCE = 3200;
 const TRANSLATION_IOS_DRAW_DISTANCE = 2400;
 const TRANSLATION_TARGET_PREFETCH_RADIUS = 72;
 
@@ -314,6 +314,19 @@ export default function SurahScreen(): React.JSX.Element {
   const { isPinned, setLastRead } = useBookmarks();
   const chapterNumber = surahId ? Number(surahId) : NaN;
   const verseAudioWordSync = useVerseAudioWordSync(chapterNumber);
+  const verseCardAudioWordSync = React.useMemo(
+    () => ({
+      activeWord: null,
+      isSeekEnabled: verseAudioWordSync.isSeekEnabled,
+      registerWordHighlight: verseAudioWordSync.registerWordHighlight,
+      seekToWord: verseAudioWordSync.seekToWord,
+    }),
+    [
+      verseAudioWordSync.isSeekEnabled,
+      verseAudioWordSync.registerWordHighlight,
+      verseAudioWordSync.seekToWord,
+    ]
+  );
   const selectedMushafId = settings.mushafId ?? DEFAULT_MUSHAF_ID;
   const selectedMushafOption = findMushafOption(selectedMushafId);
   const selectedMushafVersion = selectedMushafOption?.version ?? 'unknown';
@@ -862,7 +875,7 @@ export default function SurahScreen(): React.JSX.Element {
       audioIsVisible: audio.isVisible,
       pagesSignature,
       translationHighlightVerseKey,
-      verseAudioWordSync,
+      verseCardAudioWordSync,
     }),
     [
       pagesSignature,
@@ -874,7 +887,7 @@ export default function SurahScreen(): React.JSX.Element {
       audio.activeVerseKey,
       audio.isVisible,
       translationHighlightVerseKey,
-      verseAudioWordSync,
+      verseCardAudioWordSync,
     ]
   );
   const tajweedRenderSignal = React.useMemo(
@@ -991,7 +1004,7 @@ export default function SurahScreen(): React.JSX.Element {
             translationItems={translationItems}
             showTranslationAttribution={showTranslationAttribution}
             isAudioActive={Boolean(audio.isVisible && audio.activeVerseKey === verse.verse_key)}
-            audioWordSync={verseAudioWordSync}
+            audioWordSync={verseCardAudioWordSync}
             arabicFontSize={settings.arabicFontSize}
             arabicFontFace={settings.arabicFontFace}
             translationFontSize={settings.translationFontSize}
@@ -1027,7 +1040,7 @@ export default function SurahScreen(): React.JSX.Element {
       tajweedRenderSignal,
       translationHighlightVerseKey,
       translationsById,
-      verseAudioWordSync,
+      verseCardAudioWordSync,
     ]
   );
 
@@ -1166,6 +1179,7 @@ export default function SurahScreen(): React.JSX.Element {
 
   const hasUnloadedTranslationRows = React.useMemo(
     () =>
+      Platform.OS === 'ios' &&
       !isMushafView &&
       verseCount > 0 &&
       verseNumbers.some((verseNumber) => !getVerseByNumber(verseNumber)),
@@ -1179,6 +1193,7 @@ export default function SurahScreen(): React.JSX.Element {
   const nativeLightSurahVerses = React.useMemo(
     () =>
       buildNativeLightSurahVerses({
+        audioWordSyncEnabled: verseAudioWordSync.isSeekEnabled,
         getVerseByNumber,
         showTranslationAttribution,
         showByWords: Boolean(settings.showByWords),
@@ -1194,11 +1209,17 @@ export default function SurahScreen(): React.JSX.Element {
       settings.tajweed,
       supportsNativeLightSurahReader,
       translationsById,
+      verseAudioWordSync.isSeekEnabled,
       verseNumbers,
     ]
   );
   const shouldUseNativeLightSurahReader = Boolean(
     supportsNativeLightSurahReader && nativeLightSurahVerses.length === verseCount
+  );
+  const isWaitingForNativeLightSurahReader = Boolean(
+    supportsNativeLightSurahReader &&
+      verseCount > 0 &&
+      nativeLightSurahVerses.length !== verseCount
   );
   React.useEffect(() => {
     nativeInitialPositioningRef.current = Boolean(shouldUseNativeLightSurahReader && !isMushafView);
@@ -1208,18 +1229,26 @@ export default function SurahScreen(): React.JSX.Element {
       buildNativeLightSurahReaderSettings({
         arabicFontFace: settings.arabicFontFace,
         arabicFontSize: settings.arabicFontSize,
+        audioWordSyncEnabled: verseAudioWordSync.isSeekEnabled,
+        contentLanguage: settings.contentLanguage,
         showByWords: Boolean(settings.showByWords),
         tajweed: Boolean(settings.tajweed),
         showTranslationAttribution,
+        translationIds: verseTranslationIds,
         translationFontSize: settings.translationFontSize,
+        wordLang: settings.wordLang,
       }),
     [
+      settings.contentLanguage,
       settings.arabicFontFace,
       settings.arabicFontSize,
       settings.showByWords,
       settings.tajweed,
       settings.translationFontSize,
+      settings.wordLang,
       showTranslationAttribution,
+      verseTranslationIds,
+      verseAudioWordSync.isSeekEnabled,
     ]
   );
   const nativeLightSurahReaderTheme = React.useMemo(
@@ -1610,10 +1639,6 @@ export default function SurahScreen(): React.JSX.Element {
       return;
     }
 
-    if (Platform.OS !== 'web' && !isNativeListLoadedRef.current) {
-      return;
-    }
-
     const scheduleRetry = () => {
       if (didScrollToStartRef.current) return;
       if (scrollRetryCountRef.current >= 10) return;
@@ -1656,7 +1681,14 @@ export default function SurahScreen(): React.JSX.Element {
       return;
     }
 
+    if (Platform.OS === 'ios' && !isNativeListLoadedRef.current) {
+      return;
+    }
+
     const list = Platform.OS === 'web' ? flatListRef.current : flashListRef.current;
+    if (Platform.OS === 'android') {
+      return;
+    }
     if (!list) {
       scheduleRetry();
       return;
@@ -1770,6 +1802,7 @@ export default function SurahScreen(): React.JSX.Element {
         nativeSurahReaderRef.current?.scrollToVerse(targetVerseNumber, false);
         return;
       }
+      if (Platform.OS === 'android') return;
       const list = Platform.OS === 'web' ? flatListRef.current : flashListRef.current;
       if (!list) return;
 
@@ -1815,6 +1848,7 @@ export default function SurahScreen(): React.JSX.Element {
   const {
     handleNativeScroll,
     handleNativeVerseActionPress,
+    handleNativeWordPress,
     handleNativeVisibleVerseChange,
   } = useNativeSurahReaderEvents({
     chapterNumber,
@@ -1823,6 +1857,7 @@ export default function SurahScreen(): React.JSX.Element {
     lastReadReportedRef,
     openVerseActions,
     readerHeader,
+    seekToWord: verseAudioWordSync.seekToWord,
     setLastReadRef,
     setVisibleVerseNumber,
     verseScrubberRef,
@@ -2043,6 +2078,7 @@ export default function SurahScreen(): React.JSX.Element {
   const shouldConcealTranslationPosition = Boolean(
     targetedTranslationKey &&
       positionedTranslationKey !== targetedTranslationKey &&
+      Platform.OS !== 'android' &&
       !isMushafView &&
       verseCount > 0 &&
       !(offlineNotInstalled && !hasLoadedContent) &&
@@ -2054,6 +2090,11 @@ export default function SurahScreen(): React.JSX.Element {
       : getVerseByNumber(targetedTranslationVerseNumber);
   const shouldShowInitialTranslationPreview = Boolean(
     shouldConcealTranslationPosition && !shouldUseNativeLightSurahReader
+  );
+  const shouldShowTranslationVerseScrubber = Boolean(
+    hasLoadedContent &&
+      verseCount > 1 &&
+      (shouldUseNativeLightSurahReader || Platform.OS !== 'android')
   );
 
   return (
@@ -2097,7 +2138,13 @@ export default function SurahScreen(): React.JSX.Element {
         />
       </ReaderOverlayHeader>
 
-      <View style={[styles.contentStage, { marginTop: readerHeader.headerHeight }]}>
+      <Animated.View
+        style={[
+          styles.contentStage,
+          { marginTop: readerHeader.headerHeight },
+          readerHeader.contentAnimatedStyle,
+        ]}
+      >
         {!isMushafView || keepTranslationVisibleDuringMushafEntry ? (
           <View
             style={[
@@ -2154,12 +2201,23 @@ export default function SurahScreen(): React.JSX.Element {
                 ref={nativeSurahReaderRef}
                 style={styles.contentLayer}
                 readerState={nativeLightSurahReaderState}
+                activeVerseKey={audio.activeVerseKey}
+                activeWord={verseAudioWordSync.activeWord}
+                wordAudioSeekEnabled={verseAudioWordSync.isSeekEnabled}
                 onReady={handleNativeListLoad}
                 onInitialPositioned={handleNativeInitialPositioned}
                 onVisibleVerseChange={handleNativeVisibleVerseChangeAndPosition}
                 onVerseActionPress={handleNativeVerseActionPress}
+                onWordPress={handleNativeWordPress}
                 onScroll={handleNativeScroll}
               />
+            ) : isWaitingForNativeLightSurahReader ? (
+              <View className="flex-1 items-center justify-center px-6">
+                <ActivityIndicator color={palette.text} />
+                <Text className="mt-3 text-center text-sm text-muted dark:text-muted-dark">
+                  Preparing reader…
+                </Text>
+              </View>
             ) : Platform.OS === 'web' ? (
               <FlatList
                 ref={(node) => {
@@ -2191,7 +2249,7 @@ export default function SurahScreen(): React.JSX.Element {
                   ) : null
                 }
               />
-            ) : (
+            ) : Platform.OS === 'ios' ? (
               <FlashList
                 key={translationListKey}
                 ref={(node) => {
@@ -2206,7 +2264,7 @@ export default function SurahScreen(): React.JSX.Element {
                 initialScrollIndexParams={translationInitialScrollIndexParams}
                 maintainVisibleContentPosition={translationMaintainVisibleContentPosition}
                 maxItemsInRecyclePool={hasUnloadedTranslationRows ? 0 : undefined}
-                drawDistance={Platform.OS === 'android' ? TRANSLATION_ANDROID_DRAW_DISTANCE : TRANSLATION_IOS_DRAW_DISTANCE}
+                drawDistance={TRANSLATION_IOS_DRAW_DISTANCE}
                 overrideProps={translationListOverrideProps}
                 contentContainerStyle={listContentContainerStyle}
                 refreshing={isRefreshing}
@@ -2231,8 +2289,10 @@ export default function SurahScreen(): React.JSX.Element {
                   ) : null
                 }
               />
+            ) : (
+              <MushafMessageState message="Native reader is unavailable for this Android translation mode." />
             )}
-            {hasLoadedContent && verseCount > 1 ? (
+            {shouldShowTranslationVerseScrubber ? (
               <VerseScrubber
                 ref={verseScrubberRef}
                 bottomInset={audioPlayerBarHeight}
@@ -2339,7 +2399,7 @@ export default function SurahScreen(): React.JSX.Element {
             ) : null}
           </View>
         ) : null}
-      </View>
+      </Animated.View>
 
       <VerseActionsSheet
         isOpen={isVerseActionsOpen}
