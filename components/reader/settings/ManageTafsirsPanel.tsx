@@ -21,7 +21,10 @@ import { logger } from '@/src/core/infrastructure/monitoring/logger';
 
 import chaptersData from '../../../src/data/chapters.en.json';
 
-import { ReorderableSelectionList } from './resource-panel/ReorderableSelectionList';
+import {
+  ReorderableSelectionList,
+  configureSelectionLayoutAnimation,
+} from './resource-panel/ReorderableSelectionList';
 import { ResourceConfirmModal } from './resource-panel/ResourceConfirmModal';
 import { ResourceDownloadAction } from './resource-panel/ResourceDownloadAction';
 import { ResourceItem } from './resource-panel/ResourceItem';
@@ -470,6 +473,7 @@ export function ManageTafsirsPanel({
     (id: number): boolean => {
       const current = orderedSelection ?? [];
       if (current.includes(id)) {
+        configureSelectionLayoutAnimation();
         onChangeSelection(current.filter((x) => x !== id));
         setShowLimitWarning(false);
         return true;
@@ -509,6 +513,7 @@ export function ManageTafsirsPanel({
         return false;
       }
 
+      configureSelectionLayoutAnimation();
       onChangeSelection([...current, id]);
       setShowLimitWarning(false);
       return true;
@@ -547,6 +552,7 @@ export function ManageTafsirsPanel({
       return;
     }
 
+    configureSelectionLayoutAnimation();
     onChangeSelection([englishTafsir.id]);
     setShowLimitWarning(false);
   }, [

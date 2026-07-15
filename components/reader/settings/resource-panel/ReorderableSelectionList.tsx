@@ -2,6 +2,7 @@ import { GripVertical, RotateCcw, X } from 'lucide-react-native';
 import React from 'react';
 import {
   Animated,
+  Easing,
   LayoutAnimation,
   Platform,
   PanResponder,
@@ -26,6 +27,9 @@ interface VariantStyles {
   emptyTextClassName: string;
   itemRowClassName: string;
   removeButtonClassName: string;
+  emptyContentHeight: number;
+  itemHeight: number;
+  rowGap: number;
 }
 
 const VARIANT_STYLES: Record<SelectionListVariant, VariantStyles> = {
@@ -38,6 +42,9 @@ const VARIANT_STYLES: Record<SelectionListVariant, VariantStyles> = {
       'h-[54px] flex-row items-center justify-between p-3',
     removeButtonClassName:
       'p-1.5 rounded-full flex-shrink-0 ml-1',
+    emptyContentHeight: 54,
+    itemHeight: 54,
+    rowGap: 4,
   },
   tafsir: {
     headerClassName: 'flex-row items-center justify-between px-1 mb-2',
@@ -48,6 +55,9 @@ const VARIANT_STYLES: Record<SelectionListVariant, VariantStyles> = {
       'h-[46px] flex-row items-center justify-between p-2',
     removeButtonClassName:
       'p-1 rounded-full flex-shrink-0 ml-1',
+    emptyContentHeight: 38,
+    itemHeight: 46,
+    rowGap: 4,
   },
 };
 
@@ -67,6 +77,24 @@ function ensureLayoutAnimationEnabled(): void {
   (UIManager as any).setLayoutAnimationEnabledExperimental?.(true);
 }
 
+export function configureSelectionLayoutAnimation(): void {
+  ensureLayoutAnimationEnabled();
+  LayoutAnimation.configureNext({
+    duration: 165,
+    create: {
+      type: LayoutAnimation.Types.easeInEaseOut,
+      property: LayoutAnimation.Properties.opacity,
+    },
+    update: {
+      type: LayoutAnimation.Types.easeInEaseOut,
+    },
+    delete: {
+      type: LayoutAnimation.Types.easeInEaseOut,
+      property: LayoutAnimation.Properties.opacity,
+    },
+  });
+}
+
 function normalizeOrderedSelection(ids: number[]): number[] {
   const normalized: number[] = [];
   const seen = new Set<number>();
@@ -81,6 +109,11 @@ function normalizeOrderedSelection(ids: number[]): number[] {
   }
 
   return normalized;
+}
+
+function getSelectionContentHeight(selectionCount: number, styles: VariantStyles): number {
+  if (selectionCount <= 0) return styles.emptyContentHeight;
+  return selectionCount * styles.itemHeight + Math.max(0, selectionCount - 1) * styles.rowGap;
 }
 
 export function ReorderableSelectionList({
@@ -126,9 +159,12 @@ export function ReorderableSelectionList({
   const dragIndexRef = React.useRef(-1);
   const reorderOffsetRef = React.useRef(0);
   const dragTranslateY = React.useRef(new Animated.Value(0)).current;
+  const contentHeight = React.useRef(
+    new Animated.Value(getSelectionContentHeight(localOrder.length, styles))
+  ).current;
   const [draggingId, setDraggingId] = React.useState<number | null>(null);
 
-  const itemHeight = variant === 'translation' ? 54 : 46;
+  const itemHeight = styles.itemHeight;
 
   React.useLayoutEffect(() => {
     setLocalOrder(normalizeOrderedSelection(orderedSelection));
@@ -137,6 +173,16 @@ export function ReorderableSelectionList({
   React.useEffect(() => {
     localOrderRef.current = localOrder;
   }, [localOrder]);
+
+  React.useEffect(() => {
+    Animated.timing(contentHeight, {
+      toValue: getSelectionContentHeight(localOrder.length, styles),
+      duration: 185,
+      easing: Easing.out(Easing.cubic),
+      isInteraction: false,
+      useNativeDriver: false,
+    }).start();
+  }, [contentHeight, localOrder.length, styles]);
 
   const resourceById = React.useMemo(() => {
     const map = new Map<number, BasicResource>();
@@ -194,12 +240,7 @@ export function ReorderableSelectionList({
       reorderOffsetRef.current += delta * itemHeight;
       dragIndexRef.current = nextIndex;
 
-      LayoutAnimation.configureNext({
-        duration: 120,
-        update: {
-          type: LayoutAnimation.Types.easeInEaseOut,
-        },
-      });
+      configureSelectionLayoutAnimation();
       setLocalOrder(next);
     },
     [dragTranslateY, itemHeight]
@@ -268,41 +309,45 @@ export function ReorderableSelectionList({
           borderWidth: 1,
         }}
       >
-        {selectionCount === 0 ? (
-          <Text className={styles.emptyTextClassName} style={{ color: palette.muted }}>
-            {emptyText}
-          </Text>
-        ) : (
-          <View style={{ gap: 4 }}>
-            {localOrder.map((id) => {
-              const item = resourceById.get(id);
-              const name = item?.name ?? `${id}`;
+        <Animated.View style={{ height: contentHeight, overflow: 'hidden' }}>
+          {selectionCount === 0 ? (
+            <View style={{ height: styles.emptyContentHeight, justifyContent: 'center' }}>
+              <Text className={styles.emptyTextClassName} style={{ color: palette.muted }}>
+                {emptyText}
+              </Text>
+            </View>
+          ) : (
+            <View style={{ gap: styles.rowGap }}>
+              {localOrder.map((id) => {
+                const item = resourceById.get(id);
+                const name = item?.name ?? `${id}`;
 
-              return (
-                <SelectionListRow
-                  key={id}
-                  id={id}
-                  name={name}
-                  isDragging={draggingId === id}
-                  canReorder={canReorder}
-                  beginDrag={beginDrag}
-                  updateDrag={updateDrag}
-                  endDrag={endDrag}
-                  dragTranslateY={dragTranslateY}
-                  itemRowClassName={styles.itemRowClassName}
-                  removeButtonClassName={styles.removeButtonClassName}
-                  removeAccessibilityLabel={removeAccessibilityLabel}
-                  onRemove={onRemove}
-                  variant={variant}
-                  backgroundColor={rowBackground}
-                  borderColor={rowBorder}
-                  mutedColor={palette.muted}
-                  textColor={palette.text}
-                />
-              );
-            })}
-          </View>
-        )}
+                return (
+                  <SelectionListRow
+                    key={id}
+                    id={id}
+                    name={name}
+                    isDragging={draggingId === id}
+                    canReorder={canReorder}
+                    beginDrag={beginDrag}
+                    updateDrag={updateDrag}
+                    endDrag={endDrag}
+                    dragTranslateY={dragTranslateY}
+                    itemRowClassName={styles.itemRowClassName}
+                    removeButtonClassName={styles.removeButtonClassName}
+                    removeAccessibilityLabel={removeAccessibilityLabel}
+                    onRemove={onRemove}
+                    variant={variant}
+                    backgroundColor={rowBackground}
+                    borderColor={rowBorder}
+                    mutedColor={palette.muted}
+                    textColor={palette.text}
+                  />
+                );
+              })}
+            </View>
+          )}
+        </Animated.View>
       </View>
     </View>
   );

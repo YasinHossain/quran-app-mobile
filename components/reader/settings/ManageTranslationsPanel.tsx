@@ -28,7 +28,10 @@ import { logger } from '@/src/core/infrastructure/monitoring/logger';
 
 import chaptersData from '../../../src/data/chapters.en.json';
 
-import { ReorderableSelectionList } from './resource-panel/ReorderableSelectionList';
+import {
+  ReorderableSelectionList,
+  configureSelectionLayoutAnimation,
+} from './resource-panel/ReorderableSelectionList';
 import { ResourceConfirmModal } from './resource-panel/ResourceConfirmModal';
 import { ResourceDownloadAction } from './resource-panel/ResourceDownloadAction';
 import { ResourceItem } from './resource-panel/ResourceItem';
@@ -445,6 +448,7 @@ export function ManageTranslationsPanel({
 
     if (areSelectionsEqual(normalized, latestSelectionRef.current)) return;
 
+    configureSelectionLayoutAnimation();
     setLocalOrderedSelection(normalized);
     latestSelectionRef.current = normalized;
     scheduleSelectionCommit(normalized);
@@ -636,6 +640,7 @@ export function ManageTranslationsPanel({
       const current = latestSelectionRef.current ?? [];
       if (current.includes(id)) {
         const next = current.filter((x) => x !== id);
+        configureSelectionLayoutAnimation();
         setLocalOrderedSelection(next);
         scheduleSelectionCommit(next);
         return true;
@@ -644,6 +649,7 @@ export function ManageTranslationsPanel({
       if (current.length >= MAX_TRANSLATION_SELECTIONS) return false;
 
       const next = [...current, id];
+      configureSelectionLayoutAnimation();
       setLocalOrderedSelection(next);
       scheduleSelectionCommit(next);
       return true;
@@ -654,6 +660,7 @@ export function ManageTranslationsPanel({
   const handleReset = React.useCallback(() => {
     const sahihId = findSaheehId(translations);
     const next = sahihId !== undefined ? [sahihId] : [DEFAULT_SAHEEH_ID];
+    configureSelectionLayoutAnimation();
     setLocalOrderedSelection(next);
     scheduleSelectionCommit(next);
   }, [scheduleSelectionCommit, translations]);
@@ -682,6 +689,7 @@ export function ManageTranslationsPanel({
   const handleReorderSelection = React.useCallback(
     (ids: number[]) => {
       const normalized = normalizeOrderedSelection(ids, { validIds: availableTranslationIds });
+      configureSelectionLayoutAnimation();
       setLocalOrderedSelection(normalized);
       scheduleSelectionCommit(normalized);
     },

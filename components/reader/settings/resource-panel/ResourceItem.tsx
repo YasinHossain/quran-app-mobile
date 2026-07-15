@@ -17,7 +17,7 @@ export function ResourceItem({
 }: {
   item: ResourceRecord;
   isSelected: boolean;
-  onToggle: (id: number) => void;
+  onToggle: (id: number) => boolean | void;
   trailingAction?: React.ReactNode;
   onTrailingPress?: () => void;
   trailingAccessibilityLabel?: string;
