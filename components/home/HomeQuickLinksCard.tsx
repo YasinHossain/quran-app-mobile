@@ -1,4 +1,4 @@
-import { Plus, Sparkles, X } from 'lucide-react-native';
+import { ArrowUpRight, Plus, X } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import React from 'react';
 import {
@@ -253,7 +253,7 @@ export function HomeQuickLinksCard(): React.JSX.Element {
                       className="items-center justify-center rounded-full"
                       style={[{ width: 34, height: 34, backgroundColor: iconCircleBackground }, activeShadow]}
                     >
-                      <Sparkles size={16} strokeWidth={2.3} color={palette.tint} />
+                      <ArrowUpRight size={17} strokeWidth={2.4} color={palette.tint} />
                     </View>
                     <Text
                       numberOfLines={1}

@@ -13,6 +13,7 @@ type SettingsSetters = Pick<
   | 'setSettings'
   | 'setShowByWords'
   | 'setTajweed'
+  | 'setTajweedMushaf'
   | 'setWordLang'
   | 'setWordTranslationId'
   | 'setTafsirIds'
@@ -34,6 +35,8 @@ const createSetters = (
   setSettings: (s: Settings): void => dispatch({ type: 'SET_SETTINGS', value: s }),
   setShowByWords: (val: boolean): void => dispatch({ type: 'SET_SHOW_BY_WORDS', value: val }),
   setTajweed: (val: boolean): void => dispatch({ type: 'SET_TAJWEED', value: val }),
+  setTajweedMushaf: (tajweed: boolean, mushafId: MushafPackId): void =>
+    dispatch({ type: 'SET_TAJWEED_MUSHAF', value: { tajweed, mushafId } }),
   setWordLang: (lang: string): void => dispatch({ type: 'SET_WORD_LANG', value: lang }),
   setWordTranslationId: (id: number): void =>
     dispatch({ type: 'SET_WORD_TRANSLATION_ID', value: id }),
@@ -64,6 +67,7 @@ interface SettingsContextType {
   setSettings: (settings: Settings) => void;
   setShowByWords: (val: boolean) => void;
   setTajweed: (val: boolean) => void;
+  setTajweedMushaf: (tajweed: boolean, mushafId: MushafPackId) => void;
   setWordLang: (lang: string) => void;
   setWordTranslationId: (id: number) => void;
   setTafsirIds: (ids: number[]) => void;

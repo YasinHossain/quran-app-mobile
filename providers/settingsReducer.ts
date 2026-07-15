@@ -4,6 +4,10 @@ export type SettingsAction =
   | { type: 'SET_SETTINGS'; value: Settings }
   | { type: 'SET_SHOW_BY_WORDS'; value: boolean }
   | { type: 'SET_TAJWEED'; value: boolean }
+  | {
+      type: 'SET_TAJWEED_MUSHAF';
+      value: { tajweed: boolean; mushafId: MushafPackId };
+    }
   | { type: 'SET_WORD_LANG'; value: string }
   | { type: 'SET_WORD_TRANSLATION_ID'; value: number }
   | { type: 'SET_TAFSIR_IDS'; value: number[] }
@@ -47,6 +51,14 @@ const actionHandlers = {
     state.showByWords === action.value ? state : { ...state, showByWords: action.value },
   SET_TAJWEED: (state, action) =>
     state.tajweed === action.value ? state : { ...state, tajweed: action.value },
+  SET_TAJWEED_MUSHAF: (state, action) =>
+    state.tajweed === action.value.tajweed && state.mushafId === action.value.mushafId
+      ? state
+      : {
+          ...state,
+          tajweed: action.value.tajweed,
+          mushafId: action.value.mushafId,
+        },
   SET_WORD_LANG: (state, action) =>
     state.wordLang === action.value ? state : { ...state, wordLang: action.value },
   SET_WORD_TRANSLATION_ID: (state, action) =>

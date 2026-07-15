@@ -28,10 +28,7 @@ import { logger } from '@/src/core/infrastructure/monitoring/logger';
 
 import chaptersData from '../../../src/data/chapters.en.json';
 
-import {
-  ReorderableSelectionList,
-  configureSelectionLayoutAnimation,
-} from './resource-panel/ReorderableSelectionList';
+import { ReorderableSelectionList } from './resource-panel/ReorderableSelectionList';
 import { ResourceConfirmModal } from './resource-panel/ResourceConfirmModal';
 import { ResourceDownloadAction } from './resource-panel/ResourceDownloadAction';
 import { ResourceItem } from './resource-panel/ResourceItem';
@@ -46,7 +43,7 @@ const ESTIMATE_SAMPLE_PER_PAGE = 50;
 const ESTIMATE_STORAGE_OVERHEAD_MULTIPLIER = 1.35;
 const BYTES_PER_MEGABYTE = 1024 * 1024;
 const FALLBACK_TOTAL_VERSE_COUNT = 6236;
-const SELECTION_COMMIT_DEBOUNCE_MS = Platform.OS === 'android' ? 220 : 120;
+const SELECTION_COMMIT_DEBOUNCE_MS = 48;
 
 const TOTAL_VERSE_COUNT = (
   Array.isArray(chaptersData)
@@ -371,6 +368,13 @@ export function ManageTranslationsPanel({
 
   React.useEffect(() => {
     orderedSelectionRef.current = orderedSelection;
+    if (commitTimeoutRef.current !== null) return;
+
+    const normalized = normalizeOrderedSelection(orderedSelection ?? []);
+    if (areSelectionsEqual(normalized, latestSelectionRef.current)) return;
+
+    latestSelectionRef.current = normalized;
+    setLocalOrderedSelection(normalized);
   }, [orderedSelection]);
 
   React.useEffect(() => {
@@ -405,17 +409,10 @@ export function ManageTranslationsPanel({
         commitTimeoutRef.current = null;
         const idsToCommit = [...latestSelectionRef.current];
 
-        InteractionManager.runAfterInteractions(() => {
-          if (scheduledRevision !== commitRevisionRef.current) return;
-          if (areSelectionsEqual(idsToCommit, orderedSelectionRef.current)) return;
+        if (scheduledRevision !== commitRevisionRef.current) return;
+        if (areSelectionsEqual(idsToCommit, orderedSelectionRef.current)) return;
 
-          if (typeof React.startTransition === 'function') {
-            React.startTransition(() => {
-              onChangeSelection(idsToCommit);
-            });
-            return;
-          }
-
+        React.startTransition(() => {
           onChangeSelection(idsToCommit);
         });
       }, SELECTION_COMMIT_DEBOUNCE_MS);
@@ -431,7 +428,7 @@ export function ManageTranslationsPanel({
       }
       const finalSelection = latestSelectionRef.current;
       if (!areSelectionsEqual(finalSelection, orderedSelectionRef.current)) {
-        onChangeSelection([...finalSelection]);
+        React.startTransition(() => onChangeSelection([...finalSelection]));
       }
     },
     [onChangeSelection]
@@ -448,7 +445,6 @@ export function ManageTranslationsPanel({
 
     if (areSelectionsEqual(normalized, latestSelectionRef.current)) return;
 
-    configureSelectionLayoutAnimation();
     setLocalOrderedSelection(normalized);
     latestSelectionRef.current = normalized;
     scheduleSelectionCommit(normalized);
@@ -640,7 +636,6 @@ export function ManageTranslationsPanel({
       const current = latestSelectionRef.current ?? [];
       if (current.includes(id)) {
         const next = current.filter((x) => x !== id);
-        configureSelectionLayoutAnimation();
         setLocalOrderedSelection(next);
         scheduleSelectionCommit(next);
         return true;
@@ -649,7 +644,6 @@ export function ManageTranslationsPanel({
       if (current.length >= MAX_TRANSLATION_SELECTIONS) return false;
 
       const next = [...current, id];
-      configureSelectionLayoutAnimation();
       setLocalOrderedSelection(next);
       scheduleSelectionCommit(next);
       return true;
@@ -660,7 +654,6 @@ export function ManageTranslationsPanel({
   const handleReset = React.useCallback(() => {
     const sahihId = findSaheehId(translations);
     const next = sahihId !== undefined ? [sahihId] : [DEFAULT_SAHEEH_ID];
-    configureSelectionLayoutAnimation();
     setLocalOrderedSelection(next);
     scheduleSelectionCommit(next);
   }, [scheduleSelectionCommit, translations]);
@@ -689,7 +682,6 @@ export function ManageTranslationsPanel({
   const handleReorderSelection = React.useCallback(
     (ids: number[]) => {
       const normalized = normalizeOrderedSelection(ids, { validIds: availableTranslationIds });
-      configureSelectionLayoutAnimation();
       setLocalOrderedSelection(normalized);
       scheduleSelectionCommit(normalized);
     },

@@ -3,7 +3,11 @@ import { Animated, Modal, Platform, Pressable, StyleSheet, useWindowDimensions, 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import Colors from '@/constants/Colors';
-import { sideSheetTransform, useModalTransition } from '@/components/motion/modalTransition';
+import {
+  modalMotion,
+  sideSheetTransform,
+  useModalTransition,
+} from '@/components/motion/modalTransition';
 import { useAppTheme } from '@/providers/ThemeContext';
 
 import { SettingsSidebarContent, type PanelType } from './SettingsSidebarContent';
@@ -36,8 +40,8 @@ export function SettingsSidebar({
   const sheetWidth = Math.min(390, Math.round(width * 0.92));
   const hiddenTranslateX = sheetWidth + 12;
   const { visible, progress, onModalShow } = useModalTransition(isOpen, {
-    openDuration: 380,
-    closeDuration: 300,
+    openDuration: modalMotion.quickOpenDuration,
+    closeDuration: modalMotion.quickCloseDuration,
     onAfterClose,
   });
 

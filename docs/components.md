@@ -91,10 +91,10 @@ This document lists reusable UI components currently available in the codebase s
 | `SettingsTabToggle` | Segmented control for switching between settings tabs. | `components/reader/settings/SettingsTabToggle.tsx` |
 | `CollapsibleSection` | Collapsible section wrapper used by settings groups. | `components/reader/settings/CollapsibleSection.tsx` |
 | `ToggleRow` | Label + switch row for boolean settings. | `components/reader/settings/ToggleRow.tsx` |
-| `FontSizeSlider` | Slider row used for font size controls. | `components/reader/settings/FontSizeSlider.tsx` |
+| `FontSizeSlider` | Slider row used for font size controls; keeps native thumb/label feedback local while dragging and commits the reader setting on release. | `components/reader/settings/FontSizeSlider.tsx` |
 | `SelectionBox` | Pressable selection row used for “pick one” settings. | `components/reader/settings/SelectionBox.tsx` |
 | `MushafPackOptionCard` | Mushaf-pack settings card that shows install status, progress/error state, source note, and pack actions like Use / Install / Delete. | `components/reader/settings/MushafPackOptionCard.tsx` |
-| `ManageTranslationsPanel` | Web-parity “Manage Translations” panel (search + language tabs + My Selections) plus offline download/delete/cancel actions with hosted-pack size resolution. | `components/reader/settings/ManageTranslationsPanel.tsx` |
+| `ManageTranslationsPanel` | Web-parity “Manage Translations” panel (search + language tabs + My Selections) with immediate optimistic selection feedback, coalesced reader commits, and offline download/delete/cancel actions with hosted-pack size resolution. | `components/reader/settings/ManageTranslationsPanel.tsx` |
 | `ManageTafsirsPanel` | Web-parity “Manage Tafsirs” panel (search + language tabs + My Selections + limit warning) plus the same offline download/delete/cancel flow used by translations, backed by hosted tafsir packs or the optimized bulk API fallback. | `components/reader/settings/ManageTafsirsPanel.tsx` |
 | `ResourceTabs` | Horizontal language tabs with scroll buttons (used by translation/tafsir panels). | `components/reader/settings/resource-panel/ResourceTabs.tsx` |
 | `ResourceItem` | Selectable resource row (used by translation/tafsir panels). | `components/reader/settings/resource-panel/ResourceItem.tsx` |

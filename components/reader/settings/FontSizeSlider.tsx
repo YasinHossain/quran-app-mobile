@@ -1,4 +1,5 @@
 import Slider from '@react-native-community/slider';
+import React from 'react';
 import { Text, View } from 'react-native';
 
 import Colors from '@/constants/Colors';
@@ -19,6 +20,24 @@ export function FontSizeSlider({
 }): React.JSX.Element {
   const { resolvedTheme } = useAppTheme();
   const palette = Colors[resolvedTheme];
+  const [draftValue, setDraftValue] = React.useState(value);
+  const isSlidingRef = React.useRef(false);
+
+  React.useEffect(() => {
+    if (!isSlidingRef.current) {
+      setDraftValue(value);
+    }
+  }, [value]);
+
+  const handleSlidingComplete = React.useCallback(
+    (next: number) => {
+      const rounded = Math.round(next);
+      isSlidingRef.current = false;
+      setDraftValue(rounded);
+      React.startTransition(() => onChange(rounded));
+    },
+    [onChange]
+  );
 
   return (
     <View className="gap-2">
@@ -27,15 +46,19 @@ export function FontSizeSlider({
           {label}
         </Text>
         <Text className="text-sm font-semibold" style={{ color: palette.tint }}>
-          {Math.round(value)}
+          {Math.round(draftValue)}
         </Text>
       </View>
       <Slider
-        value={value}
+        value={draftValue}
         minimumValue={min}
         maximumValue={max}
         step={1}
-        onValueChange={onChange}
+        onSlidingStart={() => {
+          isSlidingRef.current = true;
+        }}
+        onValueChange={setDraftValue}
+        onSlidingComplete={handleSlidingComplete}
         minimumTrackTintColor={palette.tint}
         maximumTrackTintColor={resolvedTheme === 'dark' ? 'rgba(255, 255, 255, 0.3)' : 'rgba(0, 0, 0, 0.2)'}
         thumbTintColor={palette.tint}

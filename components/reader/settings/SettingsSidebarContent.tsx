@@ -89,6 +89,57 @@ const UI_LANGUAGE_ITEMS: WordLanguageItem[] = UI_LANGUAGES.map((item, index) => 
   code: item.code,
 }));
 
+const RESPONSIVE_SETTING_COMMIT_MS = 48;
+
+function useResponsiveSetting<T>(
+  externalValue: T,
+  onCommit: (value: T) => void
+): readonly [T, (value: T) => void] {
+  const [localValue, setLocalValue] = React.useState(externalValue);
+  const latestValueRef = React.useRef(externalValue);
+  const onCommitRef = React.useRef(onCommit);
+  const commitTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  React.useEffect(() => {
+    onCommitRef.current = onCommit;
+  }, [onCommit]);
+
+  React.useEffect(() => {
+    if (commitTimeoutRef.current === null) {
+      latestValueRef.current = externalValue;
+      setLocalValue(externalValue);
+    }
+  }, [externalValue]);
+
+  const update = React.useCallback((nextValue: T) => {
+    latestValueRef.current = nextValue;
+    setLocalValue(nextValue);
+
+    if (commitTimeoutRef.current) {
+      clearTimeout(commitTimeoutRef.current);
+    }
+
+    commitTimeoutRef.current = setTimeout(() => {
+      commitTimeoutRef.current = null;
+      const valueToCommit = latestValueRef.current;
+      React.startTransition(() => onCommitRef.current(valueToCommit));
+    }, RESPONSIVE_SETTING_COMMIT_MS);
+  }, []);
+
+  React.useEffect(
+    () => () => {
+      if (!commitTimeoutRef.current) return;
+      clearTimeout(commitTimeoutRef.current);
+      commitTimeoutRef.current = null;
+      const valueToCommit = latestValueRef.current;
+      React.startTransition(() => onCommitRef.current(valueToCommit));
+    },
+    []
+  );
+
+  return [localValue, update] as const;
+}
+
 function getLanguageName(code: string | undefined): string {
   if (!code) return '';
   return WORD_LANGUAGES.find((l) => l.code === code)?.name ?? code;
@@ -247,8 +298,9 @@ export function SettingsSidebarContent({
   const { width: windowWidth } = useWindowDimensions();
   const {
     settings,
-    setSettings,
     arabicFonts,
+    setShowByWords,
+    setTajweedMushaf,
     setArabicFontFace,
     setArabicFontSize,
     setTranslationFontSize,
@@ -257,12 +309,21 @@ export function SettingsSidebarContent({
     setTranslationIds,
     setTafsirIds,
     setUiLanguage,
-    setMushafId,
     setMushafScaleStep,
   } = useSettings();
   const { t } = useUiTranslation();
   const { resolvedTheme, setDarkModeEnabled, isDark } = useAppTheme();
   const palette = Colors[resolvedTheme];
+  const [displayShowByWords, updateShowByWords] = useResponsiveSetting(
+    settings.showByWords,
+    setShowByWords
+  );
+  const [displayWordLang, updateWordLang] = useResponsiveSetting(settings.wordLang, setWordLang);
+  const [displayTajweed, setDisplayTajweed] = React.useState(settings.tajweed);
+
+  React.useEffect(() => {
+    setDisplayTajweed(settings.tajweed);
+  }, [settings.tajweed]);
 
   const [activeTab, setActiveTab] = React.useState<SettingsTab>(activeTabOverride ?? 'translations');
   const [panel, setPanel] = React.useState<Panel>(() => ({ type: initialPanel ?? 'root' }));
@@ -281,7 +342,9 @@ export function SettingsSidebarContent({
   );
 
 
-  const previousMushafIdRef = React.useRef<MushafPackId | undefined>(settings.mushafId);
+  const previousMushafIdRef = React.useRef<MushafPackId | undefined>(
+    settings.mushafId === TAJWEED_MUSHAF_ID ? DEFAULT_MUSHAF_ID : settings.mushafId
+  );
   const animationTokenRef = React.useRef(0);
   const openPanelRafRef = React.useRef<number | null>(null);
   const navProgress = React.useRef(new Animated.Value(initialPanel && initialPanel !== 'root' ? 1 : 0)).current;
@@ -536,7 +599,7 @@ export function SettingsSidebarContent({
 
     return primaryName;
   }, [settings.translationId, settings.translationIds, translationsById]);
-  const selectedWordLanguageName = getLanguageName(settings.wordLang);
+  const selectedWordLanguageName = getLanguageName(displayWordLang);
   const selectedArabicFont = React.useMemo(
     () => arabicFonts.find((font) => font.value === settings.arabicFontFace) ?? arabicFonts[0],
     [arabicFonts, settings.arabicFontFace]
@@ -621,9 +684,9 @@ export function SettingsSidebarContent({
     (id: number) => {
       const selected = WORD_LANGUAGE_ITEMS.find((item) => item.id === id);
       if (!selected) return;
-      setWordLang(selected.code);
+      updateWordLang(selected.code);
     },
-    [setWordLang]
+    [updateWordLang]
   );
   const handleSelectArabicFont = React.useCallback(
     (id: number) => {
@@ -708,17 +771,17 @@ export function SettingsSidebarContent({
         }
 
         previousMushafIdRef.current = settings.mushafId;
-        setSettings({ ...settings, tajweed: true, mushafId: TAJWEED_MUSHAF_ID });
+        setDisplayTajweed(true);
+        React.startTransition(() => setTajweedMushaf(true, TAJWEED_MUSHAF_ID));
       } else {
         setEnableTajweedAfterDownload(false);
-        setSettings({
-          ...settings,
-          tajweed: false,
-          mushafId: previousMushafIdRef.current,
-        });
+        setDisplayTajweed(false);
+        React.startTransition(() =>
+          setTajweedMushaf(false, previousMushafIdRef.current ?? DEFAULT_MUSHAF_ID)
+        );
       }
     },
-    [mushafPackEntries, setSettings, settings]
+    [mushafPackEntries, setTajweedMushaf, settings.mushafId]
   );
 
   const applyMushafSelection = React.useCallback(
@@ -744,13 +807,14 @@ export function SettingsSidebarContent({
         }
       }
 
-      setSettings({
-        ...settings,
-        mushafId: packId,
-        tajweed: packId === TAJWEED_MUSHAF_ID,
-      });
+      const enablesTajweed = packId === TAJWEED_MUSHAF_ID;
+      if (enablesTajweed && settings.mushafId !== TAJWEED_MUSHAF_ID) {
+        previousMushafIdRef.current = settings.mushafId;
+      }
+      setDisplayTajweed(enablesTajweed);
+      React.startTransition(() => setTajweedMushaf(enablesTajweed, packId));
     },
-    [mushafPackEntries, setSettings, settings]
+    [mushafPackEntries, setTajweedMushaf, settings.mushafId]
   );
 
   const handleInstallMushafPack = React.useCallback(
@@ -758,7 +822,8 @@ export function SettingsSidebarContent({
       try {
         await installPack(packId);
         if (packId === TAJWEED_MUSHAF_ID && enableTajweedAfterDownload) {
-          setSettings({ ...settings, tajweed: true, mushafId: TAJWEED_MUSHAF_ID });
+          setDisplayTajweed(true);
+          React.startTransition(() => setTajweedMushaf(true, TAJWEED_MUSHAF_ID));
           setEnableTajweedAfterDownload(false);
         }
       } catch (error) {
@@ -770,7 +835,7 @@ export function SettingsSidebarContent({
         Alert.alert('Install failed', message);
       }
     },
-    [enableTajweedAfterDownload, installPack, setSettings, settings]
+    [enableTajweedAfterDownload, installPack, setTajweedMushaf]
   );
 
   const handleConfirmMushafPackDownload = React.useCallback(() => {
@@ -1048,7 +1113,7 @@ export function SettingsSidebarContent({
                   <WordLanguageResourceRow
                     item={item}
                     downloadItem={downloadItem}
-                    isSelected={item.code === settings.wordLang}
+                    isSelected={item.code === displayWordLang}
                     isBusy={busyWordLangCodes.has(item.code)}
                     isDark={isDark}
                     tintColor={palette.tint}
@@ -1318,8 +1383,8 @@ export function SettingsSidebarContent({
                             />
                             <ToggleRow
                               label={t('show_word_by_word')}
-                              value={settings.showByWords}
-                              onChange={(next) => setSettings({ ...settings, showByWords: next })}
+                              value={displayShowByWords}
+                              onChange={updateShowByWords}
                             />
                             <SelectionBox
                               label={t('word_by_word_language')}
@@ -1329,7 +1394,7 @@ export function SettingsSidebarContent({
                             <ToggleRow
                               disabled={isTajweedDownloading}
                               label={t('apply_tajweed')}
-                              value={settings.tajweed}
+                              value={displayTajweed}
                               rightElement={tajweedToggleAccessory}
                               onChange={toggleTajweed}
                             />
