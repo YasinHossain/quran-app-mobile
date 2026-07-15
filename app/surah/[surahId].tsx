@@ -2,6 +2,7 @@ import { FlashList, type FlashListRef } from '@shopify/flash-list';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { ArrowLeft, Settings } from 'lucide-react-native';
 import React from 'react';
+import { useReducedMotion } from 'react-native-reanimated';
 import {
   ActivityIndicator,
   Animated,
@@ -119,6 +120,69 @@ function VerseCardPlaceholder({ verseKey }: { verseKey: string }): React.JSX.Ele
           <View className="h-4 w-2/3 rounded-full bg-surface dark:bg-surface-dark" />
         </View>
       </View>
+    </View>
+  );
+}
+
+function TranslationReaderLoadingState(): React.JSX.Element {
+  const reduceMotion = useReducedMotion();
+  const pulseOpacity = React.useRef(new Animated.Value(1)).current;
+
+  React.useEffect(() => {
+    if (reduceMotion) {
+      pulseOpacity.setValue(1);
+      return;
+    }
+
+    const pulseAnimation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseOpacity, {
+          duration: 850,
+          toValue: 0.65,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseOpacity, {
+          duration: 850,
+          toValue: 1,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+
+    pulseAnimation.start();
+    return () => pulseAnimation.stop();
+  }, [pulseOpacity, reduceMotion]);
+
+  return (
+    <View
+      accessibilityLabel="Preparing reader"
+      accessibilityRole="progressbar"
+      className="flex-1 px-4"
+    >
+      <Animated.View
+        accessibilityElementsHidden
+        className="pt-10"
+        importantForAccessibility="no-hide-descendants"
+        style={{ opacity: pulseOpacity }}
+      >
+        {[0, 1, 2].map((index) => (
+          <View
+            key={index}
+            className="border-b border-border/40 py-5 dark:border-border-dark/30"
+          >
+            <View className="mb-5 h-5 w-16 rounded-full bg-border/30 dark:bg-border-dark/30" />
+            <View className="mb-6 items-end gap-3">
+              <View className="h-10 w-4/5 rounded-xl bg-border/30 dark:bg-border-dark/30" />
+              <View className="h-10 w-3/5 rounded-xl bg-border/30 dark:bg-border-dark/30" />
+            </View>
+            <View className="gap-3">
+              <View className="h-4 rounded-full bg-border/30 dark:bg-border-dark/30" />
+              <View className="h-4 w-5/6 rounded-full bg-border/30 dark:bg-border-dark/30" />
+              <View className="h-4 w-2/3 rounded-full bg-border/30 dark:bg-border-dark/30" />
+            </View>
+          </View>
+        ))}
+      </Animated.View>
     </View>
   );
 }
@@ -348,7 +412,7 @@ export default function SurahScreen(): React.JSX.Element {
 
   const showTranslationAttribution = !isMushafView && verseTranslationIds.length > 1;
   const shouldLoadVerseWords = Boolean(
-    !isMushafView && (settings.showByWords || audio.isVisible)
+    !isMushafView && (Platform.OS === 'android' || settings.showByWords || audio.isVisible)
   );
 
   React.useEffect(() => {
@@ -1190,10 +1254,14 @@ export default function SurahScreen(): React.JSX.Element {
     isMushafView,
     verseCount,
   });
+  // Keep the Kotlin token layout mounted before audio opens. Switching a visible verse from one
+  // TextView to per-word native views at first play changes line wrapping and looks like a list
+  // refresh. Tajweed intentionally keeps its glyph renderer, matching VerseCard's behavior.
+  const nativeAudioWordLayoutEnabled = Boolean(!settings.showByWords && !settings.tajweed);
   const nativeLightSurahVerses = React.useMemo(
     () =>
       buildNativeLightSurahVerses({
-        audioWordSyncEnabled: verseAudioWordSync.isSeekEnabled,
+        audioWordSyncEnabled: nativeAudioWordLayoutEnabled,
         getVerseByNumber,
         showTranslationAttribution,
         showByWords: Boolean(settings.showByWords),
@@ -1209,7 +1277,7 @@ export default function SurahScreen(): React.JSX.Element {
       settings.tajweed,
       supportsNativeLightSurahReader,
       translationsById,
-      verseAudioWordSync.isSeekEnabled,
+      nativeAudioWordLayoutEnabled,
       verseNumbers,
     ]
   );
@@ -1221,6 +1289,11 @@ export default function SurahScreen(): React.JSX.Element {
       verseCount > 0 &&
       nativeLightSurahVerses.length !== verseCount
   );
+  const shouldShowAndroidTranslationLoading = Boolean(
+    Platform.OS === 'android' &&
+      !isMushafView &&
+      ((!hasLoadedContent && isLoading) || isWaitingForNativeLightSurahReader)
+  );
   React.useEffect(() => {
     nativeInitialPositioningRef.current = Boolean(shouldUseNativeLightSurahReader && !isMushafView);
   }, [isMushafView, shouldUseNativeLightSurahReader, startVerseParam, translationListKey]);
@@ -1229,7 +1302,7 @@ export default function SurahScreen(): React.JSX.Element {
       buildNativeLightSurahReaderSettings({
         arabicFontFace: settings.arabicFontFace,
         arabicFontSize: settings.arabicFontSize,
-        audioWordSyncEnabled: verseAudioWordSync.isSeekEnabled,
+        audioWordSyncEnabled: nativeAudioWordLayoutEnabled,
         contentLanguage: settings.contentLanguage,
         showByWords: Boolean(settings.showByWords),
         tajweed: Boolean(settings.tajweed),
@@ -1248,7 +1321,7 @@ export default function SurahScreen(): React.JSX.Element {
       settings.wordLang,
       showTranslationAttribution,
       verseTranslationIds,
-      verseAudioWordSync.isSeekEnabled,
+      nativeAudioWordLayoutEnabled,
     ]
   );
   const nativeLightSurahReaderTheme = React.useMemo(
@@ -2188,6 +2261,8 @@ export default function SurahScreen(): React.JSX.Element {
                   </Pressable>
                 </View>
               </View>
+            ) : shouldShowAndroidTranslationLoading ? (
+              <TranslationReaderLoadingState />
             ) : verseCount <= 0 ? (
               <View className="flex-1 px-4" style={{ paddingTop: 16 }}>
                 <Text className="mt-2 text-sm text-muted dark:text-muted-dark">
@@ -2210,13 +2285,6 @@ export default function SurahScreen(): React.JSX.Element {
                 onWordPress={handleNativeWordPress}
                 onScroll={handleNativeScroll}
               />
-            ) : isWaitingForNativeLightSurahReader ? (
-              <View className="flex-1 items-center justify-center px-6">
-                <ActivityIndicator color={palette.text} />
-                <Text className="mt-3 text-center text-sm text-muted dark:text-muted-dark">
-                  Preparing reader…
-                </Text>
-              </View>
             ) : Platform.OS === 'web' ? (
               <FlatList
                 ref={(node) => {

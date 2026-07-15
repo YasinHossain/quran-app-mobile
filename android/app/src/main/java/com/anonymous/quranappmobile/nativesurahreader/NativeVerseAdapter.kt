@@ -78,17 +78,23 @@ internal class NativeVerseAdapter(
     }
   }
 
-  override fun onBindViewHolder(
-      holder: RecyclerView.ViewHolder,
-      position: Int,
-      payloads: MutableList<Any>
-  ) {
-    if (payloads.contains(PAYLOAD_ACTIVE_AUDIO) && holder is NativeVerseViewHolder) {
-      holder.bindActiveAudio(activeVerseKey, activeWord)
-      return
-    }
+  override fun onViewAttachedToWindow(holder: RecyclerView.ViewHolder) {
+    super.onViewAttachedToWindow(holder)
+    updateAttachedActiveAudio(holder)
+    updateAttachedWordAudioSeek(holder)
+  }
 
-    super.onBindViewHolder(holder, position, payloads)
+  fun updateAttachedWordAudioSeek(holder: RecyclerView.ViewHolder) {
+    if (holder is NativeVerseViewHolder) {
+      holder.updateWordAudioSeekEnabled(wordAudioSeekEnabled)
+    }
+  }
+
+  fun updateAttachedActiveAudio(holder: RecyclerView.ViewHolder) {
+    if (holder is NativeVerseViewHolder) {
+      holder.bindActiveAudio(activeVerseKey, activeWord)
+      holder.itemView.invalidate()
+    }
   }
 
   override fun getItemCount(): Int = items.size + introRowCount
@@ -100,7 +106,6 @@ internal class NativeVerseAdapter(
   companion object {
     private const val VIEW_TYPE_INTRO = 0
     private const val VIEW_TYPE_VERSE = 1
-    const val PAYLOAD_ACTIVE_AUDIO = "activeAudio"
   }
 }
 
@@ -145,5 +150,9 @@ internal class NativeVerseViewHolder(private val row: NativeVerseRowView) :
 
   fun bindActiveAudio(activeVerseKey: String?, activeWord: NativeActiveWord?) {
     row.bindActiveAudio(activeVerseKey, activeWord)
+  }
+
+  fun updateWordAudioSeekEnabled(enabled: Boolean) {
+    row.updateWordAudioSeekEnabled(enabled)
   }
 }

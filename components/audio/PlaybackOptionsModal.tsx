@@ -16,6 +16,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Reanimated, {
+  FadeIn,
+  FadeOut,
   useAnimatedStyle,
   useSharedValue,
   withSpring,
@@ -184,8 +186,7 @@ export function PlaybackOptionsModal({
 
   const { visible, progress, dismissEnabledRef, onModalShow } = useModalTransition(isOpen);
 
-  const maxDialogHeight = Math.max(0, Math.round(windowHeight * 0.85));
-  const minDialogHeight = Math.min(maxDialogHeight, Math.max(420, Math.round(windowHeight * 0.7)));
+  const maxDialogHeight = Math.max(0, Math.round(windowHeight * 0.88));
 
   const handleOverlayPress = React.useCallback(() => {
     if (!dismissEnabledRef.current) return;
@@ -331,22 +332,22 @@ export function PlaybackOptionsModal({
           <Animated.View
             style={[
               styles.dialog,
-              { maxHeight: maxDialogHeight, minHeight: minDialogHeight },
+              { maxHeight: maxDialogHeight },
               dialogTransform(progress),
             ]}
             className="bg-surface dark:bg-background-dark border border-border/30 dark:border-border-dark/20"
           >
             <View style={styles.dialogSafeArea}>
               <View className={isDark ? 'dark' : ''} style={styles.inner}>
-                <View className="px-4 pt-4 pb-3 border-b border-border/30 dark:border-border-dark/20">
+                <View className="px-5 pt-5 pb-4 border-b border-border/30 dark:border-border-dark/20">
                   <View className="flex-row items-center justify-between gap-3">
                     <View className="flex-row items-center gap-3 flex-1 min-w-0">
-                      <View className="h-10 w-10 rounded-xl items-center justify-center bg-accent/10">
-                        <SlidersHorizontal color={palette.tint} size={18} strokeWidth={2.25} />
+                      <View className="h-12 w-12 rounded-xl items-center justify-center bg-interactive dark:bg-interactive-dark">
+                        <SlidersHorizontal color={palette.tint} size={22} strokeWidth={2.25} />
                       </View>
                       <Text
                         numberOfLines={1}
-                        className="flex-1 text-base font-semibold text-foreground dark:text-foreground-dark"
+                        className="flex-1 text-xl font-bold text-foreground dark:text-foreground-dark"
                       >
                         {t('playback_options', { fallback: 'Playback options' })}
                       </Text>
@@ -364,119 +365,140 @@ export function PlaybackOptionsModal({
                     </Pressable>
                   </View>
 
-                  <PlaybackOptionsTabToggle
-                    activeTab={activeTab}
-                    onTabChange={setActiveTab}
-                    isOpen={isOpen}
-                  />
+                  <View style={styles.tabToggleWrap}>
+                    <PlaybackOptionsTabToggle
+                      activeTab={activeTab}
+                      onTabChange={setActiveTab}
+                      isOpen={isOpen}
+                    />
+                  </View>
                 </View>
 
                 <View style={styles.content}>
-                  <ScrollView
-                    contentContainerStyle={styles.scrollContent}
-                    keyboardShouldPersistTaps="handled"
-                  >
-                    {activeTab === 'reciter' ? (
-                      <View className="gap-4">
-                      <View className="gap-2">
-                        {(recitersLoading || recitersError) && (
-                          <View className="flex-row items-center gap-2 px-1">
-                            {recitersLoading ? (
-                              <ActivityIndicator size="small" color={palette.muted} />
-                            ) : null}
-                            <Text className="text-xs text-muted dark:text-muted-dark">
-                              {recitersLoading
-                                ? t('loading_reciters', { fallback: 'Loading reciters…' })
-                                : t('unable_to_load_reciters', { fallback: 'Unable to load reciters.' })}
-                            </Text>
-                            {recitersError ? (
-                              <Pressable
-                                onPress={refresh}
-                                accessibilityRole="button"
-                                accessibilityLabel={t('retry', { fallback: 'Retry' })}
-                                className="ml-auto px-3 py-1.5 rounded-lg bg-interactive dark:bg-interactive-dark"
-                                style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
-                              >
-                                <Text className="text-xs font-semibold text-foreground dark:text-foreground-dark">
-                                  {t('retry', { fallback: 'Retry' })}
-                                </Text>
-                              </Pressable>
-                            ) : null}
-                          </View>
-                        )}
+                  {activeTab === 'reciter' ? (
+                    <Reanimated.View
+                      key="reciter-tab"
+                      entering={FadeIn.duration(200)}
+                      exiting={FadeOut.duration(150)}
+                      style={styles.tabFill}
+                    >
+                      <ScrollView
+                        style={styles.tabFill}
+                        contentContainerStyle={styles.scrollContent}
+                        keyboardShouldPersistTaps="handled"
+                      >
+                        <View className="gap-2">
+                          {(recitersLoading || recitersError) && (
+                            <View className="flex-row items-center gap-2">
+                              {recitersLoading ? (
+                                <ActivityIndicator size="small" color={palette.muted} />
+                              ) : null}
+                              <Text className="text-xs text-muted dark:text-muted-dark">
+                                {recitersLoading
+                                  ? t('loading_reciters', { fallback: 'Loading reciters…' })
+                                  : t('unable_to_load_reciters', { fallback: 'Unable to load reciters.' })}
+                              </Text>
+                              {recitersError ? (
+                                <Pressable
+                                  onPress={refresh}
+                                  accessibilityRole="button"
+                                  accessibilityLabel={t('retry', { fallback: 'Retry' })}
+                                  className="ml-auto px-3 py-1.5 rounded-lg bg-interactive dark:bg-interactive-dark"
+                                  style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
+                                >
+                                  <Text className="text-xs font-semibold text-foreground dark:text-foreground-dark">
+                                    {t('retry', { fallback: 'Retry' })}
+                                  </Text>
+                                </Pressable>
+                              ) : null}
+                            </View>
+                          )}
 
-                        <View className="gap-2 px-1">
-                          {reciterOptions.map((reciter) => {
-                            const isSelected = localReciter.id === reciter.id;
-                            return (
-                              <Pressable
-                                key={reciter.id}
-                                onPress={() => setLocalReciter(reciter)}
-                                accessibilityRole="button"
-                                accessibilityLabel={t('reciter_names.' + reciter.id, { fallback: reciter.name })}
-                                className={[
-                                  'w-full rounded-lg border px-3 py-2',
-                                  isSelected
-                                    ? 'border-accent bg-accent/10'
-                                    : 'border-border/30 dark:border-border-dark/20 bg-interactive dark:bg-surface-navigation-dark',
-                                ].join(' ')}
-                                style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
-                              >
-                                <View className="flex-row items-center justify-between gap-3">
-                                  <View className="flex-1 min-w-0">
-                                    <Text
-                                      numberOfLines={1}
-                                      className="text-sm font-medium text-foreground dark:text-foreground-dark"
-                                    >
-                                      {t('reciter_names.' + reciter.id, { fallback: reciter.name })}
-                                    </Text>
-                                    {reciter.locale ? (
+                          <View className="gap-2">
+                            {reciterOptions.map((reciter) => {
+                              const isSelected = localReciter.id === reciter.id;
+                              return (
+                                <Pressable
+                                  key={reciter.id}
+                                  onPress={() => setLocalReciter(reciter)}
+                                  accessibilityRole="button"
+                                  accessibilityLabel={t('reciter_names.' + reciter.id, { fallback: reciter.name })}
+                                  className={[
+                                    'w-full rounded-lg border px-3 py-2',
+                                    isSelected
+                                      ? 'border-accent bg-accent/10'
+                                      : 'border-border/30 dark:border-border-dark/20 bg-interactive dark:bg-surface-navigation-dark',
+                                  ].join(' ')}
+                                  style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
+                                >
+                                  <View className="flex-row items-center justify-between gap-3">
+                                    <View className="flex-1 min-w-0">
                                       <Text
                                         numberOfLines={1}
-                                        className="mt-1 text-xs text-muted dark:text-muted-dark"
+                                        className="text-sm font-medium text-foreground dark:text-foreground-dark"
                                       >
-                                        {reciter.locale}
+                                        {t('reciter_names.' + reciter.id, { fallback: reciter.name })}
                                       </Text>
-                                    ) : null}
-                                  </View>
+                                      {reciter.locale ? (
+                                        <Text
+                                          numberOfLines={1}
+                                          className="mt-1 text-xs text-muted dark:text-muted-dark"
+                                        >
+                                          {reciter.locale}
+                                        </Text>
+                                      ) : null}
+                                    </View>
 
-                                  <View
-                                    className={[
-                                      'h-5 w-5 rounded-full border-2 items-center justify-center',
-                                      isSelected
-                                        ? 'border-accent'
-                                        : 'border-border/60 dark:border-border-dark/40',
-                                    ].join(' ')}
-                                  >
-                                    {isSelected ? (
-                                      <View className="h-2.5 w-2.5 rounded-full bg-accent" />
-                                    ) : null}
+                                    <View
+                                      className={[
+                                        'h-5 w-5 rounded-full border-2 items-center justify-center',
+                                        isSelected
+                                          ? 'border-accent'
+                                          : 'border-border/60 dark:border-border-dark/40',
+                                      ].join(' ')}
+                                    >
+                                      {isSelected ? (
+                                        <View className="h-2.5 w-2.5 rounded-full bg-accent" />
+                                      ) : null}
+                                    </View>
                                   </View>
-                                </View>
-                              </Pressable>
-                            );
-                          })}
+                                </Pressable>
+                              );
+                            })}
+                          </View>
                         </View>
-                      </View>
-                    </View>
+                      </ScrollView>
+                    </Reanimated.View>
                   ) : (
-                    <RepeatOptionsPanel
-                      localRepeat={localRepeat}
-                      setLocalRepeat={setLocalRepeat}
-                      rangeWarning={rangeWarning}
-                      setRangeWarning={setRangeWarning}
-                    />
+                    <Reanimated.View
+                      key="repeat-tab"
+                      entering={FadeIn.duration(200)}
+                      exiting={FadeOut.duration(150)}
+                      style={styles.tabFill}
+                    >
+                      <ScrollView
+                        style={styles.tabFill}
+                        contentContainerStyle={styles.scrollContent}
+                        keyboardShouldPersistTaps="handled"
+                      >
+                        <RepeatOptionsPanel
+                          localRepeat={localRepeat}
+                          setLocalRepeat={setLocalRepeat}
+                          rangeWarning={rangeWarning}
+                          setRangeWarning={setRangeWarning}
+                        />
+                      </ScrollView>
+                    </Reanimated.View>
                   )}
-                  </ScrollView>
                 </View>
 
-                <View className="px-4 py-3 border-t border-border/30 dark:border-border-dark/20">
+                <View className="px-5 py-3 border-t border-border/30 dark:border-border-dark/20 bg-surface dark:bg-background-dark">
                   <View className="flex-row items-center justify-end">
                     <Pressable
                       onPress={commit}
                       accessibilityRole="button"
                       accessibilityLabel={t('apply', { fallback: 'Apply' })}
-                      className="px-5 py-3 rounded-xl bg-accent"
+                      className="px-5 py-2.5 rounded-lg bg-accent"
                       style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
                     >
                       <Text className="text-sm font-semibold text-on-accent">{t('apply', { fallback: 'Apply' })}</Text>
@@ -1059,9 +1081,9 @@ const styles = StyleSheet.create({
   },
   dialog: {
     width: '100%',
-    maxWidth: 768,
+    maxWidth: 520,
     alignSelf: 'center',
-    borderRadius: 24,
+    borderRadius: 18,
     overflow: 'hidden',
   },
   dialogSafeArea: {
@@ -1075,9 +1097,16 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     minHeight: 0,
   },
+  tabFill: {
+    flexShrink: 1,
+    minHeight: 0,
+  },
+  tabToggleWrap: {
+    marginTop: 16,
+  },
   scrollContent: {
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    paddingBottom: 24,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    paddingBottom: 10,
   },
 });

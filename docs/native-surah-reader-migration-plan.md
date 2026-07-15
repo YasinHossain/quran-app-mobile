@@ -323,6 +323,16 @@ Suggested handoff prompt:
 
 Goal: keep the audio system in React Native but render active verse and word sync highlights natively.
 
+Status: implemented for the Android native reader. Active-word ticks update attached Kotlin holders
+directly and invalidate the outer native surface on the next frame, without waiting for a
+`RecyclerView` scroll pass or queuing full-row refreshes. Word tap enablement and audio-bar inset
+changes are updated in place. Plain-reader word data and token rows are prepared before playback,
+so opening the audio player does not reload the verse model or replace visible Arabic rows. Tajweed
+continues to use its glyph renderer without word highlighting, matching the React Native reader.
+When playback advances to another verse, Kotlin smoothly centers it in the reader viewport. Verses
+taller than the viewport use a safe top offset instead; word-level ticks repaint in place and do not
+trigger scrolling.
+
 React Native should continue to own:
 
 - play/pause

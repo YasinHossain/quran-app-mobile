@@ -225,6 +225,11 @@ internal class NativeVerseRowView(
     val verse = boundVerse ?: return
     setBackgroundColor(if (activeVerseKey == verse.verseKey) boundTheme.activeBackgroundColor else Color.TRANSPARENT)
     wordLayoutView.updateActiveWord(activeWord)
+    invalidate()
+  }
+
+  fun updateWordAudioSeekEnabled(enabled: Boolean) {
+    wordLayoutView.updateWordAudioSeekEnabled(enabled)
   }
 
   private fun dp(value: Int): Int {

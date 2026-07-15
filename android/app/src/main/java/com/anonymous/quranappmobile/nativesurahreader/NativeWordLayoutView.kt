@@ -61,6 +61,18 @@ internal class NativeWordLayoutView(context: Context) : ViewGroup(context) {
       val token = getChildAt(index)
       val word = token.tag as? NativeWord ?: continue
       applyTokenHighlight(token, isActiveWord(word))
+      token.invalidate()
+    }
+    invalidate()
+  }
+
+  fun updateWordAudioSeekEnabled(enabled: Boolean) {
+    if (wordAudioSeekEnabled == enabled) return
+    wordAudioSeekEnabled = enabled
+    for (index in 0 until childCount) {
+      val token = getChildAt(index)
+      val word = token.tag as? NativeWord ?: continue
+      configureTokenPress(token, word)
     }
   }
 
@@ -164,14 +176,7 @@ internal class NativeWordLayoutView(context: Context) : ViewGroup(context) {
               dp(if (showTranslations) 10 else 2),
               dp(if (showTranslations) 10 else 1),
           )
-          if (wordAudioSeekEnabled) {
-            isClickable = true
-            isFocusable = true
-            setOnClickListener {
-              val boundVerse = verse ?: return@setOnClickListener
-              onWordPress?.invoke(boundVerse, word)
-            }
-          }
+          configureTokenPress(this, word)
         }
 
     token.addView(
@@ -215,6 +220,20 @@ internal class NativeWordLayoutView(context: Context) : ViewGroup(context) {
 
     applyTokenHighlight(token, isActiveWord(word))
     return token
+  }
+
+  private fun configureTokenPress(token: View, word: NativeWord) {
+    token.isClickable = wordAudioSeekEnabled
+    token.isFocusable = wordAudioSeekEnabled
+    if (!wordAudioSeekEnabled) {
+      token.setOnClickListener(null)
+      return
+    }
+
+    token.setOnClickListener {
+      val boundVerse = verse ?: return@setOnClickListener
+      onWordPress?.invoke(boundVerse, word)
+    }
   }
 
   private fun isActiveWord(word: NativeWord): Boolean {

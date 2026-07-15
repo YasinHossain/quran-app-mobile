@@ -4,6 +4,7 @@ import android.graphics.Color
 import android.view.View
 import android.widget.FrameLayout
 import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.LinearSmoothScroller
 import androidx.recyclerview.widget.RecyclerView
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.ReadableArray
@@ -81,6 +82,7 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
       RecyclerView(reactContext).apply {
         this.layoutManager = this@NativeSurahReaderView.layoutManager
         this.adapter = this@NativeSurahReaderView.adapter
+        itemAnimator = null
         clipToPadding = false
         isVerticalScrollBarEnabled = false
         overScrollMode = View.OVER_SCROLL_NEVER
@@ -113,6 +115,9 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
   private var lastReaderStateRenderKey: String? = null
   private var pendingFastScrollVerseIndex: Int? = null
   private var isFastScrollFrameScheduled = false
+  private var isActiveAudioRedrawScheduled = false
+  private var pendingActiveAudioFollowVerseKey: String? = null
+  private var isActiveAudioFollowScheduled = false
 
   init {
     recyclerView.alpha = 0f
@@ -191,8 +196,6 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
                 nextSettings.audioWordSyncEnabled,
                 nextSettings.showTranslationAttribution,
                 nextSettings.wordLang.orEmpty(),
-                nextTopInsetPx,
-                nextBottomInsetPx,
                 nextTheme.hashCode(),
                 nextVerses.hashCode(),
             )
@@ -202,26 +205,24 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
     val previousActiveWord = adapter.activeWord
     val hasRenderChange = lastReaderStateRenderKey != nextRenderKey
     val shouldApplyInitialState = lastReaderStateSessionKey != nextSessionKey
-    if (!shouldApplyInitialState &&
-        !hasRenderChange &&
-        previousActiveVerseKey == nextActiveVerseKey &&
-        previousActiveWord == nextActiveWord) {
-      return
-    }
-    val activeOnlyChange =
-        !shouldApplyInitialState &&
-            !hasRenderChange &&
-            (previousActiveVerseKey != nextActiveVerseKey || previousActiveWord != nextActiveWord)
+    val hasActiveAudioChange =
+        previousActiveVerseKey != nextActiveVerseKey || previousActiveWord != nextActiveWord
+    val hasInsetChange = topInsetPx != nextTopInsetPx || bottomInsetPx != nextBottomInsetPx
 
     adapter.activeVerseKey = nextActiveVerseKey
     adapter.activeWord = nextActiveWord
-    if (activeOnlyChange) {
-      notifyActiveAudioChanged(
-          previousActiveVerseKey,
-          nextActiveVerseKey,
-          previousActiveWord,
-          nextActiveWord,
-      )
+    if (!shouldApplyInitialState && !hasRenderChange) {
+      if (hasActiveAudioChange) {
+        notifyActiveAudioChanged(
+            previousActiveVerseKey,
+            nextActiveVerseKey,
+            previousActiveWord,
+            nextActiveWord,
+        )
+      }
+      if (hasInsetChange) {
+        applyReaderInsets(nextTopInsetPx, nextBottomInsetPx)
+      }
       return
     }
 
@@ -322,8 +323,10 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
   fun setWordAudioSeekEnabled(enabled: Boolean) {
     if (adapter.wordAudioSeekEnabled == enabled) return
     adapter.wordAudioSeekEnabled = enabled
-    adapter.notifyItemRangeChanged(0, adapter.itemCount)
-    requestImmediateRecyclerRefresh()
+    for (childIndex in 0 until recyclerView.childCount) {
+      val holder = recyclerView.getChildViewHolder(recyclerView.getChildAt(childIndex))
+      adapter.updateAttachedWordAudioSeek(holder)
+    }
   }
 
   fun setTopInsetPx(topInsetPx: Float) {
@@ -524,6 +527,14 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
     fastScroller.setInsets(topInsetPx, bottomInsetPx)
   }
 
+  private fun applyReaderInsets(nextTopInsetPx: Int, nextBottomInsetPx: Int) {
+    topInsetPx = nextTopInsetPx
+    bottomInsetPx = nextBottomInsetPx
+    applyRecyclerPadding()
+    recyclerView.postInvalidateOnAnimation()
+    fastScroller.postInvalidateOnAnimation()
+  }
+
   private fun updateFastScroller(reveal: Boolean) {
     if (verses.size <= 1) {
       fastScroller.updatePosition(0, verses.size, reveal = false)
@@ -641,16 +652,76 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
             nextActiveWord?.verseKey,
         )
     verseKeys.forEach { notifyVerseActiveAudioChanged(it) }
+    requestActiveAudioRedraw()
+    if (previousActiveVerseKey != nextActiveVerseKey) {
+      requestActiveAudioFollow(nextActiveVerseKey)
+    }
   }
 
   private fun notifyVerseActiveAudioChanged(verseKey: String?) {
     if (verseKey.isNullOrBlank()) return
     val index = verses.indexOfFirst { it.verseKey == verseKey }
     if (index >= 0) {
-      adapter.notifyItemChanged(
-          adapter.adapterPositionForVerseIndex(index),
-          NativeVerseAdapter.PAYLOAD_ACTIVE_AUDIO,
-      )
+      val adapterPosition = adapter.adapterPositionForVerseIndex(index)
+      val holder = recyclerView.findViewHolderForAdapterPosition(adapterPosition) ?: return
+      adapter.updateAttachedActiveAudio(holder)
+    }
+  }
+
+  private fun requestActiveAudioRedraw() {
+    recyclerView.postInvalidateOnAnimation()
+    postInvalidateOnAnimation()
+    if (isActiveAudioRedrawScheduled) return
+
+    isActiveAudioRedrawScheduled = true
+    recyclerView.postOnAnimation {
+      isActiveAudioRedrawScheduled = false
+      for (childIndex in 0 until recyclerView.childCount) {
+        val holder = recyclerView.getChildViewHolder(recyclerView.getChildAt(childIndex))
+        adapter.updateAttachedActiveAudio(holder)
+      }
+      recyclerView.invalidate()
+      this@NativeSurahReaderView.invalidate()
+    }
+  }
+
+  private fun requestActiveAudioFollow(verseKey: String?) {
+    if (verseKey.isNullOrBlank()) return
+    pendingActiveAudioFollowVerseKey = verseKey
+    if (isActiveAudioFollowScheduled) return
+
+    isActiveAudioFollowScheduled = true
+    recyclerView.postOnAnimation {
+      isActiveAudioFollowScheduled = false
+      val targetVerseKey = pendingActiveAudioFollowVerseKey ?: return@postOnAnimation
+      pendingActiveAudioFollowVerseKey = null
+      val verseIndex = verses.indexOfFirst { it.verseKey == targetVerseKey }
+      if (verseIndex < 0) return@postOnAnimation
+
+      recyclerView.stopScroll()
+      val smoothScroller =
+          object : LinearSmoothScroller(reactContext) {
+            override fun getVerticalSnapPreference(): Int = SNAP_TO_ANY
+
+            override fun calculateDtToFit(
+                viewStart: Int,
+                viewEnd: Int,
+                boxStart: Int,
+                boxEnd: Int,
+                snapPreference: Int,
+            ): Int {
+              val viewHeight = viewEnd - viewStart
+              val viewportHeight = boxEnd - boxStart
+              if (viewHeight >= viewportHeight) {
+                return boxStart + dp(48) - viewStart
+              }
+
+              val centeredTop = boxStart + (viewportHeight - viewHeight) / 2
+              return centeredTop - viewStart
+            }
+          }
+      smoothScroller.targetPosition = adapter.adapterPositionForVerseIndex(verseIndex)
+      layoutManager.startSmoothScroll(smoothScroller)
     }
   }
 
