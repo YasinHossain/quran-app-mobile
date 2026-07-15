@@ -11,11 +11,12 @@ Current implementation:
 - Android has a Kotlin `NativeSurahReader` backed by `RecyclerView`.
 - React Native exposes `components/surah/native/NativeSurahReader.tsx`.
 - `app/surah/[surahId].tsx` uses the native reader for Android normal light translation mode.
-- React Native still owns data loading, selected translations, offline/download state, network fallback, settings, verse actions, header, scrubber, audio state, and Mushaf switching.
+- React Native still owns data loading, selected translations, offline/download state, network fallback, settings, verse actions, header, audio state, non-Android scrubbers, and Mushaf switching. The Android translation reader owns its RecyclerView fast scroller.
 - Native currently renders real full-Surah light verse data from React Native.
 - Native currently supports:
   - direct target verse landing
   - native scrolling
+  - native edge fast scrolling and inertial fling
   - verse action press back to React Native
   - visible verse reporting
   - last-read updates
@@ -49,13 +50,14 @@ Keep React Native responsible for app orchestration:
 - audio player state and controls
 - verse action sheet
 - bookmarks/planner/tafsir/share
-- search/header/scrubber overlays
+- search/header and non-native scrubber overlays
 - Mushaf-to-translation switching
 
 Make Kotlin responsible for the reading surface:
 
 - row rendering
 - exact scrolling
+- native fast-scroll indicator and drag handling
 - native text layout
 - word token layout
 - Tajweed spans

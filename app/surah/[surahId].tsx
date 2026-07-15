@@ -1860,7 +1860,6 @@ export default function SurahScreen(): React.JSX.Element {
     seekToWord: verseAudioWordSync.seekToWord,
     setLastReadRef,
     setVisibleVerseNumber,
-    verseScrubberRef,
     suppressReaderFeedbackRef: nativeInitialPositioningRef,
     visibleVerseKeyRef,
     visibleVerseNumberRef,
@@ -2094,7 +2093,7 @@ export default function SurahScreen(): React.JSX.Element {
   const shouldShowTranslationVerseScrubber = Boolean(
     hasLoadedContent &&
       verseCount > 1 &&
-      (shouldUseNativeLightSurahReader || Platform.OS !== 'android')
+      Platform.OS !== 'android'
   );
 
   return (

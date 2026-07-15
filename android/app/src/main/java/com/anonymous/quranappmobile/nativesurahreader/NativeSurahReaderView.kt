@@ -2,7 +2,7 @@ package com.anonymous.quranappmobile.nativesurahreader
 
 import android.graphics.Color
 import android.view.View
-import android.widget.LinearLayout
+import android.widget.FrameLayout
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.facebook.react.bridge.Arguments
@@ -13,7 +13,7 @@ import com.facebook.react.uimanager.ThemedReactContext
 import com.facebook.react.uimanager.UIManagerHelper
 import com.facebook.react.uimanager.events.EventDispatcher
 
-class NativeSurahReaderView(private val reactContext: ThemedReactContext) : LinearLayout(reactContext) {
+class NativeSurahReaderView(private val reactContext: ThemedReactContext) : FrameLayout(reactContext) {
   private data class NativeReaderSettings(
       val arabicFontFace: String?,
       val arabicFontSize: Float,
@@ -73,17 +73,24 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Line
             )
           },
       )
+  private val fastScroller =
+      NativeVerseFastScrollerView(reactContext) { verseIndex ->
+        requestFastScrollToVerseIndex(verseIndex)
+      }
   private val recyclerView =
       RecyclerView(reactContext).apply {
         this.layoutManager = this@NativeSurahReaderView.layoutManager
         this.adapter = this@NativeSurahReaderView.adapter
         clipToPadding = false
+        isVerticalScrollBarEnabled = false
+        overScrollMode = View.OVER_SCROLL_NEVER
         setBackgroundColor(Color.rgb(248, 250, 252))
         addOnScrollListener(
             object : RecyclerView.OnScrollListener() {
               override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
                 dispatchScrollEvent()
                 dispatchVisibleVerseEvent()
+                updateFastScroller(reveal = isInitialContentVisible)
               }
             },
         )
@@ -104,11 +111,13 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Line
   private var isMountedRefreshScheduled = false
   private var lastReaderStateSessionKey: String? = null
   private var lastReaderStateRenderKey: String? = null
+  private var pendingFastScrollVerseIndex: Int? = null
+  private var isFastScrollFrameScheduled = false
 
   init {
-    orientation = VERTICAL
     recyclerView.alpha = 0f
     addView(recyclerView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+    addView(fastScroller, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
   }
 
   fun setSurahId(surahId: Int) {
@@ -336,6 +345,11 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Line
     }
     setBackgroundColor(readerTheme.backgroundColor)
     recyclerView.setBackgroundColor(readerTheme.backgroundColor)
+    fastScroller.setColors(
+        readerTheme.backgroundColor,
+        readerTheme.textColor,
+        readerTheme.tintColor,
+    )
     adapter.theme = readerTheme
     notifyAllRowsChanged()
     requestImmediateRecyclerRefresh()
@@ -438,6 +452,11 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Line
     applySettings(nextSettings)
     setBackgroundColor(nextTheme.backgroundColor)
     recyclerView.setBackgroundColor(nextTheme.backgroundColor)
+    fastScroller.setColors(
+        nextTheme.backgroundColor,
+        nextTheme.textColor,
+        nextTheme.tintColor,
+    )
     adapter.theme = nextTheme
     adapter.surahIntro = nextSurahIntro
     verses.clear()
@@ -502,6 +521,39 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Line
         dp(16),
         bottomInsetPx,
     )
+    fastScroller.setInsets(topInsetPx, bottomInsetPx)
+  }
+
+  private fun updateFastScroller(reveal: Boolean) {
+    if (verses.size <= 1) {
+      fastScroller.updatePosition(0, verses.size, reveal = false)
+      return
+    }
+
+    val firstPosition = layoutManager.findFirstVisibleItemPosition()
+    if (firstPosition == RecyclerView.NO_POSITION) return
+    val firstVerseIndex = adapter.verseIndexForAdapterPosition(firstPosition).coerceAtLeast(0)
+    fastScroller.updatePosition(firstVerseIndex, verses.size, reveal)
+  }
+
+  private fun requestFastScrollToVerseIndex(verseIndex: Int) {
+    pendingFastScrollVerseIndex = verseIndex.coerceIn(0, (verses.size - 1).coerceAtLeast(0))
+    if (isFastScrollFrameScheduled) return
+    isFastScrollFrameScheduled = true
+    recyclerView.postOnAnimation {
+      isFastScrollFrameScheduled = false
+      val targetIndex = pendingFastScrollVerseIndex ?: return@postOnAnimation
+      pendingFastScrollVerseIndex = null
+      recyclerView.stopScroll()
+      val adapterPosition =
+          if (targetIndex == 0) 0 else adapter.adapterPositionForVerseIndex(targetIndex)
+      layoutManager.scrollToPositionWithOffset(adapterPosition, 0)
+      recyclerView.requestLayout()
+      layoutRecyclerViewNow()
+      recyclerView.post {
+        dispatchVisibleVerseEvent(force = true)
+      }
+    }
   }
 
   /**
