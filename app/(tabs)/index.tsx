@@ -13,7 +13,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Download, ExternalLink, Globe2, Menu, Moon, ShieldCheck, Sun } from 'lucide-react-native';
+import { Download, ExternalLink, Globe2, Menu, Moon, Settings, ShieldCheck, Sun } from 'lucide-react-native';
 
 import { HomeRecentCard } from '@/components/home/HomeRecentCard';
 import { HomeQuickLinksCard } from '@/components/home/HomeQuickLinksCard';
@@ -172,7 +172,7 @@ function HomeSearchHeader({
   const renderMenuRow = ({ children, icon, onPress, subtitle, title }: MenuRowProps) => (
     <Pressable
       onPress={onPress}
-      className="px-5 py-4 active:bg-interactive dark:active:bg-interactive-dark flex-row items-center gap-3"
+      className="px-5 py-3 active:bg-interactive dark:active:bg-interactive-dark flex-row items-center gap-3"
     >
       <View className="h-9 w-9 items-center justify-center rounded-lg bg-interactive dark:bg-interactive-dark">
         {icon}
@@ -243,7 +243,21 @@ function HomeSearchHeader({
                 <View className="flex-1">
                   {renderMenuRow({
                     icon: (
-                      <Download size={20} color={isDark ? '#E5E5E5' : '#2F3744'} strokeWidth={2} />
+                      <Settings
+                        size={20}
+                        color={Colors[isDark ? 'dark' : 'light'].tint}
+                        strokeWidth={2}
+                      />
+                    ),
+                    onPress: () => {
+                      closeMenu();
+                      router.push('/settings');
+                    },
+                    title: t('settings', { fallback: 'Settings' }),
+                  })}
+                  {renderMenuRow({
+                    icon: (
+                      <Download size={20} color={Colors[isDark ? 'dark' : 'light'].tint} strokeWidth={2} />
                     ),
                     onPress: () => {
                       closeMenu();
@@ -266,7 +280,7 @@ function HomeSearchHeader({
                     icon: (
                       <ShieldCheck
                         size={20}
-                        color={isDark ? '#E5E5E5' : '#2F3744'}
+                        color={Colors[isDark ? 'dark' : 'light'].tint}
                         strokeWidth={2}
                       />
                     ),
@@ -285,7 +299,7 @@ function HomeSearchHeader({
                       />
                     ),
                     icon: (
-                      <Globe2 size={20} color={isDark ? '#E5E5E5' : '#2F3744'} strokeWidth={2} />
+                      <Globe2 size={20} color={Colors[isDark ? 'dark' : 'light'].tint} strokeWidth={2} />
                     ),
                     onPress: () => {
                       closeMenu();
@@ -293,19 +307,6 @@ function HomeSearchHeader({
                     },
                     title: 'appquran.com',
                   })}
-                </View>
-
-                <View className="border-t border-border dark:border-border-dark px-5 py-4">
-                  <Text className="text-xs leading-5 text-content-secondary dark:text-content-secondary-dark">
-                    {t('home_footer_attribution_prefix', {
-                      fallback: 'Quranic content provided by',
-                    })}{' '}
-                    {t('home_footer_attribution_source', { fallback: 'Quran Foundation' })}
-                  </Text>
-                  <Text className="mt-1 text-xs leading-5 text-content-secondary dark:text-content-secondary-dark">
-                    Quran.com Content APIs and CDN are used for verses, translations, tafsir, mushaf
-                    data, and recitations.
-                  </Text>
                 </View>
               </Animated.View>
             </View>

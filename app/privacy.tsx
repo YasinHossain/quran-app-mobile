@@ -44,9 +44,9 @@ const POLICY_SECTIONS: PolicySection[] = [
     ],
   },
   {
-    title: '3. Third-Party Services',
+    title: '3. Third-Party Services and Content Attribution',
     body: [
-      'The Application uses third-party services to provide Quranic content:',
+      'The Application uses third-party services to provide Quranic content. Quranic content is provided by Quran Foundation, and Quran.com Content APIs and CDN are used for verses, translations, tafsir, mushaf data, and recitations.',
     ],
     bullets: [
       {
@@ -143,7 +143,7 @@ function PolicySectionView({ section }: { section: PolicySection }): React.JSX.E
           ))}
         </View>
       ) : null}
-      {section.title === '3. Third-Party Services' ? (
+      {section.title === '3. Third-Party Services and Content Attribution' ? (
         <Pressable
           accessibilityRole="link"
           onPress={() => openUrl('https://quran.foundation/privacy')}
