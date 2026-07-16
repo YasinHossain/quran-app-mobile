@@ -19,6 +19,11 @@
     "generate:word-translation-packs": "node scripts/generate-word-translation-packs.js",
     "generate:tafsir-packs": "node scripts/generate-tafsir-packs.js",
     "generate:mushaf-packs": "node scripts/generate-mushaf-packs.js",
+    "compile:word-study-pack": "node scripts/compile-word-study-pack.cjs",
+    "test:word-study-pack": "node --test tests/word-study-pack/*.test.cjs",
+    "build:test-word-study-repository": "tsc -p tests/word-study-repository/tsconfig.json",
+    "test:word-study-repository": "npm run build:test-word-study-repository && node --test tests/word-study-repository/*.test.cjs",
+    "benchmark:word-study-repository": "npm run build:test-word-study-repository && node scripts/benchmark-word-study-repository.cjs",
     "debug:android": "node scripts/android-debug.js",
     "debug:android:devices": "node scripts/android-debug.js devices",
     "debug:android:logs": "node scripts/android-debug.js logs",
@@ -26,7 +31,7 @@
     "debug:android:ui": "node scripts/android-debug.js ui",
     "type-check": "tsc --noEmit",
     "check:core": "node scripts/check-core-purity.js",
-    "verify": "npm run type-check && npm run check:core"
+    "verify": "npm run type-check && npm run check:core && npm run test:word-study-pack && npm run test:word-study-repository"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
@@ -37,6 +42,7 @@
     "expo-asset": "~56.0.17",
     "expo-audio": "~56.0.12",
     "expo-constants": "~56.0.18",
+    "expo-crypto": "~56.0.4",
     "expo-dev-client": "~56.0.22",
     "expo-file-system": "~56.0.8",
     "expo-font": "~56.0.7",

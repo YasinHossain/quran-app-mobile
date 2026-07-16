@@ -1,0 +1,14 @@
+{
+  "format": "quran-word-study-catalog-v1",
+  "packs": [
+    {
+      "packId": "core-qac-v0.4",
+      "version": "qac-v0.4",
+      "manifestUrl": "qac-v0.4/manifest.json",
+      "databaseUrl": "qac-v0.4/quran-word-study.db",
+      "databaseSizeBytes": 58961920,
+      "databaseChecksumSha256": "f866c0e0502e0a6e668260cdcd7783994773c5119d17ae35157c7e41a87fbdff",
+      "schemaVersion": 1
+    }
+  ]
+}

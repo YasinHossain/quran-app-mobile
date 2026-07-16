@@ -15,6 +15,14 @@ import { logger } from '@/src/core/infrastructure/monitoring/logger';
 import { HostedTranslationPackRepository } from '@/src/core/infrastructure/translations/HostedTranslationPackRepository';
 import { HostedTafsirPackRepository } from '@/src/core/infrastructure/tafsir/HostedTafsirPackRepository';
 import { HostedWordTranslationPackRepository } from '@/src/core/infrastructure/word-translations/HostedWordTranslationPackRepository';
+import { GetWordAnalysis, ListWordOccurrences } from '@/src/core/application/use-cases/word-study';
+import {
+  ExpoWordStudyDatabaseProvider,
+  ExpoWordStudyPackBackend,
+  SQLiteWordStudyRepository,
+  WordStudyPackCatalogClient,
+  WordStudyPackLifecycle,
+} from '@/src/core/infrastructure/word-study';
 
 const downloadIndexRepository = new DownloadIndexRepository();
 const tafsirRepository = new TafsirRepository();
@@ -43,6 +51,13 @@ const mushafPageRepository = new LocalMushafPageRepository(
   mushafPackInstallRegistry,
   mushafPackFileStore
 );
+const wordStudyPackBackend = new ExpoWordStudyPackBackend();
+const wordStudyPackLifecycle = new WordStudyPackLifecycle(wordStudyPackBackend);
+const wordStudyDatabaseProvider = new ExpoWordStudyDatabaseProvider(wordStudyPackLifecycle);
+const wordStudyRepository = new SQLiteWordStudyRepository(wordStudyDatabaseProvider);
+const wordStudyPackCatalogClient = new WordStudyPackCatalogClient();
+const getWordAnalysis = new GetWordAnalysis(wordStudyRepository);
+const listWordOccurrences = new ListWordOccurrences(wordStudyRepository);
 
 export const container = {
   getDownloadIndexRepository: (): DownloadIndexRepository => downloadIndexRepository,
@@ -63,4 +78,10 @@ export const container = {
   getMushafPackFileStore: (): MushafPackFileStore => mushafPackFileStore,
   getMushafPackInstaller: (): MushafPackInstaller => mushafPackInstaller,
   getMushafPageRepository: (): LocalMushafPageRepository => mushafPageRepository,
+  getWordStudyRepository: (): SQLiteWordStudyRepository => wordStudyRepository,
+  getWordStudyPackLifecycle: (): WordStudyPackLifecycle => wordStudyPackLifecycle,
+  getWordStudyDatabaseProvider: (): ExpoWordStudyDatabaseProvider => wordStudyDatabaseProvider,
+  getWordStudyPackCatalogClient: (): WordStudyPackCatalogClient => wordStudyPackCatalogClient,
+  getWordAnalysis: (): GetWordAnalysis => getWordAnalysis,
+  listWordOccurrences: (): ListWordOccurrences => listWordOccurrences,
 };

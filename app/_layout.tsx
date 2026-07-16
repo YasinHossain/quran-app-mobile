@@ -25,6 +25,7 @@ import { initializeAudioModeAsync } from '@/src/core/infrastructure/audio/audioM
 import { initializeAppDbAsync } from '@/src/core/infrastructure/db';
 import { STARTUP_FONT_ASSETS } from '@/src/core/infrastructure/fonts/arabicFonts';
 import { bootstrapBundledMushafPacksAsync } from '@/src/core/infrastructure/mushaf/bootstrapBundledPacks';
+import { bootstrapWordStudyPackAsync } from '@/src/core/infrastructure/word-study/bootstrapWordStudyPack';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -50,10 +51,11 @@ export default function RootLayout() {
 
     async function bootstrapAsync(): Promise<void> {
       try {
-        const [,,, stored] = await Promise.all([
+        const [,,,, stored] = await Promise.all([
           initializeAudioModeAsync(),
           initializeAppDbAsync(),
           bootstrapBundledMushafPacksAsync(),
+          bootstrapWordStudyPackAsync(),
           getItem(THEME_STORAGE_KEY),
         ]);
         if (!cancelled) {

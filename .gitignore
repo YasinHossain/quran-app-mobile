@@ -12,6 +12,8 @@ dist/*
 !dist/translation-packs/**
 !dist/word-translation-packs/
 !dist/word-translation-packs/**
+!dist/word-study-packs/
+!dist/word-study-packs/**
 web-build/
 expo-env.d.ts
 
@@ -39,6 +41,7 @@ scratch/android-debug/
 
 # local env files
 .env*.local
+.artifacts/
 
 # typescript
 *.tsbuildinfo
