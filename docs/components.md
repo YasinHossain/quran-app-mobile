@@ -55,7 +55,7 @@ This document lists reusable UI components currently available in the codebase s
 | `AppHeader` | Shared safe-area navigation header for non-reader screens such as Bookmarks and Planner. | `components/navigation/AppHeader.tsx` |
 | `AppSearchHeader` | Shared safe-area header search layout used by Home and reader screens. | `components/navigation/AppHeader.tsx` |
 | `ReaderOverlayHeader` | Absolute reader header shell used when vertical reading scroll should collapse the header. | `components/navigation/AppHeader.tsx` |
-| `useHeaderSearch` | Shared header search state/navigation hook for Home, Surah/Mushaf, and Tafsir. | `components/navigation/useHeaderSearch.ts` |
+| `useHeaderSearch` | Shared header search state/navigation hook for Home, Surah/Mushaf, and Tafsir, with explicit Translation and exact-verse Mushaf Go To destinations kept separate from current-mode-preserving result navigation. | `components/navigation/useHeaderSearch.ts` |
 | `useCollapsibleReaderHeader` | Native-driver hide/show behavior for reader headers based on vertical scroll direction. | `components/navigation/useCollapsibleReaderHeader.ts` |
 
 ## Reader Data Hooks
@@ -63,7 +63,9 @@ This document lists reusable UI components currently available in the codebase s
 | Hook | Description | File Path |
 | --- | --- | --- |
 | `useMushafPageData` | Local-only mushaf page data hook that resolves the active installed pack version and returns page lookup, verse/word payload, and grouped page lines for the page route. | `hooks/useMushafPageData.ts` |
+| `prepareMushafVerseTarget` | Shared exact-verse Mushaf navigation preparation used by Go To and Translation-to-Mushaf switching; resolves the local page, validates the active pack version, and warms neighboring pages before entry. | `lib/mushaf/prepareMushafVerseTarget.ts` |
 | `useMushafPackManager` | Local mushaf pack manager hook used by reader settings; loads install state from the mushaf registry, merges download-index progress/errors, and exposes install/delete actions for downloadable mushaf packs like QCF V1/V2, QPC Hafs, IndoPak, and Tajweed. | `hooks/useMushafPackManager.ts` |
+| `useDownloadedResourceSize` / `useDownloadedResourceSizes` | Resolve the installed-resource total plus per-item sizes shown in Downloads, counting SQLite-backed offline content plus downloaded audio and mushaf-pack files. | `hooks/useDownloadedResourceSize.ts` |
 
 ## Localization Providers
 
@@ -78,8 +80,8 @@ This document lists reusable UI components currently available in the codebase s
 | Component | Description | File Path |
 | --- | --- | --- |
 | `MushafNativePage` | Native Unicode mushaf renderer for offline text packs; renders page lines/words from local pack payloads with stepped `mushafScaleStep` sizing, selectable text, per-word press events, and no route-level chrome so the page route can present a text-only mushaf feed. | `components/mushaf/MushafNativePage.tsx` |
-| `MushafWebViewPage` | Local WebView mushaf renderer for exact/downloadable packs; ports the web stepped preset sizing, fit detection, centered RTL overflow reflow, local QCF page-font loading, and the selection/word-tap bridge while keeping the rendered surface free of extra cards, labels, and buttons. | `components/mushaf/MushafWebViewPage.tsx` |
-| `MushafSingleDocumentReader` | Single-surface QCF/WebView mushaf reader used by Surah Mushaf view and the exact page route; reports active page changes, scroll activity, word taps, exposes imperative page jumps for page-by-page scrubber navigation, and background-warms bounded surah page windows after first paint. | `components/mushaf/MushafSingleDocumentReader.tsx` |
+| `MushafWebViewPage` | Local WebView mushaf renderer for exact/downloadable packs; ports the web stepped preset sizing, fit detection, centered RTL overflow reflow, resilient local QCF page-font loading with bounded recovery retries, and the selection/word-tap bridge while keeping the rendered surface free of extra cards, labels, and buttons. | `components/mushaf/MushafWebViewPage.tsx` |
+| `MushafSingleDocumentReader` | Single-surface QCF/WebView mushaf reader used by Surah Mushaf view and the exact page route; reports active page changes, scroll activity, word taps, exposes imperative page jumps for page-by-page scrubber navigation, supports hidden first-page preparation during Translation mode, delivers installed QCF page fonts to the WebView as cached data URIs with file-URL/retry fallback, and limits visible-mode background warming to the nearest pages. | `components/mushaf/MushafSingleDocumentReader.tsx` |
 
 ## Reader Settings Components
 

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Animated, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { WebView } from 'react-native-webview';
+import * as FileSystem from 'expo-file-system/legacy';
 
 import {
   type MushafSelectionPayload,
@@ -34,6 +35,7 @@ export type MushafSingleDocumentReaderHandle = {
 };
 
 type MushafSingleDocumentReaderProps = {
+  backgroundWarmEnabled?: boolean;
   backgroundPageNumbers: number[];
   chapterNamesById: Map<number, string>;
   compactPageLines?: boolean;
@@ -100,18 +102,69 @@ type ReaderMessage =
       payload?: unknown;
     };
 
-const ENABLE_MUSHAF_QCF_DEV_LOGS = __DEV__;
 const BACKGROUND_WARM_BATCH_SIZE = 2;
 const BACKGROUND_WARM_BATCH_DELAY_MS = 180;
 const BACKGROUND_WARM_START_DELAY_MS = 220;
-const MAX_BACKGROUND_WARM_PAGE_COUNT = 80;
+const MAX_BACKGROUND_WARM_PAGE_COUNT = 4;
+const QCF_FONT_DATA_URI_CACHE_MAX_ENTRIES = 12;
+const qcfFontDataUriCache = new Map<string, Promise<string | null>>();
 
-function logMushafQcfDev(event: string, details: Record<string, unknown>): void {
-  if (!ENABLE_MUSHAF_QCF_DEV_LOGS) {
-    return;
+function getFontMimeType(fileUri: string): string {
+  const normalizedUri = fileUri.split('?')[0]?.toLowerCase() ?? '';
+  if (normalizedUri.endsWith('.woff2')) return 'font/woff2';
+  if (normalizedUri.endsWith('.woff')) return 'font/woff';
+  if (normalizedUri.endsWith('.otf')) return 'font/otf';
+  return 'font/ttf';
+}
+
+function getQcfFontDataUri(fileUri: string): Promise<string | null> {
+  const cached = qcfFontDataUriCache.get(fileUri);
+  if (cached) {
+    qcfFontDataUriCache.delete(fileUri);
+    qcfFontDataUriCache.set(fileUri, cached);
+    return cached;
   }
 
-  console.log(`[mushaf-qcf][MushafSingleDocumentReader] ${event}`, details);
+  const loadPromise = FileSystem.readAsStringAsync(fileUri, {
+    encoding: FileSystem.EncodingType.Base64,
+  })
+    .then((base64) =>
+      base64 ? `data:${getFontMimeType(fileUri)};base64,${base64}` : null
+    )
+    .catch(() => null);
+
+  qcfFontDataUriCache.set(fileUri, loadPromise);
+  while (qcfFontDataUriCache.size > QCF_FONT_DATA_URI_CACHE_MAX_ENTRIES) {
+    const oldestKey = qcfFontDataUriCache.keys().next().value;
+    if (typeof oldestKey !== 'string') break;
+    qcfFontDataUriCache.delete(oldestKey);
+  }
+
+  return loadPromise;
+}
+
+async function hydrateQcfFontDataUri(pageData: MushafPageData): Promise<MushafPageData> {
+  const rendererAssets = pageData.rendererAssets;
+  if (
+    !rendererAssets?.qcfVersion ||
+    !rendererAssets.pageFontFileUri ||
+    rendererAssets.pageFontDataUri
+  ) {
+    return pageData;
+  }
+
+  const pageFontDataUri = await getQcfFontDataUri(rendererAssets.pageFontFileUri);
+  if (!pageFontDataUri) {
+    return pageData;
+  }
+
+  return {
+    ...pageData,
+    rendererAssets: {
+      ...rendererAssets,
+      pageFontDataUri,
+    },
+  };
 }
 
 function parseVerseKeyNumbers(
@@ -166,11 +219,7 @@ function normalizeAllowedPageNumbers(
 }
 
 function shouldBackgroundWarmPageNumbers(pageNumbers: number[] | undefined): pageNumbers is number[] {
-  return (
-    Array.isArray(pageNumbers) &&
-    pageNumbers.length > 1 &&
-    pageNumbers.length <= MAX_BACKGROUND_WARM_PAGE_COUNT
-  );
+  return Array.isArray(pageNumbers) && pageNumbers.length > 1;
 }
 
 function sortPageNumbersByDistance(pageNumbers: number[], anchorPageNumber: number): number[] {
@@ -233,6 +282,7 @@ export const MushafSingleDocumentReader = React.forwardRef<
   MushafSingleDocumentReaderProps
 >(function MushafSingleDocumentReader(
   {
+    backgroundWarmEnabled = true,
     backgroundPageNumbers,
     chapterNamesById,
     compactPageLines = false,
@@ -336,15 +386,25 @@ export const MushafSingleDocumentReader = React.forwardRef<
         return;
       }
 
-      webViewRef.current?.injectJavaScript(
-        buildMushafReaderWebViewPagesScript({
-          focusTopInsetPx,
-          highlightVerseKey,
-          initialPageNumber,
-          layout: shellDocument.layout,
-          pages,
-        })
-      );
+      const readerSession = readerSessionRef.current;
+      void Promise.all(pages.map(hydrateQcfFontDataUri)).then((hydratedPages) => {
+        if (
+          readerSessionRef.current !== readerSession ||
+          !isReaderReadyRef.current
+        ) {
+          return;
+        }
+
+        webViewRef.current?.injectJavaScript(
+          buildMushafReaderWebViewPagesScript({
+            focusTopInsetPx,
+            highlightVerseKey,
+            initialPageNumber,
+            layout: shellDocument.layout,
+            pages: hydratedPages,
+          })
+        );
+      });
     },
     [focusTopInsetPx, highlightVerseKey, initialPageNumber, shellDocument.layout]
   );
@@ -413,12 +473,6 @@ export const MushafSingleDocumentReader = React.forwardRef<
           .getPage({ packId, pageNumber })
           .then((pageData) => {
             if (pageData.pack.version.trim() !== expectedVersion.trim()) {
-              logMushafQcfDev('page-load-version-mismatch', {
-                expectedVersion,
-                pageNumber,
-                reason,
-                resolvedVersion: pageData.pack.version,
-              });
               return;
             }
 
@@ -430,13 +484,7 @@ export const MushafSingleDocumentReader = React.forwardRef<
             rememberPageData(filteredPageData);
             injectPages([filteredPageData]);
           })
-          .catch((error) => {
-            logMushafQcfDev('page-load-error', {
-              error: error instanceof Error ? error.message : String(error),
-              pageNumber,
-              reason,
-            });
-
+          .catch(() => {
             if (pageNumber === initialPageNumber) {
               const retryCount = pageLoadRetryCountsRef.current.get(pageNumber) ?? 0;
               if (retryCount < 2) {
@@ -489,7 +537,11 @@ export const MushafSingleDocumentReader = React.forwardRef<
 
   const startBackgroundWarm = React.useCallback(
     (reason: string, anchorPageNumber: number) => {
-      if (!shouldBackgroundWarmPageNumbers(pageNumbers) || hasCompletedBackgroundWarmRef.current) {
+      if (
+        !backgroundWarmEnabled ||
+        !shouldBackgroundWarmPageNumbers(pageNumbers) ||
+        hasCompletedBackgroundWarmRef.current
+      ) {
         return;
       }
 
@@ -499,7 +551,10 @@ export const MushafSingleDocumentReader = React.forwardRef<
           !pageDataByNumberRef.current.has(candidate) &&
           !loadingPageNumbersRef.current.has(candidate)
       );
-      const queue = sortPageNumbersByDistance(normalizedPageNumbers, anchorPageNumber);
+      const queue = sortPageNumbersByDistance(
+        normalizedPageNumbers,
+        anchorPageNumber
+      ).slice(0, MAX_BACKGROUND_WARM_PAGE_COUNT);
 
       if (queue.length === 0) {
         hasCompletedBackgroundWarmRef.current = true;
@@ -543,11 +598,6 @@ export const MushafSingleDocumentReader = React.forwardRef<
         if (queueRef.length === 0) {
           backgroundWarmTimeoutRef.current = null;
           hasCompletedBackgroundWarmRef.current = true;
-          logMushafQcfDev('background-warm-complete', {
-            anchorPageNumber,
-            pageCount: normalizedPageNumbers.length,
-            reason,
-          });
           return;
         }
 
@@ -557,19 +607,30 @@ export const MushafSingleDocumentReader = React.forwardRef<
         );
       };
 
-      logMushafQcfDev('background-warm-start', {
-        anchorPageNumber,
-        pageCount: queue.length,
-        reason,
-      });
-
       backgroundWarmTimeoutRef.current = setTimeout(
         runNextBatch,
         BACKGROUND_WARM_START_DELAY_MS
       );
     },
-    [allowedPageNumbers, clearBackgroundWarmTimeout, loadPages, pageNumbers, totalPages]
+    [
+      allowedPageNumbers,
+      backgroundWarmEnabled,
+      clearBackgroundWarmTimeout,
+      loadPages,
+      pageNumbers,
+      totalPages,
+    ]
   );
+
+  React.useEffect(() => {
+    if (!backgroundWarmEnabled) {
+      stopBackgroundWarm();
+      return;
+    }
+    if (hasInitialPaintRef.current) {
+      startBackgroundWarm('reader-became-visible', activePageNumberRef.current);
+    }
+  }, [backgroundWarmEnabled, startBackgroundWarm, stopBackgroundWarm]);
 
   React.useEffect(() => {
     stopBackgroundWarm();

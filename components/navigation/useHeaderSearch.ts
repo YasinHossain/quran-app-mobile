@@ -2,6 +2,8 @@ import { useLocalSearchParams, usePathname, useRouter } from 'expo-router';
 import React from 'react';
 import { Keyboard, TextInput } from 'react-native';
 
+import { DEFAULT_MUSHAF_ID, findMushafOption } from '@/data/mushaf/options';
+import { prepareMushafVerseTarget } from '@/lib/mushaf/prepareMushafVerseTarget';
 import { warmSurahReaderBeforeNavigation } from '@/lib/surah/surahReaderWarmup';
 import { useSettings } from '@/providers/SettingsContext';
 
@@ -91,6 +93,100 @@ export function useHeaderSearch({
     [close, pathname, preserveMushafView, replace, routeParams.surahId, router, settings]
   );
 
+  const navigateToMushaf = React.useCallback(
+    (surahId: number, verse?: number) => {
+      close({ clearQuery: true });
+      const normalizedSurahId = Math.max(1, Math.trunc(surahId));
+      const normalizedVerse =
+        typeof verse === 'number' && Number.isFinite(verse) && verse > 0
+          ? Math.trunc(verse)
+          : undefined;
+
+      void (async () => {
+        const packId = settings.mushafId ?? DEFAULT_MUSHAF_ID;
+        const fallbackVersion = findMushafOption(packId)?.version ?? 'unknown';
+        const target = normalizedVerse
+          ? await prepareMushafVerseTarget({
+              chapterId: normalizedSurahId,
+              fallbackVersion,
+              packId,
+              verseKey: `${normalizedSurahId}:${normalizedVerse}`,
+            }).catch(() => null)
+          : null;
+        const route = {
+          pathname: '/surah/[surahId]',
+          params: {
+            surahId: String(normalizedSurahId),
+            view: 'mushaf',
+            ...(normalizedVerse ? { startVerse: String(normalizedVerse) } : {}),
+            ...(target ? { startPage: String(target.pageNumber) } : {}),
+          },
+        } as const;
+
+        if (replace) {
+          router.replace(route);
+          return;
+        }
+
+        router.push(route);
+      })();
+    },
+    [close, replace, router, settings]
+  );
+
+  const navigateToTranslation = React.useCallback(
+    (surahId: number, verse?: number) => {
+      close({ clearQuery: true });
+      const normalizedVerse =
+        typeof verse === 'number' && Number.isFinite(verse) && verse > 0
+          ? Math.trunc(verse)
+          : undefined;
+      const route = {
+        pathname: '/surah/[surahId]',
+        params: {
+          surahId: String(surahId),
+          view: 'translations',
+          ...(normalizedVerse ? { startVerse: String(normalizedVerse) } : {}),
+        },
+      } as const;
+
+      void (async () => {
+        await warmSurahReaderBeforeNavigation({
+          surahId,
+          verseNumber: normalizedVerse,
+          settings,
+        });
+
+        if (replace) {
+          router.replace(route);
+          return;
+        }
+
+        router.push(route);
+      })();
+    },
+    [close, replace, router, settings]
+  );
+
+  const navigateToTafsir = React.useCallback(
+    (surahId: number, verse = 1) => {
+      close({ clearQuery: true });
+      const normalizedVerse = Number.isFinite(verse) && verse > 0 ? Math.floor(verse) : 1;
+      const route = {
+        pathname: '/tafsir/[surahId]/[ayahId]',
+        params: { surahId: String(surahId), ayahId: String(normalizedVerse) },
+      } as const;
+
+      if (replace) {
+        router.replace(route);
+        return;
+      }
+
+      router.push(route);
+    },
+    [close, replace, router]
+  );
+
   const navigateToJuz = React.useCallback(
     (juzNumber: number) => {
       close({ clearQuery: true });
@@ -128,9 +224,12 @@ export function useHeaderSearch({
     inputRef,
     isOpen,
     navigateToJuz,
+    navigateToMushaf,
     navigateToPage,
     navigateToSearch,
     navigateToSurahVerse,
+    navigateToTafsir,
+    navigateToTranslation,
     query,
     setIsOpen,
     updateQuery,

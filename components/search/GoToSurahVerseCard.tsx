@@ -47,9 +47,10 @@ function toSuggestionRows(suggestions: SearchSuggestion[]): SearchSuggestion[][]
 export function GoToSurahVerseCard({
   title = 'Go To',
   subtitle,
-  buttonLabel = 'Go',
   variant = 'card',
-  onNavigate,
+  onNavigateToMushaf,
+  onNavigateToTafsir,
+  onNavigateToTranslation,
   onSearchSuggestion,
   dropdownVisualOffset = getGoToCardSelectorVisualOffset(),
 }: {
@@ -57,7 +58,9 @@ export function GoToSurahVerseCard({
   subtitle?: string;
   buttonLabel?: string;
   variant?: 'card' | 'embedded';
-  onNavigate: (surahId: number, verse?: number) => void;
+  onNavigateToMushaf?: (surahId: number, verse?: number) => void;
+  onNavigateToTafsir?: (surahId: number, verse?: number) => void;
+  onNavigateToTranslation: (surahId: number, verse?: number) => void;
   onSearchSuggestion?: (query: string) => void;
   dropdownVisualOffset?: number;
 }): React.JSX.Element {
@@ -88,17 +91,30 @@ export function GoToSurahVerseCard({
     setSelectedVerse(verse);
   }, []);
 
-  const submit = React.useCallback(() => {
+  const submitMushaf = React.useCallback(() => {
+    if (!selectedSurah || !onNavigateToMushaf) return;
+    onNavigateToMushaf(selectedSurah, selectedVerse);
+  }, [onNavigateToMushaf, selectedSurah, selectedVerse]);
+
+  const submitTranslation = React.useCallback(() => {
     if (!selectedSurah) return;
-    onNavigate(selectedSurah, selectedVerse);
-  }, [onNavigate, selectedSurah, selectedVerse]);
+    onNavigateToTranslation(selectedSurah, selectedVerse);
+  }, [onNavigateToTranslation, selectedSurah, selectedVerse]);
+
+  const submitTafsir = React.useCallback(() => {
+    if (!selectedSurah || !onNavigateToTafsir) return;
+    onNavigateToTafsir(selectedSurah, selectedVerse ?? 1);
+  }, [onNavigateToTafsir, selectedSurah, selectedVerse]);
 
   const subtitleText =
     subtitle ??
     (isLoading && chapters.length === 0 ? t('loading_surah') : undefined);
   const suggestionRows = React.useMemo(() => toSuggestionRows(SEARCH_SUGGESTIONS), []);
+  const hasDestinationButtons = Boolean(onNavigateToMushaf && onNavigateToTafsir);
 
   const formPaddingClass = variant === 'card' ? 'px-5 pt-5 pb-4' : 'px-6 pt-5 pb-4';
+  const isDestinationDisabled = !selectedSurah;
+  const destinationButtonClass = 'min-w-0 flex-1 rounded-lg bg-accent px-2 py-2.5';
 
   return (
     <View className={isDark ? 'dark' : ''}>
@@ -111,7 +127,7 @@ export function GoToSurahVerseCard({
       >
         <View className={formPaddingClass}>
           {/* Header */}
-          <View className="flex-row items-center justify-between gap-3">
+          <View>
             <View className="min-w-0 flex-1">
               <Text className="text-lg font-semibold text-foreground dark:text-foreground-dark">
                 {title === 'Go To' ? t('go_to') : title}
@@ -120,20 +136,56 @@ export function GoToSurahVerseCard({
                 <Text className="mt-1 text-sm text-muted dark:text-muted-dark">{subtitleText}</Text>
               ) : null}
             </View>
-
-            <Pressable
-              onPress={submit}
-              disabled={!selectedSurah}
-              accessibilityRole="button"
-              accessibilityLabel={buttonLabel === 'Go' ? t('go') : buttonLabel}
-              className="rounded-lg bg-accent px-6 py-2"
-              style={({ pressed }) => ({
-                opacity: !selectedSurah ? 0.5 : pressed ? 0.9 : 1,
-              })}
-            >
-              <Text className="text-sm font-semibold text-on-accent">{buttonLabel === 'Go' ? t('go') : buttonLabel}</Text>
-            </Pressable>
           </View>
+
+          {hasDestinationButtons ? (
+            <View className="mt-4 flex-row gap-2">
+              <Pressable
+                onPress={submitMushaf}
+                disabled={isDestinationDisabled}
+                accessibilityRole="button"
+                accessibilityLabel={t('go_to_mushaf')}
+                className={destinationButtonClass}
+                style={({ pressed }) => ({
+                  opacity: isDestinationDisabled ? 0.5 : pressed ? 0.9 : 1,
+                })}
+              >
+                <Text numberOfLines={1} className="text-center text-sm font-semibold text-on-accent">
+                  {t('go_to_mushaf')}
+                </Text>
+              </Pressable>
+
+              <Pressable
+                onPress={submitTranslation}
+                disabled={isDestinationDisabled}
+                accessibilityRole="button"
+                accessibilityLabel={t('go_to_translation')}
+                className={destinationButtonClass}
+                style={({ pressed }) => ({
+                  opacity: isDestinationDisabled ? 0.5 : pressed ? 0.9 : 1,
+                })}
+              >
+                <Text numberOfLines={1} className="text-center text-sm font-semibold text-on-accent">
+                  {t('go_to_translation')}
+                </Text>
+              </Pressable>
+
+              <Pressable
+                onPress={submitTafsir}
+                disabled={isDestinationDisabled}
+                accessibilityRole="button"
+                accessibilityLabel={t('go_to_tafsir')}
+                className={destinationButtonClass}
+                style={({ pressed }) => ({
+                  opacity: isDestinationDisabled ? 0.5 : pressed ? 0.9 : 1,
+                })}
+              >
+                <Text numberOfLines={1} className="text-center text-sm font-semibold text-on-accent">
+                  {t('go_to_tafsir')}
+                </Text>
+              </Pressable>
+            </View>
+          ) : null}
 
           {/* Surah & Verse Selectors - Side by Side */}
           <View className="mt-4">

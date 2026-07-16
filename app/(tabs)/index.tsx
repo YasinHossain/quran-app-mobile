@@ -13,7 +13,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Menu, Moon, Sun, Download } from 'lucide-react-native';
+import { Download, ExternalLink, Globe2, Menu, Moon, ShieldCheck, Sun } from 'lucide-react-native';
 
 import { HomeRecentCard } from '@/components/home/HomeRecentCard';
 import { HomeQuickLinksCard } from '@/components/home/HomeQuickLinksCard';
@@ -30,6 +30,8 @@ import { ComprehensiveSearchDropdown } from '@/components/search/ComprehensiveSe
 import { HeaderActionButton } from '@/components/search/HeaderSearchBar';
 import Colors from '@/constants/Colors';
 import { useChapters } from '@/hooks/useChapters';
+import { useDownloadIndexItems } from '@/hooks/useDownloadIndexItems';
+import { useDownloadedResourceSize } from '@/hooks/useDownloadedResourceSize';
 import { useAppTheme } from '@/providers/ThemeContext';
 import { useUiTranslation } from '@/providers/UiLanguageContext';
 import { IndexScrubber, type IndexScrubberHandle } from '@/components/reader/IndexScrubber';
@@ -47,6 +49,14 @@ const HOME_GRID_ROW_BOTTOM_GAP = 10;
 const HOME_GRID_ROW_HEIGHT = HOME_NAV_CARD_HEIGHT + HOME_GRID_ROW_BOTTOM_GAP;
 const HOME_MESSAGE_ROW_HEIGHT = 52;
 const HOME_CONTENT_BOTTOM_PADDING = 24;
+
+type MenuRowProps = {
+  children?: React.ReactNode;
+  icon: React.ReactNode;
+  onPress: () => void;
+  subtitle?: string;
+  title: string;
+};
 
 function clampNumber(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
@@ -151,9 +161,38 @@ function HomeSearchHeader({
 
   const { isDark, setDarkModeEnabled } = useAppTheme();
   const { t } = useUiTranslation();
+  const { items: downloadItems, isLoading: isDownloadIndexLoading } = useDownloadIndexItems({
+    enabled: isMenuOpen,
+  });
+  const { label: downloadedResourceSizeLabel } = useDownloadedResourceSize(downloadItems);
 
   const openMenu = () => setIsMenuOpen(true);
   const closeMenu = () => setIsMenuOpen(false);
+
+  const renderMenuRow = ({ children, icon, onPress, subtitle, title }: MenuRowProps) => (
+    <Pressable
+      onPress={onPress}
+      className="px-5 py-4 active:bg-interactive dark:active:bg-interactive-dark flex-row items-center gap-3"
+    >
+      <View className="h-9 w-9 items-center justify-center rounded-lg bg-interactive dark:bg-interactive-dark">
+        {icon}
+      </View>
+      <View className="min-w-0 flex-1">
+        <Text className="text-base font-semibold text-content-primary dark:text-content-primary-dark">
+          {title}
+        </Text>
+        {subtitle ? (
+          <Text
+            numberOfLines={1}
+            className="mt-0.5 text-xs text-content-secondary dark:text-content-secondary-dark"
+          >
+            {subtitle}
+          </Text>
+        ) : null}
+      </View>
+      {children}
+    </Pressable>
+  );
 
   return (
     <AppSearchHeader
@@ -201,25 +240,73 @@ function HomeSearchHeader({
                 <View className="px-5 py-6 border-b border-border dark:border-border-dark">
                   <Text className="text-xl font-bold text-foreground dark:text-foreground-dark">{t('title')}</Text>
                 </View>
-                <Pressable
-                  onPress={() => {
-                    closeMenu();
-                    router.push('/downloads');
-                  }}
-                  className="px-5 py-4 active:bg-interactive dark:active:bg-interactive-dark flex-row items-center gap-3"
-                >
-                  <Download size={20} color={isDark ? '#E5E5E5' : '#2F3744'} strokeWidth={2} />
-                  <Text className="text-base font-semibold text-content-primary dark:text-content-primary-dark">Downloads</Text>
-                </Pressable>
-                <Pressable
-                  onPress={() => {
-                    closeMenu();
-                    Linking.openURL('https://appquran.com').catch(() => {});
-                  }}
-                  className="px-5 py-4 active:bg-interactive dark:active:bg-interactive-dark flex-row items-center gap-3"
-                >
-                  <Text className="text-base font-semibold text-content-primary dark:text-content-primary-dark">appquran.com</Text>
-                </Pressable>
+                <View className="flex-1">
+                  {renderMenuRow({
+                    icon: (
+                      <Download size={20} color={isDark ? '#E5E5E5' : '#2F3744'} strokeWidth={2} />
+                    ),
+                    onPress: () => {
+                      closeMenu();
+                      router.push('/downloads');
+                    },
+                    title: t('downloads', { fallback: 'Downloads' }),
+                    children:
+                      downloadedResourceSizeLabel && !isDownloadIndexLoading ? (
+                        <View
+                          className="rounded-full border border-border/20 bg-interactive px-2.5 py-0.5 dark:border-border-dark/10 dark:bg-surface-navigation-dark"
+                          style={{ flexShrink: 0 }}
+                        >
+                          <Text className="text-[10px] font-bold text-content-secondary dark:text-content-secondary-dark">
+                            {downloadedResourceSizeLabel}
+                          </Text>
+                        </View>
+                      ) : null,
+                  })}
+                  {renderMenuRow({
+                    icon: (
+                      <ShieldCheck
+                        size={20}
+                        color={isDark ? '#E5E5E5' : '#2F3744'}
+                        strokeWidth={2}
+                      />
+                    ),
+                    onPress: () => {
+                      closeMenu();
+                      router.push('/privacy');
+                    },
+                    title: t('home_footer_privacy_policy', { fallback: 'Privacy Policy' }),
+                  })}
+                  {renderMenuRow({
+                    children: (
+                      <ExternalLink
+                        size={16}
+                        color={isDark ? '#94A3B8' : '#6B7280'}
+                        strokeWidth={2}
+                      />
+                    ),
+                    icon: (
+                      <Globe2 size={20} color={isDark ? '#E5E5E5' : '#2F3744'} strokeWidth={2} />
+                    ),
+                    onPress: () => {
+                      closeMenu();
+                      Linking.openURL('https://appquran.com').catch(() => {});
+                    },
+                    title: 'appquran.com',
+                  })}
+                </View>
+
+                <View className="border-t border-border dark:border-border-dark px-5 py-4">
+                  <Text className="text-xs leading-5 text-content-secondary dark:text-content-secondary-dark">
+                    {t('home_footer_attribution_prefix', {
+                      fallback: 'Quranic content provided by',
+                    })}{' '}
+                    {t('home_footer_attribution_source', { fallback: 'Quran Foundation' })}
+                  </Text>
+                  <Text className="mt-1 text-xs leading-5 text-content-secondary dark:text-content-secondary-dark">
+                    Quran.com Content APIs and CDN are used for verses, translations, tafsir, mushaf
+                    data, and recitations.
+                  </Text>
+                </View>
               </Animated.View>
             </View>
           </Modal>
@@ -726,7 +813,10 @@ export default function ReadScreen(): React.JSX.Element {
         query={headerSearch.query}
         onQueryChange={headerSearch.updateQuery}
         onClose={() => headerSearch.close({ clearQuery: false })}
+        onNavigateToMushaf={headerSearch.navigateToMushaf}
         onNavigateToSurahVerse={headerSearch.navigateToSurahVerse}
+        onNavigateToTafsir={headerSearch.navigateToTafsir}
+        onNavigateToTranslation={headerSearch.navigateToTranslation}
         onNavigateToJuz={headerSearch.navigateToJuz}
         onNavigateToPage={headerSearch.navigateToPage}
         onNavigateToSearch={headerSearch.navigateToSearch}

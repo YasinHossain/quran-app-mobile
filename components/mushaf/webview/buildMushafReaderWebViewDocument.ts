@@ -728,6 +728,8 @@ function buildShellDocumentHtml({
         var pageStates = new Map();
         var loadedPageNumbers = new Set();
         var activeRenderTokens = Object.create(null);
+        var qcfFontLoadPromises = new Map();
+        var qcfFontLoadQueue = Promise.resolve();
         var scrollRequestTimeoutId = null;
         var activePageRafId = null;
         var scrollActivityRafId = null;
@@ -891,6 +893,8 @@ function buildShellDocumentHtml({
             lastContainerWidth: 0,
             pageNumber: normalizedPageNumber,
             qcfFontFamily: null,
+            qcfFontRetryCount: 0,
+            qcfFontRetryTimeoutId: null,
             renderedReflow: false,
             renderedStandard: false,
             renderKey: null,
@@ -1150,13 +1154,14 @@ function buildShellDocumentHtml({
           if (
             !rendererAssets ||
             !rendererAssets.pageFontFamily ||
-            !rendererAssets.pageFontFileUri ||
+            (!rendererAssets.pageFontDataUri && !rendererAssets.pageFontFileUri) ||
             typeof FontFace === 'undefined'
           ) {
             return null;
           }
 
           var qcfFontFamily = rendererAssets.pageFontFamily;
+          var qcfFontDataUri = rendererAssets.pageFontDataUri;
           var qcfFontFileUri = rendererAssets.pageFontFileUri;
           var existingFontLoaded = Array.from(document.fonts || []).some(function (font) {
             return font.family === qcfFontFamily && font.status === 'loaded';
@@ -1166,49 +1171,105 @@ function buildShellDocumentHtml({
             return qcfFontFamily;
           }
 
-          async function registerFontFace(source) {
-            var fontFace = new FontFace(qcfFontFamily, source);
-            fontFace.display = 'block';
-            var loadedFace = await fontFace.load();
-            if (document.fonts) {
-              document.fonts.add(loadedFace);
-              await document.fonts.ready;
-            }
-            await new Promise(function (resolve) {
-              requestAnimationFrame(function () {
-                requestAnimationFrame(resolve);
-              });
+          var existingLoadPromise = qcfFontLoadPromises.get(qcfFontFamily);
+          if (existingLoadPromise) {
+            return existingLoadPromise;
+          }
+
+          var loadPromise = qcfFontLoadQueue.then(async function () {
+            var loadedWhileQueued = Array.from(document.fonts || []).some(function (font) {
+              return font.family === qcfFontFamily && font.status === 'loaded';
             });
-            return qcfFontFamily;
-          }
-
-          var fontUrl = String(qcfFontFileUri);
-          var escapedFontUrl = fontUrl.replace(/'/g, "\\\\'");
-          var lastError = null;
-
-          for (var attempt = 0; attempt < 2; attempt += 1) {
-            try {
-              return await registerFontFace("url('" + escapedFontUrl + "')");
-            } catch (error) {
-              lastError = error;
-              await new Promise(function (resolve) {
-                setTimeout(resolve, 80 * (attempt + 1));
-              });
+            if (loadedWhileQueued) {
+              return qcfFontFamily;
             }
-          }
+
+            async function registerFontFace(source) {
+              var fontFace = new FontFace(qcfFontFamily, source);
+              fontFace.display = 'block';
+              var loadedFace = await fontFace.load();
+              if (document.fonts) {
+                document.fonts.add(loadedFace);
+                await document.fonts.ready;
+              }
+              await new Promise(function (resolve) {
+                requestAnimationFrame(function () {
+                  requestAnimationFrame(resolve);
+                });
+              });
+              return qcfFontFamily;
+            }
+
+            var fontUrl = String(qcfFontDataUri || qcfFontFileUri);
+            var escapedFontUrl = fontUrl.replace(/'/g, "\\\\'");
+            for (var attempt = 0; attempt < 3; attempt += 1) {
+              try {
+                return await registerFontFace("url('" + escapedFontUrl + "')");
+              } catch (error) {
+                await new Promise(function (resolve) {
+                  setTimeout(resolve, 100 * Math.pow(2, attempt));
+                });
+              }
+            }
+
+            try {
+              var response = await fetch(fontUrl, { cache: 'no-store' });
+              var fontBuffer = await response.arrayBuffer();
+              if (!fontBuffer || fontBuffer.byteLength === 0) {
+                throw new Error('Font file request returned no data');
+              }
+              return await registerFontFace(fontBuffer);
+            } catch (error) {}
+
+            return null;
+          });
+
+          qcfFontLoadPromises.set(qcfFontFamily, loadPromise);
+          qcfFontLoadQueue = loadPromise.catch(function () {
+            return null;
+          });
 
           try {
-            var response = await fetch(fontUrl, { cache: 'no-store' });
-            if (!response.ok) {
-              throw new Error('Font file request failed with status ' + String(response.status));
+            return await loadPromise;
+          } finally {
+            if (qcfFontLoadPromises.get(qcfFontFamily) === loadPromise) {
+              qcfFontLoadPromises.delete(qcfFontFamily);
             }
-            return await registerFontFace(await response.arrayBuffer());
-          } catch (error) {
-            lastError = error;
+          }
+        }
+
+        function requiresQcfPageFont(pageData) {
+          var rendererAssets = pageData && pageData.rendererAssets;
+          return Boolean(
+            rendererAssets &&
+              rendererAssets.qcfVersion &&
+              rendererAssets.pageFontFamily &&
+              (rendererAssets.pageFontDataUri || rendererAssets.pageFontFileUri)
+          );
+        }
+
+        function scheduleQcfFontRetry(state, pageData, layout) {
+          if (!state || state.qcfFontRetryTimeoutId !== null) {
+            return;
           }
 
-          console.error('Failed to load local QCF page font', lastError);
-          return null;
+          var retryDelays = [150, 500, 1500, 5000, 15000];
+          var retryIndex = Math.min(
+            Math.max(0, state.qcfFontRetryCount - 1),
+            retryDelays.length - 1
+          );
+          var expectedRenderKey = getPageRenderKey(pageData);
+
+          state.qcfFontRetryTimeoutId = setTimeout(function () {
+            state.qcfFontRetryTimeoutId = null;
+            if (!state.data || getPageRenderKey(state.data) !== expectedRenderKey) {
+              return;
+            }
+
+            loadedPageNumbers.delete(state.pageNumber);
+            state.renderKey = null;
+            renderPage(state.data, layout);
+          }, retryDelays[retryIndex]);
         }
 
         function shouldUseReflow(state, layout) {
@@ -1603,9 +1664,31 @@ function buildShellDocumentHtml({
           state.renderKey = renderKey;
 
           clearPage(state);
+          state.root.classList.add('loading');
           var qcfFontFamily = await loadQcfPageFontIfNeeded(pageData.rendererAssets || {});
           if (activeRenderTokens[pageNumber] !== renderToken) {
             return;
+          }
+
+          var requiresQcfFont = requiresQcfPageFont(pageData);
+          if (requiresQcfFont && !qcfFontFamily) {
+            state.qcfFontRetryCount += 1;
+            if (state.qcfFontRetryCount <= 6) {
+              scheduleQcfFontRetry(state, pageData, layout);
+            }
+
+            if (state.qcfFontRetryCount <= 3) {
+              return;
+            }
+          } else {
+            state.qcfFontRetryCount = 0;
+            if (pageData.rendererAssets) {
+              delete pageData.rendererAssets.pageFontDataUri;
+            }
+            if (state.qcfFontRetryTimeoutId !== null) {
+              clearTimeout(state.qcfFontRetryTimeoutId);
+              state.qcfFontRetryTimeoutId = null;
+            }
           }
 
           state.qcfFontFamily = qcfFontFamily;
@@ -1759,8 +1842,8 @@ function buildShellDocumentHtml({
         }
 
         function collectNearPageNumbers() {
-          var viewportTop = -window.innerHeight * 2.5;
-          var viewportBottom = window.innerHeight * 4;
+          var viewportTop = -window.innerHeight * 0.75;
+          var viewportBottom = window.innerHeight * 1.75;
           var requested = [];
 
           pageStates.forEach(function (state, pageNumber) {

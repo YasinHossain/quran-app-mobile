@@ -21,9 +21,11 @@ import { VerseActionsSheet } from '@/components/surah/VerseActionsSheet';
 import { BookmarkModal } from '@/components/bookmarks/BookmarkModal';
 import { AddToPlannerModal, type VerseSummaryDetails } from '@/components/verse-planner-modal';
 import Colors from '@/constants/Colors';
+import { DEFAULT_MUSHAF_ID, findMushafOption } from '@/data/mushaf/options';
 import { usePaginatedSearch } from '@/hooks/usePaginatedSearch';
 import { useChapters } from '@/hooks/useChapters';
 import { analyzeQuery } from '@/lib/api/search';
+import { prepareMushafVerseTarget } from '@/lib/mushaf/prepareMushafVerseTarget';
 import { warmSurahReaderBeforeNavigation } from '@/lib/surah/surahReaderWarmup';
 import { primeVerseDetailsCache } from '@/lib/verse/verseDetailsCache';
 import { preloadOfflineTafsirWindow } from '@/lib/tafsir/tafsirCache';
@@ -266,12 +268,63 @@ export default function SearchScreen(): React.JSX.Element {
           pathname: '/surah/[surahId]',
           params: {
             surahId: String(surahId),
+            view: 'translations',
             ...(typeof verse === 'number' ? { startVerse: String(verse) } : {}),
           },
         });
       })();
     },
     [router, settings]
+  );
+
+  const handleNavigateToMushaf = React.useCallback(
+    (surahId: number, verse?: number) => {
+      Keyboard.dismiss();
+      const normalizedVerse =
+        typeof verse === 'number' && Number.isFinite(verse) && verse > 0
+          ? Math.trunc(verse)
+          : undefined;
+      void (async () => {
+        const packId = settings.mushafId ?? DEFAULT_MUSHAF_ID;
+        const target = normalizedVerse
+          ? await prepareMushafVerseTarget({
+              chapterId: surahId,
+              fallbackVersion: findMushafOption(packId)?.version ?? 'unknown',
+              packId,
+              verseKey: `${surahId}:${normalizedVerse}`,
+            }).catch(() => null)
+          : null;
+        router.push({
+          pathname: '/surah/[surahId]',
+          params: {
+            surahId: String(surahId),
+            view: 'mushaf',
+            ...(normalizedVerse ? { startVerse: String(normalizedVerse) } : {}),
+            ...(target ? { startPage: String(target.pageNumber) } : {}),
+          },
+        });
+      })();
+    },
+    [router, settings]
+  );
+
+  const handleNavigateToTafsir = React.useCallback(
+    (surahId: number, verse = 1) => {
+      Keyboard.dismiss();
+      const normalizedVerse = Number.isFinite(verse) && verse > 0 ? Math.floor(verse) : 1;
+      const chapterVerseCount = chapters.find((chapter) => chapter.id === surahId)?.verses_count;
+      void preloadOfflineTafsirWindow({
+        surahId,
+        ayahId: normalizedVerse,
+        tafsirIds: settings.tafsirIds ?? [],
+        verseCount: chapterVerseCount,
+      });
+      router.push({
+        pathname: '/tafsir/[surahId]/[ayahId]',
+        params: { surahId: String(surahId), ayahId: String(normalizedVerse) },
+      });
+    },
+    [chapters, router, settings.tafsirIds]
   );
 
   const handleNavResultPress = React.useCallback(
@@ -336,7 +389,9 @@ export default function SearchScreen(): React.JSX.Element {
 
         {showGoTo ? (
           <GoToSurahVerseCard
-            onNavigate={handleNavigateToSurahVerse}
+            onNavigateToMushaf={handleNavigateToMushaf}
+            onNavigateToTafsir={handleNavigateToTafsir}
+            onNavigateToTranslation={handleNavigateToSurahVerse}
             onSearchSuggestion={(suggestion) => setQuery(suggestion)}
             title="Go To"
             buttonLabel="Go"

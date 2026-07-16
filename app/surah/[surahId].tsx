@@ -60,6 +60,11 @@ import { useChapters } from '@/hooks/useChapters';
 import { useMushafPageData } from '@/hooks/useMushafPageData';
 import { useSurahVerses, type SurahVerse } from '@/hooks/useSurahVerses';
 import { useTranslationResources } from '@/hooks/useTranslationResources';
+import {
+  prepareMushafVerseTarget,
+  resolveActiveMushafVersion,
+  type PreparedMushafVerseTarget as PreparedMushafTarget,
+} from '@/lib/mushaf/prepareMushafVerseTarget';
 import { warmSurahReaderBeforeNavigation } from '@/lib/surah/surahReaderWarmup';
 import { preloadOfflineTafsirWindow } from '@/lib/tafsir/tafsirCache';
 import { primeVerseDetailsCache } from '@/lib/verse/verseDetailsCache';
@@ -91,21 +96,6 @@ function getVerseKeyForSurah(verseKey: string | null, surahId: number): string |
   const parsed = parseVerseKeyNumbers(verseKey);
   if (!parsed || parsed.surahId !== surahId) return null;
   return verseKey;
-}
-
-async function resolveActiveMushafVersion(
-  packId: MushafPackId,
-  fallbackVersion: string
-): Promise<string> {
-  try {
-    const activeInstall = await container
-      .getMushafPackInstallRegistry()
-      .getActive(packId);
-
-    return activeInstall?.version?.trim() || fallbackVersion;
-  } catch {
-    return fallbackVersion;
-  }
 }
 
 function VerseCardPlaceholder({ verseKey }: { verseKey: string }): React.JSX.Element {
@@ -324,6 +314,13 @@ export default function SurahScreen(): React.JSX.Element {
     React.useState<string | null>(null);
   const [translationListGeneration, bumpTranslationListGeneration] =
     React.useReducer((value) => value + 1, 0);
+  const [preparedMushafTarget, setPreparedMushafTarget] =
+    React.useState<PreparedMushafTarget | null>(null);
+  const preparedMushafTargetRef = React.useRef<PreparedMushafTarget | null>(null);
+  preparedMushafTargetRef.current = preparedMushafTarget;
+  const prepareMushafForVerseRef = React.useRef<
+    (verseKey: string | null) => Promise<PreparedMushafTarget | null>
+  >(() => Promise.resolve(null));
   const mushafOriginVerseKeyRef = React.useRef<string | null>(null);
   const activeMushafVerseKeyRef = React.useRef<string | null>(null);
   const translationModeSwitchRequestIdRef = React.useRef(0);
@@ -469,16 +466,23 @@ export default function SurahScreen(): React.JSX.Element {
     () => getChapterPageRange(navigationChapter),
     [navigationChapter]
   );
+  const activePreparedMushafTarget =
+    preparedMushafTarget?.chapterId === Math.trunc(chapterNumber) &&
+    preparedMushafTarget.packId === selectedMushafId
+      ? preparedMushafTarget
+      : null;
   const requestedMushafPage = Number.isFinite(startPage) && startPage > 0 ? Math.floor(startPage) : NaN;
   const initialMushafPageNumber = React.useMemo(
     () =>
       clampPageToRange(
-        Number.isFinite(requestedMushafPage)
+        !isMushafView && activePreparedMushafTarget
+          ? activePreparedMushafTarget.pageNumber
+          : Number.isFinite(requestedMushafPage)
           ? requestedMushafPage
           : mushafPageRange?.firstPage ?? 1,
         mushafPageRange
       ),
-    [mushafPageRange, requestedMushafPage]
+    [activePreparedMushafTarget, isMushafView, mushafPageRange, requestedMushafPage]
   );
   const mushafSurahPageNumbers = React.useMemo(
     () => buildPageRangeNumbers(mushafPageRange, FALLBACK_MUSHAF_TOTAL_PAGES),
@@ -501,20 +505,26 @@ export default function SurahScreen(): React.JSX.Element {
   const initialMushafPageProbe = useMushafPageData({
     packId: selectedMushafId,
     pageNumber: initialMushafPageNumber,
-    expectedVersion: selectedMushafVersion,
-    enabled: Boolean(isMushafView && isHydrated && selectedMushafOption?.renderer === 'webview'),
+    expectedVersion: activePreparedMushafTarget?.version ?? selectedMushafVersion,
+    enabled: Boolean(
+      (isMushafView || activePreparedMushafTarget) &&
+        isHydrated &&
+        selectedMushafOption?.renderer === 'webview'
+    ),
   });
+  const mushafProbeExpectedVersion =
+    activePreparedMushafTarget?.version ?? selectedMushafVersion;
   const retainedMushafPageDataRef = React.useRef(initialMushafPageProbe.data);
   if (
     initialMushafPageProbe.data?.pack.packId === selectedMushafId &&
-    initialMushafPageProbe.data.pack.version.trim() === selectedMushafVersion.trim() &&
+    initialMushafPageProbe.data.pack.version.trim() === mushafProbeExpectedVersion.trim() &&
     initialMushafPageProbe.data.pageNumber === initialMushafPageNumber
   ) {
     retainedMushafPageDataRef.current = initialMushafPageProbe.data;
   }
   const retainedMushafPageData =
     retainedMushafPageDataRef.current?.pack.packId === selectedMushafId &&
-      retainedMushafPageDataRef.current.pack.version.trim() === selectedMushafVersion.trim() &&
+      retainedMushafPageDataRef.current.pack.version.trim() === mushafProbeExpectedVersion.trim() &&
       retainedMushafPageDataRef.current.pageNumber === initialMushafPageNumber
       ? retainedMushafPageDataRef.current
       : null;
@@ -549,9 +559,12 @@ export default function SurahScreen(): React.JSX.Element {
   );
   const mushafHighlightVerseKey = React.useMemo(() => {
     if (!Number.isFinite(chapterNumber) || chapterNumber <= 0) return null;
+    if (!isMushafView && activePreparedMushafTarget) {
+      return activePreparedMushafTarget.verseKey;
+    }
     if (typeof normalizedStartVerse !== 'number') return null;
     return `${Math.trunc(chapterNumber)}:${normalizedStartVerse}`;
-  }, [chapterNumber, normalizedStartVerse]);
+  }, [activePreparedMushafTarget, chapterNumber, isMushafView, normalizedStartVerse]);
   const mushafSurahIntro = React.useMemo(() => {
     if (!resolvedChapter) return undefined;
     const presentation = getSurahHeaderPresentation(resolvedChapter, t);
@@ -675,7 +688,6 @@ export default function SurahScreen(): React.JSX.Element {
 
       if (nextTab !== 'mushaf') return;
 
-      const mushafRepository = container.getMushafPageRepository();
       const currentChapter = chapters.find((item) => item.id === chapterNumber);
       const pageRange = getChapterPageRange(currentChapter);
       const fallbackPage = pageRange?.firstPage ?? 1;
@@ -693,48 +705,21 @@ export default function SurahScreen(): React.JSX.Element {
 
       closeSettingsSidebar();
       void (async () => {
-        let targetPage = fallbackPage;
-        const [activePackVersion, resolvedPage] = await Promise.all([
-          resolveActiveMushafVersion(selectedMushafId, selectedMushafVersion),
-          focusVerseKey
-            ? mushafRepository
-              .findPageForVerse({
-                packId: selectedMushafId,
-                verseKey: focusVerseKey,
-              })
-              .catch(() => null)
-            : Promise.resolve(null),
-        ]);
-
-        if (typeof resolvedPage === 'number' && resolvedPage > 0) {
-          targetPage = pageRange ? clampPageToRange(resolvedPage, pageRange) : resolvedPage;
-        }
-
-        mushafRepository.setActivePageCacheIdentity({
-          packId: selectedMushafId,
-          version: activePackVersion,
-        });
+        const matchingPreparedTarget =
+          preparedMushafTargetRef.current?.chapterId === Math.trunc(chapterNumber) &&
+          preparedMushafTargetRef.current?.packId === selectedMushafId &&
+          preparedMushafTargetRef.current.verseKey === focusVerseKey
+            ? preparedMushafTargetRef.current
+            : null;
+        const preparedTarget =
+          matchingPreparedTarget ?? (await prepareMushafForVerseRef.current(focusVerseKey));
+        const targetPage = preparedTarget?.pageNumber ?? fallbackPage;
 
         router.setParams({
           view: 'mushaf',
           startPage: String(targetPage),
           ...(typeof focusVerseNumber === 'number' ? { startVerse: String(focusVerseNumber) } : {}),
         });
-
-        void mushafRepository
-          .prefetchPages({
-            packId: selectedMushafId,
-            pageNumbers: pageRange
-              ? [targetPage - 1, targetPage, targetPage + 1].filter(
-                (pageNumber) =>
-                  pageNumber >= pageRange.firstPage && pageNumber <= pageRange.lastPage
-              )
-              : [targetPage - 1, targetPage, targetPage + 1],
-            expectedVersion: activePackVersion,
-          })
-          .catch(() => {
-            // The mounted reader reports local-pack errors; background warmup must not block entry.
-          });
       })();
     },
     [
@@ -745,7 +730,6 @@ export default function SurahScreen(): React.JSX.Element {
       normalizedStartVerse,
       router,
       selectedMushafId,
-      selectedMushafVersion,
       settings,
     ]
   );
@@ -1127,8 +1111,11 @@ export default function SurahScreen(): React.JSX.Element {
   const mushafReaderRef = React.useRef<MushafSingleDocumentReaderHandle | null>(null);
   const mushafPageScrubberRef = React.useRef<IndexScrubberHandle | null>(null);
   const visibleVerseKeyRef = React.useRef<string | null>(null);
-  const lastPrefetchedMushafVerseRef = React.useRef<string | null>(null);
   const mushafPrefetchRequestIdRef = React.useRef(0);
+  const mushafPreparationRef = React.useRef<{
+    key: string;
+    promise: Promise<PreparedMushafTarget | null>;
+  } | null>(null);
   const didScrollToStartRef = React.useRef(false);
   const [scrollTick, bumpScrollTick] = React.useReducer((value) => value + 1, 0);
   const scrollRetryCountRef = React.useRef(0);
@@ -1412,105 +1399,138 @@ export default function SurahScreen(): React.JSX.Element {
   }, [setLastRead]);
 
   React.useEffect(() => {
-    lastPrefetchedMushafVerseRef.current = null;
     mushafPrefetchRequestIdRef.current = 0;
-  }, [selectedMushafId, selectedMushafVersion]);
+    mushafPreparationRef.current = null;
+    setPreparedMushafTarget(null);
+  }, [chapterNumber, selectedMushafId, selectedMushafVersion]);
 
-  const prefetchMushafForVerse = React.useCallback(
-    (verseKey: string | null) => {
+  const prepareMushafForVerse = React.useCallback(
+    (verseKey: string | null): Promise<PreparedMushafTarget | null> => {
       const normalizedVerseKey = typeof verseKey === 'string' ? verseKey.trim() : '';
-      if (!normalizedVerseKey) return;
-
-      const prefetchKey = `${selectedMushafId}:${selectedMushafVersion}:${normalizedVerseKey}`;
-      if (lastPrefetchedMushafVerseRef.current === prefetchKey) {
-        return;
+      const parsedVerseKey = parseVerseKeyNumbers(normalizedVerseKey);
+      const normalizedChapterNumber =
+        Number.isFinite(chapterNumber) && chapterNumber > 0 ? Math.trunc(chapterNumber) : null;
+      if (!parsedVerseKey || parsedVerseKey.surahId !== normalizedChapterNumber) {
+        return Promise.resolve(null);
       }
 
-      lastPrefetchedMushafVerseRef.current = prefetchKey;
+      const existingTarget = preparedMushafTargetRef.current;
+      if (
+        existingTarget?.chapterId === normalizedChapterNumber &&
+        existingTarget.packId === selectedMushafId &&
+        existingTarget.verseKey === normalizedVerseKey
+      ) {
+        return Promise.resolve(existingTarget);
+      }
+
+      const prefetchKey = `${selectedMushafId}:${selectedMushafVersion}:${normalizedVerseKey}`;
+      if (mushafPreparationRef.current?.key === prefetchKey) {
+        return mushafPreparationRef.current.promise;
+      }
+
       const requestId = ++mushafPrefetchRequestIdRef.current;
-      const mushafRepository = container.getMushafPageRepository();
 
-      void (async () => {
+      const preparationPromise = (async (): Promise<PreparedMushafTarget | null> => {
         try {
-          const activePackVersion = await resolveActiveMushafVersion(
-            selectedMushafId,
-            selectedMushafVersion
-          );
-          mushafRepository.setActivePageCacheIdentity({
+          const target = await prepareMushafVerseTarget({
+            chapterId: normalizedChapterNumber,
+            fallbackVersion: selectedMushafVersion,
             packId: selectedMushafId,
-            version: activePackVersion,
-          });
-
-          const resolvedPage = await mushafRepository.findPageForVerse({
-            packId: selectedMushafId,
+            pageRange: mushafPageRange,
+            shouldContinue: () => mushafPrefetchRequestIdRef.current === requestId,
             verseKey: normalizedVerseKey,
           });
-
-          if (mushafPrefetchRequestIdRef.current !== requestId) {
-            return;
-          }
-
-          if (!resolvedPage) {
-            return;
-          }
-
-          await mushafRepository.prefetchPages({
-            packId: selectedMushafId,
-            pageNumbers: [resolvedPage - 1, resolvedPage, resolvedPage + 1],
-            expectedVersion: activePackVersion,
-          });
+          if (!target) return null;
+          preparedMushafTargetRef.current = target;
+          setPreparedMushafTarget(target);
+          return target;
         } catch {
-          // Ignore background mushaf prefetch failures on the translation screen.
+          // The mounted reader reports local-pack errors after the user switches.
+          return null;
         }
       })();
+
+      mushafPreparationRef.current = {
+        key: prefetchKey,
+        promise: preparationPromise,
+      };
+      void preparationPromise.finally(() => {
+        if (mushafPreparationRef.current?.promise === preparationPromise) {
+          mushafPreparationRef.current = null;
+        }
+      });
+      return preparationPromise;
     },
-    [selectedMushafId, selectedMushafVersion]
+    [chapterNumber, mushafPageRange, selectedMushafId, selectedMushafVersion]
   );
+  prepareMushafForVerseRef.current = prepareMushafForVerse;
 
   React.useEffect(() => {
     if (!isSettingsOpen) return;
     if (isMushafView) return;
     if (selectedMushafOption?.renderer !== 'webview') return;
 
-    let cancelled = false;
-    let prefetchTimeout: ReturnType<typeof setTimeout> | null = null;
+    const currentChapterNumber =
+      Number.isFinite(chapterNumber) && chapterNumber > 0
+        ? Math.trunc(chapterNumber)
+        : null;
+    const focusVerseKey =
+      visibleVerseKeyRef.current ??
+      (currentChapterNumber !== null
+        ? getVerseKeyForSurah(activeMushafVerseKeyRef.current, currentChapterNumber) ??
+          getVerseKeyForSurah(mushafOriginVerseKeyRef.current, currentChapterNumber)
+        : null) ??
+      (currentChapterNumber !== null
+        ? `${currentChapterNumber}:${normalizedStartVerse ?? 1}`
+        : null);
 
+    void prepareMushafForVerse(focusVerseKey);
+  }, [
+    chapterNumber,
+    isMushafView,
+    isSettingsOpen,
+    normalizedStartVerse,
+    prepareMushafForVerse,
+    selectedMushafOption?.renderer,
+  ]);
+
+  React.useEffect(() => {
+    if (isMushafView || isSettingsOpen || !isHydrated || !hasLoadedContent) return;
+    if (selectedMushafOption?.renderer !== 'webview') return;
+
+    let cancelled = false;
+    let warmupTimeout: ReturnType<typeof setTimeout> | null = null;
     const interactionTask = InteractionManager.runAfterInteractions(() => {
-      prefetchTimeout = setTimeout(() => {
+      warmupTimeout = setTimeout(() => {
         if (cancelled) return;
         const currentChapterNumber =
           Number.isFinite(chapterNumber) && chapterNumber > 0
             ? Math.trunc(chapterNumber)
             : null;
         const focusVerseKey =
-          (currentChapterNumber !== null
-            ? getVerseKeyForSurah(activeMushafVerseKeyRef.current, currentChapterNumber) ??
-              getVerseKeyForSurah(mushafOriginVerseKeyRef.current, currentChapterNumber)
-            : null) ??
           visibleVerseKeyRef.current ??
           (currentChapterNumber !== null
-            ? typeof normalizedStartVerse === 'number'
-              ? `${currentChapterNumber}:${normalizedStartVerse}`
-              : `${currentChapterNumber}:1`
+            ? `${currentChapterNumber}:${normalizedStartVerse ?? 1}`
             : null);
-
-        prefetchMushafForVerse(focusVerseKey);
-      }, 120);
+        void prepareMushafForVerse(focusVerseKey);
+      }, 450);
     });
 
     return () => {
       cancelled = true;
       interactionTask.cancel?.();
-      if (prefetchTimeout) {
-        clearTimeout(prefetchTimeout);
+      if (warmupTimeout) {
+        clearTimeout(warmupTimeout);
       }
     };
   }, [
     chapterNumber,
+    hasLoadedContent,
+    isHydrated,
     isMushafView,
     isSettingsOpen,
     normalizedStartVerse,
-    prefetchMushafForVerse,
+    prepareMushafForVerse,
     selectedMushafOption?.renderer,
   ]);
 
@@ -2419,6 +2439,7 @@ export default function SurahScreen(): React.JSX.Element {
             ) : (
               <MushafSingleDocumentReader
                 ref={mushafReaderRef}
+                backgroundWarmEnabled={isMushafView}
                 backgroundPageNumbers={mushafInitialWindowPageNumbers}
                 chapterNamesById={chapterNamesById}
                 compactPageLines
@@ -2509,7 +2530,10 @@ export default function SurahScreen(): React.JSX.Element {
         query={headerSearch.query}
         onQueryChange={headerSearch.updateQuery}
         onClose={() => headerSearch.close({ clearQuery: false })}
+        onNavigateToMushaf={headerSearch.navigateToMushaf}
         onNavigateToSurahVerse={headerSearch.navigateToSurahVerse}
+        onNavigateToTafsir={headerSearch.navigateToTafsir}
+        onNavigateToTranslation={headerSearch.navigateToTranslation}
         onNavigateToJuz={headerSearch.navigateToJuz}
         onNavigateToPage={headerSearch.navigateToPage}
         onNavigateToSearch={headerSearch.navigateToSearch}

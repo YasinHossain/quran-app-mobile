@@ -33,27 +33,16 @@ type MushafWebViewPageProps = {
 };
 
 const PAGE_MAX_WIDTH = 720;
-const ENABLE_MUSHAF_QCF_DEV_LOGS = __DEV__;
 const HEIGHT_CHANGE_EPSILON_PX = 1;
 const MIN_WEBVIEW_PAGE_HEIGHT = 280;
 const WEBVIEW_APP_HORIZONTAL_INSET_PX = 8;
 const WEBVIEW_LINE_GAP_PX = 4;
 const WEBVIEW_REFLOW_WIDTH_RATIO = 0.95;
 
-let mountedExactWebViews = 0;
-
 type RenderInjectionReason = 'load-end' | 'payload-change' | 'renderer-ready' | 'retry';
 
 function nowMs(): number {
   return globalThis.performance?.now?.() ?? Date.now();
-}
-
-function logMushafQcfDev(event: string, details: Record<string, unknown>): void {
-  if (!ENABLE_MUSHAF_QCF_DEV_LOGS) {
-    return;
-  }
-
-  console.log(`[mushaf-qcf][MushafWebViewPage] ${event}`, details);
 }
 
 function createCollapsedSelectionPayload(pageNumber: number): MushafSelectionPayload {
@@ -193,7 +182,6 @@ export function MushafWebViewPage({
   const [webViewHeight, setWebViewHeight] = React.useState(initialHeight);
   const [isMeasured, setIsMeasured] = React.useState(false);
   const mountStartedAtRef = React.useRef(nowMs());
-  const webViewLoadedAtRef = React.useRef<number | null>(null);
   const hasReportedFirstHeightRef = React.useRef(false);
   const lastResolvedHeightRef = React.useRef<number | null>(null);
   const webViewRef = React.useRef<WebView>(null);
@@ -213,7 +201,6 @@ export function MushafWebViewPage({
 
   React.useEffect(() => {
     mountStartedAtRef.current = nowMs();
-    webViewLoadedAtRef.current = null;
     hasReportedFirstHeightRef.current = false;
     lastResolvedHeightRef.current = initialHeightOverride ?? null;
     setWebViewHeight(initialHeight);
@@ -236,28 +223,6 @@ export function MushafWebViewPage({
       version: data.pack.version,
     };
   }, [data.pageNumber, data.pack.packId, data.pack.version]);
-
-  React.useEffect(() => {
-    mountedExactWebViews += 1;
-    const identity = latestPageIdentityRef.current;
-    logMushafQcfDev('mount', {
-      mountedExactWebViews,
-      packId: identity.packId,
-      pageNumber: identity.pageNumber,
-      version: identity.version,
-    });
-
-    return () => {
-      mountedExactWebViews = Math.max(0, mountedExactWebViews - 1);
-      const latestIdentity = latestPageIdentityRef.current;
-      logMushafQcfDev('unmount', {
-        mountedExactWebViews,
-        packId: latestIdentity.packId,
-        pageNumber: latestIdentity.pageNumber,
-        version: latestIdentity.version,
-      });
-    };
-  }, []);
 
   const shellDocument = React.useMemo(
     () =>
@@ -292,15 +257,8 @@ export function MushafWebViewPage({
 
       webViewRef.current?.injectJavaScript(renderPayloadScript);
       lastInjectedPayloadKeyRef.current = renderIdentityKey;
-
-      logMushafQcfDev('render-payload-injected', {
-        pageNumber: data.pageNumber,
-        packId: data.pack.packId,
-        reason,
-        version: data.pack.version,
-      });
     },
-    [data.pageNumber, data.pack.packId, data.pack.version, renderIdentityKey, renderPayloadScript]
+    [renderIdentityKey, renderPayloadScript]
   );
 
   React.useEffect(() => {
@@ -323,18 +281,13 @@ export function MushafWebViewPage({
 
   const isPayloadForCurrentPage = React.useCallback(
     (
-      messageType: 'highlight-anchor' | 'selection-change' | 'word-long-press' | 'word-press',
+      _messageType: 'highlight-anchor' | 'selection-change' | 'word-long-press' | 'word-press',
       payload: { pageNumber?: number }
     ): boolean => {
       if (
         typeof payload.pageNumber === 'number' &&
         payload.pageNumber !== latestPageIdentityRef.current.pageNumber
       ) {
-        logMushafQcfDev('stale-interaction-ignored', {
-          currentPageNumber: latestPageIdentityRef.current.pageNumber,
-          messageType,
-          payloadPageNumber: payload.pageNumber,
-        });
         return false;
       }
 
@@ -360,9 +313,6 @@ export function MushafWebViewPage({
       switch (parsed.type) {
         case 'renderer-ready':
           isShellLoadedRef.current = true;
-          if (webViewLoadedAtRef.current === null) {
-            webViewLoadedAtRef.current = nowMs();
-          }
           injectRenderPayload('renderer-ready');
           return;
         case 'content-height': {
@@ -395,18 +345,6 @@ export function MushafWebViewPage({
 
           if (!hasReportedFirstHeightRef.current) {
             hasReportedFirstHeightRef.current = true;
-            logMushafQcfDev('first-content-height', {
-              durationMs,
-              height,
-              mountedExactWebViews,
-              pageNumber: data.pageNumber,
-              packId: data.pack.packId,
-              version: data.pack.version,
-              webViewLoadToHeightMs:
-                webViewLoadedAtRef.current === null
-                  ? null
-                  : Math.round(nowMs() - webViewLoadedAtRef.current),
-            });
             onFirstContentHeight?.({ height, durationMs });
           }
           return;
@@ -477,14 +415,6 @@ export function MushafWebViewPage({
           automaticallyAdjustContentInsets={false}
           onLoadEnd={() => {
             isShellLoadedRef.current = true;
-            webViewLoadedAtRef.current = nowMs();
-            logMushafQcfDev('load-end', {
-              durationMs: Math.round(webViewLoadedAtRef.current - mountStartedAtRef.current),
-              mountedExactWebViews,
-              pageNumber: data.pageNumber,
-              packId: data.pack.packId,
-              version: data.pack.version,
-            });
             injectRenderPayload('load-end');
           }}
           onMessage={(event) => handleMessage(event.nativeEvent.data)}

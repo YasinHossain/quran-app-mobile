@@ -945,7 +945,10 @@ export default function PageScreen(): React.JSX.Element {
         query={headerSearch.query}
         onQueryChange={headerSearch.updateQuery}
         onClose={() => headerSearch.close({ clearQuery: false })}
+        onNavigateToMushaf={headerSearch.navigateToMushaf}
         onNavigateToSurahVerse={headerSearch.navigateToSurahVerse}
+        onNavigateToTafsir={headerSearch.navigateToTafsir}
+        onNavigateToTranslation={headerSearch.navigateToTranslation}
         onNavigateToJuz={headerSearch.navigateToJuz}
         onNavigateToPage={headerSearch.navigateToPage}
         onNavigateToSearch={headerSearch.navigateToSearch}

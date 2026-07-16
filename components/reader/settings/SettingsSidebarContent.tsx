@@ -27,6 +27,7 @@ import { SettingsTabToggle, type SettingsTab } from './SettingsTabToggle';
 import { ToggleRow } from './ToggleRow';
 import { ArabicFontFilterToggle, type ArabicFontFilter } from './ArabicFontFilterToggle';
 import { useDownloadIndexItems } from '@/hooks/useDownloadIndexItems';
+import { useDownloadedResourceSize } from '@/hooks/useDownloadedResourceSize';
 import { getDownloadKey, type DownloadIndexItemWithKey } from '@/src/core/domain/entities/DownloadIndexItem';
 import { DownloadWordTranslationUseCase, requestWordDownloadCancel } from '@/src/core/application/use-cases/DownloadWordTranslation';
 import { DeleteWordTranslationUseCase } from '@/src/core/application/use-cases/DeleteWordTranslation';
@@ -371,11 +372,17 @@ export function SettingsSidebarContent({
     () => new Set()
   );
 
-  const { itemsByKey, refresh: refreshIndex } = useDownloadIndexItems({
-    enabled: panel.type === 'word-language',
+  const {
+    items,
+    itemsByKey,
+    isLoading: isDownloadIndexLoading,
+    refresh: refreshIndex,
+  } = useDownloadIndexItems({
+    enabled: panel.type === 'root' || panel.type === 'word-language',
     pollIntervalMs: 800,
     pollWhileEnabled: busyWordLangCodes.size > 0,
   });
+  const { label: downloadedResourceSizeLabel } = useDownloadedResourceSize(items);
 
   const downloadWordLanguage = React.useCallback(async (code: string) => {
     if (busyWordLangCodes.has(code)) return;
@@ -1440,15 +1447,28 @@ export function SettingsSidebarContent({
                           className="flex-row items-center justify-between gap-3 rounded-2xl px-2 py-3 mt-1"
                           style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
                         >
-                          <View className="flex-row items-center gap-3">
+                          <View className="min-w-0 flex-1 flex-row items-center gap-3">
                             <Download color={palette.tint} size={20} strokeWidth={2.25} />
-                            <Text
-                              className="text-base font-semibold"
-                              style={{ color: palette.text }}
-                            >
-                              {t('manage_downloads')}
-                            </Text>
+                            <View className="min-w-0 flex-1">
+                              <Text
+                                numberOfLines={1}
+                                className="text-base font-semibold"
+                                style={{ color: palette.text }}
+                              >
+                                {t('manage_downloads')}
+                              </Text>
+                            </View>
                           </View>
+                          {downloadedResourceSizeLabel && !isDownloadIndexLoading ? (
+                            <View
+                              className="rounded-full border border-border/20 bg-interactive px-2.5 py-0.5 dark:border-border-dark/10 dark:bg-surface-navigation-dark"
+                              style={{ flexShrink: 0 }}
+                            >
+                              <Text className="text-[10px] font-bold text-muted dark:text-muted-dark">
+                                {downloadedResourceSizeLabel}
+                              </Text>
+                            </View>
+                          ) : null}
                         </Pressable>
 
                         <Pressable

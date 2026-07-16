@@ -268,6 +268,11 @@ function buildShellDocumentHtml({
         var lastContainerWidth = 0;
         var stableReflowState = null;
         var activeRenderToken = 0;
+        var qcfFontLoadFamily = '';
+        var qcfFontLoadPromise = null;
+        var qcfFontRetryCount = 0;
+        var qcfFontRetryIdentity = '';
+        var qcfFontRetryTimeoutId = null;
         var isArrivalHighlightVisible = false;
         var arrivalHighlightTimeoutId = null;
 
@@ -848,13 +853,14 @@ function buildShellDocumentHtml({
           if (
             !rendererAssets ||
             !rendererAssets.pageFontFamily ||
-            !rendererAssets.pageFontFileUri ||
+            (!rendererAssets.pageFontDataUri && !rendererAssets.pageFontFileUri) ||
             typeof FontFace === 'undefined'
           ) {
             return false;
           }
 
           var qcfFontFamily = rendererAssets.pageFontFamily;
+          var qcfFontDataUri = rendererAssets.pageFontDataUri;
           var qcfFontFileUri = rendererAssets.pageFontFileUri;
           var existingFontLoaded = Array.from(document.fonts || []).some(function (font) {
             return font.family === qcfFontFamily && font.status === 'loaded';
@@ -865,22 +871,110 @@ function buildShellDocumentHtml({
             return true;
           }
 
-          try {
-            var fontFace = new FontFace(
-              qcfFontFamily,
-              "url('" + String(qcfFontFileUri).replace(/'/g, "\\'") + "')"
-            );
-            fontFace.display = 'block';
-            var loadedFace = await fontFace.load();
-            if (document.fonts) {
-              document.fonts.add(loadedFace);
-            }
-            document.documentElement.style.setProperty('--qcf-font-family', "'" + qcfFontFamily + "'");
-            return true;
-          } catch (error) {
-            console.error('Failed to load local QCF page font', error);
-            return false;
+          if (qcfFontLoadPromise && qcfFontLoadFamily === qcfFontFamily) {
+            return qcfFontLoadPromise;
           }
+
+          var loadPromise = (async function () {
+            async function registerFontFace(source) {
+              var fontFace = new FontFace(qcfFontFamily, source);
+              fontFace.display = 'block';
+              var loadedFace = await fontFace.load();
+              if (document.fonts) {
+                document.fonts.add(loadedFace);
+                await document.fonts.ready;
+              }
+              await new Promise(function (resolve) {
+                requestAnimationFrame(function () {
+                  requestAnimationFrame(resolve);
+                });
+              });
+              document.documentElement.style.setProperty(
+                '--qcf-font-family',
+                "'" + qcfFontFamily + "'"
+              );
+              return true;
+            }
+
+            var fontUrl = String(qcfFontDataUri || qcfFontFileUri);
+            var escapedFontUrl = fontUrl.replace(/'/g, "\\'");
+
+            for (var attempt = 0; attempt < 3; attempt += 1) {
+              try {
+                await registerFontFace("url('" + escapedFontUrl + "')");
+                return true;
+              } catch (error) {
+                await new Promise(function (resolve) {
+                  setTimeout(resolve, 100 * Math.pow(2, attempt));
+                });
+              }
+            }
+
+            try {
+              var response = await fetch(fontUrl, { cache: 'no-store' });
+              var fontBuffer = await response.arrayBuffer();
+              if (!fontBuffer || fontBuffer.byteLength === 0) {
+                return false;
+              }
+              await registerFontFace(fontBuffer);
+              return true;
+            } catch (error) {
+              return false;
+            }
+          })();
+
+          qcfFontLoadFamily = qcfFontFamily;
+          qcfFontLoadPromise = loadPromise;
+
+          try {
+            return await loadPromise;
+          } finally {
+            if (qcfFontLoadPromise === loadPromise) {
+              qcfFontLoadPromise = null;
+              qcfFontLoadFamily = '';
+            }
+          }
+        }
+
+        function getQcfFontRetryIdentity(nextPayload) {
+          if (!nextPayload || !nextPayload.data) {
+            return '';
+          }
+
+          var rendererAssets = nextPayload.data.rendererAssets || {};
+          return [
+            nextPayload.data.pack ? nextPayload.data.pack.packId || '' : '',
+            nextPayload.data.pack ? nextPayload.data.pack.version || '' : '',
+            nextPayload.data.pageNumber || '',
+            rendererAssets.pageFontFamily || '',
+          ].join(':');
+        }
+
+        function requiresQcfPageFont(rendererAssets) {
+          return Boolean(
+            rendererAssets &&
+              rendererAssets.qcfVersion &&
+              rendererAssets.pageFontFamily &&
+              (rendererAssets.pageFontDataUri || rendererAssets.pageFontFileUri)
+          );
+        }
+
+        function scheduleQcfFontRetry(nextPayload, identity) {
+          if (qcfFontRetryTimeoutId !== null || qcfFontRetryCount > 6) {
+            return;
+          }
+
+          var retryDelays = [150, 500, 1500, 5000, 15000];
+          var retryIndex = Math.min(
+            Math.max(0, qcfFontRetryCount - 1),
+            retryDelays.length - 1
+          );
+          qcfFontRetryTimeoutId = setTimeout(function () {
+            qcfFontRetryTimeoutId = null;
+            if (qcfFontRetryIdentity === identity) {
+              render(nextPayload);
+            }
+          }, retryDelays[retryIndex]);
         }
 
         function clearRenderedPage() {
@@ -901,6 +995,16 @@ function buildShellDocumentHtml({
         async function render(nextPayload) {
           if (!nextPayload || !nextPayload.data || !nextPayload.layout) {
             return;
+          }
+
+          var fontRetryIdentity = getQcfFontRetryIdentity(nextPayload);
+          if (qcfFontRetryIdentity !== fontRetryIdentity) {
+            qcfFontRetryIdentity = fontRetryIdentity;
+            qcfFontRetryCount = 0;
+            if (qcfFontRetryTimeoutId !== null) {
+              clearTimeout(qcfFontRetryTimeoutId);
+              qcfFontRetryTimeoutId = null;
+            }
           }
 
           var renderToken = activeRenderToken + 1;
@@ -926,6 +1030,26 @@ function buildShellDocumentHtml({
           var fontLoaded = await loadQcfPageFontIfNeeded(currentPayload.rendererAssets);
           if (renderToken !== activeRenderToken) {
             return;
+          }
+
+          var requiresQcfFont = requiresQcfPageFont(currentPayload.rendererAssets);
+          if (requiresQcfFont && !fontLoaded) {
+            qcfFontRetryCount += 1;
+            if (qcfFontRetryCount <= 6) {
+              scheduleQcfFontRetry(nextPayload, fontRetryIdentity);
+            }
+            if (qcfFontRetryCount <= 3) {
+              return;
+            }
+          } else {
+            qcfFontRetryCount = 0;
+            if (currentPayload.rendererAssets) {
+              delete currentPayload.rendererAssets.pageFontDataUri;
+            }
+            if (qcfFontRetryTimeoutId !== null) {
+              clearTimeout(qcfFontRetryTimeoutId);
+              qcfFontRetryTimeoutId = null;
+            }
           }
 
           currentPayload.qcfFontLoaded = Boolean(fontLoaded);

@@ -37,7 +37,6 @@ type ResolvedPackData = {
   readVerses: (pageNumber: number) => Promise<MushafVerse[]>;
 };
 
-const ENABLE_MUSHAF_QCF_DEV_LOGS = __DEV__;
 const RESOLVED_PAGE_DATA_CACHE_MAX_ENTRIES = 96;
 const resolvedPackCache = new Map<string, Promise<ResolvedPackData>>();
 const payloadCache = new Map<string, Promise<MushafPackPayload>>();
@@ -100,14 +99,6 @@ function shouldUseActivePageCaches(packId: MushafPackId, version: string): boole
     activePageCacheIdentity === null ||
     activePageCacheIdentity === getPackVersionCacheIdentity(packId, version)
   );
-}
-
-function logMushafQcfDev(event: string, details: Record<string, unknown>): void {
-  if (!ENABLE_MUSHAF_QCF_DEV_LOGS) {
-    return;
-  }
-
-  console.log(`[mushaf-qcf][LocalMushafPageRepository] ${event}`, details);
 }
 
 function normalizePageNumber(pageNumber: number): number {
@@ -378,15 +369,9 @@ export class LocalMushafPageRepository implements IMushafPageRepository {
       return;
     }
 
-    const previousIdentity = activePageCacheIdentity;
     activePageCacheIdentity = nextIdentity;
     pageDataCache.clear();
     resolvedPageDataCache.clear();
-
-    logMushafQcfDev('page-cache-identity-reset', {
-      nextIdentity,
-      previousIdentity,
-    });
   }
 
   peekCachedPage(params: {
@@ -447,11 +432,6 @@ export class LocalMushafPageRepository implements IMushafPageRepository {
       params.expectedVersion &&
       resolvedPack.pack.version.trim() !== params.expectedVersion.trim()
     ) {
-      logMushafQcfDev('prefetch-skipped-version-mismatch', {
-        expectedVersion: params.expectedVersion,
-        packId: params.packId,
-        resolvedVersion: resolvedPack.pack.version,
-      });
       return;
     }
 
@@ -462,23 +442,12 @@ export class LocalMushafPageRepository implements IMushafPageRepository {
       return;
     }
 
-    logMushafQcfDev('prefetch-start', {
-      packId: params.packId,
-      pageNumbers,
-      version: resolvedPack.pack.version,
-    });
-
     await Promise.all(
       pageNumbers.map(async (candidate) => {
         try {
           await this.getPageFromResolvedPackAsync(resolvedPack, candidate);
-        } catch (error) {
-          logMushafQcfDev('prefetch-error', {
-            error: error instanceof Error ? error.message : String(error),
-            packId: params.packId,
-            pageNumber: candidate,
-            version: resolvedPack.pack.version,
-          });
+        } catch {
+          // Prefetch failures are surfaced by the foreground page request when needed.
         }
       })
     );
@@ -509,25 +478,11 @@ export class LocalMushafPageRepository implements IMushafPageRepository {
     );
     const resolvedSnapshot = usePageCaches ? readResolvedPageDataCache(cacheKey) : null;
     if (resolvedSnapshot) {
-      logMushafQcfDev('page-cache-hit', {
-        cacheKey,
-        kind: 'resolved',
-        packId: resolvedPack.pack.packId,
-        pageNumber,
-        version: resolvedPack.pack.version,
-      });
       return resolvedSnapshot;
     }
 
     const existing = usePageCaches ? pageDataCache.get(cacheKey) : undefined;
     if (existing) {
-      logMushafQcfDev('page-cache-hit', {
-        cacheKey,
-        kind: 'in-flight',
-        packId: resolvedPack.pack.packId,
-        pageNumber,
-        version: resolvedPack.pack.version,
-      });
       return existing;
     }
 
@@ -645,11 +600,6 @@ export class LocalMushafPageRepository implements IMushafPageRepository {
       lookupCache.delete(cacheKey);
     }
 
-    logMushafQcfDev('page-cache-pruned-pack-version-change', {
-      activeVersion,
-      packId,
-      previousVersion: previousVersion ?? null,
-    });
   }
 
   private async resolveBundledPackDataAsync(packId: MushafPackId): Promise<ResolvedPackData> {

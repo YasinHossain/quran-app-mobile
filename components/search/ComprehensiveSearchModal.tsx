@@ -20,7 +20,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useModalTransition, verticalSheetTransform } from '@/components/motion/modalTransition';
 import Colors from '@/constants/Colors';
+import { DEFAULT_MUSHAF_ID, findMushafOption } from '@/data/mushaf/options';
 import { useQuickSearch } from '@/hooks/useQuickSearch';
+import { prepareMushafVerseTarget } from '@/lib/mushaf/prepareMushafVerseTarget';
 import { warmSurahReaderBeforeNavigation } from '@/lib/surah/surahReaderWarmup';
 import { highlightMissingQueryWords, isArabicQuery } from '@/lib/utils/searchHighlight';
 import { useSettings } from '@/providers/SettingsContext';
@@ -259,11 +261,58 @@ export function ComprehensiveSearchModal({
         await warmSurahReaderBeforeNavigation({ surahId, verseNumber: verse, settings });
         router.push({
           pathname: '/surah/[surahId]',
-          params: { surahId: String(surahId), ...(typeof verse === 'number' ? { startVerse: String(verse) } : {}) },
+          params: {
+            surahId: String(surahId),
+            view: 'translations',
+            ...(typeof verse === 'number' ? { startVerse: String(verse) } : {}),
+          },
         });
       })();
     },
     [closeAndReset, router, settings]
+  );
+
+  const navigateToMushaf = React.useCallback(
+    (surahId: number, verse?: number) => {
+      closeAndReset();
+      const normalizedVerse =
+        typeof verse === 'number' && Number.isFinite(verse) && verse > 0
+          ? Math.trunc(verse)
+          : undefined;
+      void (async () => {
+        const packId = settings.mushafId ?? DEFAULT_MUSHAF_ID;
+        const target = normalizedVerse
+          ? await prepareMushafVerseTarget({
+              chapterId: surahId,
+              fallbackVersion: findMushafOption(packId)?.version ?? 'unknown',
+              packId,
+              verseKey: `${surahId}:${normalizedVerse}`,
+            }).catch(() => null)
+          : null;
+        router.push({
+          pathname: '/surah/[surahId]',
+          params: {
+            surahId: String(surahId),
+            view: 'mushaf',
+            ...(normalizedVerse ? { startVerse: String(normalizedVerse) } : {}),
+            ...(target ? { startPage: String(target.pageNumber) } : {}),
+          },
+        });
+      })();
+    },
+    [closeAndReset, router, settings]
+  );
+
+  const navigateToTafsir = React.useCallback(
+    (surahId: number, verse = 1) => {
+      closeAndReset();
+      const normalizedVerse = Number.isFinite(verse) && verse > 0 ? Math.floor(verse) : 1;
+      router.push({
+        pathname: '/tafsir/[surahId]/[ayahId]',
+        params: { surahId: String(surahId), ayahId: String(normalizedVerse) },
+      });
+    },
+    [closeAndReset, router]
   );
 
   const handleNavPress = React.useCallback(
@@ -384,7 +433,9 @@ export function ComprehensiveSearchModal({
                     nestedScrollEnabled
                   >
                     <GoToSurahVerseCard
-                      onNavigate={navigateToSurahVerse}
+                      onNavigateToMushaf={navigateToMushaf}
+                      onNavigateToTafsir={navigateToTafsir}
+                      onNavigateToTranslation={navigateToSurahVerse}
                       onSearchSuggestion={(suggestion) => setQuery(suggestion)}
                       title="Go To"
                       buttonLabel="Go"

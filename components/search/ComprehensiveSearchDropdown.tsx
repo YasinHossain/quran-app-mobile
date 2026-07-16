@@ -175,7 +175,10 @@ export function ComprehensiveSearchDropdown({
   query,
   onQueryChange,
   onClose,
+  onNavigateToMushaf,
   onNavigateToSurahVerse,
+  onNavigateToTafsir,
+  onNavigateToTranslation,
   onNavigateToJuz,
   onNavigateToPage,
   onNavigateToSearch,
@@ -185,7 +188,10 @@ export function ComprehensiveSearchDropdown({
   query: string;
   onQueryChange: (value: string) => void;
   onClose: () => void;
+  onNavigateToMushaf: (surahId: number, verse?: number) => void;
   onNavigateToSurahVerse: (surahId: number, verse?: number) => void;
+  onNavigateToTafsir: (surahId: number, verse?: number) => void;
+  onNavigateToTranslation: (surahId: number, verse?: number) => void;
   onNavigateToJuz: (juzNumber: number) => void;
   onNavigateToPage: (pageNumber: number) => void;
   onNavigateToSearch: (query: string) => void;
@@ -337,7 +343,9 @@ export function ComprehensiveSearchDropdown({
               nestedScrollEnabled
             >
               <GoToSurahVerseCard
-                onNavigate={onNavigateToSurahVerse}
+                onNavigateToMushaf={onNavigateToMushaf}
+                onNavigateToTafsir={onNavigateToTafsir}
+                onNavigateToTranslation={onNavigateToTranslation}
                 onSearchSuggestion={(suggestion) => onQueryChange(suggestion)}
                 title="Go To"
                 buttonLabel="Go"

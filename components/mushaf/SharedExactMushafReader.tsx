@@ -23,7 +23,6 @@ import type { MushafPackId, MushafPageData, MushafScaleStep, MushafVerse } from 
 const EXACT_PAGE_MIN_HEIGHT = 280;
 const VISIBLE_PAGE_THRESHOLD_PERCENT = 20;
 const VISIBLE_PAGE_MINIMUM_VIEW_TIME_MS = 32;
-const ENABLE_MUSHAF_QCF_DEV_LOGS = __DEV__;
 
 export type SharedExactMushafVersePress = {
   title: string;
@@ -84,14 +83,6 @@ function ExactPageFooter({ pageNumber }: { pageNumber: number }): React.JSX.Elem
       </View>
     </View>
   );
-}
-
-function logSharedExactReaderDev(event: string, details: Record<string, unknown>): void {
-  if (!ENABLE_MUSHAF_QCF_DEV_LOGS) {
-    return;
-  }
-
-  console.log(`[mushaf-qcf][SharedExactMushafReader] ${event}`, details);
 }
 
 function normalizeVisiblePageNumbers(viewableItems: Array<ViewToken<number>>): number[] {
@@ -280,10 +271,6 @@ export function SharedExactMushafReader({
   React.useEffect(() => {
     activePageNumberRef.current = activePageNumber;
     onSelectionChange(createCollapsedSelectionPayload(activePageNumber));
-
-    logSharedExactReaderDev('active-page-selection-reset', {
-      activePageNumber,
-    });
   }, [activePageNumber, onSelectionChange]);
 
   React.useEffect(() => {
@@ -574,7 +561,7 @@ export function SharedExactMushafReader({
   }, []);
 
   const commitActivePageNumber = React.useCallback(
-    (nextPageNumber: number, source: ActivePageSelectionSource) => {
+    (nextPageNumber: number, _source: ActivePageSelectionSource) => {
       const previousActivePageNumber = activePageNumberRef.current;
       if (nextPageNumber === previousActivePageNumber) {
         return;
@@ -585,11 +572,6 @@ export function SharedExactMushafReader({
       activePageNumberRef.current = nextPageNumber;
       setActivePageNumber(nextPageNumber);
 
-      logSharedExactReaderDev('active-page-committed', {
-        nextPageNumber,
-        previousActivePageNumber,
-        source,
-      });
     },
     []
   );
@@ -611,28 +593,13 @@ export function SharedExactMushafReader({
         if (pendingPageNumberRef.current !== desiredPageNumber) {
           pendingPageNumberRef.current = desiredPageNumber;
           setPendingPageNumber(desiredPageNumber);
-          logSharedExactReaderDev('active-page-pending', {
-            currentPageNumber,
-            desiredPageNumber,
-            source,
-          });
-        }
-
-        const pendingErrorMessage = getPageErrorMessage(desiredPageNumber);
-        if (pendingErrorMessage) {
-          logSharedExactReaderDev('active-page-pending-error', {
-            currentPageNumber,
-            desiredPageNumber,
-            errorMessage: pendingErrorMessage,
-            source,
-          });
         }
         return;
       }
 
       commitActivePageNumber(desiredPageNumber, source);
     },
-    [chooseDesiredActivePageNumber, commitActivePageNumber, getPageErrorMessage, isPageReady]
+    [chooseDesiredActivePageNumber, commitActivePageNumber, isPageReady]
   );
 
   React.useEffect(() => {

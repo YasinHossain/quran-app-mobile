@@ -182,6 +182,7 @@ export interface MushafResolvedPackVersion {
 
 export interface MushafPageRendererAssets {
   packDirectoryUri?: string | undefined;
+  pageFontDataUri?: string | undefined;
   pageFontFileUri?: string | undefined;
   pageFontFamily?: string | undefined;
   qcfVersion?: MushafQcfVersion | undefined;

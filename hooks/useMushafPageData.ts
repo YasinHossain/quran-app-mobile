@@ -9,21 +9,6 @@ import {
 
 import type { MushafPackId, MushafPageData } from '@/types';
 
-const ENABLE_MUSHAF_QCF_DEV_LOGS = __DEV__;
-const FIRST_QCF_V1_LOAD_KEYS = new Set<string>();
-
-function nowMs(): number {
-  return globalThis.performance?.now?.() ?? Date.now();
-}
-
-function logMushafQcfDev(event: string, details: Record<string, unknown>): void {
-  if (!ENABLE_MUSHAF_QCF_DEV_LOGS) {
-    return;
-  }
-
-  console.log(`[mushaf-qcf][useMushafPageData] ${event}`, details);
-}
-
 function isExpectedPageData(params: {
   data: MushafPageData | null;
   expectedVersion?: string;
@@ -126,8 +111,6 @@ export function useMushafPageData({
     let cancelled = false;
 
     const load = async (): Promise<void> => {
-      const startedAt = nowMs();
-      const loadKey = `${packId}:${pageNumber}`;
       const repository = container.getMushafPageRepository();
       const warmCachedPage = repository.peekCachedPage({
         packId,
@@ -145,15 +128,6 @@ export function useMushafPageData({
       setErrorKind(null);
       setErrorMessage(null);
 
-      logMushafQcfDev('page-load-start', {
-        enabled,
-        expectedVersion: expectedVersion ?? null,
-        packId,
-        pageNumber,
-        refreshNonce,
-        usedWarmCache: warmCachedPage !== null,
-      });
-
       try {
         const result = await repository.getPage({ packId, pageNumber });
 
@@ -161,34 +135,11 @@ export function useMushafPageData({
           setData(result);
         }
 
-        const durationMs = Math.round(nowMs() - startedAt);
-        const isFirstQcfMadaniV1Load = packId === 'qcf-madani-v1' && !FIRST_QCF_V1_LOAD_KEYS.has(loadKey);
-        if (isFirstQcfMadaniV1Load) {
-          FIRST_QCF_V1_LOAD_KEYS.add(loadKey);
-        }
-
-        logMushafQcfDev('page-load-success', {
-          durationMs,
-          isFirstQcfMadaniV1Load,
-          packId,
-          pageNumber,
-          renderer: result.pack.renderer,
-          usedWarmCache: warmCachedPage !== null,
-          version: result.pack.version,
-        });
-
         if (result.pack.renderer === 'webview') {
           const nearbyPageNumbers = [pageNumber - 2, pageNumber - 1, pageNumber + 1, pageNumber + 2]
             .filter((candidate) => candidate >= 1 && candidate <= result.pack.totalPages);
 
           if (nearbyPageNumbers.length > 0) {
-            logMushafQcfDev('page-prefetch-start', {
-              packId,
-              pageNumber,
-              nearbyPageNumbers,
-              version: result.pack.version,
-            });
-
             void repository.prefetchPages({
               packId,
               pageNumbers: nearbyPageNumbers,
@@ -206,13 +157,6 @@ export function useMushafPageData({
           setErrorMessage(details.message);
         }
 
-        logMushafQcfDev('page-load-error', {
-          durationMs: Math.round(nowMs() - startedAt),
-          error: error instanceof Error ? error.message : String(error),
-          packId,
-          pageNumber,
-          preservedWarmCache: warmCachedPage !== null,
-        });
       } finally {
         if (!cancelled) {
           setIsLoading(false);

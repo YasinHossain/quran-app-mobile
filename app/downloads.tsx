@@ -30,6 +30,7 @@ import { AppHeader } from '@/components/navigation/AppHeader';
 import { HeaderActionButton } from '@/components/search/HeaderSearchBar';
 import { ResourceDownloadAction } from '@/components/reader/settings/resource-panel/ResourceDownloadAction';
 import { useDownloadIndexItems } from '@/hooks/useDownloadIndexItems';
+import { formatDownloadedResourceSize, useDownloadedResourceSizes } from '@/hooks/useDownloadedResourceSize';
 import { useTranslationResources } from '@/hooks/useTranslationResources';
 import { useTafsirResources } from '@/hooks/useTafsirResources';
 import { useReciters } from '@/hooks/audio/useReciters';
@@ -77,6 +78,8 @@ interface DisplayDownloadItem {
   title: string;
   subtitle: string;
   category: 'Translations' | 'Tafsirs' | 'Word-by-Word' | 'Audio' | 'Mushaf Packs' | 'Other';
+  sizeBytes?: number;
+  sizeLabel?: string;
 }
 
 export default function DownloadsScreen(): React.JSX.Element {
@@ -107,6 +110,8 @@ export default function DownloadsScreen(): React.JSX.Element {
     enabled: true,
     pollIntervalMs: 1000,
   });
+  const { labelsByKey: downloadSizeLabelsByKey, bytesByKey: downloadSizeBytesByKey } =
+    useDownloadedResourceSizes(items);
 
   // 2. Metadata: Translations
   const { translationsById, isLoading: isTranslationsLoading } = useTranslationResources({
@@ -209,9 +214,20 @@ export default function DownloadsScreen(): React.JSX.Element {
         title,
         subtitle,
         category,
+        sizeBytes: downloadSizeBytesByKey[item.key],
+        sizeLabel: downloadSizeLabelsByKey[item.key],
       };
     });
-  }, [items, translationsById, tafsirById, reciterNameById, surahNameById, t]);
+  }, [
+    items,
+    translationsById,
+    tafsirById,
+    reciterNameById,
+    surahNameById,
+    t,
+    downloadSizeBytesByKey,
+    downloadSizeLabelsByKey,
+  ]);
 
   // Group items by category
   const sections = React.useMemo(() => {
@@ -233,6 +249,8 @@ export default function DownloadsScreen(): React.JSX.Element {
       .map(([title, data]) => ({
         title: title as DisplayDownloadItem['category'],
         totalCount: data.length,
+        totalSizeBytes: data.reduce((total, item) => total + (item.sizeBytes ?? 0), 0),
+        hasMeasuredSize: data.some((item) => typeof item.sizeBytes === 'number'),
         data: collapsedCategories.has(title) ? [] : data,
       }));
   }, [mappedItems, collapsedCategories]);
@@ -386,9 +404,24 @@ export default function DownloadsScreen(): React.JSX.Element {
         className="flex-row items-center justify-between border border-border/30 dark:border-border-dark/20 bg-surface dark:bg-surface-dark px-4 py-2.5 rounded-lg mb-2"
       >
         <View className="flex-1 mr-4">
-          <Text className="text-base font-semibold text-foreground dark:text-foreground-dark" numberOfLines={1}>
-            {dItem.title}
-          </Text>
+          <View className="flex-row items-center gap-2">
+            <Text
+              className="flex-1 text-base font-semibold text-foreground dark:text-foreground-dark"
+              numberOfLines={1}
+            >
+              {dItem.title}
+            </Text>
+            {dItem.sizeLabel ? (
+              <View
+                className="rounded-full border border-border/20 bg-interactive px-2 py-0.5 dark:border-border-dark/10 dark:bg-surface-navigation-dark"
+                style={{ flexShrink: 0 }}
+              >
+                <Text className="text-[10px] font-bold text-muted dark:text-muted-dark">
+                  {dItem.sizeLabel}
+                </Text>
+              </View>
+            ) : null}
+          </View>
           {dItem.subtitle ? (
             <Text className="text-xs text-muted dark:text-muted-dark mt-1" numberOfLines={1}>
               {dItem.subtitle}
@@ -444,7 +477,13 @@ export default function DownloadsScreen(): React.JSX.Element {
   const renderSectionHeader = ({
     section,
   }: {
-    section: { title: DisplayDownloadItem['category']; totalCount: number; data: DisplayDownloadItem[] };
+    section: {
+      title: DisplayDownloadItem['category'];
+      totalCount: number;
+      totalSizeBytes: number;
+      hasMeasuredSize: boolean;
+      data: DisplayDownloadItem[];
+    };
   }) => {
     const isCollapsed = collapsedCategories.has(section.title);
     const IconComponent = CATEGORY_ICONS[section.title] || Download;
@@ -461,7 +500,20 @@ export default function DownloadsScreen(): React.JSX.Element {
           <Text className="text-sm font-bold text-foreground dark:text-foreground-dark uppercase tracking-wider">
             {getCategoryTranslation(section.title)}
           </Text>
-          <View className="rounded-full bg-interactive dark:bg-interactive-dark px-2.5 py-0.5 border border-border/20 dark:border-border-dark/10">
+          {section.hasMeasuredSize ? (
+            <View
+              className="rounded-full border border-border/20 bg-interactive px-2.5 py-0.5 dark:border-border-dark/10 dark:bg-surface-navigation-dark"
+              style={{ flexShrink: 0 }}
+            >
+              <Text className="text-[10px] font-bold text-muted dark:text-muted-dark">
+                {formatDownloadedResourceSize(section.totalSizeBytes)}
+              </Text>
+            </View>
+          ) : null}
+          <View
+            className="rounded-full border border-border/20 bg-interactive px-2.5 py-0.5 dark:border-border-dark/10 dark:bg-surface-navigation-dark"
+            style={{ flexShrink: 0 }}
+          >
             <Text className="text-[10px] font-bold text-muted dark:text-muted-dark">
               {localizeDigits(String(section.totalCount))}
             </Text>
