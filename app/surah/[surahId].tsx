@@ -54,6 +54,8 @@ import { useNativeSurahReaderEvents } from '@/components/surah/native/useNativeS
 import { useNativeSurahReaderGate } from '@/components/surah/native/useNativeSurahReaderGate';
 import { VerseScrubber, type VerseScrubberHandle } from '@/components/surah/VerseScrubber';
 import { AddToPlannerModal, type VerseSummaryDetails } from '@/components/verse-planner-modal';
+import { WordQuickSheet } from '@/components/word-study/WordQuickSheet';
+import { useWordQuickSheetController } from '@/components/word-study/useWordQuickSheetController';
 import Colors from '@/constants/Colors';
 import { DEFAULT_MUSHAF_ID, findMushafOption } from '@/data/mushaf/options';
 import { useChapters } from '@/hooks/useChapters';
@@ -375,15 +377,20 @@ export default function SurahScreen(): React.JSX.Element {
   const { isPinned, setLastRead } = useBookmarks();
   const chapterNumber = surahId ? Number(surahId) : NaN;
   const verseAudioWordSync = useVerseAudioWordSync(chapterNumber);
+  const wordQuickSheet = useWordQuickSheetController();
   const verseCardAudioWordSync = React.useMemo(
     () => ({
       activeWord: null,
       isSeekEnabled: verseAudioWordSync.isSeekEnabled,
+      playWord: verseAudioWordSync.playWord,
+      playVerseFromWord: verseAudioWordSync.playVerseFromWord,
       registerWordHighlight: verseAudioWordSync.registerWordHighlight,
       seekToWord: verseAudioWordSync.seekToWord,
     }),
     [
       verseAudioWordSync.isSeekEnabled,
+      verseAudioWordSync.playVerseFromWord,
+      verseAudioWordSync.playWord,
       verseAudioWordSync.registerWordHighlight,
       verseAudioWordSync.seekToWord,
     ]
@@ -1018,6 +1025,43 @@ export default function SurahScreen(): React.JSX.Element {
       // Ignore share failures.
     }
   }, [activeVerse, chapter?.name_simple]);
+
+  const selectedWordStudyLocation = wordQuickSheet.event;
+  const handlePlayStudiedWord = React.useCallback(() => {
+    if (!selectedWordStudyLocation) return;
+    verseAudioWordSync.playWord(selectedWordStudyLocation);
+  }, [selectedWordStudyLocation, verseAudioWordSync.playWord]);
+  const handlePlayVerseFromStudiedWord = React.useCallback(() => {
+    if (!selectedWordStudyLocation) return;
+    verseAudioWordSync.playVerseFromWord(selectedWordStudyLocation);
+  }, [selectedWordStudyLocation, verseAudioWordSync.playVerseFromWord]);
+  const handleShareStudiedWord = React.useCallback(async () => {
+    if (!selectedWordStudyLocation) return;
+    const analysis =
+      wordQuickSheet.loadState.status === 'ready' ? wordQuickSheet.loadState.analysis : null;
+    const gloss = analysis?.contextualGlosses.find((item) => item.languageCode === 'en')?.text;
+    const lines = [
+      `${chapter?.name_simple ?? 'Surah'} ${selectedWordStudyLocation.verseKey}:${selectedWordStudyLocation.wordPosition}`,
+      '',
+      analysis?.surfaceUthmani ?? selectedWordStudyLocation.surfaceText ?? '',
+      ...(gloss ? ['', gloss] : []),
+      '',
+      'Word analysis: Quranic Arabic Corpus v0.4',
+    ].filter((line, index, all) => line || all[index - 1] !== '');
+    try {
+      await Share.share({ message: lines.join('\n') });
+    } catch {
+      // Native share cancellation and unavailable targets need no reader error state.
+    }
+  }, [chapter?.name_simple, selectedWordStudyLocation, wordQuickSheet.loadState]);
+  const handleOpenFullWordStudy = React.useCallback(() => {
+    if (!selectedWordStudyLocation) return;
+    const [surah, ayah] = selectedWordStudyLocation.verseKey.split(':');
+    if (!surah || !ayah) return;
+    router.push(
+      `/study/word/${surah}/${ayah}/${selectedWordStudyLocation.wordPosition}` as never
+    );
+  }, [router, selectedWordStudyLocation]);
 
   const renderTranslationVerseCard = React.useCallback(
     (verse: SurahVerse, options?: { actionsEnabled?: boolean }) => {
@@ -1950,7 +1994,7 @@ export default function SurahScreen(): React.JSX.Element {
     lastReadReportedRef,
     openVerseActions,
     readerHeader,
-    seekToWord: verseAudioWordSync.seekToWord,
+    openWordStudy: wordQuickSheet.open,
     setLastReadRef,
     setVisibleVerseNumber,
     suppressReaderFeedbackRef: nativeInitialPositioningRef,
@@ -2296,8 +2340,16 @@ export default function SurahScreen(): React.JSX.Element {
                 style={styles.contentLayer}
                 readerState={nativeLightSurahReaderState}
                 activeVerseKey={audio.activeVerseKey}
-                activeWord={verseAudioWordSync.activeWord}
-                wordAudioSeekEnabled={verseAudioWordSync.isSeekEnabled}
+                activeWord={
+                  wordQuickSheet.isOpen && wordQuickSheet.event
+                    ? {
+                        verseKey: wordQuickSheet.event.verseKey,
+                        wordPosition: wordQuickSheet.event.wordPosition,
+                        wordId: wordQuickSheet.event.wordId,
+                      }
+                    : verseAudioWordSync.activeWord
+                }
+                wordPressEnabled={!settings.tajweed || Boolean(settings.showByWords)}
                 onReady={handleNativeListLoad}
                 onInitialPositioned={handleNativeInitialPositioned}
                 onVisibleVerseChange={handleNativeVisibleVerseChangeAndPosition}
@@ -2501,6 +2553,20 @@ export default function SurahScreen(): React.JSX.Element {
         onBookmark={handleBookmark}
         onAddToPlan={handleAddToPlan}
         onShare={handleShare}
+      />
+
+      <WordQuickSheet
+        isOpen={wordQuickSheet.isOpen}
+        event={wordQuickSheet.event}
+        loadState={wordQuickSheet.loadState}
+        surahName={chapter?.name_simple ?? 'Surah'}
+        onClose={wordQuickSheet.close}
+        onRetry={wordQuickSheet.retry}
+        onPresented={wordQuickSheet.reportPresented}
+        onPlayWord={handlePlayStudiedWord}
+        onPlayVerseFromHere={handlePlayVerseFromStudiedWord}
+        onShare={handleShareStudiedWord}
+        onOpenFullStudy={handleOpenFullWordStudy}
       />
 
       <BookmarkModal

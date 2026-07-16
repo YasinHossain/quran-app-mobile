@@ -120,9 +120,15 @@ This document lists reusable UI components currently available in the codebase s
 | `VerseScrubber` | Thin Surah-specific wrapper around `IndexScrubber` for verse-number scrubbing on non-Android translation readers; Android's Kotlin reader uses its native RecyclerView fast scroller with the same thumb and live `verse/total` label styling. | `components/surah/VerseScrubber.tsx` |
 | `WordByWordVerse` | Word-by-word verse renderer (per-word Arabic with optional per-word translation). When the audio player is visible, words are tap-to-seek and the active word is highlighted. | `components/surah/WordByWordVerse.tsx` |
 | `HostedWordTranslationPackRepository` | Offline word-by-word pack installer backed by the GitHub-hosted `dist/word-translation-packs/catalog.json`; imports language-scoped word JSON into SQLite for download-only word languages. | `src/core/infrastructure/word-translations/HostedWordTranslationPackRepository.ts` |
-| `useVerseAudioWordSync` | Hook that wires QDC word timing segments to the verse renderer (active word highlight + tap-to-seek). | `components/surah/useVerseAudioWordSync.ts` |
+| `useVerseAudioWordSync` | Hook that wires QDC word timing segments to active-word highlighting and explicit play-word / play-verse-from-word actions. | `components/surah/useVerseAudioWordSync.ts` |
 | `VerseActionsSheet` | Bottom sheet for per-verse actions (play, tafsir, pin/bookmark, add to plan, share). | `components/surah/VerseActionsSheet.tsx` |
 | `AddToPlannerModal` | Modal for selecting an existing planner to track progress from a verse (web-style Add-to-plan flow). | `components/verse-planner-modal/AddToPlannerModal.tsx` |
+| `WordQuickSheet` | Reusable, explicitly height-constrained Word Study bottom sheet with segmented Arabic/POS legend, gloss and morphology facts, source label, audio/share actions, skeleton/missing/error/retry states, and the full-study navigation action. | `components/word-study/WordQuickSheet.tsx` |
+| `useWordQuickSheetController` | Tap-to-sheet controller that presents the loading shell before querying the offline Word Study repository, ignores stale results, retries failures, and records tap-to-present/tap-to-resolution timings. | `components/word-study/useWordQuickSheetController.ts` |
+| `WordStudyPressEvent` | Canonical cross-reader word-press contract and normalizer keyed only by `surah:ayah:wordPosition`; numeric word IDs remain advisory. | `components/word-study/WordStudyPressEvent.ts` |
+| `WordSegmentsCard` | Reusable segmented Arabic word card shared by the quick sheet and full study screen; combines POS color with underlines, readable labels, RTL text, and per-segment accessibility announcements. | `components/word-study/WordSegmentsCard.tsx` |
+| `WordStudyScreen` | Full offline Word Study route with an RTL ayah ribbon, route-driven/adjacent selection, Overview and Morphology tabs, source/version details, attributed sharing, and explicit loading/error/missing states. | `app/study/word/[surah]/[ayah]/[position].tsx` |
+| `wordStudyScreenModel` | Pure presentation model for applicable-only morphology rows, beginner explanations, root/lemma handling, adjacent navigation, source grouping, and attributed share copy. | `components/word-study/full-study/wordStudyScreenModel.ts` |
 
 ## Audio Components
 

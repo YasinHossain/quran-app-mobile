@@ -15,7 +15,11 @@ import { logger } from '@/src/core/infrastructure/monitoring/logger';
 import { HostedTranslationPackRepository } from '@/src/core/infrastructure/translations/HostedTranslationPackRepository';
 import { HostedTafsirPackRepository } from '@/src/core/infrastructure/tafsir/HostedTafsirPackRepository';
 import { HostedWordTranslationPackRepository } from '@/src/core/infrastructure/word-translations/HostedWordTranslationPackRepository';
-import { GetWordAnalysis, ListWordOccurrences } from '@/src/core/application/use-cases/word-study';
+import {
+  GetVerseWordAnalyses,
+  GetWordAnalysis,
+  ListWordOccurrences,
+} from '@/src/core/application/use-cases/word-study';
 import {
   ExpoWordStudyDatabaseProvider,
   ExpoWordStudyPackBackend,
@@ -57,6 +61,7 @@ const wordStudyDatabaseProvider = new ExpoWordStudyDatabaseProvider(wordStudyPac
 const wordStudyRepository = new SQLiteWordStudyRepository(wordStudyDatabaseProvider);
 const wordStudyPackCatalogClient = new WordStudyPackCatalogClient();
 const getWordAnalysis = new GetWordAnalysis(wordStudyRepository);
+const getVerseWordAnalyses = new GetVerseWordAnalyses(wordStudyRepository);
 const listWordOccurrences = new ListWordOccurrences(wordStudyRepository);
 
 export const container = {
@@ -83,5 +88,6 @@ export const container = {
   getWordStudyDatabaseProvider: (): ExpoWordStudyDatabaseProvider => wordStudyDatabaseProvider,
   getWordStudyPackCatalogClient: (): WordStudyPackCatalogClient => wordStudyPackCatalogClient,
   getWordAnalysis: (): GetWordAnalysis => getWordAnalysis,
+  getVerseWordAnalyses: (): GetVerseWordAnalyses => getVerseWordAnalyses,
   listWordOccurrences: (): ListWordOccurrences => listWordOccurrences,
 };

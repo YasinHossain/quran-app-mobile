@@ -1,7 +1,7 @@
 # Word Study Progress
 
-Status: Phase 3 complete. The approved offline pack is installed, verified, recoverable, and queryable through the shared contracts; Quranic Arabic reviewer sign-off remains a release-hardening requirement.
-Last updated: 2026-07-16.
+Status: Phase 5 complete. The shared React Native full-study route now provides offline ayah navigation, Overview, and structured Morphology; Quranic Arabic reviewer sign-off remains a release-hardening requirement.
+Last updated: 2026-07-17.
 
 This file tracks execution of `docs/word-study-feature-plan.md`. It is the product, rights, review, data, and implementation record for Word Study.
 
@@ -13,8 +13,8 @@ This file tracks execution of `docs/word-study-feature-plan.md`. It is the produ
 | Phase 1 - Shared models, contracts, and golden fixtures | Done, with Phase 0 caveat | Completed by explicit user request on 2026-07-16 as a platform-neutral contract only. Fixtures are deterministic contract fixtures, not approved production morphology content. |
 | Phase 2 - Reproducible offline study-pack compiler | Done | Deterministic QAC v0.4-to-SQLite compiler, complete generated pack, reports, checksums, indexes, and focused tests completed on 2026-07-16. |
 | Phase 3 - Mobile repository and pack lifecycle | Done | Expo SQLite repository, bundled/hosted pack lifecycle, SHA-256/schema/integrity validation, atomic activation/rollback, bounded cancellable caches, real-pack tests, and benchmark harness completed on 2026-07-16. |
-| Phase 4 - Quick sheet in the primary Surah reader | Not started | Do not start until Phase 3 is complete. |
-| Phase 5 - Full study Overview and Morphology | Not started | Do not start until Phase 4 is complete. |
+| Phase 4 - Quick sheet in the primary Surah reader | Done | Canonical native tap contract, reusable quick sheet, offline states, explicit word/verse playback, accessibility baseline, Phase 5 placeholder, release-mode timing checks, and Surah 2 manual checks completed on 2026-07-17. |
+| Phase 5 - Full study Overview and Morphology | Done | Offline ayah ribbon, route-driven selection, adjacent navigation, Overview/Morphology tabs, beginner explanations, source/version details, and attributed sharing completed on 2026-07-17. |
 | Phase 6 - Occurrence explorer and reader round-trip | Not started | Do not start until Phase 5 is complete. |
 | Phase 7 - Android coverage across all existing reader modes | Not started | Do not start until Phase 6 is complete. |
 | Phase 8 - iOS and cross-platform parity | Not started | Do not start until Phase 7 is complete. |
@@ -291,10 +291,20 @@ This candidate set was selected from the existing English word-translation pack 
 - 2026-07-16 Phase 3 benchmark: `npm run benchmark:word-study-repository` passed. Final CI-equivalent p95 was 0.111 ms for cache-cold location lookup, 0.514 ms for the first 50 lemma results, and 0.572 ms for the first 50 root results.
 - 2026-07-16 Phase 3 final verification: `npm run verify` passed (`tsc --noEmit`, core purity, 6/6 compiler tests, and 12/12 repository/lifecycle tests).
 - 2026-07-16 Phase 3 Android verification: `./gradlew :app:compileDebugKotlin` passed and autolinked `expo-crypto` 56.0.4. `NODE_ENV=production npx expo export --platform android --output-dir .artifacts/word-study-expo-export` passed and included the 59 MB bundled SQLite asset.
+- 2026-07-17 Phase 4 focused component/view-model tests: `npm run test:word-study-quick-sheet` passed 5/5 tests covering native payload normalization, segmented verb presentation, explicit rootless/missing explanations, source labels, numeric sheet constraints, accessibility loading copy, and required actions.
+- 2026-07-17 Phase 4 release timing profile on Android API 36 AVD `quran_api36`: 20 Surah 2 tap samples measured tap-to-sheet-present p95 53.02 ms (37.78-71.12 ms) and tap-to-offline-analysis p95 24.70 ms (18.07-50.44 ms). The first release tap after entering Surah 2 measured 95.07 ms to present and 31.03 ms to resolve.
+- 2026-07-17 Phase 4 manual Surah 2 checks: rootless `2:1:1`, active-audio `2:2:1`, and post-long-scroll `2:25:19` all opened the quick sheet with resolved offline content. Active-audio tap measured 96.17/44.25 ms present/resolve; post-scroll tap measured 98.76/41.48 ms. Twelve rapid reader flings retained 28 visible accessible word targets, and the Phase 5 placeholder round-trip restored the same verse-25 reader window.
+- 2026-07-17 Phase 4 Android builds: `./gradlew :app:compileDebugKotlin`, `npm run android`, and `npm run perf:android` (release APK) passed.
+- 2026-07-17 Phase 4 final verification: `npm run verify` passed (`tsc --noEmit`, core purity, 6/6 compiler tests, 12/12 repository/lifecycle tests, and 5/5 quick-sheet tests).
+- 2026-07-17 Phase 5 focused UI/model tests: `npm run test:word-study-screen` passed 5/5 tests covering applicable-only morphology fields, rootless particles, adjacent navigation, source/version attribution, sharing, the RTL ayah ribbon, tabs, and route-driven selection. Quick-sheet coverage now passes 6/6 after adding readable labels for all POS codes present in the installed corpus.
+- 2026-07-17 Phase 5 repository coverage: `npm run test:word-study-repository` passed 13/13 tests, including real-pack ayah lookup returning every word in canonical position order.
+- 2026-07-17 Phase 5 Android/build verification: `./gradlew :app:compileDebugKotlin` and `./gradlew :app:installDebug` passed; the final production Android Expo export passed and bundled the 59 MB Word Study SQLite asset.
+- 2026-07-17 Phase 5 emulator checks on Android API 36: deep links opened `3:3:9` and rootless `2:141:11`; the selected ribbon card stayed visible; switching to `3:3:8` preserved the Morphology tab and rendered its attached pronoun; stack back returned to the prior screen; light/dark themes and system font scales 1.0 and 1.3 rendered without clipping. The emulator font scale and app theme were restored after the check.
+- 2026-07-17 Phase 5 final verification: `npm run verify` passed (`tsc --noEmit`, core purity, 6/6 compiler tests, 13/13 repository/lifecycle tests, 6/6 quick-sheet tests, and 5/5 full-screen tests).
 
 ## Next Phase
 
-Next phase is **Phase 4 — Quick sheet in the primary Surah reader**. It was not started in this task.
+Next phase is **Phase 6 — Occurrence explorer and reader round-trip**. It was not started in this task.
 
 ## Phase 1 Acceptance Status
 
@@ -401,4 +411,79 @@ Manual checks still required:
 - Repeat the benchmark on representative low/mid-range Android and iOS hardware before Phase 9 release hardening; the current numbers are the plan-approved CI-equivalent profile.
 - Exercise forced process termination during a hosted update on-device when a hosted version newer than the bundled generation is published. Automated tests prove that failed/interrupted installation does not switch the activation record.
 
-Phase 4 was not started.
+## Phase 4 Acceptance Status
+
+Phase 4 is a mobile-only UI/native-reader slice. It consumes, but does not change, the shared contracts mirrored from these exact web source-of-truth files:
+
+- `../quran-app/src/domain/word-study/WordStudy.ts`
+- `../quran-app/src/domain/word-study/WordStudyLocation.ts`
+- `../quran-app/src/domain/repositories/IWordStudyRepository.ts`
+- `../quran-app/src/application/use-cases/word-study/GetWordAnalysis.ts`
+
+The quick-sheet UI itself is intentionally React Native and has no web UI source-of-truth. Existing web audio timing/highlight behavior was consulted through `../quran-app/app/shared/player/hooks/useAudioWordSync.ts` and `../quran-app/app/(features)/surah/components/surah-view/useVerseAudioWordSync.ts`; the primary tap behavior intentionally follows the locked Word Study product contract instead of the web tap-to-seek behavior.
+
+| Requirement | Status | Record |
+|---|---|---|
+| Normalize the primary Android word press contract | Done | `WordStudyPressEvent` validates and canonicalizes `{ verseKey, wordPosition, wordId?, surfaceText?, source }`; Kotlin emits the small surface/location payload and never bridges morphology. `wordId` remains advisory. |
+| Normal tap opens Word Study with explicit audio alternatives | Done | Native plain/word-by-word tokens are always pressable for study. `useVerseAudioWordSync` exposes separate play-word and play-verse-from-word actions; active audio no longer changes the primary tap. |
+| Reusable quick sheet with numeric height constraints | Done | `WordQuickSheet` uses numeric `height`, `minHeight`, and `maxHeight` derived from `useWindowDimensions()`, with a scrollable body and shared modal transition. |
+| Required study content | Done | Location, segmented Arabic, underline/color plus readable POS legend, contextual gloss, primary POS, lemma, root/absence explanation, current inflection, source label, and explicit audio actions render from shared models. |
+| Loading and failure states | Done | Optimistic surface skeleton, missing-analysis explanation, repository error, and retry are implemented. Stale results are ignored after close or a newer tap. |
+| Reader selection/position restoration | Done | The tapped native word is selected while the sheet is open, audio highlight resumes after close, and modal/placeholder round-trips do not remount or reposition the RecyclerView. |
+| Accessibility baseline | Done | Native word targets expose Uthmani text, word translation, and `Open Word Study`; sheet close/actions/states are labeled, and each segment announces its Arabic, POS, and morphology instead of relying on color. |
+| Full-study action | Done as Phase 4 handoff | The exact `/study/word/[surah]/[ayah]/[position]` route was introduced as a placeholder in Phase 4 and is now implemented by Phase 5. |
+| Presentation/lookup performance | Done on release AVD | 20 Surah 2 samples: present p95 53.02 ms and offline result p95 24.70 ms. First release tap: 95.07/31.03 ms. Runtime instrumentation logs both metrics per tap. |
+| Long-Surah and active-audio regression checks | Done on release AVD | Twelve rapid Surah 2 flings retained 28 visible accessible word targets. With verse audio active, tapping `2:2:1` opened study in 96.17/44.25 ms rather than seeking implicitly. |
+| Component tests, verification, and Android build | Done | Five quick-sheet tests pass; repository coverage includes particle versus non-particle root absence; `npm run verify`, debug Kotlin compile, debug APK, and release APK pass. |
+| Scope exclusions | Done | No complete full study screen, occurrence list, Tajweed hit-testing, Mushaf word integration, iOS parity, prose i'rab, or dictionary layer was added. |
+
+Implementation decisions:
+
+- The sheet shell is committed before the query begins, keeping modal presentation independent from first-open SQLite work while still resolving from the bundled pack immediately after tap.
+- Primary Android plain mode continues using the already-mounted token layout; Phase 4 only changes clickability and the small event. Long-Surah payload size and morphology query count are unchanged.
+- Exact word playback uses existing QDC segment timing and pauses at the selected segment end. `Play verse from here` uses the same timing index without installing a second audio stack.
+- Root absence now distinguishes known particles (`particle-has-no-root`) from other non-root-bearing categories (`not-applicable`), preventing pronouns from being described as particles.
+
+Manual checks still required:
+
+- Repeat performance/accessibility checks on representative low/mid-range physical Android hardware before Phase 9 release hardening; Phase 4 was verified on the API 36 release AVD.
+- Quranic Arabic terminology and the golden review set still require qualified reviewer sign-off before public release.
+
+## Phase 5 Acceptance Status
+
+Phase 5 extends these exact shared web source-of-truth files first, then syncs them with `npm run sync:web-core`:
+
+- `../quran-app/src/domain/word-study/WordStudy.ts`
+- `../quran-app/src/domain/word-study/WordStudyLocation.ts`
+- `../quran-app/src/domain/repositories/IWordStudyRepository.ts`
+- `../quran-app/src/application/use-cases/word-study/GetVerseWordAnalyses.ts`
+- `../quran-app/src/application/use-cases/word-study/index.ts`
+- `../quran-app/tests/unit/domain/word-study/WordStudy.contract.test.ts`
+
+There is no existing web full Word Study screen to mirror. The React Native presentation follows `docs/word-study-feature-plan.md` and reuses the Phase 4 mobile segmented-word and source-label patterns.
+
+| Requirement | Status | Record |
+|---|---|---|
+| Full study route | Done | `/study/word/[surah]/[ayah]/[position]` validates deep-link parameters, resolves the installed study pack offline, and retains normal stack back behavior. |
+| Ayah ribbon and selected-word state | Done | `findByVerse`/`GetVerseWordAnalyses` returns the complete ayah ordered by canonical word position. The RTL horizontal ribbon highlights the route-selected word; selecting a ribbon or adjacent item updates only the `position` route parameter. |
+| Overview | Done | Contextual gloss, surface form, lemma, root or explicit absence reason, and primary POS are presented as distinct concepts with beginner explanations and Arabic technical terms. |
+| Morphology | Done | Prefix/stem/suffix/whole-word cards show segment role, POS code plus readable label, and only source-recorded case/mood/voice/person/gender/number/aspect/state/form/derivation fields. |
+| Applicable fields only | Done | Particles, pronouns, nouns, and verbs omit unrecorded feature rows. Rootless particles and missing analyses show explicit explanations instead of blank values. |
+| Source/version/about-analysis | Done | The Overview includes grouped layer names, source titles, versions, attribution, an external QAC source link, and an explanation of the structured-analysis scope. |
+| Share attribution | Done | The system share sheet includes location, Arabic surface, contextual gloss, applicable lemma/root, and source titles/versions. |
+| Reader return and study state | Done by navigation design | Opening the route is a normal stack push over the mounted reader. Ribbon changes use `setParams`, preserving the selected tab and avoiding extra history entries; back returns to the same reader instance/position. |
+| Theme, RTL, and font scaling | Done in implementation | All colors use the app light/dark palette, Arabic text has independent RTL direction, ribbon order is inverted for Quran reading order, and text/card layouts use minimum or content-driven heights without disabling font scaling. |
+| UI/repository tests | Done | Five focused screen/model tests and thirteen real-pack repository/lifecycle tests pass and are included in `npm run verify`. |
+| Scope exclusions | Done | No occurrence results, prose i‘rab, dictionary definitions, saved-word learning, verb paradigms, or additional reader modes were added. |
+
+Implementation decisions:
+
+- Ayah lookup was added to the shared storage-neutral repository contract instead of deriving word counts in the UI or reaching into SQLite from the route.
+- The reusable `WordSegmentsCard` keeps quick-sheet and full-screen segment color, underline, readable labels, and accessibility announcements consistent.
+- Word selection remains route-driven so deep links, ribbon selection, and adjacent buttons share one canonical state. `setParams` preserves the current Overview/Morphology tab and the underlying reader stack entry.
+- The source presentation is deliberately bounded to the two installed Phase 2 sources. It does not imply that beginner UI copy is a new canonical grammar source.
+
+Manual checks still required before Phase 9 release hardening:
+
+- Repeat Dynamic Type/TalkBack/VoiceOver checks on representative physical Android and iOS devices, including narrow screens and the largest system font size.
+- Obtain the outstanding qualified Quranic Arabic reviewer sign-off for terminology and the golden review set.

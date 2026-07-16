@@ -119,6 +119,11 @@ async function testUseCases(): Promise<void> {
         }
       );
     },
+    async findByVerse(verseKey) {
+      return WORD_STUDY_RICH_CONTRACT_FIXTURES.filter(
+        (fixture) => fixture.location.verseKey === verseKey
+      );
+    },
     async findOccurrences(query) {
       return {
         ...WORD_STUDY_CONTRACT_OCCURRENCE_PAGE,

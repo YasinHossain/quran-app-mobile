@@ -2,6 +2,10 @@ import React from 'react';
 import type { NativeSyntheticEvent } from 'react-native';
 
 import type { SurahVerse } from '@/hooks/useSurahVerses';
+import {
+  normalizeWordStudyPressEvent,
+  type WordStudyPressEvent,
+} from '@/components/word-study/WordStudyPressEvent';
 
 import type {
   NativeSurahReaderActionPressEvent,
@@ -26,7 +30,7 @@ type UseNativeSurahReaderEventsParams = {
   readerHeader: {
     handleScrollOffset: (offset: number) => void;
   };
-  seekToWord: (params: { verseKey: string; wordPosition: number }) => void;
+  openWordStudy: (event: WordStudyPressEvent) => void;
   setLastReadRef: React.RefObject<
     (
       surahId: string,
@@ -48,7 +52,7 @@ export function useNativeSurahReaderEvents({
   lastReadReportedRef,
   openVerseActions,
   readerHeader,
-  seekToWord,
+  openWordStudy,
   setLastReadRef,
   setVisibleVerseNumber,
   suppressReaderFeedbackRef,
@@ -164,16 +168,10 @@ export function useNativeSurahReaderEvents({
 
   const handleNativeWordPress = React.useCallback(
     (event: NativeSyntheticEvent<NativeSurahReaderWordPressEvent>) => {
-      const verseKey = event.nativeEvent.verseKey?.trim();
-      const wordPosition = event.nativeEvent.wordPosition;
-      if (!verseKey) return;
-      if (typeof wordPosition !== 'number' || !Number.isFinite(wordPosition) || wordPosition <= 0) {
-        return;
-      }
-
-      seekToWord({ verseKey, wordPosition: Math.trunc(wordPosition) });
+      const normalized = normalizeWordStudyPressEvent(event.nativeEvent);
+      if (normalized) openWordStudy(normalized);
     },
-    [seekToWord]
+    [openWordStudy]
   );
 
   return {

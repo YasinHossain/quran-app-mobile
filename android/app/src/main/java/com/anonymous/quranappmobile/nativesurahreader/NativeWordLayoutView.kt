@@ -18,7 +18,7 @@ internal class NativeWordLayoutView(context: Context) : ViewGroup(context) {
   private var showTranslations: Boolean = false
   private var verse: NativeVerse? = null
   private var activeWord: NativeActiveWord? = null
-  private var wordAudioSeekEnabled: Boolean = false
+  private var wordPressEnabled: Boolean = false
   private var onWordPress: ((NativeVerse, NativeWord) -> Unit)? = null
 
   fun bind(
@@ -27,7 +27,7 @@ internal class NativeWordLayoutView(context: Context) : ViewGroup(context) {
       arabicFontFace: String?,
       arabicFontSize: Float,
       showTranslations: Boolean,
-      wordAudioSeekEnabled: Boolean,
+      wordPressEnabled: Boolean,
       activeWord: NativeActiveWord?,
       theme: NativeReaderTheme,
       onWordPress: (NativeVerse, NativeWord) -> Unit,
@@ -43,7 +43,7 @@ internal class NativeWordLayoutView(context: Context) : ViewGroup(context) {
     this.showTranslations = showTranslations
     this.verse = verse
     this.activeWord = activeWord
-    this.wordAudioSeekEnabled = wordAudioSeekEnabled
+    this.wordPressEnabled = wordPressEnabled
     this.theme = theme
     this.onWordPress = onWordPress
     contentDescription = filteredWords.joinToString(" ") { it.uthmani }
@@ -66,9 +66,9 @@ internal class NativeWordLayoutView(context: Context) : ViewGroup(context) {
     invalidate()
   }
 
-  fun updateWordAudioSeekEnabled(enabled: Boolean) {
-    if (wordAudioSeekEnabled == enabled) return
-    wordAudioSeekEnabled = enabled
+  fun updateWordPressEnabled(enabled: Boolean) {
+    if (wordPressEnabled == enabled) return
+    wordPressEnabled = enabled
     for (index in 0 until childCount) {
       val token = getChildAt(index)
       val word = token.tag as? NativeWord ?: continue
@@ -223,9 +223,22 @@ internal class NativeWordLayoutView(context: Context) : ViewGroup(context) {
   }
 
   private fun configureTokenPress(token: View, word: NativeWord) {
-    token.isClickable = wordAudioSeekEnabled
-    token.isFocusable = wordAudioSeekEnabled
-    if (!wordAudioSeekEnabled) {
+    token.isClickable = wordPressEnabled
+    token.isFocusable = wordPressEnabled
+    token.importantForAccessibility =
+        if (wordPressEnabled) IMPORTANT_FOR_ACCESSIBILITY_YES else IMPORTANT_FOR_ACCESSIBILITY_NO
+    token.contentDescription =
+        if (wordPressEnabled) {
+          listOfNotNull(
+                  word.uthmani,
+                  word.translationText?.trim()?.takeIf { it.isNotBlank() },
+                  "Open Word Study",
+              )
+              .joinToString(". ")
+        } else {
+          null
+        }
+    if (!wordPressEnabled) {
       token.setOnClickListener(null)
       return
     }

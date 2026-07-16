@@ -52,6 +52,8 @@ export type ActiveAudioWord = {
 export type VerseAudioWordSync = {
   activeWord: ActiveAudioWord | null;
   isSeekEnabled: boolean;
+  playWord: (params: { verseKey: string; wordPosition: number }) => void;
+  playVerseFromWord: (params: { verseKey: string; wordPosition: number }) => void;
   registerWordHighlight: RegisterWordHighlight;
   seekToWord: (params: { verseKey: string; wordPosition: number }) => void;
 };
@@ -84,7 +86,16 @@ export function useVerseAudioWordSync(chapterId?: number | null): VerseAudioWord
   const activeWordRef = React.useRef<ActiveAudioWord | null>(null);
   const [activeWord, setActiveWord] = React.useState<ActiveAudioWord | null>(null);
 
-  const pendingSeekRef = React.useRef<{ verseKey: string; wordPosition: number } | null>(null);
+  const pendingSeekRef = React.useRef<{
+    verseKey: string;
+    wordPosition: number;
+    stopAfterWord: boolean;
+  } | null>(null);
+  const wordStopRef = React.useRef<{
+    verseKey: string;
+    relativeEndSec: number;
+    armedAfterMs: number;
+  } | null>(null);
 
   const updateActiveWord = React.useCallback((nextActiveWord: ActiveAudioWord | null) => {
     const previous = activeWordRef.current;
@@ -181,14 +192,16 @@ export function useVerseAudioWordSync(chapterId?: number | null): VerseAudioWord
 
   const isSeekEnabled = Boolean(audio.isVisible);
 
-  const seekToWord = React.useCallback(
-    ({ verseKey, wordPosition }: { verseKey: string; wordPosition: number }) => {
+  const startFromWord = React.useCallback(
+    (
+      { verseKey, wordPosition }: { verseKey: string; wordPosition: number },
+      stopAfterWord: boolean
+    ) => {
       const normalizedVerseKey = verseKey.trim();
       const normalizedWordPosition =
         typeof wordPosition === 'number' && Number.isFinite(wordPosition) ? Math.trunc(wordPosition) : 0;
 
       if (!normalizedVerseKey || normalizedWordPosition <= 0) return;
-      if (!isSeekEnabled) return;
 
       const timing = verseTimingIndex?.get(normalizedVerseKey);
       const segment = timing?.segments?.find((s) => s[0] === normalizedWordPosition);
@@ -202,6 +215,14 @@ export function useVerseAudioWordSync(chapterId?: number | null): VerseAudioWord
         Number.isFinite(relativeSec);
 
       if (canSeekImmediately) {
+        wordStopRef.current =
+          stopAfterWord && segment && timing
+            ? {
+                verseKey: normalizedVerseKey,
+                relativeEndSec: Math.max(0, (segment[2] - timing.timestampFrom) / 1000),
+                armedAfterMs: Date.now() + 150,
+              }
+            : null;
         audio.seekRelative(relativeSec);
         if (!audio.isPlaying) {
           audio.togglePlay();
@@ -209,7 +230,12 @@ export function useVerseAudioWordSync(chapterId?: number | null): VerseAudioWord
         return;
       }
 
-      pendingSeekRef.current = { verseKey: normalizedVerseKey, wordPosition: normalizedWordPosition };
+      wordStopRef.current = null;
+      pendingSeekRef.current = {
+        verseKey: normalizedVerseKey,
+        wordPosition: normalizedWordPosition,
+        stopAfterWord,
+      };
       audio.playVerse(normalizedVerseKey);
     },
     [
@@ -219,15 +245,31 @@ export function useVerseAudioWordSync(chapterId?: number | null): VerseAudioWord
       audio.playVerse,
       audio.seekRelative,
       audio.togglePlay,
-      isSeekEnabled,
       verseTimingIndex,
     ]
+  );
+
+  const seekToWord = React.useCallback(
+    (params: { verseKey: string; wordPosition: number }) => {
+      if (!isSeekEnabled) return;
+      startFromWord(params, false);
+    },
+    [isSeekEnabled, startFromWord]
+  );
+
+  const playVerseFromWord = React.useCallback(
+    (params: { verseKey: string; wordPosition: number }) => startFromWord(params, false),
+    [startFromWord]
+  );
+
+  const playWord = React.useCallback(
+    (params: { verseKey: string; wordPosition: number }) => startFromWord(params, true),
+    [startFromWord]
   );
 
   React.useEffect(() => {
     const pending = pendingSeekRef.current;
     if (!pending) return;
-    if (!isSeekEnabled) return;
     if (!verseTimingIndex) return;
     if (audio.isLoading) return;
     if (audio.activeVerseKey !== pending.verseKey) return;
@@ -241,20 +283,59 @@ export function useVerseAudioWordSync(chapterId?: number | null): VerseAudioWord
     }
 
     const relativeSec = Math.max(0, (segment[1] - timing.timestampFrom) / 1000);
+    wordStopRef.current = pending.stopAfterWord
+      ? {
+          verseKey: pending.verseKey,
+          relativeEndSec: Math.max(0, (segment[2] - timing.timestampFrom) / 1000),
+          armedAfterMs: Date.now() + 150,
+        }
+      : null;
     audio.seekRelative(relativeSec);
+    if (!audio.isPlaying) {
+      audio.togglePlay();
+    }
     pendingSeekRef.current = null;
   }, [
     audio.activeVerseKey,
     audio.isLoading,
+    audio.isPlaying,
     audio.seekRelative,
     audio.segmentEndSec,
     audio.segmentStartSec,
-    isSeekEnabled,
+    audio.togglePlay,
     verseTimingIndex,
   ]);
 
+  React.useEffect(() => {
+    const stop = wordStopRef.current;
+    if (!stop) return;
+    if (audio.activeVerseKey !== stop.verseKey) {
+      wordStopRef.current = null;
+      return;
+    }
+    if (!audio.isPlaying || Date.now() < stop.armedAfterMs) return;
+    if (audio.positionSec + 0.02 < stop.relativeEndSec) return;
+
+    wordStopRef.current = null;
+    audio.togglePlay();
+  }, [audio.activeVerseKey, audio.isPlaying, audio.positionSec, audio.togglePlay]);
+
   return React.useMemo(
-    () => ({ activeWord, isSeekEnabled, registerWordHighlight, seekToWord }),
-    [activeWord, isSeekEnabled, registerWordHighlight, seekToWord]
+    () => ({
+      activeWord,
+      isSeekEnabled,
+      playWord,
+      playVerseFromWord,
+      registerWordHighlight,
+      seekToWord,
+    }),
+    [
+      activeWord,
+      isSeekEnabled,
+      playVerseFromWord,
+      playWord,
+      registerWordHighlight,
+      seekToWord,
+    ]
   );
 }

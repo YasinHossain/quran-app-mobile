@@ -25,7 +25,7 @@ internal class NativeVerseAdapter(
   var showByWords: Boolean = false
   var tajweed: Boolean = false
   var audioWordSyncEnabled: Boolean = false
-  var wordAudioSeekEnabled: Boolean = false
+  var wordPressEnabled: Boolean = false
   var showTranslationAttribution: Boolean = false
   var wordLang: String? = null
   var theme: NativeReaderTheme = NativeReaderTheme.default()
@@ -70,7 +70,7 @@ internal class NativeVerseAdapter(
             displayMode,
             showByWords,
             audioWordSyncEnabled,
-            wordAudioSeekEnabled,
+            wordPressEnabled,
             showTranslationAttribution,
             theme,
         )
@@ -81,12 +81,12 @@ internal class NativeVerseAdapter(
   override fun onViewAttachedToWindow(holder: RecyclerView.ViewHolder) {
     super.onViewAttachedToWindow(holder)
     updateAttachedActiveAudio(holder)
-    updateAttachedWordAudioSeek(holder)
+    updateAttachedWordPress(holder)
   }
 
-  fun updateAttachedWordAudioSeek(holder: RecyclerView.ViewHolder) {
+  fun updateAttachedWordPress(holder: RecyclerView.ViewHolder) {
     if (holder is NativeVerseViewHolder) {
-      holder.updateWordAudioSeekEnabled(wordAudioSeekEnabled)
+      holder.updateWordPressEnabled(wordPressEnabled)
     }
   }
 
@@ -128,7 +128,7 @@ internal class NativeVerseViewHolder(private val row: NativeVerseRowView) :
       displayMode: String,
       showByWords: Boolean,
       audioWordSyncEnabled: Boolean,
-      wordAudioSeekEnabled: Boolean,
+      wordPressEnabled: Boolean,
       showTranslationAttribution: Boolean,
       theme: NativeReaderTheme,
   ) {
@@ -142,7 +142,7 @@ internal class NativeVerseViewHolder(private val row: NativeVerseRowView) :
         displayMode,
         showByWords,
         audioWordSyncEnabled,
-        wordAudioSeekEnabled,
+        wordPressEnabled,
         showTranslationAttribution,
         theme,
     )
@@ -152,7 +152,7 @@ internal class NativeVerseViewHolder(private val row: NativeVerseRowView) :
     row.bindActiveAudio(activeVerseKey, activeWord)
   }
 
-  fun updateWordAudioSeekEnabled(enabled: Boolean) {
-    row.updateWordAudioSeekEnabled(enabled)
+  fun updateWordPressEnabled(enabled: Boolean) {
+    row.updateWordPressEnabled(enabled)
   }
 }

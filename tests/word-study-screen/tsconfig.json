@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "Node16",
+    "moduleResolution": "Node16",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "rootDir": "../..",
+    "outDir": "../../.artifacts/word-study-screen-tests"
+  },
+  "include": [
+    "../../components/word-study/full-study/wordStudyScreenModel.ts",
+    "../../components/word-study/wordQuickSheetModel.ts",
+    "../../src/core/domain/word-study/**/*.ts",
+    "./*.cts"
+  ]
+}

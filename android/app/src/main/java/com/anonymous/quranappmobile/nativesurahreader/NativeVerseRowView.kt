@@ -106,7 +106,7 @@ internal class NativeVerseRowView(
       displayMode: String,
       showByWords: Boolean,
       audioWordSyncEnabled: Boolean,
-      wordAudioSeekEnabled: Boolean,
+      wordPressEnabled: Boolean,
       showTranslationAttribution: Boolean,
       theme: NativeReaderTheme,
   ) {
@@ -126,7 +126,7 @@ internal class NativeVerseRowView(
           arabicFontFace,
           arabicFontSize,
           showByWords,
-          wordAudioSeekEnabled,
+          wordPressEnabled,
           activeWord,
           theme,
           onWordPress,
@@ -228,8 +228,8 @@ internal class NativeVerseRowView(
     invalidate()
   }
 
-  fun updateWordAudioSeekEnabled(enabled: Boolean) {
-    wordLayoutView.updateWordAudioSeekEnabled(enabled)
+  fun updateWordPressEnabled(enabled: Boolean) {
+    wordLayoutView.updateWordPressEnabled(enabled)
   }
 
   private fun dp(value: Int): Int {

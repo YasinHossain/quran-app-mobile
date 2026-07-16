@@ -85,9 +85,9 @@ class NativeSurahReaderViewManager : SimpleViewManager<NativeSurahReaderView>() 
     view.setActiveWord(activeWord)
   }
 
-  @ReactProp(name = "wordAudioSeekEnabled", defaultBoolean = false)
-  fun setWordAudioSeekEnabled(view: NativeSurahReaderView, enabled: Boolean) {
-    view.setWordAudioSeekEnabled(enabled)
+  @ReactProp(name = "wordPressEnabled", defaultBoolean = false)
+  fun setWordPressEnabled(view: NativeSurahReaderView, enabled: Boolean) {
+    view.setWordPressEnabled(enabled)
   }
 
   @ReactProp(name = "topInsetPx")

@@ -1,5 +1,7 @@
 import type { IWordStudyRepository } from '../../domain/repositories/IWordStudyRepository';
 import {
+  isWordAnalysis,
+  parseVerseKey,
   parseWordStudyLocation,
   type Lemma,
   type Morpheme,
@@ -187,12 +189,30 @@ function mapGloss(row: GlossRow): WordGloss {
   };
 }
 
+const ROOTLESS_PARTICLE_POS_CODES = new Set([
+  'P',
+  'CONJ',
+  'SUB',
+  'ACC',
+  'NEG',
+  'EMPH',
+  'INTG',
+  'COND',
+  'CERT',
+  'VOC',
+  'INL',
+  'PART',
+]);
+
 function rootMissingReason(primaryPos: string | null) {
   if (primaryPos === 'PN') return 'proper-noun-root-absent' as const;
   if (primaryPos === 'N' || primaryPos === 'V' || primaryPos === 'ADJ' || primaryPos === 'VN') {
     return 'root-not-provided' as const;
   }
-  return 'particle-has-no-root' as const;
+  if (primaryPos && ROOTLESS_PARTICLE_POS_CODES.has(primaryPos)) {
+    return 'particle-has-no-root' as const;
+  }
+  return 'not-applicable' as const;
 }
 
 function parseCursor(cursor?: string): number {
@@ -243,6 +263,31 @@ export class SQLiteWordStudyRepository implements IWordStudyRepository {
       this.wordCache.set(canonicalLocation.locationKey, pending);
     }
     return cancellable(pending, options.signal);
+  }
+
+  findByVerse(verseKey: string): Promise<readonly WordAnalysis[]>;
+  findByVerse(
+    verseKey: string,
+    options: WordStudyQueryOptions
+  ): Promise<readonly WordAnalysis[]>;
+  async findByVerse(
+    verseKey: string,
+    options: WordStudyQueryOptions = {}
+  ): Promise<readonly WordAnalysis[]> {
+    const canonicalVerseKey = parseVerseKey(verseKey).verseKey;
+    throwIfCancelled(options.signal);
+    const db = await this.databaseProvider.getDatabaseAsync();
+    const rows = await cancellable(
+      db.getAllAsync<Pick<WordRow, 'location'>>(
+        'SELECT location FROM word_analysis WHERE verse_key = ? ORDER BY word_position;',
+        [canonicalVerseKey]
+      ),
+      options.signal
+    );
+    const results = await Promise.all(
+      rows.map((row) => this.findByLocation(row.location, options))
+    );
+    return results.filter(isWordAnalysis);
   }
 
   findOccurrences(query: WordOccurrenceQuery): Promise<PaginatedWordOccurrences>;

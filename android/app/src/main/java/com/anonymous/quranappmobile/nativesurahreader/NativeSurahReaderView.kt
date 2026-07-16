@@ -70,6 +70,8 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
                   verse.verseApiId?.let { putInt("verseApiId", it) }
                   putInt("wordId", word.id)
                   word.position?.let { putInt("wordPosition", it) }
+                  putString("surfaceText", word.uthmani)
+                  putString("source", "translation")
                 },
             )
           },
@@ -320,12 +322,12 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
     )
   }
 
-  fun setWordAudioSeekEnabled(enabled: Boolean) {
-    if (adapter.wordAudioSeekEnabled == enabled) return
-    adapter.wordAudioSeekEnabled = enabled
+  fun setWordPressEnabled(enabled: Boolean) {
+    if (adapter.wordPressEnabled == enabled) return
+    adapter.wordPressEnabled = enabled
     for (childIndex in 0 until recyclerView.childCount) {
       val holder = recyclerView.getChildViewHolder(recyclerView.getChildAt(childIndex))
-      adapter.updateAttachedWordAudioSeek(holder)
+      adapter.updateAttachedWordPress(holder)
     }
   }
 

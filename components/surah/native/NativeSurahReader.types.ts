@@ -100,13 +100,15 @@ export type NativeSurahReaderWordPressEvent = {
   verseApiId?: number;
   wordId?: number;
   wordPosition?: number;
+  surfaceText?: string;
+  source?: 'translation';
 };
 
 export type NativeSurahReaderProps = ViewProps & {
   readerState?: NativeSurahReaderState;
   activeVerseKey?: string | null;
   activeWord?: NativeSurahReaderActiveWord | null;
-  wordAudioSeekEnabled?: boolean;
+  wordPressEnabled?: boolean;
   onReady?: () => void;
   onInitialPositioned?: (
     event: NativeSyntheticEvent<NativeSurahReaderInitialPositionedEvent>

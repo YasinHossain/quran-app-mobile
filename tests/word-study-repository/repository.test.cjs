@@ -73,9 +73,25 @@ test('rootless and missing locations return structured states', async (context) 
   const particle = await repository.findByLocation('2:141:11');
   assert.equal(particle.root.status, 'unsupported');
   assert.equal(particle.root.reason, 'particle-has-no-root');
+  const demonstrative = await repository.findByLocation('2:2:1');
+  assert.equal(demonstrative.root.status, 'unsupported');
+  assert.equal(demonstrative.root.reason, 'not-applicable');
   const missing = await repository.findByLocation('1:1:99');
   assert.equal(missing.status, 'missing');
   assert.equal(missing.reason, 'source-row-missing');
+});
+
+test('verse lookup returns every ayah word in canonical position order', async (context) => {
+  const provider = new NodeWordStudyDatabaseProvider();
+  context.after(() => provider.closeAsync());
+  const repository = new SQLiteWordStudyRepository(provider);
+  const words = await repository.findByVerse('3:3');
+  assert.equal(words.length, 11);
+  assert.deepEqual(
+    words.map((word) => word.location.wordPosition),
+    [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+  );
+  assert.equal(words[8].surfaceUthmani, 'وَأَنزَلَ');
 });
 
 test('real lemma/root pagination has stable golden counts and first/last pages', async (context) => {
