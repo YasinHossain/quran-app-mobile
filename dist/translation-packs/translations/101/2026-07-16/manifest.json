@@ -1,0 +1,15 @@
+{
+  "translationId": 101,
+  "name": "Alauddin Mansour",
+  "authorName": "Alauddin Mansour",
+  "languageName": "uzbek",
+  "version": "2026-07-16",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "f57f79a33533339df072616f11697d39",
+  "payloadSizeBytes": 3861481,
+  "totalVerses": 6236,
+  "generatedAt": "2026-07-16T11:33:48.386Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=101&per_page=300"
+}

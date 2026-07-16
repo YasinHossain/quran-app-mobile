@@ -1,0 +1,15 @@
+{
+  "translationId": 47,
+  "name": "Albanian",
+  "authorName": "Albanian",
+  "languageName": "albanian",
+  "version": "2026-07-16",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "d2b6b65960de8d9e58d3016edc24eebb",
+  "payloadSizeBytes": 2778355,
+  "totalVerses": 6236,
+  "generatedAt": "2026-07-16T11:33:48.664Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=47&per_page=300"
+}

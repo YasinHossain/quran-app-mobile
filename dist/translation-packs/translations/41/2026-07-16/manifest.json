@@ -1,0 +1,15 @@
+{
+  "translationId": 41,
+  "name": "Norwegian",
+  "authorName": "Norwegian",
+  "languageName": "norwegian",
+  "version": "2026-07-16",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "9780b4e5835b0d4cf51bc69424793301",
+  "payloadSizeBytes": 2559864,
+  "totalVerses": 6236,
+  "generatedAt": "2026-07-16T11:37:03.961Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=41&per_page=300"
+}

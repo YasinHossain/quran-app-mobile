@@ -1,0 +1,15 @@
+{
+  "translationId": 208,
+  "name": "Abu Reda Muhammad ibn Ahmad",
+  "authorName": "Abu Reda Muhammad ibn Ahmad",
+  "languageName": "german",
+  "version": "2026-07-16",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "fa248222e9a0ad3753240010b9f146fa",
+  "payloadSizeBytes": 2761794,
+  "totalVerses": 6236,
+  "generatedAt": "2026-07-16T11:33:46.946Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=208&per_page=300"
+}

@@ -1,0 +1,15 @@
+{
+  "translationId": 230,
+  "name": "Society of Institutes and Universities",
+  "authorName": "Society of Institutes and Universities",
+  "languageName": "thai",
+  "version": "2026-07-16",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "723041a6339042ef424f8e6fe96cb9a0",
+  "payloadSizeBytes": 4499105,
+  "totalVerses": 6236,
+  "generatedAt": "2026-07-16T11:37:16.811Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=230&per_page=300"
+}

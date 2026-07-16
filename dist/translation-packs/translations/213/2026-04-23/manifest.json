@@ -1,0 +1,15 @@
+{
+  "translationId": 213,
+  "name": "Dr. Abu Bakr Muhammad Zakaria",
+  "authorName": "Dr. Abu Bakr Muhammad Zakaria",
+  "languageName": "bengali",
+  "version": "2026-04-23",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "9c40ffe1fc50ce18b75e6a6b6cc1ac16",
+  "payloadSizeBytes": 4016407,
+  "totalVerses": 6236,
+  "generatedAt": "2026-04-23T03:12:01.726Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=213&per_page=300"
+}

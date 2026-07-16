@@ -1,0 +1,15 @@
+{
+  "translationId": 77,
+  "name": "Turkish Translation(Diyanet)",
+  "authorName": "Diyanet Isleri",
+  "languageName": "turkish",
+  "version": "2026-07-16",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "6430645f2c52f433907e70a2ce1311cb",
+  "payloadSizeBytes": 2810279,
+  "totalVerses": 6236,
+  "generatedAt": "2026-07-16T11:37:26.517Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=77&per_page=300"
+}

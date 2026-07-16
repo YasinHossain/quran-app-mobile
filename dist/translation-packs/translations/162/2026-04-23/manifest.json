@@ -1,0 +1,15 @@
+{
+  "translationId": 162,
+  "name": "Rawai Al-bayan",
+  "authorName": "Bayaan Foundation",
+  "languageName": "bengali",
+  "version": "2026-04-23",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "493bf2b37457eb3bd9d5e77f845e04b2",
+  "payloadSizeBytes": 3993238,
+  "totalVerses": 6236,
+  "generatedAt": "2026-04-23T03:10:01.401Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=162&per_page=300"
+}

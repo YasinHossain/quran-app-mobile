@@ -1,0 +1,15 @@
+{
+  "translationId": 80,
+  "name": "Muhammad Karakunnu and Vanidas Elayavoor",
+  "authorName": "Muhammad Karakunnu and Vanidas Elayavoor",
+  "languageName": "malayalam",
+  "version": "2026-07-16",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "42401c5c4b8e5f31f6b4d12129c2f06e",
+  "payloadSizeBytes": 4632404,
+  "totalVerses": 6236,
+  "generatedAt": "2026-07-16T11:36:56.859Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=80&per_page=300"
+}

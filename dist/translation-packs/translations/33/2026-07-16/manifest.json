@@ -1,0 +1,15 @@
+{
+  "translationId": 33,
+  "name": "Indonesian Islamic Affairs Ministry",
+  "authorName": "Unknown",
+  "languageName": "indonesian",
+  "version": "2026-07-16",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "f9c4595c159ca246d39b977abf35b6e9",
+  "payloadSizeBytes": 2915929,
+  "totalVerses": 6236,
+  "generatedAt": "2026-07-16T11:35:21.271Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=33&per_page=300"
+}

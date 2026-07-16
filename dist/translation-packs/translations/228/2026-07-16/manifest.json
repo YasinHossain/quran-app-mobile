@@ -1,0 +1,15 @@
+{
+  "translationId": 228,
+  "name": "Translation Pioneers Center",
+  "authorName": "Translation Pioneers Center",
+  "languageName": "sinhala, sinhalese",
+  "version": "2026-07-16",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "f7e8de676563067124e28955fee94dfb",
+  "payloadSizeBytes": 4215442,
+  "totalVerses": 6236,
+  "generatedAt": "2026-07-16T11:37:25.832Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=228&per_page=300"
+}

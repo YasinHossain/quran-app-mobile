@@ -63,7 +63,7 @@ This document lists reusable UI components currently available in the codebase s
 | Hook | Description | File Path |
 | --- | --- | --- |
 | `useMushafPageData` | Local-only mushaf page data hook that resolves the active installed pack version and returns page lookup, verse/word payload, and grouped page lines for the page route. | `hooks/useMushafPageData.ts` |
-| `prepareMushafVerseTarget` | Shared exact-verse Mushaf navigation preparation used by Go To and Translation-to-Mushaf switching; resolves the local page, validates the active pack version, and warms neighboring pages before entry. | `lib/mushaf/prepareMushafVerseTarget.ts` |
+| `prepareMushafVerseTarget` | Shared exact-verse Mushaf navigation preparation used by Go To and Translation-to-Mushaf switching; resolves the local page, validates the active pack version, and either awaits full page readiness or shares its in-flight warmup with the entering route. | `lib/mushaf/prepareMushafVerseTarget.ts` |
 | `useMushafPackManager` | Local mushaf pack manager hook used by reader settings; loads install state from the mushaf registry, merges download-index progress/errors, and exposes install/delete actions for downloadable mushaf packs like QCF V1/V2, QPC Hafs, IndoPak, and Tajweed. | `hooks/useMushafPackManager.ts` |
 | `useDownloadedResourceSize` / `useDownloadedResourceSizes` | Resolve the installed-resource total plus per-item sizes shown in Downloads, counting SQLite-backed offline content plus downloaded audio and mushaf-pack files. | `hooks/useDownloadedResourceSize.ts` |
 

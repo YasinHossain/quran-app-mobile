@@ -1,0 +1,15 @@
+{
+  "translationId": 222,
+  "name": "Khalifa Altay",
+  "authorName": "Khalifa Altay",
+  "languageName": "kazakh",
+  "version": "2026-07-16",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "2d71556bf5b44957aa050eef9ed2e10b",
+  "payloadSizeBytes": 3245488,
+  "totalVerses": 6236,
+  "generatedAt": "2026-07-16T11:35:26.247Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=222&per_page=300"
+}

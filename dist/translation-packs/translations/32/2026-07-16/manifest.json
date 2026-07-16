@@ -1,0 +1,15 @@
+{
+  "translationId": 32,
+  "name": "Hausa Translation(Abubakar Gumi)",
+  "authorName": "Abubakar Mahmoud Gumi",
+  "languageName": "hausa",
+  "version": "2026-07-16",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "bb2616734ace60a119a1b7afa396b715",
+  "payloadSizeBytes": 2742354,
+  "totalVerses": 6236,
+  "generatedAt": "2026-07-16T11:35:19.016Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=32&per_page=300"
+}

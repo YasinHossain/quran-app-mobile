@@ -1,0 +1,15 @@
+{
+  "translationId": 51,
+  "name": "Thai Translatio (King Fahad Quran Complex)",
+  "authorName": "King Fahad Quran Complex",
+  "languageName": "thai",
+  "version": "2026-07-16",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "c80e89f5b1e6287dd1134151839b28fe",
+  "payloadSizeBytes": 4463569,
+  "totalVerses": 6236,
+  "generatedAt": "2026-07-16T11:37:22.445Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=51&per_page=300"
+}

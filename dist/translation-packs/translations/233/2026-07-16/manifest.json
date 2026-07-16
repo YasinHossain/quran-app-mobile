@@ -1,0 +1,15 @@
+{
+  "translationId": 233,
+  "name": "Dar Al-Salam Center",
+  "authorName": "Dar Al-Salam Center",
+  "languageName": "hebrew",
+  "version": "2026-07-16",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "4803f691d6205266d49816c7c5f7ee9a",
+  "payloadSizeBytes": 2818059,
+  "totalVerses": 6236,
+  "generatedAt": "2026-07-16T11:35:08.186Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=233&per_page=300"
+}

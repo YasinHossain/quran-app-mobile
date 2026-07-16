@@ -1,0 +1,15 @@
+{
+  "translationId": 38,
+  "name": "Maranao",
+  "authorName": "Maranao",
+  "languageName": "maranao",
+  "version": "2026-07-16",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "b9240061ad73532959df55b83b808b73",
+  "payloadSizeBytes": 2795359,
+  "totalVerses": 6236,
+  "generatedAt": "2026-07-16T11:36:48.050Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=38&per_page=300"
+}

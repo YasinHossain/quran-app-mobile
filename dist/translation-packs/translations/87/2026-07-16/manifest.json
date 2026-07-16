@@ -1,0 +1,15 @@
+{
+  "translationId": 87,
+  "name": "Sadiq and Sani",
+  "authorName": "Sadiq and Sani",
+  "languageName": "amharic",
+  "version": "2026-07-16",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "86d311b746535791554d010cf84f78ee",
+  "payloadSizeBytes": 3131269,
+  "totalVerses": 6236,
+  "generatedAt": "2026-07-16T11:37:10.641Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=87&per_page=300"
+}

@@ -1,0 +1,15 @@
+{
+  "translationId": 128,
+  "name": "Cambodian Muslim Community Development",
+  "authorName": "Cambodian Muslim Community Development",
+  "languageName": "central khmer",
+  "version": "2026-07-16",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "a49a942ae38dd26a39244080c7000a16",
+  "payloadSizeBytes": 4832580,
+  "totalVerses": 6236,
+  "generatedAt": "2026-07-16T11:35:03.536Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=128&per_page=300"
+}

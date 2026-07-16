@@ -1,0 +1,15 @@
+{
+  "translationId": 156,
+  "name": "Fi Zilal al-Qur'an",
+  "authorName": "Sayyid Ibrahim Qutb",
+  "languageName": "urdu",
+  "version": "2026-07-16",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "a014df19bf87a9c3dc96441a99da7a26",
+  "payloadSizeBytes": 3367938,
+  "totalVerses": 6236,
+  "generatedAt": "2026-07-16T11:35:12.688Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=156&per_page=300"
+}

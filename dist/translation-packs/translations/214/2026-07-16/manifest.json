@@ -1,0 +1,15 @@
+{
+  "translationId": 214,
+  "name": "Dar Al-Salam Center",
+  "authorName": "Dar Al-Salam Center",
+  "languageName": "bosnian",
+  "version": "2026-07-16",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "3c446374fda407296cd7ee04bf042d59",
+  "payloadSizeBytes": 2597194,
+  "totalVerses": 6236,
+  "generatedAt": "2026-07-16T11:35:07.358Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=214&per_page=300"
+}

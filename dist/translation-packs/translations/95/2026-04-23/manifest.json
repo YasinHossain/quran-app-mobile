@@ -1,0 +1,15 @@
+{
+  "translationId": 95,
+  "name": "A. Maududi (Tafhim commentary)",
+  "authorName": "Sayyid Abul Ala Maududi",
+  "languageName": "english",
+  "version": "2026-04-23",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "d4922022ca2f028490310a42208e2d1b",
+  "payloadSizeBytes": 2758823,
+  "totalVerses": 6236,
+  "generatedAt": "2026-04-23T03:06:01.468Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=95&per_page=300"
+}

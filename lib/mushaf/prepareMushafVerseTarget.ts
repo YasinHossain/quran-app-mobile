@@ -16,6 +16,7 @@ export type PreparedMushafVerseTarget = {
 };
 
 type PrepareMushafVerseTargetParams = {
+  awaitPageLoad?: boolean;
   chapterId: number;
   fallbackVersion: string;
   packId: MushafPackId;
@@ -43,11 +44,12 @@ export async function resolveActiveMushafVersion(
 }
 
 /**
- * Resolves and warms the exact local Mushaf page for a verse before the reader
- * route changes. Translation-to-Mushaf switches and explicit navigation share
- * this path so both enter on the same page with the same highlighted verse.
+ * Resolves and starts warming the exact local Mushaf page for a verse.
+ * Translation-to-Mushaf can await full readiness, while external navigation can
+ * enter after lookup and share the in-flight page load during the route transition.
  */
 export async function prepareMushafVerseTarget({
+  awaitPageLoad = true,
   chapterId,
   fallbackVersion,
   packId,
@@ -60,20 +62,16 @@ export async function prepareMushafVerseTarget({
   if (normalizedChapterId <= 0 || !normalizedVerseKey || !shouldContinue()) return null;
 
   const repository = container.getMushafPageRepository();
-  const activeVersion = await resolveActiveMushafVersion(packId, fallbackVersion);
+  const [activeVersion, resolvedPage] = await Promise.all([
+    resolveActiveMushafVersion(packId, fallbackVersion),
+    repository.findPageForVerse({ packId, verseKey: normalizedVerseKey }),
+  ]);
   if (!shouldContinue()) return null;
 
   repository.setActivePageCacheIdentity({ packId, version: activeVersion });
-  const resolvedPage = await repository.findPageForVerse({
-    packId,
-    verseKey: normalizedVerseKey,
-  });
-  if (!resolvedPage || !shouldContinue()) return null;
+  if (!resolvedPage) return null;
 
   const pageNumber = clampPageToRange(resolvedPage, pageRange);
-  const pageData = await repository.getPage({ packId, pageNumber });
-  if (!shouldContinue() || pageData.pack.version.trim() !== activeVersion.trim()) return null;
-
   const target: PreparedMushafVerseTarget = {
     chapterId: normalizedChapterId,
     packId,
@@ -82,19 +80,39 @@ export async function prepareMushafVerseTarget({
     version: activeVersion,
   };
 
-  const firstPage = pageRange?.firstPage ?? 1;
-  const lastPage = pageRange?.lastPage ?? pageData.pack.totalPages;
-  const nearbyPageNumbers = [pageNumber - 2, pageNumber - 1, pageNumber + 1, pageNumber + 2].filter(
-    (candidate) => candidate >= firstPage && candidate <= lastPage
-  );
-  void repository
-    .prefetchPages({
-      packId,
-      pageNumbers: nearbyPageNumbers,
-      expectedVersion: activeVersion,
-    })
+  const loadPageAndWarmNeighbors = repository
+    .getPage({ packId, pageNumber })
+    .then((pageData) => {
+      if (!shouldContinue() || pageData.pack.version.trim() !== activeVersion.trim()) return null;
+
+      const firstPage = pageRange?.firstPage ?? 1;
+      const lastPage = pageRange?.lastPage ?? pageData.pack.totalPages;
+      const nearbyPageNumbers = [
+        pageNumber - 2,
+        pageNumber - 1,
+        pageNumber + 1,
+        pageNumber + 2,
+      ].filter((candidate) => candidate >= firstPage && candidate <= lastPage);
+      void repository
+        .prefetchPages({
+          packId,
+          pageNumbers: nearbyPageNumbers,
+          expectedVersion: activeVersion,
+        })
+        .catch(() => {
+          // The mounted reader owns error presentation; neighbors are best-effort warmup.
+        });
+
+      return target;
+    });
+
+  if (awaitPageLoad) {
+    return loadPageAndWarmNeighbors;
+  }
+
+  void loadPageAndWarmNeighbors
     .catch(() => {
-      // The mounted reader owns error presentation; neighboring pages are best-effort warmup.
+      // Navigation can proceed from the exact lookup while the reader owns page-load errors.
     });
 
   return target;

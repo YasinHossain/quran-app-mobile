@@ -1,0 +1,15 @@
+{
+  "translationId": 42,
+  "name": "Józef Bielawski",
+  "authorName": "Józef Bielawski",
+  "languageName": "polish",
+  "version": "2026-07-16",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "835340ddd1ae5253b75456af2efe100e",
+  "payloadSizeBytes": 2696760,
+  "totalVerses": 6236,
+  "generatedAt": "2026-07-16T11:35:24.658Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=42&per_page=300"
+}

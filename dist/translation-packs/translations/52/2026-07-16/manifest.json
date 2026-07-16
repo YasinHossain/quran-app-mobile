@@ -1,0 +1,15 @@
+{
+  "translationId": 52,
+  "name": "Elmalili Hamdi Yazir",
+  "authorName": "Elmalili Hamdi Yazir",
+  "languageName": "turkish",
+  "version": "2026-07-16",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "f4b433997a596cefc4d7c91a245bc411",
+  "payloadSizeBytes": 2740356,
+  "totalVerses": 6236,
+  "generatedAt": "2026-07-16T11:35:11.225Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=52&per_page=300"
+}

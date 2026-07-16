@@ -1,0 +1,15 @@
+{
+  "translationId": 229,
+  "name": "Sheikh Omar Sharif bin Abdul Salam",
+  "authorName": "Sheikh Omar Sharif bin Abdul Salam",
+  "languageName": "tamil",
+  "version": "2026-07-16",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "696ceeb911389764b5bd0782fc8a6d89",
+  "payloadSizeBytes": 4962087,
+  "totalVerses": 6236,
+  "generatedAt": "2026-07-16T11:37:15.918Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=229&per_page=300"
+}

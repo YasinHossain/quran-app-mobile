@@ -1,0 +1,15 @@
+{
+  "translationId": 55,
+  "name": "Muhammad Sodiq Muhammad Yusuf (Latin)",
+  "authorName": "Muhammad Sodiq Muhammad Yusuf",
+  "languageName": "uzbek",
+  "version": "2026-07-16",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "7b1ada7346d4f860f1bcfbafc9213e60",
+  "payloadSizeBytes": 2649457,
+  "totalVerses": 6236,
+  "generatedAt": "2026-07-16T11:37:01.720Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=55&per_page=300"
+}

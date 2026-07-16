@@ -288,6 +288,7 @@ export default function SearchScreen(): React.JSX.Element {
         const packId = settings.mushafId ?? DEFAULT_MUSHAF_ID;
         const target = normalizedVerse
           ? await prepareMushafVerseTarget({
+              awaitPageLoad: false,
               chapterId: surahId,
               fallbackVersion: findMushafOption(packId)?.version ?? 'unknown',
               packId,

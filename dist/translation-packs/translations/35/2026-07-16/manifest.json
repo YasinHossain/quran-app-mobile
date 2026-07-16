@@ -1,0 +1,15 @@
+{
+  "translationId": 35,
+  "name": "Ryoichi Mita",
+  "authorName": "Ryoichi Mita",
+  "languageName": "japanese",
+  "version": "2026-07-16",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "2ccd0df7b3b752e687359854a8b7f08d",
+  "payloadSizeBytes": 3051456,
+  "totalVerses": 6236,
+  "generatedAt": "2026-07-16T11:37:09.947Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=35&per_page=300"
+}

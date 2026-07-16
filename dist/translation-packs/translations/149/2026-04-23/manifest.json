@@ -1,0 +1,15 @@
+{
+  "translationId": 149,
+  "name": "Fadel Soliman, Bridges’ translation",
+  "authorName": "Fadel Soliman",
+  "languageName": "english",
+  "version": "2026-04-23",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "17cd60f415f5a3e18221ba6b0c8fe925",
+  "payloadSizeBytes": 2685825,
+  "totalVerses": 6236,
+  "generatedAt": "2026-04-23T03:07:03.583Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=149&per_page=300"
+}

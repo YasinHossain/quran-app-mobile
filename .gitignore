@@ -8,6 +8,8 @@ node_modules/
 dist/
 !dist/
 dist/*
+!dist/translation-packs/
+!dist/translation-packs/**
 !dist/word-translation-packs/
 !dist/word-translation-packs/**
 web-build/

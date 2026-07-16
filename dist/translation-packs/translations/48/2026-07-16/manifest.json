@@ -1,0 +1,15 @@
+{
+  "translationId": 48,
+  "name": "Knut Bernström",
+  "authorName": "Knut Bernström",
+  "languageName": "swedish",
+  "version": "2026-07-16",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "9bdc14e1cb98404773495a6a98a54ecc",
+  "payloadSizeBytes": 2822649,
+  "totalVerses": 6236,
+  "generatedAt": "2026-07-16T11:35:29.359Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=48&per_page=300"
+}

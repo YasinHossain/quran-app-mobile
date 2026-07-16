@@ -87,8 +87,12 @@ Optional:
 
 - `--output=dist/translation-packs`
 - `--base-url=https://your-cdn.example.com/translation-packs/`
+- `--translations=all`
+- `--exclude-languages=english,bengali`
 
 If `--base-url` is provided, the generated catalog uses absolute URLs. Otherwise it uses relative URLs, which is usually the simplest option when you upload the whole folder as-is.
+
+The generator uses Quran.com's full-translation endpoint when it has complete verse coverage, and falls back to per-chapter fetching for resources with missing full payload rows. If Quran.com has no translation text for a verse in that resource, the generated pack still writes a blank row for that verse key so the offline installer has complete 6,236-verse coverage and does not fall back to live API calls just because of a sparse source translation.
 
 ## Why this is the right foundation
 

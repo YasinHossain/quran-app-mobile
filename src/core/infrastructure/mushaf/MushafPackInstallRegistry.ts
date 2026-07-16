@@ -65,6 +65,11 @@ async function getActiveInstallRowAsync(
 }
 
 export class MushafPackInstallRegistry implements IMushafPackInstallRegistry {
+  private readonly activeInstallByPackId = new Map<
+    MushafPackId,
+    Promise<MushafPackInstall | null>
+  >();
+
   async list(): Promise<MushafPackInstall[]> {
     const db = await getAppDbAsync();
     const rows = await db.getAllAsync<MushafPackInstallRow>(`
@@ -87,10 +92,25 @@ export class MushafPackInstallRegistry implements IMushafPackInstallRegistry {
   }
 
   async getActive(packId: MushafPackId): Promise<MushafPackInstall | null> {
-    const db = await getAppDbAsync();
-    const row = await getActiveInstallRowAsync(db, packId);
+    const cached = this.activeInstallByPackId.get(packId);
+    if (cached) return cached;
 
-    return row ? mapRow(row) : null;
+    const loadPromise = (async () => {
+      const db = await getAppDbAsync();
+      const row = await getActiveInstallRowAsync(db, packId);
+
+      return row ? mapRow(row) : null;
+    })();
+    this.activeInstallByPackId.set(packId, loadPromise);
+
+    try {
+      return await loadPromise;
+    } catch (error) {
+      if (this.activeInstallByPackId.get(packId) === loadPromise) {
+        this.activeInstallByPackId.delete(packId);
+      }
+      throw error;
+    }
   }
 
   async upsert(input: MushafPackInstallInput): Promise<MushafPackInstall> {
@@ -156,7 +176,13 @@ export class MushafPackInstallRegistry implements IMushafPackInstallRegistry {
       throw new Error(`Failed to register mushaf pack install for ${input.packId}@${version}`);
     }
 
-    return result;
+    const installedResult = result as MushafPackInstall;
+    if (installedResult.isActive) {
+      this.activeInstallByPackId.set(input.packId, Promise.resolve(installedResult));
+    } else {
+      this.activeInstallByPackId.delete(input.packId);
+    }
+    return installedResult;
   }
 
   async setActive(packId: MushafPackId, version: string): Promise<MushafPackInstall> {
@@ -204,7 +230,9 @@ export class MushafPackInstallRegistry implements IMushafPackInstallRegistry {
       throw new Error(`Failed to activate mushaf pack ${packId}@${normalizedVersion}`);
     }
 
-    return result;
+    const activatedResult = result as MushafPackInstall;
+    this.activeInstallByPackId.set(packId, Promise.resolve(activatedResult));
+    return activatedResult;
   }
 
   async remove(packId: MushafPackId, version: string): Promise<void> {
@@ -219,5 +247,6 @@ export class MushafPackInstallRegistry implements IMushafPackInstallRegistry {
       `,
       [packId, normalizedVersion]
     );
+    this.activeInstallByPackId.delete(packId);
   }
 }

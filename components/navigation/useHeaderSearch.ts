@@ -107,6 +107,7 @@ export function useHeaderSearch({
         const fallbackVersion = findMushafOption(packId)?.version ?? 'unknown';
         const target = normalizedVerse
           ? await prepareMushafVerseTarget({
+              awaitPageLoad: false,
               chapterId: normalizedSurahId,
               fallbackVersion,
               packId,

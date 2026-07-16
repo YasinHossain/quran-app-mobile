@@ -1,0 +1,15 @@
+{
+  "translationId": 211,
+  "name": "Dar Al-Salam Center",
+  "authorName": "Dar Al-Salam Center",
+  "languageName": "tagalog",
+  "version": "2026-07-16",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "470ffd320223e268da0caba990450836",
+  "payloadSizeBytes": 2856369,
+  "totalVerses": 6236,
+  "generatedAt": "2026-07-16T11:35:06.647Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=211&per_page=300"
+}

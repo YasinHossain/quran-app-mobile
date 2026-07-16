@@ -1,0 +1,15 @@
+{
+  "translationId": 111,
+  "name": "Ghali Apapur Apaghuna",
+  "authorName": "Ghali Apapur Apaghuna",
+  "languageName": "oromo",
+  "version": "2026-07-16",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "d486f2e8132e16b0f9e38372662f3a33",
+  "payloadSizeBytes": 2700173,
+  "totalVerses": 6236,
+  "generatedAt": "2026-07-16T11:35:14.905Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=111&per_page=300"
+}

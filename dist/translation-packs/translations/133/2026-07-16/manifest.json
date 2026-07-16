@@ -1,0 +1,15 @@
+{
+  "translationId": 133,
+  "name": "Abdul Hameed Baqavi",
+  "authorName": "Abdul Hameed Baqavi",
+  "languageName": "tamil",
+  "version": "2026-07-16",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "8546f59ae4d23c93b24ac7f1643a34f9",
+  "payloadSizeBytes": 5461531,
+  "totalVerses": 6236,
+  "generatedAt": "2026-07-16T11:33:45.130Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=133&per_page=300"
+}

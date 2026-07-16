@@ -1,0 +1,15 @@
+{
+  "translationId": 49,
+  "name": "Ali Muhsin Al-Barwani",
+  "authorName": "Ali Muhsin Al-Barwani",
+  "languageName": "swahili",
+  "version": "2026-07-16",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "37055169036c4029d6238cd0bf72cf9b",
+  "payloadSizeBytes": 2592589,
+  "totalVerses": 6236,
+  "generatedAt": "2026-07-16T11:33:49.209Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=49&per_page=300"
+}

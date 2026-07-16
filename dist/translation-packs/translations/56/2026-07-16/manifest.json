@@ -1,0 +1,15 @@
+{
+  "translationId": 56,
+  "name": "Chinese Translation (Simplified) - Ma Jain",
+  "authorName": "Ma Jian",
+  "languageName": "chinese",
+  "version": "2026-07-16",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "e5e030970d187654a6207d3985d8e549",
+  "payloadSizeBytes": 2557663,
+  "totalVerses": 6236,
+  "generatedAt": "2026-07-16T11:35:04.196Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=56&per_page=300"
+}

@@ -8,11 +8,14 @@ const PER_PAGE = 300;
 const REQUEST_DELAY_MS = 200;
 const API_BASE_URL = 'https://api.quran.com/api/v4';
 const DEFAULT_OUTPUT_DIR = path.join(__dirname, '..', 'dist', 'translation-packs');
+const CHAPTERS_PATH = path.join(__dirname, '..', 'src', 'data', 'chapters.en.json');
 
 function parseArgs(argv) {
   const options = {
     outputDir: DEFAULT_OUTPUT_DIR,
     translationIds: [20],
+    generateAllTranslations: false,
+    excludedLanguages: [],
     version: new Date().toISOString().slice(0, 10),
     baseUrl: null,
   };
@@ -20,6 +23,11 @@ function parseArgs(argv) {
   for (const arg of argv) {
     if (arg.startsWith('--translations=')) {
       const value = arg.slice('--translations='.length);
+      if (value.trim().toLowerCase() === 'all') {
+        options.generateAllTranslations = true;
+        continue;
+      }
+
       const ids = value
         .split(',')
         .map((part) => Number.parseInt(part.trim(), 10))
@@ -27,6 +35,15 @@ function parseArgs(argv) {
       if (ids.length > 0) {
         options.translationIds = Array.from(new Set(ids));
       }
+      continue;
+    }
+
+    if (arg.startsWith('--exclude-languages=')) {
+      const value = arg.slice('--exclude-languages='.length);
+      options.excludedLanguages = value
+        .split(',')
+        .map((part) => part.trim().toLowerCase())
+        .filter(Boolean);
       continue;
     }
 
@@ -149,6 +166,116 @@ async function loadTranslationResources() {
   return byId;
 }
 
+function loadChapterVerseCounts() {
+  const chapters = JSON.parse(fs.readFileSync(CHAPTERS_PATH, 'utf8'));
+  if (!Array.isArray(chapters)) {
+    throw new Error(`Invalid chapters file: ${CHAPTERS_PATH}`);
+  }
+
+  return chapters.map((chapter) => {
+    const id = Number.parseInt(String(chapter.id), 10);
+    const versesCount = Number.parseInt(String(chapter.verses_count), 10);
+    if (!Number.isFinite(id) || id <= 0 || !Number.isFinite(versesCount) || versesCount <= 0) {
+      throw new Error(`Invalid chapter metadata in ${CHAPTERS_PATH}`);
+    }
+
+    return { id, versesCount };
+  });
+}
+
+function buildVerseMap(uthmaniVerses, chapterVerseCounts) {
+  const verses = Array.isArray(uthmaniVerses?.verses) ? uthmaniVerses.verses : [];
+  if (verses.length === 0) {
+    throw new Error('No Uthmani verses found');
+  }
+
+  const byVerseKey = new Map();
+  for (const verse of verses) {
+    const verseKey = String(verse.verse_key ?? '').trim();
+    const arabicUthmani = String(verse.text_uthmani ?? '').trim();
+    if (!verseKey || !arabicUthmani) continue;
+
+    const [surahText, ayahText] = verseKey.split(':');
+    const surahId = Number.parseInt(surahText, 10);
+    const ayahNumber = Number.parseInt(ayahText, 10);
+    if (!Number.isFinite(surahId) || !Number.isFinite(ayahNumber)) continue;
+
+    byVerseKey.set(verseKey, {
+      verseKey,
+      surahId,
+      ayahNumber,
+      arabicUthmani,
+    });
+  }
+
+  const ordered = [];
+  for (const chapter of chapterVerseCounts) {
+    for (let ayahNumber = 1; ayahNumber <= chapter.versesCount; ayahNumber += 1) {
+      const verseKey = `${chapter.id}:${ayahNumber}`;
+      const verse = byVerseKey.get(verseKey);
+      if (!verse) {
+        throw new Error(`Missing Uthmani verse ${verseKey}`);
+      }
+      ordered.push(verse);
+    }
+  }
+
+  return ordered;
+}
+
+function completeVerseTranslations(verses, verseMap, translationId) {
+  const byVerseKey = new Map();
+  for (const verse of verses) {
+    byVerseKey.set(verse.verseKey, verse);
+  }
+
+  const missingVerseKeys = [];
+  const completed = verseMap.map((verse) => {
+    const translatedVerse = byVerseKey.get(verse.verseKey);
+    if (translatedVerse) return translatedVerse;
+    missingVerseKeys.push(verse.verseKey);
+    return {
+      ...verse,
+      text: '',
+    };
+  });
+
+  if (missingVerseKeys.length > 0) {
+    console.log(
+      `  Source is missing ${missingVerseKeys.length} verse translations for ${translationId}; writing blank rows`
+    );
+  }
+
+  return completed;
+}
+
+async function loadVerseMap() {
+  const chapterVerseCounts = loadChapterVerseCounts();
+  const uthmaniVerses = await fetchJson(buildApiUrl('/quran/verses/uthmani', {}));
+  const verseMap = buildVerseMap(uthmaniVerses, chapterVerseCounts);
+  const expectedVerseCount = chapterVerseCounts.reduce((total, chapter) => total + chapter.versesCount, 0);
+
+  if (verseMap.length !== expectedVerseCount) {
+    throw new Error(`Expected ${expectedVerseCount} verses, received ${verseMap.length}`);
+  }
+
+  return verseMap;
+}
+
+async function fetchFullTranslationVerses(translationId, verseMap) {
+  const response = await fetchJson(buildApiUrl(`/quran/translations/${translationId}`, {}));
+  const translations = Array.isArray(response.translations) ? response.translations : [];
+
+  if (translations.length !== verseMap.length) {
+    return null;
+  }
+
+  return verseMap.map((verse, index) => ({
+    ...verse,
+    text: stripHtml(translations[index]?.text ?? ''),
+  }));
+}
+
 async function fetchTranslationVerses(translationId) {
   const verses = [];
 
@@ -220,6 +347,7 @@ async function generatePack({
   outputDir,
   baseUrl,
   resourceById,
+  verseMap,
 }) {
   const resource = resourceById.get(translationId);
   const name = resource?.name || `Translation ${translationId}`;
@@ -227,7 +355,17 @@ async function generatePack({
   const languageName = resource?.languageName || 'Unknown';
 
   console.log(`Generating translation pack ${translationId} (${name})`);
-  const verses = await fetchTranslationVerses(translationId);
+  let verses;
+  if (Array.isArray(verseMap) && verseMap.length > 0) {
+    verses = await fetchFullTranslationVerses(translationId, verseMap);
+    if (!verses) {
+      console.log(`  Full translation endpoint incomplete; falling back to chapter fetch`);
+      verses = await fetchTranslationVerses(translationId);
+      verses = completeVerseTranslations(verses, verseMap, translationId);
+    }
+  } else {
+    verses = await fetchTranslationVerses(translationId);
+  }
   if (verses.length === 0) {
     throw new Error(`No verses found for translation ${translationId}`);
   }
@@ -292,26 +430,35 @@ async function main() {
 
   const existingCatalog = readExistingCatalog(options.outputDir);
   const resourceById = await loadTranslationResources();
+  const verseMap = await loadVerseMap();
   const generatedEntries = [];
+  const excludedLanguages = new Set(options.excludedLanguages);
+  const translationIds = options.generateAllTranslations
+    ? Array.from(resourceById.values())
+        .filter((resource) => !excludedLanguages.has(resource.languageName.toLowerCase()))
+        .map((resource) => resource.id)
+    : options.translationIds;
 
-  for (const translationId of options.translationIds) {
+  for (const translationId of translationIds) {
     const entry = await generatePack({
       translationId,
       version: options.version,
       outputDir: options.outputDir,
       baseUrl: options.baseUrl,
       resourceById,
+      verseMap,
     });
     generatedEntries.push(entry);
+    await sleep(REQUEST_DELAY_MS);
   }
 
   const mergedByKey = new Map();
   for (const existing of existingCatalog.packs) {
-    const key = `${existing.translationId}:${existing.version}`;
+    const key = Number(existing.translationId);
     mergedByKey.set(key, existing);
   }
   for (const entry of generatedEntries) {
-    const key = `${entry.translationId}:${entry.version}`;
+    const key = Number(entry.translationId);
     mergedByKey.set(key, entry);
   }
 

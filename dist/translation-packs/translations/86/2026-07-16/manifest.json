@@ -1,0 +1,15 @@
+{
+  "translationId": 86,
+  "name": "Divehi",
+  "authorName": "Office of the president of Maldives",
+  "languageName": "divehi, dhivehi, maldivian",
+  "version": "2026-07-16",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "86d4ff99b0a9ea5be9b268fb8dc9aeeb",
+  "payloadSizeBytes": 4476692,
+  "totalVerses": 6236,
+  "generatedAt": "2026-07-16T11:35:09.050Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=86&per_page=300"
+}
