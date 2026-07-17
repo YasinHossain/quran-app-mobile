@@ -33,6 +33,7 @@ import {
   getOccurrenceGloss,
   getOccurrencePageLabel,
 } from '../../components/word-study/full-study/occurrenceExplorerModel';
+import { findSelectedWordGrammarPassages } from '../../components/word-study/full-study/grammarStudyModel';
 
 const verb = WORD_STUDY_RICH_CONTRACT_FIXTURES[0] as WordAnalysis;
 const particle = WORD_STUDY_RICH_CONTRACT_FIXTURES[1] as WordAnalysis;
@@ -86,6 +87,30 @@ test('source presentation and sharing retain source versions and attribution', (
   assert.match(message, /Root:/);
 });
 
+test('Arabic grammar matching prefers the passage containing the selected word or stem', () => {
+  const passages = findSelectedWordGrammarPassages(
+    {
+      verseKey: '3:3',
+      passages: [
+        {
+          sequence: 1,
+          headingArabic: 'نَزَّلَ عَلَيْكَ الْكِتابَ',
+          bodyArabic: 'نزّل: فعل ماض.',
+        },
+        {
+          sequence: 2,
+          headingArabic: 'وَأَنْزَلَ التَّوْراةَ وَالْإِنْجِيلَ',
+          bodyArabic: 'معطوفة بالواو.',
+        },
+      ],
+      source: { sourceId: 'fixture', sourceVersion: '1', layer: 'grammar' },
+      reviewStatus: 'source-provided',
+    },
+    verb
+  );
+  assert.deepEqual(passages.map((passage) => passage.sequence), [2]);
+});
+
 test('occurrence counters and filters name surface, lemma, root, and root family explicitly', () => {
   assert.deepEqual(
     getOccurrenceCounters(verb, 7).map((counter) => [counter.label, counter.value]),
@@ -137,13 +162,16 @@ test('full screen keeps the Phase 5 route, ribbon, tabs, RTL text, and route-dri
   assert.match(source, /router\.setParams\(\{ position:/);
   assert.match(source, /label="Overview"/);
   assert.match(source, /label="Morphology"/);
+  assert.match(source, /label="Grammar"/);
   assert.match(source, /label="Occurrences"/);
   assert.match(source, /useFocusEffect/);
   assert.match(source, /scrollOffsetRef/);
   assert.match(source, /About this analysis/);
   assert.match(source, /Share\.share/);
   assert.match(source, /writingDirection: 'rtl'/);
-  assert.doesNotMatch(source, /Dictionary definition|prose i‘rab.*<StudyFact/);
+  assert.match(source, /Complete ayah grammar/);
+  assert.match(source, /إِعْرَابٌ مُخْتَصَرٌ/);
+  assert.doesNotMatch(source, /Dictionary definition/);
 });
 
 test('occurrence explorer cancels stale queries, keeps page size bounded, and avoids ambiguous count copy', () => {

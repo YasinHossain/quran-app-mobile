@@ -1,6 +1,6 @@
 # Word Study Progress
 
-Status: Phase 7 complete. Every existing Android reader now opens the same React Native Word Study product from canonical word taps, including native Tajweed and Surah/Juz/Page Translation and exact Mushaf views; Quranic Arabic reviewer sign-off remains a release-hardening requirement.
+Status: Android Phase 9A automated hardening checks passed locally, but Android MVP approval remains blocked by qualified Quranic Arabic reviewer sign-off and the Android physical-device accessibility/stress matrix on a production-signed artifact. Phase 8 iOS parity remains intentionally deferred and does not block Android.
 Last updated: 2026-07-17.
 
 This file tracks execution of `docs/word-study-feature-plan.md`. It is the product, rights, review, data, and implementation record for Word Study.
@@ -17,9 +17,10 @@ This file tracks execution of `docs/word-study-feature-plan.md`. It is the produ
 | Phase 5 - Full study Overview and Morphology | Done | Offline ayah ribbon, route-driven selection, adjacent navigation, Overview/Morphology tabs, beginner explanations, source/version details, and attributed sharing completed on 2026-07-17. |
 | Phase 6 - Occurrence explorer and reader round-trip | Done | Explicit counters, availability-aware Surface/Lemma/Root filters, cancellable fixed-size pages, ayah context, exact-word reader targeting, and tab/filter/page/scroll restoration completed on 2026-07-17. |
 | Phase 7 - Android coverage across all existing reader modes | Done | Shared canonical events and one React Native sheet now cover Surah native plain/word-by-word/Tajweed plus Surah/Juz/Page Translation and exact Mushaf views; parity tests, Android range tests, build/install, and emulator matrix completed on 2026-07-17. |
-| Phase 8 - iOS and cross-platform parity | Not started | Do not start until Phase 7 is complete. |
-| Phase 9 - MVP release hardening | Not started | Do not start until Phase 8 is complete. |
-| Phase 10 - Licensed deep grammar pack | Future | Post-MVP only. |
+| Phase 8 - iOS and cross-platform parity | Deferred | Intentionally skipped for the Android-first release. Resume only when active iOS development/release begins; this checkout currently has no `ios/` project. |
+| Phase 9A - Android MVP release hardening | Blocked, automated checks passed | Documentation, source/checksum, privacy records, manual Android checklist, `npm run verify`, repository benchmark, Android unit tests, release Kotlin compile, and local release APK assemble passed on 2026-07-17. Android MVP approval still requires reviewer sign-off and the physical-device matrix on a production-signed artifact. |
+| Phase 9B - iOS release hardening | Deferred | Run only after deferred Phase 8 and before an iOS public release. It does not block Android release or Android post-MVP work. |
+| Phase 10 - Licensed deep grammar pack | Implemented, release permission/review pending | Separate bundled SQLite grammar pack, shared contracts, repository, professional Arabic Grammar tab, selected-word passage matching, full-ayah disclosure, missing states, compiler checksums, and tests completed on 2026-07-17. Distribution permission and qualified review remain release blockers. |
 | Phase 11 - Dictionary and verb reference packs | Future | Post-MVP only. |
 | Phase 12 - Saved words and review | Future | Post-MVP only. |
 | Phase 13 - Structured lessons and quizzes | Future | Post-MVP only. |
@@ -59,7 +60,7 @@ Quick-sheet order:
 
 Full-screen route: `/study/word/[surah]/[ayah]/[position]`.
 
-Full-screen sections: Overview, Morphology, Grammar placeholder/source notice, Occurrences, and Dictionary only when licensed. Prose i'rab, dictionary definitions, generated conjugation tables, dependency graphs, and AI-generated canonical analysis are excluded from the MVP.
+Full-screen sections: Overview, Morphology, Grammar, Occurrences, and Dictionary only when implemented. Phase 10 adds source-provided Arabic prose i'rab as a post-MVP layer; dictionary definitions, generated conjugation tables, dependency graphs, and AI-generated canonical analysis remain excluded.
 
 Terminology baseline, pending reviewer approval:
 
@@ -273,7 +274,7 @@ This candidate set was selected from the existing English word-translation pack 
 ## Open Risks And Blockers
 
 1. The permission correspondence is retained by the product owner outside the repository. Release records should attach or reference it before public distribution.
-2. A qualified Quranic Arabic reviewer has not yet signed off the terminology, review workflow, or 100-location golden set. This is a Phase 9/public-release requirement, not a Phase 2 compiler blocker.
+2. A qualified Quranic Arabic reviewer has not yet signed off the terminology, review workflow, or 100-location golden set. This is a Phase 9A Android public-release requirement and later carries forward to iOS; it is not a Phase 2 compiler blocker.
 3. Three QAC-vs-canonical surface-script differences are accepted with the canonical offline word pack authoritative; they are fully recorded in both validation reports and should be included in linguistic review.
 4. The Phase 1 rich fixtures remain contract fixtures. Production values come only from the checksummed QAC v0.4 input and canonical offline word payload.
 
@@ -314,7 +315,7 @@ This candidate set was selected from the existing English word-translation pack 
 
 ## Next Phase
 
-Next phase is **Phase 8 — iOS and cross-platform parity**. It was not started in this task.
+Next phase is **Phase 9A — Android MVP release hardening**. Phase 8 and Phase 9B are intentionally deferred until active iOS development begins.
 
 ## Phase 1 Acceptance Status
 
@@ -418,7 +419,7 @@ Implementation decisions:
 
 Manual checks still required:
 
-- Repeat the benchmark on representative low/mid-range Android and iOS hardware before Phase 9 release hardening; the current numbers are the plan-approved CI-equivalent profile.
+- Repeat the benchmark on representative low/mid-range Android hardware during Phase 9A; repeat it separately on iOS during deferred Phase 9B. The current numbers are the plan-approved CI-equivalent profile.
 - Exercise forced process termination during a hosted update on-device when a hosted version newer than the bundled generation is published. Automated tests prove that failed/interrupted installation does not switch the activation record.
 
 ## Phase 4 Acceptance Status
@@ -456,7 +457,7 @@ Implementation decisions:
 
 Manual checks still required:
 
-- Repeat performance/accessibility checks on representative low/mid-range physical Android hardware before Phase 9 release hardening; Phase 4 was verified on the API 36 release AVD.
+- Repeat performance/accessibility checks on representative low/mid-range physical Android hardware during Phase 9A; Phase 4 was verified on the API 36 release AVD.
 - Quranic Arabic terminology and the golden review set still require qualified reviewer sign-off before public release.
 
 ## Phase 5 Acceptance Status
@@ -493,9 +494,9 @@ Implementation decisions:
 - Word selection remains route-driven so deep links, ribbon selection, and adjacent buttons share one canonical state. `setParams` preserves the current Overview/Morphology tab and the underlying reader stack entry.
 - The source presentation is deliberately bounded to the two installed Phase 2 sources. It does not imply that beginner UI copy is a new canonical grammar source.
 
-Manual checks still required before Phase 9 release hardening:
+Manual checks required to complete Phase 9A Android release hardening:
 
-- Repeat Dynamic Type/TalkBack/VoiceOver checks on representative physical Android and iOS devices, including narrow screens and the largest system font size.
+- Repeat TalkBack and Android system font-scale checks on representative physical Android devices, including narrow screens and the largest system font size. VoiceOver/Dynamic Type checks are deferred to Phase 9B.
 - Obtain the outstanding qualified Quranic Arabic reviewer sign-off for terminology and the golden review set.
 
 ## Phase 6 Acceptance Status
@@ -535,9 +536,9 @@ Implementation decisions:
 - The targeted reader is pushed rather than replacing study or mutating the original reader route. This makes round-trip restoration a stack invariant instead of a reconstructed approximation.
 - The occurrence target highlight reuses the native reader’s existing active-word presentation; no morphology or occurrence data crosses the React Native bridge.
 
-Manual checks still required before Phase 9 release hardening:
+Manual checks required during Phase 9A:
 
-- Repeat large-root scrolling, TalkBack/VoiceOver, largest font-scale, low-memory, and rapid filter/page switching checks on representative physical Android and iOS devices.
+- Repeat large-root scrolling, TalkBack, largest Android font scale, low-memory, and rapid filter/page switching checks on representative physical Android devices. Equivalent iOS checks are deferred to Phase 9B.
 - Obtain the outstanding qualified Quranic Arabic reviewer sign-off for terminology and the golden review set.
 
 ## Phase 7 Acceptance Status
@@ -562,7 +563,90 @@ There is still no web Word Study presentation to duplicate. The Android readers 
 | Verification and manual matrix | Done | `npm run verify`, `:app:testDebugUnitTest`, `:app:compileDebugKotlin`, and `:app:installDebug` pass. API 36 emulator taps confirmed canonical equality across native Tajweed, Juz/Page Translation, and Surah/Juz/Page exact Mushaf. |
 | Scope exclusions | Done | No new reader mode, iOS native reader, learning tool, or new production dependency was added. JUnit 4 is test-only for the new pure Kotlin range tests. |
 
-Manual checks still required before Phase 9 release hardening:
+Manual checks required during Phase 9A:
 
 - Repeat the reader-mode matrix with TalkBack and largest font scale on representative physical Android devices, including long wrapped Tajweed verses and active audio.
 - Obtain the outstanding qualified Quranic Arabic reviewer sign-off for terminology and the golden review set.
+
+## Phase 9A - Android MVP Release Hardening
+
+Release status: **blocked after automated pass**. Android Phase 9A repository-side checks passed on 2026-07-17, but the Android MVP cannot be approved until external Quranic Arabic review and physical Android device checks are complete on a production-signed artifact. Deferred iOS Phase 8 is not a blocker.
+
+Source-of-truth files checked for the partial Phase 9A record:
+
+- `docs/word-study-feature-plan.md`
+- `docs/word-study-progress.md`
+- `docs/word-study-release-notes.md`
+- `docs/word-study-android-physical-device-checklist.md`
+- `docs/components.md`
+- `docs/ui-parity.md`
+- `app/privacy.tsx`
+- `dist/word-study-packs/qac-v0.4/manifest.json`
+- `dist/word-study-packs/qac-v0.4/validation-report.json`
+
+| Hardening item | Status | Record |
+|---|---|---|
+| Phase 0-7 acceptance criteria remain green | Done in current automated record | `npm run verify` passed on 2026-07-17 after the Phase 9A updates. Deferred Phase 8 is outside the Android gate. |
+| English/Arabic copy review | Blocked | Copy exists for quick sheet, full study, source labels, release notes, and privacy notice. No reviewer sign-off record is present. |
+| Quranic Arabic golden-set and production-sample review | Blocked | The 100-location candidate set and deterministic fixtures exist, but no qualified Quranic Arabic reviewer name, date, approval, or dispute-resolution record is captured. |
+| Android accessibility matrix: TalkBack, RTL, system font scaling, reduced motion, contrast, non-color POS | Blocked | Automated/source coverage includes non-color POS labels and explicit accessibility labels, but physical-device TalkBack and largest-font checks remain required. VoiceOver/Dynamic Type belong to deferred Phase 9B. |
+| Stress matrix: long Surah, large root, low memory, offline, corrupt pack, update/rollback, active audio, rapid taps | Partial | Repository tests cover corrupt/invalid lifecycle states, rollback behavior, bounded large-root occurrence queries, stale cancellation, and real-pack integrity. `npm run benchmark:word-study-repository` passed the large-root/lookup thresholds. Physical-device long-Surah, low-memory, active-audio, offline, rapid-tap, and release-build stress runs remain required. |
+| Source notices, licenses, attribution, versions, checksums, corrections/change notices | Partial | Source metadata is embedded in the pack manifest and surfaced in Word Study. `docs/word-study-release-notes.md` records pack versions/checksums and excluded future layers. Public release still requires attaching or referencing the out-of-repo written permission correspondence and reviewer approval. |
+| Privacy behavior | Done for code/docs | `app/privacy.tsx` names offline resources and Word Study pack state as local data, and states that no analytics tracks studied words, reading content, notes, or religious-profile data. Source search found no analytics dependency/path for Word Study. |
+| Product/component/release documentation | Done for blocked RC | `docs/word-study-release-notes.md`, `docs/word-study-android-physical-device-checklist.md`, `docs/components.md`, `docs/ui-parity.md`, and this progress section record the current scope and blockers. |
+| Android release build | Done locally, production-signing caveat | `./gradlew :app:testDebugUnitTest :app:compileReleaseKotlin :app:assembleRelease` passed on 2026-07-17. APK `android/app/build/outputs/apk/release/app-release.apk`, SHA-256 `bb99ccba899aba485c686289e28295b45e3a5a4d92255aa6022ee1078c6930aa`, size 132 MB. The repository signs release with the debug keystore, so production-signed verification remains required before public distribution. |
+| iOS release build | Deferred, not an Android blocker | This belongs to deferred Phase 8 and Phase 9B. This checkout has no `ios/` directory. |
+| `npm run verify` | Done | Passed on 2026-07-17 after the Phase 9A updates: type-check, core purity, Word Study pack tests, repository tests, quick-sheet tests, and screen tests were all green. |
+| Repository performance benchmark | Done | `npm run benchmark:word-study-repository` passed on 2026-07-17. P95: lookup 0.504 ms, first 50 lemma 4.719 ms, first 50 root 4.468 ms, first 30 large-root 9.943 ms; thresholds are 50 ms lookup and 100 ms occurrence. |
+
+Release source versions/checksums:
+
+| Artifact | Version | Checksum / size |
+|---|---|---|
+| Word Study SQLite format | `quran-word-study-sqlite-v1`, schema 1 | database SHA-256 `f866c0e0502e0a6e668260cdcd7783994773c5119d17ae35157c7e41a87fbdff`; 58,961,920 bytes |
+| Word Study logical pack | compiler 1.0.0, schema 1 | logical SHA-256 `9c730ace19a57a724b3198fd80f3ed75f2e388c203525aaaaf2ee99af6ebc32d` |
+| Quranic Arabic Corpus morphology | v0.4 | source SHA-256 `a1d12923815341face765083805d2148ed2d9f5cc3f7d6665219d887675d8c46` |
+| Quran App offline English word pack | 2026-07-04 | source SHA-256 `38975bff99637665869e8231d1d5824b1bc4db4c6cd3b6358b8231d4e882b6f3` |
+
+Known non-blocking limitations once the blocking sign-offs pass:
+
+- Prose i'rab, dictionary definitions, verb paradigms, dependency graphs, saved words, lessons, quizzes, and AI explanations remain post-MVP phases.
+- Word audio is a runtime action, not a bundled offline Word Study data layer.
+- The MVP presents sourced structured morphology and occurrence indexes; it does not infer or generate canonical grammar prose.
+
+Blocking next steps:
+
+1. Capture qualified Quranic Arabic reviewer sign-off for terminology, the full golden set, and sampled production records; use a second reviewer for any disputed items.
+2. Configure production signing or produce the intended store artifact.
+3. Run `docs/word-study-android-physical-device-checklist.md` against the production-signed artifact and attach device/tester results.
+
+Deferred iOS sequence:
+
+1. Resume Phase 8 when active iOS development begins.
+2. Run Phase 9B immediately before the iOS public release.
+
+## Phase 10 - Arabic Grammar Pack
+
+Implementation status: **repository implementation complete; public distribution blocked by permission and scholarly review**.
+
+| Requirement | Status | Record |
+|---|---|---|
+| Shared platform-neutral contract | Done | Added verse grammar, ordered passage, review-status, unavailable-state, repository, and use-case contracts in `../quran-app` first, then synced mobile core. |
+| Separate offline pack | Done | `quran-word-grammar-sqlite-v1`, schema 1, 5,785 covered ayahs and 29,881 ordered Arabic passages. |
+| Deterministic compiler | Done | `npm run compile:word-grammar-pack` parses the pinned StarDict source, removes presentation markup, maps canonical verse keys, preserves prose/order, and emits SQLite plus a manifest. |
+| Mobile repository | Done | The read-only Expo SQLite provider opens lazily; the repository queries only by canonical `surah:ayah` and returns structured missing/unavailable states. |
+| Professional Grammar view | Done | Four-tab Word Study layout, concise Arabic hero, selected-word/segment passage priority, collapsed long prose, and expandable complete-ayah analysis. No source attribution is rendered in the app by product direction. |
+| No generated canonical prose | Done | Runtime matching changes presentation only. Source Arabic is stored and rendered without LLM generation or editorial rewriting. |
+| Source permission | Blocked | Product owner directed implementation before permission. Permission must be recorded before public distribution. |
+| Qualified Quranic Arabic review | Blocked | The imported prose and selected-word matching require reviewer sign-off and disputed-record handling before public distribution. |
+
+Phase 10 generated artifact:
+
+| Artifact | Value |
+|---|---|
+| Source archive SHA-256 | `804b7397d1a239cdeace01b3ea9a656342062f582350c52930b0481dbd3300fb` |
+| Database SHA-256 | `34fc38dca6b71708acbb4c3dcf685d639fd25febcda3624ea1404a8caa4cf3d6` |
+| Logical SHA-256 | `69ca1d15d697703c218be8a2899ebefb323c0638bd8af8110b275e8e8839fe11` |
+| Database size | 15,876,096 bytes |
+
+Phase 10 does not start Phase 11: no dictionary, Lane Lexicon, Hans Wehr, or verb-reference content was added.

@@ -11,11 +11,14 @@
   },
   "include": [
     "../../src/core/domain/repositories/IWordStudyRepository.ts",
+    "../../src/core/domain/repositories/IGrammarStudyRepository.ts",
     "../../src/core/domain/word-study/**/*.ts",
     "../../src/core/infrastructure/word-study/LruCache.ts",
     "../../src/core/infrastructure/word-study/SQLiteWordStudyRepository.ts",
     "../../src/core/infrastructure/word-study/WordStudyDatabase.ts",
     "../../src/core/infrastructure/word-study/WordStudyPack.types.ts",
     "../../src/core/infrastructure/word-study/WordStudyPackLifecycle.ts"
+    ,"../../src/core/infrastructure/word-grammar/GrammarStudyDatabase.ts"
+    ,"../../src/core/infrastructure/word-grammar/SQLiteGrammarStudyRepository.ts"
   ]
 }

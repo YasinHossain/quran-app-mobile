@@ -3,6 +3,7 @@ declare function require(id: string): any;
 
 const assert = require('node:assert/strict') as {
   deepEqual(actual: unknown, expected: unknown): void;
+  doesNotMatch(actual: string, expected: RegExp): void;
   equal(actual: unknown, expected: unknown): void;
   match(actual: string, expected: RegExp): void;
   ok(value: unknown): void;
@@ -19,6 +20,7 @@ import {
   describeMissingReason,
   describeMorphology,
   getAnalysisSegments,
+  getCompactFieldPresentation,
   getPosLabel,
   getPrimaryGloss,
   getSourceLabel,
@@ -108,6 +110,27 @@ test('renders explicit rootless and missing-analysis explanations', () => {
   });
 });
 
+test('renders unavailable compact facts as a dash with an accessible fallback', () => {
+  const verb = WORD_STUDY_RICH_CONTRACT_FIXTURES[0];
+  const particle = WORD_STUDY_RICH_CONTRACT_FIXTURES[1];
+  if (!verb || !particle) throw new Error('Missing compact fact fixtures');
+
+  assert.deepEqual(
+    getCompactFieldPresentation(
+      verb.lemma,
+      (value: { arabic: string }) => value.arabic
+    ),
+    { text: 'أَنزَلَ', accessibilityValue: 'أَنزَلَ' }
+  );
+  assert.deepEqual(
+    getCompactFieldPresentation(
+      particle.root,
+      (value: { arabic: string }) => value.arabic
+    ),
+    { text: '—', accessibilityValue: 'Not available' }
+  );
+});
+
 test('shows pack attribution from source identifiers', () => {
   const verb = WORD_STUDY_RICH_CONTRACT_FIXTURES[0];
   if (!verb) throw new Error('Missing verb fixture');
@@ -128,18 +151,34 @@ test('shows pack attribution from source identifiers', () => {
   );
 });
 
-test('quick sheet keeps numeric height constraints and required actions', () => {
+test('quick sheet keeps numeric height constraints and the redesigned action hierarchy', () => {
   const source = readFileSync(
     join(process.cwd(), 'components/word-study/WordQuickSheet.tsx'),
+    'utf8'
+  );
+  const segmentsSource = readFileSync(
+    join(process.cwd(), 'components/word-study/WordSegmentsCard.tsx'),
     'utf8'
   );
   assert.match(source, /height: sheetHeight/);
   assert.match(source, /minHeight: sheetHeight/);
   assert.match(source, /maxHeight: sheetHeight/);
-  assert.match(source, /Play word/);
-  assert.match(source, /Play verse from here/);
+  assert.match(source, /Math\.min\(windowHeight - 12, 570\)/);
+  assert.match(source, /accessibilityLabel="Play word"/);
+  assert.match(source, /legendLayout="horizontal"/);
+  assert.match(source, /label="Verse"/);
+  assert.match(source, /label="Save"/);
+  assert.match(source, /hint="Soon"/);
+  assert.match(source, /label="Share"/);
+  assert.match(source, /label="More"/);
   assert.match(source, /Open full word study/);
   assert.match(source, /accessibilityLabel="Loading word analysis"/);
+  assert.doesNotMatch(source, /label="Part of speech"/);
+  assert.doesNotMatch(source, /label="Current inflection"/);
+  assert.doesNotMatch(source, /Source: \{getSourceLabel/);
+  assert.match(segmentsSource, /legendLayout\?: 'stacked' \| 'horizontal'/);
+  assert.match(segmentsSource, /<ScrollView[\s\S]*?horizontal/);
+  assert.match(segmentsSource, /showsHorizontalScrollIndicator=\{false\}/);
 });
 
 test('Android Surah, Juz, Page, Mushaf, and Tajweed readers share the React Native sheet', () => {

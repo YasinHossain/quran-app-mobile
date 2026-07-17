@@ -7,6 +7,10 @@ const PACK_PATH = path.join(
   'dist/word-study-packs/qac-v0.4/quran-word-study.db'
 );
 const MANIFEST_PATH = path.join(ROOT, 'dist/word-study-packs/qac-v0.4/manifest.json');
+const GRAMMAR_PACK_PATH = path.join(
+  ROOT,
+  'dist/word-grammar-packs/qac-irab-v1.4/quran-word-grammar.db'
+);
 const COMPILED_ROOT = path.join(ROOT, '.artifacts/word-study-tests');
 
 class NodeWordStudyDatabase {
@@ -59,12 +63,21 @@ function loadPackTypesModule() {
   ));
 }
 
+function loadGrammarRepositoryModule() {
+  return require(path.join(
+    COMPILED_ROOT,
+    'infrastructure/word-grammar/SQLiteGrammarStudyRepository.js'
+  ));
+}
+
 module.exports = {
   COMPILED_ROOT,
+  GRAMMAR_PACK_PATH,
   MANIFEST_PATH,
   PACK_PATH,
   NodeWordStudyDatabaseProvider,
   loadLifecycleModule,
+  loadGrammarRepositoryModule,
   loadPackTypesModule,
   loadRepositoryModule,
 };

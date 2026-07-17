@@ -629,9 +629,11 @@ This section is the implementation contract. A future AI task can be stated simp
 
 **Do not include:** new reader modes, a new native iOS reader, or learning tools.
 
-### Phase 8 — iOS and cross-platform parity
+### Phase 8 — iOS and cross-platform parity (deferred)
 
-**Goal:** expose the existing shared experience on iOS with only platform hit-testing/event work.
+**Scheduling decision:** Phase 8 is intentionally skipped for the current Android-first release. It is not an Android release blocker. Start it only when active iOS application development or an iOS release begins.
+
+**Goal when resumed:** expose the existing shared experience on iOS with only platform hit-testing/event work.
 
 **In scope:**
 
@@ -649,34 +651,54 @@ This section is the implementation contract. A future AI task can be stated simp
 
 **Do not include:** redesign, extra content sources, or post-MVP learning features.
 
-### Phase 9 — MVP release hardening
+### Phase 9A — Android MVP release hardening
 
-**Goal:** make the completed feature safe, measurable, accessible, and releasable.
+**Goal:** make the completed Android feature safe, measurable, accessible, and releasable without waiting for Phase 8.
 
 **In scope:**
 
 - Complete English/Arabic copy review and Quranic Arabic review of the golden set plus sampled production records.
-- Complete TalkBack/VoiceOver, RTL, Dynamic Type/font scaling, reduced-motion, contrast, and non-color POS checks.
+- Complete Android TalkBack, RTL, system font scaling, reduced-motion, contrast, and non-color POS checks.
 - Run long-Surah, large-root, low-memory, offline, corrupt-pack, update/rollback, active-audio, and rapid-tap stress tests.
-- Verify source notices, licenses, attribution links, data version, corrections/change notices, and privacy behavior in release builds.
+- Verify source notices, licenses, attribution links, data version, corrections/change notices, and privacy behavior in the Android release build.
 - Add privacy-safe feature analytics only if the app already has an approved analytics path; never send studied words, reading content, notes, or religious-profile data.
 - Update product documentation, component documentation, release notes, and the final progress record.
+- Produce a separate manual physical-device checklist. Automated checks do not replace device testing or scholarly review.
 
 **Exit criteria:**
 
-- All Phase 0–8 acceptance criteria remain green in a release-candidate build.
+- All Phase 0–7 acceptance criteria remain green in an Android release-candidate build. Deferred Phase 8 is not part of this gate.
 - No critical/high accessibility, integrity, privacy, licensing, navigation, or performance defect remains.
 - One qualified reviewer signs off the complete golden set and a second resolves any disputed items.
-- Android and iOS release builds pass; `npm run verify` passes.
-- `docs/word-study-progress.md` marks the MVP complete with source versions/checksums and known non-blocking limitations.
+- The Android physical-device accessibility/stress matrix and Android release build pass; `npm run verify` passes.
+- `docs/word-study-progress.md` marks the Android MVP complete with source versions/checksums, manual sign-offs, and known non-blocking limitations.
 
-**Do not include:** new functionality. Any requested feature expansion becomes a later phase.
+**Do not include:** Phase 8, iOS verification, new functionality, or post-MVP features. Any requested feature expansion becomes a later phase.
+
+### Phase 9B — iOS release hardening (deferred)
+
+**Scheduling decision:** run this immediately after the deferred Phase 8 and before an iOS public release. It does not block Android Phase 9A or Android post-MVP work.
+
+**In scope:**
+
+- Re-run shared data-integrity, licensing, privacy, source-notice, navigation, and pack-lifecycle checks against the iOS release candidate.
+- Complete VoiceOver, Dynamic Type, RTL, reduced-motion, contrast, safe-area, modal-gesture, audio, deep-link, and reader-return testing on representative physical iOS devices.
+- Confirm that Android fixes and later shared React Native changes have not introduced iOS parity regressions.
+
+**Exit criteria:**
+
+- Phase 8 acceptance criteria remain green in the iOS release-candidate build.
+- The physical-device iOS accessibility/stress matrix and iOS release build pass.
+- No separate Swift study UI/repository exists, no critical/high iOS defect remains, and `npm run verify` passes.
+- The progress record identifies the exact iOS build, devices, source versions/checksums, and sign-offs.
+
+**Do not include:** redesign, new content sources, or unrelated post-MVP features.
 
 ### 9.2 Post-MVP phases
 
-These remain independent phases and must never be bundled into an MVP phase:
+These remain independent phases and must never be bundled into a release-hardening phase. They may begin after Android Phase 9A even while Phase 8 and Phase 9B remain deferred:
 
-- **Phase 10 — Licensed deep grammar pack:** ingest separately licensed, expert-reviewed word-level prose i'rab and sarf; add beginner and technical Grammar views.
+- **Phase 10 — Licensed deep grammar pack:** implemented as a separate verse-keyed offline SQLite pack containing ordered Arabic i'rab passages. The Grammar tab prioritizes passages matching the selected surface/morpheme, keeps the full ayah analysis expandable, and provides explicit loading/missing states. The compiler and manifest preserve provenance, checksums, coverage, and source order; the app does not generate or rewrite the prose. Distribution permission and qualified Quranic Arabic review remain mandatory release gates.
 - **Phase 11 — Dictionary and verb reference packs:** add cited root/lemma definitions and verified principal parts only after field-level licensing and linguistic review.
 - **Phase 12 — Saved words and review:** saved word/root collections, local learning state, review queue, and basic spaced repetition.
 - **Phase 13 — Structured lessons and quizzes:** grammar-term mini-lessons, high-frequency vocabulary path, coverage score, segmentation/POS quizzes, and progress reporting.
@@ -725,6 +747,8 @@ A language reviewer is a core delivery role, not an optional final approver. Gra
 
 ## 13. Definition of MVP
 
-The MVP is complete when a user can tap any supported word in the Surah reader, immediately see an offline quick sheet, open a full cross-platform study screen, understand its segments and structured morphology, distinguish surface/lemma/root counts, inspect every occurrence, play the word or verse from that point, and navigate back without losing reading position.
+The product MVP is implemented when a user can tap any supported word in the reader, immediately see an offline quick sheet, open the shared study screen, understand its segments and structured morphology, distinguish surface/lemma/root counts, inspect every occurrence, play the word or verse from that point, and navigate back without losing reading position.
+
+The **Android MVP is release-ready** after Phase 9A passes. It does not wait for iOS. The **iOS release is ready** only after the deferred Phase 8 and Phase 9B pass. Both platforms continue to use the same React Native study UI, domain contracts, and offline data pack.
 
 Full prose i'rab, a six-form verb paradigm, dependency graphs, dictionaries, and quizzes are valuable, but they are not allowed to delay the accurate offline foundation.

@@ -132,6 +132,17 @@ export function describeField<T>(
     : describeMissingReason(field.reason);
 }
 
+export function getCompactFieldPresentation<T>(
+  field: WordAnalysis['lemma'] | WordAnalysis['root'],
+  getValue: (value: T) => string
+): { text: string; accessibilityValue: string } {
+  if (field.status !== 'available') {
+    return { text: '—', accessibilityValue: 'Not available' };
+  }
+  const text = getValue(field.value as T);
+  return { text, accessibilityValue: text };
+}
+
 export function getAnalysisSegments(analysis: WordAnalysis): readonly Morpheme[] {
   if (analysis.morphemes.status === 'available' && analysis.morphemes.value.length) {
     return analysis.morphemes.value;

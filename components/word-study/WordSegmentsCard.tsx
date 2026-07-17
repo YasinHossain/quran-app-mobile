@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import Colors from '@/constants/Colors';
 import { useAppTheme } from '@/providers/ThemeContext';
@@ -30,9 +30,11 @@ const POS_COLORS = {
 export function WordSegmentsCard({
   analysis,
   compact = false,
+  legendLayout = 'stacked',
 }: {
   analysis: WordAnalysis;
   compact?: boolean;
+  legendLayout?: 'stacked' | 'horizontal';
 }): React.JSX.Element {
   const { resolvedTheme, isDark } = useAppTheme();
   const palette = Colors[resolvedTheme];
@@ -42,7 +44,11 @@ export function WordSegmentsCard({
     <View style={[styles.card, compact && styles.cardCompact, { backgroundColor: palette.background }]}>
       <View
         accessibilityRole="text"
-        accessibilityLabel={buildSegmentsAccessibilityLabel(segments, analysis.surfaceUthmani)}
+        accessibilityLabel={buildSegmentsAccessibilityLabel(
+          segments,
+          analysis.surfaceUthmani,
+          legendLayout === 'stacked'
+        )}
         style={styles.segmentedWord}
       >
         {segments.length ? (
@@ -52,6 +58,7 @@ export function WordSegmentsCard({
               segment={segment}
               isDark={isDark}
               compact={compact}
+              includeMorphology={legendLayout === 'stacked'}
             />
           ))
         ) : (
@@ -61,14 +68,37 @@ export function WordSegmentsCard({
         )}
       </View>
 
-      {segments.length ? (
+      {segments.length && legendLayout === 'horizontal' ? (
+        <ScrollView
+          horizontal
+          accessibilityLabel="Part of speech legend"
+          showsHorizontalScrollIndicator={false}
+          style={styles.legendHorizontal}
+          contentContainerStyle={styles.legendHorizontalContent}
+        >
+          {segments.map((segment) => {
+            const color = POS_COLORS[isDark ? 'dark' : 'light'][getPosColorGroup(segment.posCode)];
+            return (
+              <View
+                key={`legend:${segment.segmentIndex}`}
+                style={[styles.legendItemHorizontal, { backgroundColor: palette.surface }]}
+              >
+                <View style={[styles.legendLine, { backgroundColor: color }]} />
+                <Text style={[styles.legendText, { color: palette.muted }]}>
+                  {segment.arabic} — {getPosLabel(segment.posCode)}
+                </Text>
+              </View>
+            );
+          })}
+        </ScrollView>
+      ) : segments.length ? (
         <View style={styles.legend} accessibilityLabel="Part of speech legend">
           {segments.map((segment) => {
             const color = POS_COLORS[isDark ? 'dark' : 'light'][getPosColorGroup(segment.posCode)];
             return (
               <View key={`legend:${segment.segmentIndex}`} style={styles.legendItem}>
                 <View style={[styles.legendLine, { backgroundColor: color }]} />
-                <Text style={[styles.legendText, { color: palette.muted }]}>
+                <Text style={[styles.legendText, styles.legendTextStacked, { color: palette.muted }]}>
                   {segment.arabic} — {getPosLabel(segment.posCode)}
                 </Text>
               </View>
@@ -84,15 +114,20 @@ function SegmentText({
   segment,
   isDark,
   compact,
+  includeMorphology,
 }: {
   segment: Morpheme;
   isDark: boolean;
   compact: boolean;
+  includeMorphology: boolean;
 }): React.JSX.Element {
   const color = POS_COLORS[isDark ? 'dark' : 'light'][getPosColorGroup(segment.posCode)];
+  const accessibilityLabel = includeMorphology
+    ? `${segment.arabic} — ${getPosLabel(segment.posCode)}; ${describeMorphology(segment.features)}`
+    : `${segment.arabic} — ${getPosLabel(segment.posCode)}`;
   return (
     <Text
-      accessibilityLabel={`${segment.arabic} — ${getPosLabel(segment.posCode)}; ${describeMorphology(segment.features)}`}
+      accessibilityLabel={accessibilityLabel}
       style={[styles.arabicSegment, compact && styles.arabicSegmentCompact, { color, borderBottomColor: color }]}
     >
       {segment.arabic}
@@ -100,13 +135,19 @@ function SegmentText({
   );
 }
 
-function buildSegmentsAccessibilityLabel(segments: readonly Morpheme[], fallback: string): string {
+function buildSegmentsAccessibilityLabel(
+  segments: readonly Morpheme[],
+  fallback: string,
+  includeMorphology: boolean
+): string {
   if (!segments.length) return fallback;
   return segments
-    .map(
-      (segment) =>
-        `${segment.arabic} — ${getPosLabel(segment.posCode)}; ${describeMorphology(segment.features)}`
-    )
+    .map((segment) => {
+      const segmentLabel = `${segment.arabic} — ${getPosLabel(segment.posCode)}`;
+      return includeMorphology
+        ? `${segmentLabel}; ${describeMorphology(segment.features)}`
+        : segmentLabel;
+    })
     .join('. ');
 }
 
@@ -143,7 +184,24 @@ const styles = StyleSheet.create({
   },
   arabicSegmentCompact: { fontSize: 34, lineHeight: 54 },
   legend: { alignSelf: 'stretch', gap: 8 },
+  legendHorizontal: { alignSelf: 'stretch' },
+  legendHorizontalContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    gap: 10,
+    paddingHorizontal: 2,
+  },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 9 },
+  legendItemHorizontal: {
+    minHeight: 36,
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   legendLine: { width: 18, height: 4, borderRadius: 2 },
-  legendText: { flex: 1, fontSize: 13, lineHeight: 19 },
+  legendText: { fontSize: 13, lineHeight: 19 },
+  legendTextStacked: { flex: 1 },
 });

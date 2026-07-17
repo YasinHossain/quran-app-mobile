@@ -29,12 +29,9 @@ import type { WordAnalysis } from '@/src/core/domain/word-study';
 import type { WordStudyPressEvent } from './WordStudyPressEvent';
 import { WordSegmentsCard } from './WordSegmentsCard';
 import {
-  describeField,
   describeMissingReason,
-  describeMorphology,
-  getPosLabel,
+  getCompactFieldPresentation,
   getPrimaryGloss,
-  getSourceLabel,
   type WordQuickSheetLoadState,
 } from './wordQuickSheetModel';
 
@@ -68,7 +65,7 @@ export function WordQuickSheet({
   const { resolvedTheme } = useAppTheme();
   const palette = Colors[resolvedTheme];
   const { height: windowHeight } = useWindowDimensions();
-  const sheetHeight = Math.max(280, Math.min(windowHeight - 12, Math.round(windowHeight * 0.86)));
+  const sheetHeight = Math.max(280, Math.min(windowHeight - 12, 570));
   const pendingActionRef = React.useRef<(() => void) | null>(null);
   const { visible, progress, dismissEnabledRef, onModalShow } = useModalTransition(isOpen, {
     openDuration: 220,
@@ -169,50 +166,45 @@ export function WordQuickSheet({
                   onAction={onRetry}
                 />
               ) : (
-                <AnalysisContent analysis={loadState.analysis} palette={palette} />
+                <AnalysisContent
+                  analysis={loadState.analysis}
+                  onPlayWord={onPlayWord}
+                  palette={palette}
+                />
               )}
 
               <View style={[styles.actionsCard, { borderColor: palette.border }]}>
-                <ActionRow
-                  icon={<Volume2 color={palette.tint} size={20} strokeWidth={2.2} />}
-                  label="Play word"
-                  onPress={onPlayWord}
-                  palette={palette}
-                />
-                <ActionRow
+                <SecondaryAction
                   icon={<Play color={palette.tint} size={20} strokeWidth={2.2} />}
-                  label="Play verse from here"
+                  label="Verse"
+                  accessibilityLabel="Play verse from this word"
                   onPress={onPlayVerseFromHere}
                   palette={palette}
                 />
-                <ActionRow
+                <SecondaryAction
                   icon={<Bookmark color={palette.muted} size={20} strokeWidth={2.2} />}
-                  label="Save word (coming soon)"
+                  label="Save"
+                  hint="Soon"
+                  accessibilityLabel="Save word (coming soon)"
                   palette={palette}
                   disabled
                 />
-                <ActionRow
+                <SecondaryAction
                   icon={<Share2 color={palette.tint} size={20} strokeWidth={2.2} />}
                   label="Share"
+                  accessibilityLabel="Share word study"
                   onPress={onShare}
                   palette={palette}
                 />
+                <SecondaryAction
+                  icon={<BookOpenText color={palette.tint} size={20} strokeWidth={2.2} />}
+                  label="More"
+                  accessibilityLabel={`Open full word study for ${locationLabel}`}
+                  onPress={() => deferAfterClose(onOpenFullStudy)}
+                  palette={palette}
+                  last
+                />
               </View>
-
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={`Open full word study for ${locationLabel}`}
-                onPress={() => deferAfterClose(onOpenFullStudy)}
-                style={({ pressed }) => [
-                  styles.fullStudyButton,
-                  { backgroundColor: palette.tint, opacity: pressed ? 0.86 : 1 },
-                ]}
-              >
-                <BookOpenText color={palette.onAccent} size={20} strokeWidth={2.2} />
-                <Text style={[styles.fullStudyButtonText, { color: palette.onAccent }]}>
-                  Open full word study
-                </Text>
-              </Pressable>
             </ScrollView>
           </SafeAreaView>
         </Animated.View>
@@ -221,57 +213,90 @@ export function WordQuickSheet({
   );
 }
 
-function AnalysisContent({ analysis, palette }: {
+function AnalysisContent({
+  analysis,
+  onPlayWord,
+  palette,
+}: {
   analysis: WordAnalysis;
+  onPlayWord: () => void;
   palette: Palette;
 }): React.JSX.Element {
-  const morphology =
-    analysis.morphology.status === 'available'
-      ? describeMorphology(analysis.morphology.value)
-      : describeMissingReason(analysis.morphology.reason);
-  const primaryPos =
-    analysis.primaryPos.status === 'available'
-      ? getPosLabel(analysis.primaryPos.value)
-      : describeMissingReason(analysis.primaryPos.reason);
-  const lemma = describeField(analysis.lemma, (value: { arabic: string }) => value.arabic);
-  const root = describeField(analysis.root, (value: { arabic: string }) => value.arabic);
+  const lemma = getCompactFieldPresentation(
+    analysis.lemma,
+    (value: { arabic: string }) => value.arabic
+  );
+  const root = getCompactFieldPresentation(
+    analysis.root,
+    (value: { arabic: string }) => value.arabic
+  );
 
   return (
     <View style={styles.analysisContent}>
-      <WordSegmentsCard analysis={analysis} />
+      <View style={styles.wordHero}>
+        <WordSegmentsCard analysis={analysis} legendLayout="horizontal" />
+        <View pointerEvents="box-none" style={styles.wordAudioOverlay}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Play word"
+            android_ripple={{ color: palette.interactive }}
+            hitSlop={6}
+            onPress={onPlayWord}
+            style={[
+              styles.wordAudioButton,
+              { backgroundColor: palette.surface, borderColor: palette.border },
+            ]}
+          >
+            <Volume2 color={palette.tint} size={22} strokeWidth={2.2} />
+          </Pressable>
+        </View>
+      </View>
 
       <View style={styles.glossBlock}>
         <Text style={[styles.eyebrow, { color: palette.muted }]}>CONTEXTUAL GLOSS</Text>
         <Text style={[styles.gloss, { color: palette.text }]}>{getPrimaryGloss(analysis)}</Text>
       </View>
 
-      <View style={[styles.factsCard, { borderColor: palette.border }]}>
-        <FactRow label="Part of speech" value={primaryPos} palette={palette} />
-        <FactRow label="Lemma" value={lemma} arabic palette={palette} />
-        <FactRow label="Root" value={root} arabic palette={palette} />
-        <FactRow label="Current inflection" value={morphology} palette={palette} last />
+      <View style={styles.factsCard}>
+        <FactTile
+          label="Lemma"
+          value={lemma.text}
+          accessibilityValue={lemma.accessibilityValue}
+          arabic={analysis.lemma.status === 'available'}
+          palette={palette}
+        />
+        <FactTile
+          label="Root"
+          value={root.text}
+          accessibilityValue={root.accessibilityValue}
+          arabic={analysis.root.status === 'available'}
+          palette={palette}
+        />
       </View>
-
-      <Text style={[styles.source, { color: palette.muted }]}>Source: {getSourceLabel(analysis)}</Text>
     </View>
   );
 }
 
-function FactRow({
+function FactTile({
   label,
   value,
+  accessibilityValue,
   palette,
   arabic = false,
-  last = false,
 }: {
   label: string;
   value: string;
+  accessibilityValue: string;
   palette: Palette;
   arabic?: boolean;
-  last?: boolean;
 }): React.JSX.Element {
   return (
-    <View style={[styles.factRow, !last && { borderBottomColor: palette.border, borderBottomWidth: 1 }]}>
+    <View
+      accessible
+      accessibilityRole="text"
+      accessibilityLabel={`${label}: ${accessibilityValue}`}
+      style={[styles.factTile, { backgroundColor: palette.background }]}
+    >
       <Text style={[styles.factLabel, { color: palette.muted }]}>{label}</Text>
       <Text
         style={[
@@ -286,33 +311,42 @@ function FactRow({
   );
 }
 
-function ActionRow({
+function SecondaryAction({
   icon,
   label,
+  accessibilityLabel,
+  hint,
   onPress,
   palette,
   disabled = false,
+  last = false,
 }: {
   icon: React.ReactNode;
   label: string;
+  accessibilityLabel: string;
+  hint?: string;
   onPress?: () => void | Promise<void>;
   palette: Palette;
   disabled?: boolean;
+  last?: boolean;
 }): React.JSX.Element {
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={label}
+      accessibilityLabel={accessibilityLabel}
       accessibilityState={{ disabled }}
       disabled={disabled}
       onPress={onPress}
-      style={({ pressed }) => [
-        styles.actionRow,
-        { backgroundColor: pressed ? palette.interactive : 'transparent', opacity: disabled ? 0.5 : 1 },
+      android_ripple={disabled ? undefined : { color: palette.interactive }}
+      style={[
+        styles.secondaryAction,
+        !last && { borderRightColor: palette.border, borderRightWidth: StyleSheet.hairlineWidth },
+        { opacity: disabled ? 0.5 : 1 },
       ]}
     >
-      <View style={styles.actionIcon}>{icon}</View>
-      <Text style={[styles.actionLabel, { color: palette.text }]}>{label}</Text>
+      {icon}
+      <Text style={[styles.secondaryActionLabel, { color: palette.text }]}>{label}</Text>
+      {hint ? <Text style={[styles.secondaryActionHint, { color: palette.muted }]}>{hint}</Text> : null}
     </Pressable>
   );
 }
@@ -356,20 +390,33 @@ function WordQuickSheetSkeleton({
   return (
     <View accessibilityLabel="Loading word analysis" style={styles.skeleton}>
       <View style={[styles.wordCard, { backgroundColor: palette.background }]}>
+        <View
+          style={[
+            styles.skeletonAudioButton,
+            { backgroundColor: palette.surface, borderColor: palette.border },
+          ]}
+        />
         {optimisticSurface ? (
           <Text style={[styles.arabicWord, { color: palette.text }]}>{optimisticSurface}</Text>
         ) : (
           <SkeletonBar width="54%" height={42} palette={palette} />
         )}
         <ActivityIndicator color={palette.tint} size="small" />
+        <View style={styles.skeletonLegendRow}>
+          <SkeletonBar width="38%" height={34} palette={palette} />
+          <SkeletonBar width="38%" height={34} palette={palette} />
+        </View>
       </View>
       <SkeletonBar width="34%" height={12} palette={palette} />
       <SkeletonBar width="72%" height={22} palette={palette} />
-      <View style={[styles.factsCard, { borderColor: palette.border }]}>
-        {[0, 1, 2, 3].map((index) => (
-          <View key={index} style={styles.skeletonFact}>
-            <SkeletonBar width="32%" height={12} palette={palette} />
-            <SkeletonBar width="50%" height={14} palette={palette} />
+      <View style={styles.factsCard}>
+        {[0, 1].map((index) => (
+          <View
+            key={index}
+            style={[styles.skeletonFact, { backgroundColor: palette.background }]}
+          >
+              <SkeletonBar width="32%" height={12} palette={palette} />
+              <SkeletonBar width="58%" height={18} palette={palette} />
           </View>
         ))}
       </View>
@@ -401,28 +448,106 @@ const styles = StyleSheet.create({
   iconButton: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   scrollContent: { padding: 20, paddingBottom: 28, gap: 18 },
   analysisContent: { gap: 18 },
-  wordCard: { borderRadius: 20, paddingHorizontal: 18, paddingVertical: 20, alignItems: 'center', gap: 16 },
+  wordHero: { position: 'relative', direction: 'ltr' },
+  wordAudioOverlay: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    alignItems: 'flex-end',
+    justifyContent: 'flex-start',
+    padding: 12,
+  },
+  wordAudioButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 1,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  wordCard: {
+    position: 'relative',
+    borderRadius: 20,
+    paddingHorizontal: 18,
+    paddingVertical: 20,
+    alignItems: 'center',
+    gap: 16,
+  },
   arabicWord: { fontFamily: 'UthmanicHafs1Ver18', fontSize: 38, lineHeight: 62, textAlign: 'center', writingDirection: 'rtl' },
   glossBlock: { gap: 5 },
   eyebrow: { fontSize: 11, fontWeight: '700', letterSpacing: 1 },
   gloss: { fontSize: 19, lineHeight: 27, fontWeight: '600' },
-  factsCard: { borderWidth: 1, borderRadius: 18, overflow: 'hidden' },
-  factRow: { paddingHorizontal: 16, paddingVertical: 13, gap: 5 },
-  factLabel: { fontSize: 12, fontWeight: '600' },
-  factValue: { fontSize: 15, lineHeight: 21 },
-  factValueArabic: { fontFamily: 'UthmanicHafs1Ver18', fontSize: 22, lineHeight: 32, writingDirection: 'rtl', textAlign: 'left' },
-  source: { fontSize: 11, lineHeight: 17 },
-  actionsCard: { borderWidth: 1, borderRadius: 18, padding: 6 },
-  actionRow: { minHeight: 50, borderRadius: 13, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
-  actionIcon: { width: 24, alignItems: 'center' },
-  actionLabel: { flex: 1, fontSize: 14, fontWeight: '600' },
-  fullStudyButton: { minHeight: 52, borderRadius: 16, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },
-  fullStudyButtonText: { fontSize: 15, fontWeight: '700' },
+  factsCard: {
+    minHeight: 92,
+    flexDirection: 'row',
+    gap: 10,
+  },
+  factTile: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 92,
+    borderRadius: 18,
+    paddingHorizontal: 16,
+    paddingVertical: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+  },
+  factLabel: { fontSize: 12, fontWeight: '600', textAlign: 'center' },
+  factValue: { fontSize: 15, lineHeight: 21, textAlign: 'center' },
+  factValueArabic: {
+    fontFamily: 'UthmanicHafs1Ver18',
+    fontSize: 22,
+    lineHeight: 32,
+    writingDirection: 'rtl',
+    textAlign: 'center',
+  },
+  actionsCard: {
+    minHeight: 82,
+    borderWidth: 1,
+    borderRadius: 18,
+    overflow: 'hidden',
+    flexDirection: 'row',
+  },
+  secondaryAction: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 80,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 10,
+  },
+  secondaryActionLabel: { fontSize: 13, lineHeight: 18, fontWeight: '700' },
+  secondaryActionHint: { fontSize: 10, lineHeight: 13, fontWeight: '600' },
   messageState: { minHeight: 230, borderRadius: 20, padding: 22, alignItems: 'center', justifyContent: 'center', gap: 10 },
   messageTitle: { fontSize: 18, fontWeight: '700', textAlign: 'center' },
   messageCopy: { fontSize: 14, lineHeight: 21, textAlign: 'center' },
   retryButton: { marginTop: 6, minHeight: 42, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 8 },
   retryText: { fontSize: 14, fontWeight: '700' },
   skeleton: { gap: 16 },
-  skeletonFact: { minHeight: 57, paddingHorizontal: 16, justifyContent: 'center', gap: 8 },
+  skeletonAudioButton: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 1,
+  },
+  skeletonLegendRow: { alignSelf: 'stretch', flexDirection: 'row', justifyContent: 'center', gap: 10 },
+  skeletonFact: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 90,
+    borderRadius: 18,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
 });

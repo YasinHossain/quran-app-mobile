@@ -20,6 +20,7 @@
     "generate:tafsir-packs": "node scripts/generate-tafsir-packs.js",
     "generate:mushaf-packs": "node scripts/generate-mushaf-packs.js",
     "compile:word-study-pack": "node scripts/compile-word-study-pack.cjs",
+    "compile:word-grammar-pack": "node scripts/compile-word-grammar-pack.cjs",
     "test:word-study-pack": "node --test tests/word-study-pack/*.test.cjs",
     "build:test-word-study-repository": "tsc -p tests/word-study-repository/tsconfig.json",
     "test:word-study-repository": "npm run build:test-word-study-repository && node --test tests/word-study-repository/*.test.cjs",

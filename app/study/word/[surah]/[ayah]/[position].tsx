@@ -25,6 +25,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import Colors from '@/constants/Colors';
 import { WordSegmentsCard } from '@/components/word-study/WordSegmentsCard';
 import { OccurrenceExplorer } from '@/components/word-study/full-study/OccurrenceExplorer';
+import { findSelectedWordGrammarPassages } from '@/components/word-study/full-study/grammarStudyModel';
 import { buildOccurrenceReaderParams } from '@/components/word-study/full-study/occurrenceExplorerModel';
 import {
   buildWordStudyShareMessage,
@@ -41,15 +42,29 @@ import { describeMissingReason, getPosLabel, getPrimaryGloss } from '@/component
 import { useChaptersContext } from '@/providers/ChaptersContext';
 import { useLayoutMetrics } from '@/providers/LayoutMetricsContext';
 import { useAppTheme } from '@/providers/ThemeContext';
-import { toWordStudyLocation, type Morpheme, type WordAnalysis, type WordOccurrence, type WordStudyLocation } from '@/src/core/domain/word-study';
+import {
+  isVerseGrammarAnalysis,
+  toWordStudyLocation,
+  type GrammarPassage,
+  type GrammarStudyLookupResult,
+  type Morpheme,
+  type WordAnalysis,
+  type WordOccurrence,
+  type WordStudyLocation,
+} from '@/src/core/domain/word-study';
 import { container } from '@/src/core/infrastructure/di/container';
 
 type Palette = (typeof Colors)['light'];
-type StudyTab = 'overview' | 'morphology' | 'occurrences';
+type StudyTab = 'overview' | 'morphology' | 'grammar' | 'occurrences';
 type LoadState =
   | { status: 'loading' }
   | { status: 'ready'; words: readonly WordAnalysis[] }
   | { status: 'error'; message: string };
+type GrammarLoadState =
+  | { status: 'idle' }
+  | { status: 'loading' }
+  | { status: 'ready'; result: GrammarStudyLookupResult }
+  | { status: 'error' };
 
 const RIBBON_ITEM_WIDTH = 88;
 const RIBBON_ITEM_STEP = 96;
@@ -91,6 +106,9 @@ export default function WordStudyScreen(): React.JSX.Element {
   const [tab, setTab] = React.useState<StudyTab>('overview');
   const [loadState, setLoadState] = React.useState<LoadState>({ status: 'loading' });
   const [retryNonce, setRetryNonce] = React.useState(0);
+  const [grammarLoadState, setGrammarLoadState] = React.useState<GrammarLoadState>({
+    status: 'idle',
+  });
   const ribbonRef = React.useRef<FlatList<WordAnalysis>>(null);
   const scrollRef = React.useRef<ScrollView>(null);
   const scrollOffsetRef = React.useRef(0);
@@ -129,6 +147,24 @@ export default function WordStudyScreen(): React.JSX.Element {
       cancelled = true;
     };
   }, [location?.verseKey, retryNonce]);
+
+  React.useEffect(() => {
+    if (tab !== 'grammar' || !location) return;
+    let cancelled = false;
+    setGrammarLoadState({ status: 'loading' });
+    void container
+      .getVerseGrammar()
+      .execute(location.verseKey)
+      .then((result) => {
+        if (!cancelled) setGrammarLoadState({ status: 'ready', result });
+      })
+      .catch(() => {
+        if (!cancelled) setGrammarLoadState({ status: 'error' });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [location?.verseKey, tab]);
 
   const words = loadState.status === 'ready' ? loadState.words : [];
   const selected = location
@@ -253,12 +289,19 @@ export default function WordStudyScreen(): React.JSX.Element {
             >
               <TabButton label="Overview" selected={tab === 'overview'} onPress={() => setTab('overview')} palette={palette} />
               <TabButton label="Morphology" selected={tab === 'morphology'} onPress={() => setTab('morphology')} palette={palette} />
+              <TabButton label="Grammar" selected={tab === 'grammar'} onPress={() => setTab('grammar')} palette={palette} />
               <TabButton label="Occurrences" selected={tab === 'occurrences'} onPress={() => setTab('occurrences')} palette={palette} />
             </View>
             {tab === 'overview' ? (
               <OverviewSection analysis={selected} palette={palette} />
             ) : tab === 'morphology' ? (
               <MorphologySection analysis={selected} palette={palette} />
+            ) : tab === 'grammar' ? (
+              <GrammarSection
+                analysis={selected}
+                grammarLoadState={grammarLoadState}
+                palette={palette}
+              />
             ) : (
               <OccurrenceExplorer
                 analysis={selected}
@@ -498,9 +541,194 @@ function MorphologySection({ analysis, palette }: { analysis: WordAnalysis; pale
       <View style={[styles.scopeNotice, { backgroundColor: palette.interactive }]}> 
         <Info color={palette.tint} size={18} strokeWidth={2.2} />
         <Text style={[styles.scopeNoticeText, { color: palette.muted }]}> 
-          This screen shows structured morphology, not full sentence grammar or prose i‘rab. Those layers require separately licensed, expert-reviewed content.
+          Morphology describes how this word is formed. Open Grammar for its Arabic i‘rab in the ayah.
         </Text>
       </View>
+    </View>
+  );
+}
+
+function GrammarSection({
+  analysis,
+  grammarLoadState,
+  palette,
+}: {
+  analysis: WordAnalysis;
+  grammarLoadState: GrammarLoadState;
+  palette: Palette;
+}): React.JSX.Element {
+  const [showFullAyah, setShowFullAyah] = React.useState(false);
+  const [expandedPassages, setExpandedPassages] = React.useState<ReadonlySet<number>>(new Set());
+
+  React.useEffect(() => {
+    setShowFullAyah(false);
+    setExpandedPassages(new Set());
+  }, [analysis.location.locationKey]);
+
+  if (grammarLoadState.status === 'idle' || grammarLoadState.status === 'loading') {
+    return (
+      <View style={styles.grammarLoading} accessibilityLiveRegion="polite">
+        <ActivityIndicator color={palette.tint} />
+        <Text style={[styles.explanation, { color: palette.muted }]}>
+          Loading Arabic grammar…
+        </Text>
+      </View>
+    );
+  }
+  if (grammarLoadState.status === 'error') {
+    return (
+      <NoticeCard
+        message="Arabic grammar could not be opened from the installed offline pack."
+        palette={palette}
+      />
+    );
+  }
+  if (!isVerseGrammarAnalysis(grammarLoadState.result)) {
+    return (
+      <View style={styles.section}>
+        <SectionHeading
+          title="Arabic grammar"
+          subtitle="Brief i‘rab for the selected word and its ayah."
+          palette={palette}
+        />
+        <NoticeCard
+          message="The installed grammar source does not contain an analysis for this ayah."
+          palette={palette}
+        />
+      </View>
+    );
+  }
+
+  const grammar = grammarLoadState.result;
+  const selectedPassages = findSelectedWordGrammarPassages(grammar, analysis);
+  const selectedSequences = new Set(selectedPassages.map((passage) => passage.sequence));
+  const remainingPassages = grammar.passages.filter(
+    (passage) => !selectedSequences.has(passage.sequence)
+  );
+  const togglePassage = (sequence: number): void => {
+    setExpandedPassages((current) => {
+      const next = new Set(current);
+      if (next.has(sequence)) next.delete(sequence);
+      else next.add(sequence);
+      return next;
+    });
+  };
+
+  return (
+    <View style={styles.section}>
+      <View style={[styles.grammarHero, { backgroundColor: palette.interactive }]}>
+        <Text style={[styles.eyebrow, { color: palette.tint }]}>إِعْرَابٌ مُخْتَصَرٌ</Text>
+        <Text style={[styles.grammarHeroWord, { color: palette.text }]}>
+          {analysis.surfaceUthmani}
+        </Text>
+        <Text style={[styles.grammarHeroCaption, { color: palette.muted }]}>
+          التحليل النحوي للكلمة في سياق الآية
+        </Text>
+      </View>
+
+      <SectionHeading
+        title="Selected word"
+        subtitle="The source groups closely related words when their grammatical explanation belongs together."
+        palette={palette}
+      />
+      {selectedPassages.length ? (
+        selectedPassages.map((passage) => (
+          <GrammarPassageCard
+            key={passage.sequence}
+            passage={passage}
+            expanded={expandedPassages.has(passage.sequence)}
+            onToggle={() => togglePassage(passage.sequence)}
+            palette={palette}
+            emphasized
+          />
+        ))
+      ) : (
+        <NoticeCard
+          message="No separate passage was matched to this word. Its analysis is included in the complete ayah grammar below."
+          palette={palette}
+        />
+      )}
+
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ expanded: showFullAyah }}
+        onPress={() => setShowFullAyah((value) => !value)}
+        style={[styles.grammarDisclosure, { borderColor: palette.border, backgroundColor: palette.surface }]}
+      >
+        <View style={styles.grammarDisclosureCopy}>
+          <Text style={[styles.grammarDisclosureTitle, { color: palette.text }]}>
+            Complete ayah grammar
+          </Text>
+          <Text style={[styles.explanation, { color: palette.muted }]}>
+            {grammar.passages.length} Arabic analysis sections
+          </Text>
+        </View>
+        <ChevronRight
+          color={palette.tint}
+          size={20}
+          style={{ transform: [{ rotate: showFullAyah ? '90deg' : '0deg' }] }}
+        />
+      </Pressable>
+
+      {showFullAyah ? (
+        <View style={styles.grammarPassageList}>
+          {remainingPassages.map((passage) => (
+            <GrammarPassageCard
+              key={passage.sequence}
+              passage={passage}
+              expanded={expandedPassages.has(passage.sequence)}
+              onToggle={() => togglePassage(passage.sequence)}
+              palette={palette}
+            />
+          ))}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+function GrammarPassageCard({
+  passage,
+  expanded,
+  onToggle,
+  palette,
+  emphasized = false,
+}: {
+  passage: GrammarPassage;
+  expanded: boolean;
+  onToggle: () => void;
+  palette: Palette;
+  emphasized?: boolean;
+}): React.JSX.Element {
+  const canCollapse = passage.bodyArabic.length > 280;
+  return (
+    <View
+      style={[
+        styles.grammarCard,
+        {
+          borderColor: emphasized ? palette.tint : palette.border,
+          backgroundColor: palette.surface,
+        },
+      ]}
+    >
+      {passage.headingArabic ? (
+        <Text style={[styles.grammarHeadingArabic, { color: palette.text }]}>
+          {passage.headingArabic}
+        </Text>
+      ) : null}
+      <Text
+        numberOfLines={canCollapse && !expanded ? 6 : undefined}
+        style={[styles.grammarBodyArabic, { color: palette.text }]}
+      >
+        {passage.bodyArabic}
+      </Text>
+      {canCollapse ? (
+        <Pressable accessibilityRole="button" onPress={onToggle} style={styles.grammarMoreButton}>
+          <Text style={[styles.grammarMoreText, { color: palette.tint }]}>
+            {expanded ? 'Show less' : 'Read full analysis'}
+          </Text>
+        </Pressable>
+      ) : null}
     </View>
   );
 }
@@ -663,7 +891,7 @@ const styles = StyleSheet.create({
   positionCounter: { fontSize: 11, lineHeight: 16, textAlign: 'center' },
   tabs: { flexDirection: 'row', padding: 4, borderRadius: 15 },
   tab: { flex: 1, minHeight: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  tabText: { fontSize: 14, lineHeight: 19, fontWeight: '700' },
+  tabText: { fontSize: 12, lineHeight: 17, fontWeight: '700' },
   section: { gap: 16 },
   glossBlock: { gap: 5, paddingHorizontal: 2 },
   eyebrow: { fontSize: 11, lineHeight: 16, fontWeight: '700', letterSpacing: 1 },
@@ -695,6 +923,19 @@ const styles = StyleSheet.create({
   morphologyRowCompact: { paddingHorizontal: 0 },
   scopeNotice: { borderRadius: 16, padding: 14, flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
   scopeNoticeText: { flex: 1, fontSize: 13, lineHeight: 20 },
+  grammarLoading: { minHeight: 180, alignItems: 'center', justifyContent: 'center', gap: 12 },
+  grammarHero: { borderRadius: 20, paddingHorizontal: 18, paddingVertical: 20, alignItems: 'center', gap: 5 },
+  grammarHeroWord: { fontFamily: 'UthmanicHafs1Ver18', fontSize: 38, lineHeight: 56, writingDirection: 'rtl', textAlign: 'center' },
+  grammarHeroCaption: { fontSize: 14, lineHeight: 23, writingDirection: 'rtl', textAlign: 'center' },
+  grammarCard: { borderWidth: 1, borderRadius: 18, paddingHorizontal: 17, paddingVertical: 16, gap: 10 },
+  grammarHeadingArabic: { fontFamily: 'UthmanicHafs1Ver18', fontSize: 24, lineHeight: 38, fontWeight: '600', writingDirection: 'rtl', textAlign: 'right' },
+  grammarBodyArabic: { fontSize: 18, lineHeight: 34, writingDirection: 'rtl', textAlign: 'right' },
+  grammarMoreButton: { minHeight: 40, alignSelf: 'flex-start', justifyContent: 'center' },
+  grammarMoreText: { fontSize: 13, lineHeight: 18, fontWeight: '700' },
+  grammarDisclosure: { minHeight: 72, borderWidth: 1, borderRadius: 18, paddingHorizontal: 16, paddingVertical: 13, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  grammarDisclosureCopy: { flex: 1, gap: 2 },
+  grammarDisclosureTitle: { fontSize: 16, lineHeight: 22, fontWeight: '700' },
+  grammarPassageList: { gap: 12 },
   noticeCard: { borderWidth: 1, borderRadius: 16, padding: 16 },
   centeredState: { flex: 1, paddingHorizontal: 30, alignItems: 'center', justifyContent: 'center', gap: 10 },
   stateTitle: { fontSize: 20, lineHeight: 28, fontWeight: '700', textAlign: 'center' },
