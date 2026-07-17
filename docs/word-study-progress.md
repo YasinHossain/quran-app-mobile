@@ -1,6 +1,6 @@
 # Word Study Progress
 
-Status: Phase 5 complete. The shared React Native full-study route now provides offline ayah navigation, Overview, and structured Morphology; Quranic Arabic reviewer sign-off remains a release-hardening requirement.
+Status: Phase 7 complete. Every existing Android reader now opens the same React Native Word Study product from canonical word taps, including native Tajweed and Surah/Juz/Page Translation and exact Mushaf views; Quranic Arabic reviewer sign-off remains a release-hardening requirement.
 Last updated: 2026-07-17.
 
 This file tracks execution of `docs/word-study-feature-plan.md`. It is the product, rights, review, data, and implementation record for Word Study.
@@ -15,8 +15,8 @@ This file tracks execution of `docs/word-study-feature-plan.md`. It is the produ
 | Phase 3 - Mobile repository and pack lifecycle | Done | Expo SQLite repository, bundled/hosted pack lifecycle, SHA-256/schema/integrity validation, atomic activation/rollback, bounded cancellable caches, real-pack tests, and benchmark harness completed on 2026-07-16. |
 | Phase 4 - Quick sheet in the primary Surah reader | Done | Canonical native tap contract, reusable quick sheet, offline states, explicit word/verse playback, accessibility baseline, Phase 5 placeholder, release-mode timing checks, and Surah 2 manual checks completed on 2026-07-17. |
 | Phase 5 - Full study Overview and Morphology | Done | Offline ayah ribbon, route-driven selection, adjacent navigation, Overview/Morphology tabs, beginner explanations, source/version details, and attributed sharing completed on 2026-07-17. |
-| Phase 6 - Occurrence explorer and reader round-trip | Not started | Do not start until Phase 5 is complete. |
-| Phase 7 - Android coverage across all existing reader modes | Not started | Do not start until Phase 6 is complete. |
+| Phase 6 - Occurrence explorer and reader round-trip | Done | Explicit counters, availability-aware Surface/Lemma/Root filters, cancellable fixed-size pages, ayah context, exact-word reader targeting, and tab/filter/page/scroll restoration completed on 2026-07-17. |
+| Phase 7 - Android coverage across all existing reader modes | Done | Shared canonical events and one React Native sheet now cover Surah native plain/word-by-word/Tajweed plus Surah/Juz/Page Translation and exact Mushaf views; parity tests, Android range tests, build/install, and emulator matrix completed on 2026-07-17. |
 | Phase 8 - iOS and cross-platform parity | Not started | Do not start until Phase 7 is complete. |
 | Phase 9 - MVP release hardening | Not started | Do not start until Phase 8 is complete. |
 | Phase 10 - Licensed deep grammar pack | Future | Post-MVP only. |
@@ -301,10 +301,20 @@ This candidate set was selected from the existing English word-translation pack 
 - 2026-07-17 Phase 5 Android/build verification: `./gradlew :app:compileDebugKotlin` and `./gradlew :app:installDebug` passed; the final production Android Expo export passed and bundled the 59 MB Word Study SQLite asset.
 - 2026-07-17 Phase 5 emulator checks on Android API 36: deep links opened `3:3:9` and rootless `2:141:11`; the selected ribbon card stayed visible; switching to `3:3:8` preserved the Morphology tab and rendered its attached pronoun; stack back returned to the prior screen; light/dark themes and system font scales 1.0 and 1.3 rendered without clipping. The emulator font scale and app theme were restored after the check.
 - 2026-07-17 Phase 5 final verification: `npm run verify` passed (`tsc --noEmit`, core purity, 6/6 compiler tests, 13/13 repository/lifecycle tests, 6/6 quick-sheet tests, and 5/5 full-screen tests).
+- 2026-07-17 Phase 6 focused tests: `npm run test:word-study-screen` passed 8/8 model/UI-source tests and `npm run test:word-study-repository` passed 15/15 real-pack repository/lifecycle tests. Coverage includes named counters, unavailable lemma/root filters, bounded queries, exact reader parameters, stale cancellation, normalized-surface duplicates, ayah context, a 2,851-item root, and golden first/final pages.
+- 2026-07-17 Phase 6 large-root benchmark: `npm run benchmark:word-study-repository` passed. The 2,851-occurrence `اله` root returned its first fixed 30-row page at 2.343 ms p95 in the Node 24 / `node:sqlite` CI-equivalent profile; the occurrence gate remains 100 ms.
+- 2026-07-17 Phase 6 Android/build verification: `./gradlew :app:compileDebugKotlin` and `./gradlew :app:installDebug` passed on Android API 36 AVD `quran_api36`.
+- 2026-07-17 Phase 6 emulator round-trip: root `نزل` showed `1–30 of 293`; opening result `2:4:4` landed on verse 2:4 with word position 4 highlighted. Android Back restored the Occurrences tab, Root filter, first page, and prior study scroll offset.
+- 2026-07-17 Phase 6 final verification: `npm run verify` passed (`tsc --noEmit`, core purity, 6/6 compiler tests, 15/15 repository/lifecycle tests, 6/6 quick-sheet tests, and 8/8 full-screen/occurrence tests).
+- 2026-07-17 Phase 7 focused parity tests: `npm run test:word-study-quick-sheet` passed 8/8, including identical normalization for Translation, native Tajweed, and Mushaf payloads plus source checks that Surah/Juz/Page use the shared React Native sheet and Kotlin contains no study UI/repository/model.
+- 2026-07-17 Phase 7 native range tests: `./gradlew :app:testDebugUnitTest :app:compileDebugKotlin` passed. The three JUnit cases cover multi-glyph words with attached marks, contiguous ranges across potential line boundaries, and safe rejection of incomplete word-to-glyph metadata.
+- 2026-07-17 Phase 7 Android build: `./gradlew :app:installDebug` passed and installed the updated APK on Android API 36 AVD `quran_api36`.
+- 2026-07-17 Phase 7 emulator matrix: native Surah Tajweed tap `2:2:1` resolved offline analysis; the same exact-Mushaf word `1:2:1` resolved identically from Surah, Juz, and Page; and the same Translation word `1:1:2` resolved identically from Juz and Page. Returning/switching among mounted readers preserved their requested mode without an update loop.
+- 2026-07-17 Phase 7 final verification: `npm run verify` passed (`tsc --noEmit`, core purity, 6/6 compiler tests, 15/15 repository/lifecycle tests, 8/8 quick-sheet/parity tests, and 8/8 full-screen/occurrence tests).
 
 ## Next Phase
 
-Next phase is **Phase 6 — Occurrence explorer and reader round-trip**. It was not started in this task.
+Next phase is **Phase 8 — iOS and cross-platform parity**. It was not started in this task.
 
 ## Phase 1 Acceptance Status
 
@@ -486,4 +496,73 @@ Implementation decisions:
 Manual checks still required before Phase 9 release hardening:
 
 - Repeat Dynamic Type/TalkBack/VoiceOver checks on representative physical Android and iOS devices, including narrow screens and the largest system font size.
+- Obtain the outstanding qualified Quranic Arabic reviewer sign-off for terminology and the golden review set.
+
+## Phase 6 Acceptance Status
+
+Phase 6 has no existing web UI to mirror. It extends these exact shared web source-of-truth files first and syncs them with `npm run sync:web-core`:
+
+- `../quran-app/src/domain/word-study/WordStudy.ts`
+- `../quran-app/src/domain/word-study/WordStudyFixtures.ts`
+
+It consumes the existing shared contracts in:
+
+- `../quran-app/src/domain/repositories/IWordStudyRepository.ts`
+- `../quran-app/src/application/use-cases/word-study/ListWordOccurrences.ts`
+
+The React Native explorer and reader round-trip follow `docs/word-study-feature-plan.md` and reuse the Phase 5 full-study route plus the primary Android Surah reader.
+
+| Requirement | Status | Record |
+|---|---|---|
+| Unambiguous counters | Done | The UI names `Normalized surface occurrences`, `Lemma occurrences`, `Root occurrences`, and `Distinct lemmas in this root family`; unavailable lemma/root counters are omitted instead of shown as zero. |
+| Surface/Lemma/Root filters | Done | Availability-aware tabs build parameterized indexed repository queries. Rootless or lemma-less words keep disabled filters with accessible explanations. |
+| Indexed, paginated, memory-bounded results | Done | Filtering uses the existing normalized-surface, lemma, and root indexes. The UI uses previous/next fixed 30-row pages and never accumulates a full large root in component state. |
+| Result content | Done | Every row shows canonical location, exact Uthmani surface, contextual English gloss or an explicit unavailable fallback, and up to two lines of batched Uthmani ayah context. |
+| Ayah context without pack mutation | Done | The repository batches verse surfaces for only the current page and assembles context in memory. The immutable Phase 2 SQLite asset, manifest, schema, and checksums remain unchanged. |
+| Reader navigation | Done | A result pushes `/surah/[surahId]` in translation mode with exact surah, ayah, and word position; the primary Android native reader lands on the verse and highlights that word. |
+| Study and reader restoration | Done | The study route remains mounted below the targeted reader. Back restores the Occurrences tab, selected filter, cursor history/current page, and captured scroll offset; leaving study then reveals the original reader instance at its prior position. |
+| Large roots | Done | Real-pack tests cover root `اله` with 2,851 occurrences using first/final 30-row pages. CI-equivalent first-page p95 is 2.343 ms against the 100 ms gate. |
+| Duplicate normalized surfaces | Done | Surface queries intentionally group normalized variants while each row retains and renders its exact Uthmani form; the 2,763-item normalized `من` family is covered through first/final golden pages. |
+| Missing glosses | Done | Result presentation uses an explicit `Contextual gloss unavailable.` fallback rather than a blank value. |
+| Cancelled/stale queries | Done | Each filter/page request has an `AbortController` and monotonically increasing request ID; aborted or out-of-order responses cannot replace current state. |
+| Query/UI tests and build | Done | 15/15 repository/lifecycle tests, 8/8 full-screen/occurrence tests, `npm run verify`, Kotlin compilation, debug APK installation, and the emulator round-trip pass. |
+| Scope exclusions | Done | No saved-word review, dictionary definitions, dependency trees, prose grammar/i‘rab packs, or additional reader-mode entry points were added. |
+
+Implementation decisions:
+
+- Page-at-a-time navigation is deliberate: it provides deterministic first/last pages and stable memory use for roots with thousands of results.
+- `ayahContextUthmani` was added to the storage-neutral occurrence contract. It is assembled from already licensed canonical surfaces and does not introduce a new content source.
+- The targeted reader is pushed rather than replacing study or mutating the original reader route. This makes round-trip restoration a stack invariant instead of a reconstructed approximation.
+- The occurrence target highlight reuses the native reader’s existing active-word presentation; no morphology or occurrence data crosses the React Native bridge.
+
+Manual checks still required before Phase 9 release hardening:
+
+- Repeat large-root scrolling, TalkBack/VoiceOver, largest font-scale, low-memory, and rapid filter/page switching checks on representative physical Android and iOS devices.
+- Obtain the outstanding qualified Quranic Arabic reviewer sign-off for terminology and the golden review set.
+
+## Phase 7 Acceptance Status
+
+Phase 7 mirrors the existing reader composition and word-payload behavior in these exact web source-of-truth files:
+
+- `../quran-app/app/(features)/surah/components/surah-view/MushafMain.tsx`
+- `../quran-app/app/(features)/surah/components/surah-view/MushafWordText.tsx`
+- `../quran-app/app/(features)/juz/[juzId]/JuzClient.tsx`
+- `../quran-app/app/(features)/page/[pageId]/PageClient.tsx`
+
+There is still no web Word Study presentation to duplicate. The Android readers normalize their existing word payloads into the Phase 1 shared contract, then reuse the Phase 4 React Native controller/sheet and Phase 5/6 full-study route.
+
+| Requirement | Status | Record |
+|---|---|---|
+| Every existing Android reader mode | Done | Surah native plain, word-by-word, and Tajweed; Juz/Page Translation; and Surah/Juz/Page exact Mushaf all open the same sheet and full route. Juz/Page obtain bundled canonical word metadata when translation responses or offline rows omit `words`. |
+| Accurate native Tajweed touch ranges | Done | Kotlin aligns each ordered QCF `codeV2` word with its exact UTF-16 glyph range, applies one clickable span per lexical word, preserves multi-glyph attached marks and line wrapping, and renders the verse-end marker without making it tappable. Incomplete metadata safely falls back to the existing plain rendering. |
+| Shared cross-reader event contract | Done | Translation, native Tajweed, and WebView Mushaf payloads normalize to `surah:ayah:wordPosition`; optional numeric IDs and surface text remain advisory. The same canonical location therefore queries the same offline analysis. |
+| One study presentation | Done | `ReaderWordStudySheet` is the shared adapter for Surah/Juz/Page. Kotlin contains only rendering, word-range hit testing, and event emission—no quick sheet, full screen, repository, or linguistic model. |
+| Preserve reader behavior | Done | Selection guards prevent Mushaf taps from replacing active text selection; selected-word highlighting, explicit word/verse audio actions, target landing, list/page position, Tajweed styling, and reader return behavior remain intact. Reading-mode persistence now updates only from the focused Surah/Juz route so stacked readers do not fight over settings. |
+| Parity and edge-case tests | Done | The 8/8 quick-sheet suite proves all payload sources normalize to the same `3:3:9` analysis location and checks shared ownership. Three Android JUnit cases cover attached/multi-glyph marks, contiguous line-boundary ranges, and metadata mismatch fallback. |
+| Verification and manual matrix | Done | `npm run verify`, `:app:testDebugUnitTest`, `:app:compileDebugKotlin`, and `:app:installDebug` pass. API 36 emulator taps confirmed canonical equality across native Tajweed, Juz/Page Translation, and Surah/Juz/Page exact Mushaf. |
+| Scope exclusions | Done | No new reader mode, iOS native reader, learning tool, or new production dependency was added. JUnit 4 is test-only for the new pure Kotlin range tests. |
+
+Manual checks still required before Phase 9 release hardening:
+
+- Repeat the reader-mode matrix with TalkBack and largest font scale on representative physical Android devices, including long wrapped Tajweed verses and active audio.
 - Obtain the outstanding qualified Quranic Arabic reviewer sign-off for terminology and the golden review set.

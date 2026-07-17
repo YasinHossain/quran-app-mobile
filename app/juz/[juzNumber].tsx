@@ -1,4 +1,4 @@
-import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import React from 'react';
 import { ArrowLeft, Settings } from 'lucide-react-native';
 import { FlashList, type FlashListRef } from '@shopify/flash-list';
@@ -37,6 +37,9 @@ import { VerseCard } from '@/components/surah/VerseCard';
 import { BismillahDisplay } from '@/components/surah/BismillahDisplay';
 import { VerseScrubber, type VerseScrubberHandle } from '@/components/surah/VerseScrubber';
 import { useVerseAudioWordSync } from '@/components/surah/useVerseAudioWordSync';
+import { ReaderWordStudySheet } from '@/components/word-study/ReaderWordStudySheet';
+import { normalizeWordStudyPressEvent } from '@/components/word-study/WordStudyPressEvent';
+import { useWordQuickSheetController } from '@/components/word-study/useWordQuickSheetController';
 import { AddToPlannerModal, type VerseSummaryDetails } from '@/components/verse-planner-modal';
 import Colors from '@/constants/Colors';
 import { DEFAULT_MUSHAF_ID, findMushafOption } from '@/data/mushaf/options';
@@ -315,6 +318,7 @@ export default function JuzScreen(): React.JSX.Element {
     return currentJuzData?.startSurahId ?? 1;
   }, [audio.activeVerseKey, currentJuzData]);
   const verseAudioWordSync = useVerseAudioWordSync(activeChapterNumber);
+  const wordQuickSheet = useWordQuickSheetController();
 
   const selectedMushafId = settings.mushafId ?? DEFAULT_MUSHAF_ID;
   const selectedMushafOption = findMushafOption(selectedMushafId);
@@ -449,6 +453,7 @@ export default function JuzScreen(): React.JSX.Element {
   const flashListRef = React.useRef<FlashListRef<string> | null>(null);
   const flatListRef = React.useRef<FlatList<string> | null>(null);
   const mushafReaderRef = React.useRef<MushafSingleDocumentReaderHandle | null>(null);
+  const mushafSelectionMetadataRef = React.useRef<MushafSelectionPayload | null>(null);
   const verseScrubberRef = React.useRef<VerseScrubberHandle | null>(null);
   const mushafPageScrubberRef = React.useRef<any>(null);
 
@@ -505,6 +510,37 @@ export default function JuzScreen(): React.JSX.Element {
   const closeVerseActions = React.useCallback(() => {
     setIsVerseActionsOpen(false);
   }, []);
+
+  const handleMushafSelectionChange = React.useCallback((payload: MushafSelectionPayload) => {
+    mushafSelectionMetadataRef.current = payload.isCollapsed ? null : payload;
+  }, []);
+
+  const handleMushafVersePress = React.useCallback(
+    (verse: MushafSingleDocumentVersePress) => {
+      if (mushafSelectionMetadataRef.current && !mushafSelectionMetadataRef.current.isCollapsed) {
+        return;
+      }
+
+      if (Platform.OS === 'android') {
+        const event = normalizeWordStudyPressEvent({
+          verseKey: verse.verseKey,
+          wordPosition: verse.wordPosition,
+          surfaceText: verse.surfaceText,
+          source: 'mushaf',
+        });
+        if (event) wordQuickSheet.open(event);
+        return;
+      }
+
+      openVerseActions({
+        verseKey: verse.verseKey,
+        verseApiId: verse.verseApiId,
+        arabicText: verse.arabicText,
+        translationTexts: verse.translationTexts,
+      });
+    },
+    [openVerseActions, wordQuickSheet.open]
+  );
 
   const openTranslationSettings = React.useCallback(() => {
     setIsSettingsOpen(true);
@@ -729,6 +765,7 @@ export default function JuzScreen(): React.JSX.Element {
       pagesSignature,
       translationHighlightVerseKey,
       verseAudioWordSync,
+      wordStudyEvent: wordQuickSheet.event,
     }),
     [
       pagesSignature,
@@ -740,6 +777,7 @@ export default function JuzScreen(): React.JSX.Element {
       audio.isVisible,
       translationHighlightVerseKey,
       verseAudioWordSync,
+      wordQuickSheet.event,
     ]
   );
 
@@ -1105,6 +1143,12 @@ export default function JuzScreen(): React.JSX.Element {
             arabicFontFace={settings.arabicFontFace}
             translationFontSize={settings.translationFontSize}
             showByWords={settings.showByWords}
+            onWordStudyPress={Platform.OS === 'android' ? wordQuickSheet.open : undefined}
+            selectedStudyWordPosition={
+              wordQuickSheet.isOpen && wordQuickSheet.event?.verseKey === verse.verse_key
+                ? wordQuickSheet.event.wordPosition
+                : undefined
+            }
             onOpenActions={() =>
               openVerseActions({
                 verseKey: verse.verse_key,
@@ -1125,19 +1169,24 @@ export default function JuzScreen(): React.JSX.Element {
       translationsById,
       audio,
       verseAudioWordSync,
+      wordQuickSheet.event,
+      wordQuickSheet.isOpen,
+      wordQuickSheet.open,
       handlePlayPause,
       openVerseActions,
       translationHighlightVerseKey,
     ]
   );
 
-  React.useEffect(() => {
-    if (!isHydrated) return;
-    const currentMode = isMushafView ? 'mushaf' : 'translations';
-    if (settings.readingMode !== currentMode) {
-      setReadingMode(currentMode);
-    }
-  }, [isMushafView, isHydrated, settings.readingMode, setReadingMode]);
+  useFocusEffect(
+    React.useCallback(() => {
+      if (!isHydrated) return;
+      const currentMode = isMushafView ? 'mushaf' : 'translations';
+      if (settings.readingMode !== currentMode) {
+        setReadingMode(currentMode);
+      }
+    }, [isMushafView, isHydrated, settings.readingMode, setReadingMode])
+  );
 
   if (!isHydrated && !viewParam) {
     return (
@@ -1352,9 +1401,9 @@ export default function JuzScreen(): React.JSX.Element {
                 onActivePageChange={handleMushafActivePageChange}
                 onActiveVerseChange={handleMushafActiveVerseChange}
                 onScrollActivity={handleMushafScrollActivity}
-                onSelectionChange={handleMushafActivePageChange as any}
+                onSelectionChange={handleMushafSelectionChange}
                 onSurahNavigation={handleMushafJuzNavigation}
-                onVersePress={handleMushafActivePageChange as any}
+                onVersePress={handleMushafVersePress}
                 pageNumbers={
                   mushafSurahPageNumbers.length ? mushafSurahPageNumbers : [initialMushafPageNumber]
                 }
@@ -1393,6 +1442,13 @@ export default function JuzScreen(): React.JSX.Element {
         onOpenTafsir={handleOpenTafsir}
         onAddToPlan={handleAddToPlan}
         onShare={handleShare}
+      />
+
+      <ReaderWordStudySheet
+        controller={wordQuickSheet}
+        resolveSurahName={(surahId) => chapterNamesById.get(surahId) ?? `Surah ${surahId}`}
+        playWord={verseAudioWordSync.playWord}
+        playVerseFromWord={verseAudioWordSync.playVerseFromWord}
       />
 
       {activeVerseBookmarkMetadata ? (

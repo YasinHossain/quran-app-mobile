@@ -13,6 +13,7 @@ const { join } = require('node:path') as { join(...parts: string[]): string };
 const test = require('node:test') as (name: string, callback: () => void | Promise<void>) => void;
 
 import {
+  WORD_STUDY_CONTRACT_OCCURRENCE_PAGE,
   WORD_STUDY_RICH_CONTRACT_FIXTURES,
   type WordAnalysis,
 } from '../../src/core/domain/word-study';
@@ -23,6 +24,15 @@ import {
   getRootText,
   getStudySources,
 } from '../../components/word-study/full-study/wordStudyScreenModel';
+import {
+  OCCURRENCE_PAGE_SIZE,
+  buildOccurrenceQuery,
+  buildOccurrenceReaderParams,
+  getOccurrenceCounters,
+  getOccurrenceFilters,
+  getOccurrenceGloss,
+  getOccurrencePageLabel,
+} from '../../components/word-study/full-study/occurrenceExplorerModel';
 
 const verb = WORD_STUDY_RICH_CONTRACT_FIXTURES[0] as WordAnalysis;
 const particle = WORD_STUDY_RICH_CONTRACT_FIXTURES[1] as WordAnalysis;
@@ -76,6 +86,46 @@ test('source presentation and sharing retain source versions and attribution', (
   assert.match(message, /Root:/);
 });
 
+test('occurrence counters and filters name surface, lemma, root, and root family explicitly', () => {
+  assert.deepEqual(
+    getOccurrenceCounters(verb, 7).map((counter) => [counter.label, counter.value]),
+    [
+      ['Normalized surface occurrences', 7],
+      ['Lemma occurrences', 183],
+      ['Root occurrences', 293],
+      ['Distinct lemmas in this root family', 12],
+    ]
+  );
+  assert.deepEqual(
+    getOccurrenceFilters(particle).map((filter) => [filter.label, filter.enabled]),
+    [
+      ['Surface', true],
+      ['Lemma', false],
+      ['Root', false],
+    ]
+  );
+});
+
+test('occurrence queries remain fixed-size and reader navigation retains the exact word location', () => {
+  assert.equal(OCCURRENCE_PAGE_SIZE, 30);
+  assert.deepEqual(buildOccurrenceQuery(verb, 'surface'), {
+    scope: 'surface',
+    normalizedSurface: verb.normalizedSurface,
+    locationKey: verb.location.locationKey,
+    limit: 30,
+  });
+  assert.equal(buildOccurrenceQuery(verb, 'lemma', '30').cursor, '30');
+  assert.equal(buildOccurrenceQuery(verb, 'root').rootId, 'root-nzl');
+
+  const occurrence = WORD_STUDY_CONTRACT_OCCURRENCE_PAGE.items[0]!;
+  assert.equal(getOccurrenceGloss(occurrence), 'and He revealed');
+  assert.equal(getOccurrencePageLabel('30', 30, 93), '31–60 of 93');
+  assert.deepEqual(buildOccurrenceReaderParams(occurrence), {
+    pathname: '/surah/[surahId]',
+    params: { surahId: '3', startVerse: '3', view: 'translation', studyWordPosition: '9' },
+  });
+});
+
 test('full screen keeps the Phase 5 route, ribbon, tabs, RTL text, and route-driven selection', () => {
   const source = readFileSync(
     join(process.cwd(), 'app/study/word/[surah]/[ayah]/[position].tsx'),
@@ -87,8 +137,25 @@ test('full screen keeps the Phase 5 route, ribbon, tabs, RTL text, and route-dri
   assert.match(source, /router\.setParams\(\{ position:/);
   assert.match(source, /label="Overview"/);
   assert.match(source, /label="Morphology"/);
+  assert.match(source, /label="Occurrences"/);
+  assert.match(source, /useFocusEffect/);
+  assert.match(source, /scrollOffsetRef/);
   assert.match(source, /About this analysis/);
   assert.match(source, /Share\.share/);
   assert.match(source, /writingDirection: 'rtl'/);
-  assert.doesNotMatch(source, /Occurrence results|Dictionary definition|prose i‘rab.*<StudyFact/);
+  assert.doesNotMatch(source, /Dictionary definition|prose i‘rab.*<StudyFact/);
+});
+
+test('occurrence explorer cancels stale queries, keeps page size bounded, and avoids ambiguous count copy', () => {
+  const source = readFileSync(
+    join(process.cwd(), 'components/word-study/full-study/OccurrenceExplorer.tsx'),
+    'utf8'
+  );
+  assert.match(source, /new AbortController\(\)/);
+  assert.match(source, /requestId !== requestIdRef\.current/);
+  assert.match(source, /controller\.abort\(\)/);
+  assert.match(source, /Distinct lemmas in this root family|counter\.label/);
+  assert.match(source, /ayahContextUthmani/);
+  assert.match(source, /Open in reader/);
+  assert.doesNotMatch(source, /this word occurs/i);
 });

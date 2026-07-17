@@ -591,7 +591,6 @@ This section is the implementation contract. A future AI task can be stated simp
 ### Phase 6 — Occurrence explorer and reader round-trip
 
 **Goal:** complete the core learning loop for surface, lemma, and root exploration.
-
 **In scope:**
 
 - Add unambiguous surface, lemma, root, and root-family/lemma counters where applicable.

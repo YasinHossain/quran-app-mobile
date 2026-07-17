@@ -1,22 +1,41 @@
 package com.anonymous.quranappmobile.nativesurahreader
 
 import android.graphics.Typeface
+import android.graphics.Color
 import android.net.Uri
 import android.text.SpannableStringBuilder
 import android.text.Spanned
 import android.text.TextPaint
 import android.text.style.LineHeightSpan
 import android.text.style.MetricAffectingSpan
+import android.text.style.ClickableSpan
+import android.view.View
 import java.io.File
 import kotlin.math.roundToInt
 
 internal object NativeTajweedTextFactory {
   private val typefaceCache = mutableMapOf<String, Typeface?>()
 
-  fun buildSpannable(runs: List<NativeTajweedGlyphRun>, lineHeightPx: Int): CharSequence? {
+  fun buildSpannable(
+      runs: List<NativeTajweedGlyphRun>,
+      words: List<NativeWord>,
+      lineHeightPx: Int,
+      wordPressEnabled: Boolean,
+      activeWord: NativeActiveWord?,
+      activeColor: Int,
+      onWordPress: (NativeWord) -> Unit,
+  ): CharSequence? {
     if (runs.isEmpty()) return null
 
     val builder = SpannableStringBuilder()
+    val glyphs = runs.flatMap { it.glyphs }.filter { it.isNotEmpty() }
+    val glyphWords =
+        words
+            .filter { !it.codeV2.isNullOrBlank() }
+            .sortedBy { it.position ?: Int.MAX_VALUE }
+    val wordRanges = buildNativeTajweedWordRanges(glyphs, glyphWords.size)
+    if (wordRanges.isEmpty()) return null
+
     for (run in runs) {
       val text = run.glyphs.joinToString(separator = "")
       if (text.isBlank()) continue
@@ -32,6 +51,23 @@ internal object NativeTajweedTextFactory {
       )
     }
 
+    wordRanges.forEach { range ->
+      val word = glyphWords[range.wordIndex]
+      if (word.charTypeName == "end") return@forEach
+      builder.setSpan(
+          NativeTajweedWordSpan(
+              word = word,
+              enabled = wordPressEnabled,
+              active = isActiveWord(word, activeWord),
+              activeColor = activeColor,
+              onPress = onWordPress,
+          ),
+          range.start,
+          range.end,
+          Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+      )
+    }
+
     if (builder.isNotEmpty() && lineHeightPx > 0) {
       builder.setSpan(
           FixedLineHeightSpan(lineHeightPx),
@@ -42,6 +78,30 @@ internal object NativeTajweedTextFactory {
     }
 
     return builder.takeIf { it.isNotEmpty() }
+  }
+
+  fun updateInteraction(
+      text: CharSequence,
+      enabled: Boolean,
+      activeWord: NativeActiveWord?,
+      activeColor: Int,
+  ) {
+    val spanned = text as? Spanned ?: return
+    val spans = spanned.getSpans(0, spanned.length, NativeTajweedWordSpan::class.java)
+    spans.forEach { span ->
+      span.enabled = enabled
+      span.active = isActiveWord(span.word, activeWord)
+      span.activeColor = activeColor
+    }
+  }
+
+  private fun isActiveWord(word: NativeWord, activeWord: NativeActiveWord?): Boolean {
+    if (activeWord == null) return false
+    val position = word.position
+    if (position != null && activeWord.wordPosition != null) {
+      return position == activeWord.wordPosition
+    }
+    return activeWord.wordId != null && word.id == activeWord.wordId
   }
 
   private fun resolveTypeface(run: NativeTajweedGlyphRun): Typeface? {
@@ -77,6 +137,23 @@ internal object NativeTajweedTextFactory {
       return Uri.parse(trimmed).path ?: trimmed.removePrefix("file://")
     }
     return trimmed
+  }
+}
+
+private class NativeTajweedWordSpan(
+    val word: NativeWord,
+    var enabled: Boolean,
+    var active: Boolean,
+    var activeColor: Int,
+    private val onPress: (NativeWord) -> Unit,
+) : ClickableSpan() {
+  override fun onClick(widget: View) {
+    if (enabled) onPress(word)
+  }
+
+  override fun updateDrawState(drawState: TextPaint) {
+    drawState.isUnderlineText = false
+    drawState.bgColor = if (active) activeColor else Color.TRANSPARENT
   }
 }
 

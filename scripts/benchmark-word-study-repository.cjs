@@ -45,13 +45,21 @@ async function main() {
     const root = await measure(100, () =>
       repository.findOccurrences({ scope: 'root', rootId: '1438', limit: 50 })
     );
+    const largeRoot = await measure(100, () =>
+      repository.findOccurrences({ scope: 'root', rootId: '46', limit: 30 })
+    );
     const result = {
       profile: 'Node 24 node:sqlite CI-equivalent; OS file cache warm; repository LRU cold per lookup',
       lookup,
       first50Lemma: lemma,
       first50Root: root,
+      first30LargeRoot: largeRoot,
       thresholdsMs: { lookupP95: 50, occurrenceP95: 100 },
-      passed: lookup.p95Ms < 50 && lemma.p95Ms < 100 && root.p95Ms < 100,
+      passed:
+        lookup.p95Ms < 50 &&
+        lemma.p95Ms < 100 &&
+        root.p95Ms < 100 &&
+        largeRoot.p95Ms < 100,
     };
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     if (!result.passed) process.exitCode = 1;

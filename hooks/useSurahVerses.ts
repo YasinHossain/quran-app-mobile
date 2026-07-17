@@ -21,6 +21,10 @@ import {
   peekNetworkSurahTranslationSnapshot,
 } from '@/lib/surah/surahTranslationNetworkCache';
 import { primeVerseDetailsCache } from '@/lib/verse/verseDetailsCache';
+import {
+  getBundledVerseWords,
+  mushafWordsToVerseWords,
+} from '@/lib/verse/bundledVerseWords';
 import type { OfflineVerseWithTranslations } from '@/src/core/domain/repositories/ITranslationOfflineStore';
 import { apiFetch } from '@/src/core/infrastructure/api/apiFetch';
 import { container } from '@/src/core/infrastructure/di/container';
@@ -74,7 +78,6 @@ type ApiVerse = ApiVersesResponse['verses'][number];
 
 const FULL_SURAH_NETWORK_FAST_PATH_TIMEOUT_MS = 650;
 
-let bundledVerseWordsByKey: Map<string, VerseWord[]> | null = null;
 let bundledSurahVersesByChapter: Map<number, OfflineVerseWithTranslations[]> | null = null;
 
 function wait(ms: number): Promise<void> {
@@ -87,30 +90,6 @@ function parseChapterNumberFromVerseKey(verseKey: string): number {
   const [chapterPart] = verseKey.split(':');
   const parsed = Number.parseInt(chapterPart ?? '', 10);
   return Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : 0;
-}
-
-function getBundledVerseWordsByKey(): Map<string, VerseWord[]> {
-  if (bundledVerseWordsByKey) return bundledVerseWordsByKey;
-
-  const map = new Map<string, VerseWord[]>();
-  const pack = getBundledMushafPack('unicode-uthmani-v1');
-  const pages = pack?.payload.pages ?? {};
-
-  for (const pageVerses of Object.values(pages)) {
-    for (const verse of pageVerses) {
-      const words = mushafWordsToVerseWords(verse.words);
-      if (words.length > 0) {
-        map.set(verse.verseKey, words);
-      }
-    }
-  }
-
-  bundledVerseWordsByKey = map;
-  return map;
-}
-
-function getBundledVerseWords(verseKey: string): VerseWord[] | undefined {
-  return getBundledVerseWordsByKey().get(verseKey.trim());
 }
 
 function getBundledSurahVersesByChapter(): Map<number, OfflineVerseWithTranslations[]> {
@@ -576,19 +555,6 @@ function getInitialPageWindowNumbers(params: {
   return Array.from(new Set([Math.max(1, targetPage - 1), targetPage, targetPage + 1])).filter(
     (pageNumber) => pageNumber >= 1 && pageNumber <= maxPage
   );
-}
-
-function mushafWordsToVerseWords(words: MushafVerse['words']): VerseWord[] {
-  return words
-    .map((word, index) => ({
-      id: typeof word.id === 'number' ? word.id : index + 1,
-      ...(typeof word.position === 'number' ? { position: word.position } : {}),
-      ...(typeof word.charType === 'string' ? { charTypeName: word.charType } : {}),
-      uthmani: word.textUthmani ?? word.textQpcHafs ?? word.textIndopak ?? '',
-      ...(typeof word.codeV2 === 'string' ? { codeV2: word.codeV2 } : {}),
-      ...(typeof word.pageNumber === 'number' ? { pageNumber: word.pageNumber } : {}),
-    }))
-    .filter((word) => word.uthmani.trim().length > 0);
 }
 
 async function enrichVersesWithLocalTajweedGlyphs(verses: SurahVerse[]): Promise<SurahVerse[]> {

@@ -49,6 +49,21 @@ test('normalizes the native word press into the canonical study event', () => {
   assert.equal(normalizeWordStudyPressEvent({ verseKey: '115:1', wordPosition: 1 }), null);
 });
 
+test('all Android reader payloads resolve the same canonical analysis location', () => {
+  const payloads = [
+    { verseKey: '3:3', wordPosition: 9, source: 'translation' },
+    { verseKey: '3:3', wordPosition: 9, source: 'tajweed' },
+    { verseKey: '3:3', wordPosition: 9, source: 'mushaf' },
+  ];
+  const locationKeys = payloads.map((payload) => {
+    const event = normalizeWordStudyPressEvent(payload);
+    assert.ok(event);
+    return event ? getWordStudyLocationKey(event) : null;
+  });
+
+  assert.deepEqual(locationKeys, ['3:3:9', '3:3:9', '3:3:9']);
+});
+
 test('builds segmented verb content and friendly morphology copy', () => {
   const verb = WORD_STUDY_RICH_CONTRACT_FIXTURES[0];
   if (!verb) throw new Error('Missing verb fixture');
@@ -125,4 +140,41 @@ test('quick sheet keeps numeric height constraints and required actions', () => 
   assert.match(source, /Play verse from here/);
   assert.match(source, /Open full word study/);
   assert.match(source, /accessibilityLabel="Loading word analysis"/);
+});
+
+test('Android Surah, Juz, Page, Mushaf, and Tajweed readers share the React Native sheet', () => {
+  const surahScreen = readFileSync(join(process.cwd(), 'app/surah/[surahId].tsx'), 'utf8');
+  const juzScreen = readFileSync(join(process.cwd(), 'app/juz/[juzNumber].tsx'), 'utf8');
+  const pageScreen = readFileSync(join(process.cwd(), 'app/page/[pageNumber].tsx'), 'utf8');
+  const verseCard = readFileSync(join(process.cwd(), 'components/surah/VerseCard.tsx'), 'utf8');
+  const tajweedFactory = readFileSync(
+    join(
+      process.cwd(),
+      'android/app/src/main/java/com/anonymous/quranappmobile/nativesurahreader/NativeTajweedTextFactory.kt'
+    ),
+    'utf8'
+  );
+  const nativeReaderView = readFileSync(
+    join(
+      process.cwd(),
+      'android/app/src/main/java/com/anonymous/quranappmobile/nativesurahreader/NativeSurahReaderView.kt'
+    ),
+    'utf8'
+  );
+
+  for (const screen of [surahScreen, juzScreen, pageScreen]) {
+    assert.match(screen, /ReaderWordStudySheet/);
+    assert.match(screen, /source: 'mushaf'/);
+    assert.match(screen, /wordQuickSheet\.open/);
+  }
+  assert.match(juzScreen, /onWordStudyPress=\{Platform\.OS === 'android'/);
+  assert.match(pageScreen, /onWordStudyPress=\{Platform\.OS === 'android'/);
+  assert.match(verseCard, /pressBehavior=\{[\s\S]*?'study'/);
+  assert.match(tajweedFactory, /NativeTajweedWordSpan/);
+  assert.match(tajweedFactory, /buildNativeTajweedWordRanges/);
+  assert.match(tajweedFactory, /if \(enabled\) onPress\(word\)/);
+  assert.match(nativeReaderView, /settings\.displayMode == DISPLAY_MODE_TAJWEED/);
+  assert.match(nativeReaderView, /putString\([\s\S]*?currentWordPressSource/);
+  assert.ok(!tajweedFactory.includes('WordQuickSheet'));
+  assert.ok(!tajweedFactory.includes('WordStudyRepository'));
 });

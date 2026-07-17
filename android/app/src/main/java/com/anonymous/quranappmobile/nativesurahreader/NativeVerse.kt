@@ -112,7 +112,6 @@ internal fun ReadableMap.toNativeVerse(): NativeVerse? {
       val uthmani = item.getStringIfPresent("uthmani")?.trim().orEmpty()
       if (uthmani.isBlank()) continue
       val charTypeName = item.getStringIfPresent("charTypeName")?.trim()?.takeIf { it.isNotBlank() }
-      if (charTypeName == "end") continue
 
       words.add(
           NativeWord(

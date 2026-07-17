@@ -122,6 +122,56 @@ test('real lemma/root pagination has stable golden counts and first/last pages',
   assert.equal(rootPage.pageInfo.hasNextPage, false);
 });
 
+test('surface pagination keeps normalized duplicates exact and includes concise ayah context', async (context) => {
+  const provider = new NodeWordStudyDatabaseProvider();
+  context.after(() => provider.closeAsync());
+  const repository = new SQLiteWordStudyRepository(provider);
+
+  const first = await repository.findOccurrences({
+    scope: 'surface',
+    normalizedSurface: 'من',
+    limit: 30,
+  });
+  assert.equal(first.pageInfo.totalCount, 2763);
+  assert.equal(first.items.length, 30);
+  assert.equal(first.items[0].location.locationKey, '2:4:8');
+  assert.ok(first.items[0].ayahContextUthmani.includes(first.items[0].surfaceUthmani));
+  assert.ok(first.items[0].ayahContextUthmani.split(' ').length > 1);
+  assert.ok(first.items[0].sourceReferences.some((source) => source.layer === 'occurrence-index'));
+
+  const final = await repository.findOccurrences({
+    scope: 'surface',
+    normalizedSurface: 'من',
+    limit: 30,
+    cursor: '2760',
+  });
+  assert.equal(final.items.length, 3);
+  assert.equal(final.items.at(-1).location.locationKey, '114:6:1');
+  assert.equal(final.items.at(-1).surfaceUthmani, 'مِنَ');
+  assert.equal(final.pageInfo.hasNextPage, false);
+});
+
+test('a 500+ root returns fixed-size first and final pages', async (context) => {
+  const provider = new NodeWordStudyDatabaseProvider();
+  context.after(() => provider.closeAsync());
+  const repository = new SQLiteWordStudyRepository(provider);
+
+  const first = await repository.findOccurrences({ scope: 'root', rootId: '46', limit: 30 });
+  assert.equal(first.pageInfo.totalCount, 2851);
+  assert.equal(first.items.length, 30);
+  assert.equal(first.items[0].location.locationKey, '1:1:2');
+
+  const final = await repository.findOccurrences({
+    scope: 'root',
+    rootId: '46',
+    limit: 30,
+    cursor: '2850',
+  });
+  assert.equal(final.items.length, 1);
+  assert.equal(final.items[0].location.locationKey, '114:3:1');
+  assert.equal(final.pageInfo.hasNextPage, false);
+});
+
 test('word, lemma, and root LRUs stay bounded and callers can cancel stale work', async (context) => {
   const provider = new NodeWordStudyDatabaseProvider();
   context.after(() => provider.closeAsync());

@@ -7,7 +7,7 @@ import type { VerseWord } from '@/types';
 
 import type { RegisterWordHighlight } from './useVerseAudioWordSync';
 
-type WordPressBehavior = 'none' | 'translation' | 'seek';
+type WordPressBehavior = 'none' | 'study' | 'translation' | 'seek';
 
 const normalizeWordPosition = (word: VerseWord, fallback: number): number => {
   const raw = word.position;
@@ -26,6 +26,7 @@ function WordToken({
   arabicFontFamily,
   showTranslations,
   pressBehavior,
+  selectedWordPosition,
   onWordPress,
   registerWordHighlight,
 }: {
@@ -36,6 +37,7 @@ function WordToken({
   arabicFontFamily: string;
   showTranslations: boolean;
   pressBehavior: WordPressBehavior;
+  selectedWordPosition?: number;
   onWordPress?:
     | ((params: {
         word: VerseWord;
@@ -77,6 +79,7 @@ function WordToken({
   const translationText = word.translationText?.trim();
   const isPressable = (() => {
     if (!onWordPress) return false;
+    if (pressBehavior === 'study') return true;
     if (pressBehavior === 'seek') return true;
     if (pressBehavior === 'translation') return Boolean(translationText);
     return false;
@@ -95,7 +98,8 @@ function WordToken({
     <>
       <Text
         style={{
-          color: isHighlighted ? palette.tint : palette.text,
+          color:
+            isHighlighted || selectedWordPosition === wordPosition ? palette.tint : palette.text,
           fontSize: arabicFontSize,
           lineHeight: arabicLineHeight,
           fontFamily: arabicFontFamily,
@@ -150,7 +154,13 @@ function WordToken({
       ref={pressableRef}
       onPress={handlePress}
       accessibilityRole="button"
-      accessibilityLabel={pressBehavior === 'seek' ? 'Seek audio to word' : 'Show word translation'}
+      accessibilityLabel={
+        pressBehavior === 'study'
+          ? `Open Word Study for ${word.uthmani}`
+          : pressBehavior === 'seek'
+            ? 'Seek audio to word'
+            : 'Show word translation'
+      }
       style={({ pressed }) => [{ opacity: pressed ? 0.65 : 1 }, wrapperStyle]}
     >
       {content}
@@ -165,6 +175,7 @@ export function WordByWordVerse({
   arabicFontFamily,
   showTranslations,
   pressBehavior = 'none',
+  selectedWordPosition,
   onWordPress,
   registerWordHighlight,
 }: {
@@ -174,6 +185,7 @@ export function WordByWordVerse({
   arabicFontFamily: string;
   showTranslations: boolean;
   pressBehavior?: WordPressBehavior | undefined;
+  selectedWordPosition?: number;
   onWordPress?:
     | ((params: {
         word: VerseWord;
@@ -221,6 +233,7 @@ export function WordByWordVerse({
           arabicFontFamily={arabicFontFamily}
           showTranslations={showTranslations}
           pressBehavior={pressBehavior}
+          selectedWordPosition={selectedWordPosition}
           onWordPress={onWordPress}
           registerWordHighlight={registerWordHighlight}
         />

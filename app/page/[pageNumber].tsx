@@ -31,6 +31,9 @@ import { VerseCard } from '@/components/surah/VerseCard';
 import { BismillahDisplay } from '@/components/surah/BismillahDisplay';
 import { VerseScrubber, type VerseScrubberHandle } from '@/components/surah/VerseScrubber';
 import { useVerseAudioWordSync } from '@/components/surah/useVerseAudioWordSync';
+import { ReaderWordStudySheet } from '@/components/word-study/ReaderWordStudySheet';
+import { normalizeWordStudyPressEvent } from '@/components/word-study/WordStudyPressEvent';
+import { useWordQuickSheetController } from '@/components/word-study/useWordQuickSheetController';
 import { AddToPlannerModal, type VerseSummaryDetails } from '@/components/verse-planner-modal';
 import Colors from '@/constants/Colors';
 import { DEFAULT_MUSHAF_ID, findMushafOption } from '@/data/mushaf/options';
@@ -277,6 +280,7 @@ export default function PageScreen(): React.JSX.Element {
   }, [audio.activeVerseKey, pageNumber]);
 
   const verseAudioWordSync = useVerseAudioWordSync(activeChapterNumber);
+  const wordQuickSheet = useWordQuickSheetController();
 
   const translationIds = React.useMemo(() => {
     const ids = Array.isArray(settings.translationIds)
@@ -427,6 +431,17 @@ export default function PageScreen(): React.JSX.Element {
         return;
       }
 
+      if (Platform.OS === 'android') {
+        const event = normalizeWordStudyPressEvent({
+          verseKey: verse.verseKey,
+          wordPosition: verse.wordPosition,
+          surfaceText: verse.surfaceText,
+          source: 'mushaf',
+        });
+        if (event) wordQuickSheet.open(event);
+        return;
+      }
+
       openVerseActions({
         verseKey: verse.verseKey,
         verseApiId: verse.verseApiId,
@@ -434,7 +449,7 @@ export default function PageScreen(): React.JSX.Element {
         translationTexts: verse.translationTexts,
       });
     },
-    [openVerseActions]
+    [openVerseActions, wordQuickSheet.open]
   );
 
   const handleMushafScrollActivity = React.useCallback(
@@ -455,6 +470,7 @@ export default function PageScreen(): React.JSX.Element {
       audioActiveVerseKey: audio.activeVerseKey,
       audioIsVisible: audio.isVisible,
       verseAudioWordSync,
+      wordStudyEvent: wordQuickSheet.event,
     }),
     [
       settings.arabicFontFace,
@@ -464,6 +480,7 @@ export default function PageScreen(): React.JSX.Element {
       audio.activeVerseKey,
       audio.isVisible,
       verseAudioWordSync,
+      wordQuickSheet.event,
     ]
   );
 
@@ -695,6 +712,12 @@ export default function PageScreen(): React.JSX.Element {
             arabicFontFace={settings.arabicFontFace}
             translationFontSize={settings.translationFontSize}
             showByWords={settings.showByWords}
+            onWordStudyPress={Platform.OS === 'android' ? wordQuickSheet.open : undefined}
+            selectedStudyWordPosition={
+              wordQuickSheet.isOpen && wordQuickSheet.event?.verseKey === verse.verse_key
+                ? wordQuickSheet.event.wordPosition
+                : undefined
+            }
             onOpenActions={() =>
               openVerseActions({
                 verseKey: verse.verse_key,
@@ -715,6 +738,9 @@ export default function PageScreen(): React.JSX.Element {
       translationsById,
       audio,
       verseAudioWordSync,
+      wordQuickSheet.event,
+      wordQuickSheet.isOpen,
+      wordQuickSheet.open,
       openVerseActions,
     ]
   );
@@ -918,6 +944,13 @@ export default function PageScreen(): React.JSX.Element {
         onOpenTafsir={handleOpenTafsir}
         onAddToPlan={handleAddToPlan}
         onShare={handleShare}
+      />
+
+      <ReaderWordStudySheet
+        controller={wordQuickSheet}
+        resolveSurahName={(surahId) => chapterNamesById.get(surahId) ?? `Surah ${surahId}`}
+        playWord={verseAudioWordSync.playWord}
+        playVerseFromWord={verseAudioWordSync.playVerseFromWord}
       />
 
       {activeVerseBookmarkMetadata ? (

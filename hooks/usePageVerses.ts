@@ -2,6 +2,7 @@ import React from 'react';
 
 import { useChapters } from '@/hooks/useChapters';
 import { primeVerseDetailsCache } from '@/lib/verse/verseDetailsCache';
+import { getBundledVerseWords } from '@/lib/verse/bundledVerseWords';
 import { apiFetch } from '@/src/core/infrastructure/api/apiFetch';
 import { container } from '@/src/core/infrastructure/di/container';
 import { getBundledMushafPack } from '@/src/core/infrastructure/mushaf/bundledPacks';
@@ -231,7 +232,7 @@ function getOfflinePageVersesSnapshot(params: {
           translations: [],
           translationItems: [],
           translationTexts: [],
-          words,
+          words: words ?? getBundledVerseWords(row.verse_key),
         };
       }
       return mapped;
@@ -351,7 +352,7 @@ function getOfflinePageVersesSnapshot(params: {
         translations,
         translationItems,
         translationTexts,
-        words,
+        words: words ?? getBundledVerseWords(verseObj.verseKey),
       };
     }
 
@@ -520,7 +521,7 @@ export function usePageVerses({
             translations,
             translationItems,
             translationTexts,
-            words,
+            words: words ?? getBundledVerseWords(verse.verseKey),
           };
         });
 
@@ -563,6 +564,7 @@ export function usePageVerses({
           translations: verse.translations,
           translationItems,
           translationTexts,
+          words: getBundledVerseWords(verse.verse_key),
         };
       });
 

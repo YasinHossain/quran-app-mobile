@@ -32,6 +32,7 @@ export type SharedExactMushafVersePress = {
   arabicText: string;
   translationTexts: string[];
   wordPosition: number;
+  surfaceText?: string;
 };
 
 type SharedExactMushafReaderProps = {
@@ -660,6 +661,7 @@ export function SharedExactMushafReader({
       payload: {
         verseKey?: string;
         location?: string;
+        text?: string;
         wordPosition: number;
       }
     ) => {
@@ -685,6 +687,9 @@ export function SharedExactMushafReader({
           typeof payload.wordPosition === 'number' && Number.isFinite(payload.wordPosition)
             ? Math.trunc(payload.wordPosition)
             : 0,
+        ...(typeof payload.text === 'string' && payload.text.trim()
+          ? { surfaceText: payload.text.trim() }
+          : {}),
       });
     },
     [chapterNamesById, onVersePress]

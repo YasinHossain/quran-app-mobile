@@ -1,4 +1,4 @@
-import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import {
   ArrowLeft,
   ChevronLeft,
@@ -24,6 +24,8 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import Colors from '@/constants/Colors';
 import { WordSegmentsCard } from '@/components/word-study/WordSegmentsCard';
+import { OccurrenceExplorer } from '@/components/word-study/full-study/OccurrenceExplorer';
+import { buildOccurrenceReaderParams } from '@/components/word-study/full-study/occurrenceExplorerModel';
 import {
   buildWordStudyShareMessage,
   getAdjacentWordPositions,
@@ -39,11 +41,11 @@ import { describeMissingReason, getPosLabel, getPrimaryGloss } from '@/component
 import { useChaptersContext } from '@/providers/ChaptersContext';
 import { useLayoutMetrics } from '@/providers/LayoutMetricsContext';
 import { useAppTheme } from '@/providers/ThemeContext';
-import { toWordStudyLocation, type Morpheme, type WordAnalysis, type WordStudyLocation } from '@/src/core/domain/word-study';
+import { toWordStudyLocation, type Morpheme, type WordAnalysis, type WordOccurrence, type WordStudyLocation } from '@/src/core/domain/word-study';
 import { container } from '@/src/core/infrastructure/di/container';
 
 type Palette = (typeof Colors)['light'];
-type StudyTab = 'overview' | 'morphology';
+type StudyTab = 'overview' | 'morphology' | 'occurrences';
 type LoadState =
   | { status: 'loading' }
   | { status: 'ready'; words: readonly WordAnalysis[] }
@@ -90,6 +92,9 @@ export default function WordStudyScreen(): React.JSX.Element {
   const [loadState, setLoadState] = React.useState<LoadState>({ status: 'loading' });
   const [retryNonce, setRetryNonce] = React.useState(0);
   const ribbonRef = React.useRef<FlatList<WordAnalysis>>(null);
+  const scrollRef = React.useRef<ScrollView>(null);
+  const scrollOffsetRef = React.useRef(0);
+  const restoreAfterReaderRef = React.useRef(false);
   const surahName = location
     ? chapters.find((chapter) => chapter.id === location.surah)?.name_simple ?? `Surah ${location.surah}`
     : 'Word Study';
@@ -149,6 +154,21 @@ export default function WordStudyScreen(): React.JSX.Element {
     if (!selected) return;
     void Share.share({ message: buildWordStudyShareMessage(selected, surahName) });
   }, [selected, surahName]);
+
+  const handleOpenOccurrenceInReader = React.useCallback((occurrence: WordOccurrence) => {
+    restoreAfterReaderRef.current = true;
+    router.push(buildOccurrenceReaderParams(occurrence) as never);
+  }, [router]);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      if (!restoreAfterReaderRef.current) return;
+      restoreAfterReaderRef.current = false;
+      requestAnimationFrame(() => {
+        scrollRef.current?.scrollTo({ y: scrollOffsetRef.current, animated: false });
+      });
+    }, [])
+  );
 
   const bottomPadding = Math.max(28, insets.bottom + 20) + audioPlayerBarHeight;
 
@@ -212,9 +232,14 @@ export default function WordStudyScreen(): React.JSX.Element {
             listRef={ribbonRef}
           />
           <ScrollView
+            ref={scrollRef}
             style={styles.scroll}
             contentContainerStyle={[styles.content, { paddingBottom: bottomPadding }]}
             showsVerticalScrollIndicator={false}
+            scrollEventThrottle={32}
+            onScroll={(event) => {
+              scrollOffsetRef.current = event.nativeEvent.contentOffset.y;
+            }}
           >
             <AdjacentNavigation
               words={words}
@@ -228,11 +253,18 @@ export default function WordStudyScreen(): React.JSX.Element {
             >
               <TabButton label="Overview" selected={tab === 'overview'} onPress={() => setTab('overview')} palette={palette} />
               <TabButton label="Morphology" selected={tab === 'morphology'} onPress={() => setTab('morphology')} palette={palette} />
+              <TabButton label="Occurrences" selected={tab === 'occurrences'} onPress={() => setTab('occurrences')} palette={palette} />
             </View>
             {tab === 'overview' ? (
               <OverviewSection analysis={selected} palette={palette} />
-            ) : (
+            ) : tab === 'morphology' ? (
               <MorphologySection analysis={selected} palette={palette} />
+            ) : (
+              <OccurrenceExplorer
+                analysis={selected}
+                palette={palette}
+                onOpenReader={handleOpenOccurrenceInReader}
+              />
             )}
           </ScrollView>
         </>

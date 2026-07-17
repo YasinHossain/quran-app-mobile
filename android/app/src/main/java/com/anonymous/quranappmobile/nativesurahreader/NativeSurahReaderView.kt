@@ -41,6 +41,7 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
 
   private val verses = mutableListOf<NativeVerse>()
   private val layoutManager = LinearLayoutManager(reactContext)
+  private var currentWordPressSource: String = "translation"
   private val adapter =
       NativeVerseAdapter(
           verses,
@@ -71,7 +72,10 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
                   putInt("wordId", word.id)
                   word.position?.let { putInt("wordPosition", it) }
                   putString("surfaceText", word.uthmani)
-                  putString("source", "translation")
+                  putString(
+                      "source",
+                      currentWordPressSource,
+                  )
                 },
             )
           },
@@ -873,6 +877,8 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
   }
 
   private fun applySettings(settings: NativeReaderSettings) {
+    currentWordPressSource =
+        if (settings.displayMode == DISPLAY_MODE_TAJWEED) "tajweed" else "translation"
     adapter.arabicFontFace = settings.arabicFontFace
     adapter.arabicFontSize = settings.arabicFontSize
     adapter.contentLanguage = settings.contentLanguage

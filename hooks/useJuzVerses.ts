@@ -2,6 +2,7 @@ import React from 'react';
 
 import { useChapters } from '@/hooks/useChapters';
 import { primeVerseDetailsCache } from '@/lib/verse/verseDetailsCache';
+import { getBundledVerseWords } from '@/lib/verse/bundledVerseWords';
 import { apiFetch } from '@/src/core/infrastructure/api/apiFetch';
 import { container } from '@/src/core/infrastructure/di/container';
 import juzData from '../src/data/juz.json';
@@ -263,7 +264,7 @@ function getInitialOfflineJuzPagesSnapshot(params: {
           translations,
           translationItems,
           translationTexts,
-          words,
+          words: words ?? getBundledVerseWords(verse.verseKey),
         };
       });
   }
@@ -429,6 +430,7 @@ export function useJuzVerses({
           translations: verse.translations,
           translationItems,
           translationTexts,
+          words: getBundledVerseWords(verse.verse_key),
         };
       }),
     [resolvedTranslationIds]
@@ -497,7 +499,7 @@ export function useJuzVerses({
             translations,
             translationItems,
             translationTexts,
-            words,
+            words: words ?? getBundledVerseWords(verse.verseKey),
           };
         });
 
@@ -552,7 +554,7 @@ export function useJuzVerses({
           translations,
           translationItems,
           translationTexts,
-          words,
+          words: words ?? getBundledVerseWords(verse.verseKey),
         };
       });
 
@@ -622,7 +624,7 @@ export function useJuzVerses({
               translations,
               translationItems,
               translationTexts,
-              words,
+              words: words ?? getBundledVerseWords(verse.verseKey),
             };
           });
       }
@@ -695,7 +697,7 @@ export function useJuzVerses({
             translations,
             translationItems,
             translationTexts,
-            words,
+            words: words ?? getBundledVerseWords(verse.verseKey),
           };
         });
     }

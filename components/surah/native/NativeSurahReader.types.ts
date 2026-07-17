@@ -101,7 +101,7 @@ export type NativeSurahReaderWordPressEvent = {
   wordId?: number;
   wordPosition?: number;
   surfaceText?: string;
-  source?: 'translation';
+  source?: 'tajweed' | 'translation';
 };
 
 export type NativeSurahReaderProps = ViewProps & {

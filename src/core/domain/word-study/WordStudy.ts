@@ -127,6 +127,7 @@ export interface WordOccurrence {
   readonly location: WordStudyLocation;
   readonly surfaceUthmani: string;
   readonly normalizedSurface: string;
+  readonly ayahContextUthmani: string;
   readonly contextualGlosses: readonly WordGloss[];
   readonly sourceReferences: readonly WordStudySourceReference[];
 }

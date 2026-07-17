@@ -23,7 +23,6 @@ type BuildNativeLightSurahVersesParams = {
 
 function buildNativeWords(verse: SurahVerse): NativeSurahReaderWord[] {
   return (verse.words ?? [])
-    .filter((word) => word.charTypeName !== 'end')
     .map((word, index) => {
       const fallbackId = index + 1;
       const id = Number.isFinite(word.id) && word.id > 0 ? Math.trunc(word.id) : fallbackId;
@@ -88,7 +87,7 @@ export function buildNativeLightSurahVerses({
   for (const verseNumber of verseNumbers) {
     const verse = getVerseByNumber(verseNumber);
     if (!verse) return [];
-    const shouldIncludeWords = showByWords || audioWordSyncEnabled;
+    const shouldIncludeWords = showByWords || audioWordSyncEnabled || tajweed;
     const nativeWords = shouldIncludeWords ? buildNativeWords(verse) : undefined;
     const words =
       shouldIncludeWords && nativeWords?.length

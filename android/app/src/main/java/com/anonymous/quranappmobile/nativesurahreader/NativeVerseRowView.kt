@@ -5,6 +5,7 @@ import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.text.TextUtils
+import android.text.method.LinkMovementMethod
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
@@ -51,6 +52,8 @@ internal class NativeVerseRowView(
 
   private var boundVerse: NativeVerse? = null
   private var boundTheme: NativeReaderTheme = NativeReaderTheme.default()
+  private var boundActiveWord: NativeActiveWord? = null
+  private var boundWordPressEnabled: Boolean = false
 
   init {
     orientation = VERTICAL
@@ -112,6 +115,8 @@ internal class NativeVerseRowView(
   ) {
     boundVerse = verse
     boundTheme = theme
+    boundActiveWord = activeWord?.takeIf { it.verseKey == verse.verseKey }
+    boundWordPressEnabled = wordPressEnabled
     referenceView.text = verse.verseKey
     referenceView.setTextColor(theme.tintColor)
     val shouldShowWordLayout =
@@ -136,7 +141,12 @@ internal class NativeVerseRowView(
           if (displayMode == DISPLAY_MODE_TAJWEED && !showByWords) {
             NativeTajweedTextFactory.buildSpannable(
                 verse.tajweedGlyphRuns,
+                verse.words,
                 sp(tajweedLineHeight(arabicFontSize)).toInt(),
+                wordPressEnabled,
+                boundActiveWord,
+                theme.activeBackgroundColor,
+                { word -> onWordPress(verse, word) },
             )
           } else {
             null
@@ -155,7 +165,11 @@ internal class NativeVerseRowView(
       )
       arabicView.visibility = View.VISIBLE
       arabicView.text = tajweedText ?: verse.arabicText
-      arabicView.contentDescription = verse.arabicText
+      arabicView.contentDescription = if (tajweedText == null) verse.arabicText else null
+      arabicView.movementMethod =
+          if (tajweedText != null && wordPressEnabled) LinkMovementMethod.getInstance() else null
+      arabicView.linksClickable = tajweedText != null && wordPressEnabled
+      arabicView.highlightColor = Color.TRANSPARENT
       arabicView.typeface =
           if (tajweedText == null) {
             NativeArabicFontResolver.resolve(context, arabicFontFace, verse.arabicText)
@@ -223,13 +237,33 @@ internal class NativeVerseRowView(
 
   fun bindActiveAudio(activeVerseKey: String?, activeWord: NativeActiveWord?) {
     val verse = boundVerse ?: return
+    boundActiveWord = activeWord?.takeIf { it.verseKey == verse.verseKey }
     setBackgroundColor(if (activeVerseKey == verse.verseKey) boundTheme.activeBackgroundColor else Color.TRANSPARENT)
     wordLayoutView.updateActiveWord(activeWord)
+    NativeTajweedTextFactory.updateInteraction(
+        arabicView.text,
+        enabled = boundWordPressEnabled,
+        activeWord = boundActiveWord,
+        activeColor = boundTheme.activeBackgroundColor,
+    )
+    arabicView.invalidate()
     invalidate()
   }
 
   fun updateWordPressEnabled(enabled: Boolean) {
+    boundWordPressEnabled = enabled
     wordLayoutView.updateWordPressEnabled(enabled)
+    NativeTajweedTextFactory.updateInteraction(
+        arabicView.text,
+        enabled,
+        boundActiveWord,
+        boundTheme.activeBackgroundColor,
+    )
+    val hasClickableTajweedWords =
+        enabled && arabicView.visibility == View.VISIBLE && arabicView.text is android.text.Spanned
+    arabicView.movementMethod = if (hasClickableTajweedWords) LinkMovementMethod.getInstance() else null
+    arabicView.linksClickable = hasClickableTajweedWords
+    arabicView.invalidate()
   }
 
   private fun dp(value: Int): Int {

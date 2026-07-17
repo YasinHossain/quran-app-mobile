@@ -1,5 +1,5 @@
 import { FlashList, type FlashListRef } from '@shopify/flash-list';
-import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { ArrowLeft, Settings } from 'lucide-react-native';
 import React from 'react';
 import { useReducedMotion } from 'react-native-reanimated';
@@ -54,7 +54,8 @@ import { useNativeSurahReaderEvents } from '@/components/surah/native/useNativeS
 import { useNativeSurahReaderGate } from '@/components/surah/native/useNativeSurahReaderGate';
 import { VerseScrubber, type VerseScrubberHandle } from '@/components/surah/VerseScrubber';
 import { AddToPlannerModal, type VerseSummaryDetails } from '@/components/verse-planner-modal';
-import { WordQuickSheet } from '@/components/word-study/WordQuickSheet';
+import { ReaderWordStudySheet } from '@/components/word-study/ReaderWordStudySheet';
+import { normalizeWordStudyPressEvent } from '@/components/word-study/WordStudyPressEvent';
 import { useWordQuickSheetController } from '@/components/word-study/useWordQuickSheetController';
 import Colors from '@/constants/Colors';
 import { DEFAULT_MUSHAF_ID, findMushafOption } from '@/data/mushaf/options';
@@ -297,6 +298,7 @@ export default function SurahScreen(): React.JSX.Element {
     startVerse?: string | string[];
     startPage?: string | string[];
     view?: string | string[];
+    studyWordPosition?: string | string[];
   }>();
   const router = useRouter();
   const { settings, isHydrated, setReadingMode } = useSettings();
@@ -305,9 +307,33 @@ export default function SurahScreen(): React.JSX.Element {
   const startVerseParam = Array.isArray(params.startVerse) ? params.startVerse[0] : params.startVerse;
   const startPageParam = Array.isArray(params.startPage) ? params.startPage[0] : params.startPage;
   const viewParam = Array.isArray(params.view) ? params.view[0] : params.view;
+  const studyWordPositionParam = Array.isArray(params.studyWordPosition)
+    ? params.studyWordPosition[0]
+    : params.studyWordPosition;
   const isMushafView = viewParam ? viewParam === 'mushaf' : settings.readingMode === 'mushaf';
   const startVerse = startVerseParam ? Number(startVerseParam) : NaN;
   const normalizedStartVerse = Number.isFinite(startVerse) && startVerse > 0 ? Math.floor(startVerse) : undefined;
+  const parsedStudyWordPosition = studyWordPositionParam ? Number(studyWordPositionParam) : NaN;
+  const studyTargetWord = React.useMemo(
+    () =>
+      typeof normalizedStartVerse === 'number' &&
+      Number.isFinite(parsedStudyWordPosition) &&
+      parsedStudyWordPosition > 0 &&
+      Number.isFinite(Number(surahId))
+        ? {
+            verseKey: `${Math.trunc(Number(surahId))}:${normalizedStartVerse}`,
+            wordPosition: Math.trunc(parsedStudyWordPosition),
+          }
+        : null,
+    [normalizedStartVerse, parsedStudyWordPosition, surahId]
+  );
+  const [studyArrivalWord, setStudyArrivalWord] = React.useState(studyTargetWord);
+  React.useEffect(() => {
+    setStudyArrivalWord(studyTargetWord);
+    if (!studyTargetWord) return;
+    const timeout = setTimeout(() => setStudyArrivalWord(null), 3500);
+    return () => clearTimeout(timeout);
+  }, [studyTargetWord]);
   const startPage = startPageParam ? Number(startPageParam) : NaN;
   const [isSettingsOpen, setIsSettingsOpen] = React.useState(false);
   const [pendingTranslationVerseKey, setPendingTranslationVerseKey] =
@@ -887,6 +913,17 @@ export default function SurahScreen(): React.JSX.Element {
         return;
       }
 
+      if (Platform.OS === 'android') {
+        const event = normalizeWordStudyPressEvent({
+          verseKey: verse.verseKey,
+          wordPosition: verse.wordPosition,
+          surfaceText: verse.surfaceText,
+          source: 'mushaf',
+        });
+        if (event) wordQuickSheet.open(event);
+        return;
+      }
+
       openVerseActions({
         verseKey: verse.verseKey,
         verseApiId: verse.verseApiId,
@@ -894,7 +931,7 @@ export default function SurahScreen(): React.JSX.Element {
         translationTexts: verse.translationTexts,
       });
     },
-    [openVerseActions]
+    [openVerseActions, wordQuickSheet.open]
   );
   const handleMushafSurahNavigation = React.useCallback(
     (direction: 'next' | 'previous') => {
@@ -1025,43 +1062,6 @@ export default function SurahScreen(): React.JSX.Element {
       // Ignore share failures.
     }
   }, [activeVerse, chapter?.name_simple]);
-
-  const selectedWordStudyLocation = wordQuickSheet.event;
-  const handlePlayStudiedWord = React.useCallback(() => {
-    if (!selectedWordStudyLocation) return;
-    verseAudioWordSync.playWord(selectedWordStudyLocation);
-  }, [selectedWordStudyLocation, verseAudioWordSync.playWord]);
-  const handlePlayVerseFromStudiedWord = React.useCallback(() => {
-    if (!selectedWordStudyLocation) return;
-    verseAudioWordSync.playVerseFromWord(selectedWordStudyLocation);
-  }, [selectedWordStudyLocation, verseAudioWordSync.playVerseFromWord]);
-  const handleShareStudiedWord = React.useCallback(async () => {
-    if (!selectedWordStudyLocation) return;
-    const analysis =
-      wordQuickSheet.loadState.status === 'ready' ? wordQuickSheet.loadState.analysis : null;
-    const gloss = analysis?.contextualGlosses.find((item) => item.languageCode === 'en')?.text;
-    const lines = [
-      `${chapter?.name_simple ?? 'Surah'} ${selectedWordStudyLocation.verseKey}:${selectedWordStudyLocation.wordPosition}`,
-      '',
-      analysis?.surfaceUthmani ?? selectedWordStudyLocation.surfaceText ?? '',
-      ...(gloss ? ['', gloss] : []),
-      '',
-      'Word analysis: Quranic Arabic Corpus v0.4',
-    ].filter((line, index, all) => line || all[index - 1] !== '');
-    try {
-      await Share.share({ message: lines.join('\n') });
-    } catch {
-      // Native share cancellation and unavailable targets need no reader error state.
-    }
-  }, [chapter?.name_simple, selectedWordStudyLocation, wordQuickSheet.loadState]);
-  const handleOpenFullWordStudy = React.useCallback(() => {
-    if (!selectedWordStudyLocation) return;
-    const [surah, ayah] = selectedWordStudyLocation.verseKey.split(':');
-    if (!surah || !ayah) return;
-    router.push(
-      `/study/word/${surah}/${ayah}/${selectedWordStudyLocation.wordPosition}` as never
-    );
-  }, [router, selectedWordStudyLocation]);
 
   const renderTranslationVerseCard = React.useCallback(
     (verse: SurahVerse, options?: { actionsEnabled?: boolean }) => {
@@ -2177,13 +2177,15 @@ export default function SurahScreen(): React.JSX.Element {
     return metadata;
   }, [activeVerse, chapter?.name_simple]);
 
-  React.useEffect(() => {
-    if (!isHydrated) return;
-    const currentMode = isMushafView ? 'mushaf' : 'translations';
-    if (settings.readingMode !== currentMode) {
-      setReadingMode(currentMode);
-    }
-  }, [isMushafView, isHydrated, settings.readingMode, setReadingMode]);
+  useFocusEffect(
+    React.useCallback(() => {
+      if (!isHydrated) return;
+      const currentMode = isMushafView ? 'mushaf' : 'translations';
+      if (settings.readingMode !== currentMode) {
+        setReadingMode(currentMode);
+      }
+    }, [isMushafView, isHydrated, settings.readingMode, setReadingMode])
+  );
 
   if (!isHydrated && !viewParam) {
     return (
@@ -2347,9 +2349,9 @@ export default function SurahScreen(): React.JSX.Element {
                         wordPosition: wordQuickSheet.event.wordPosition,
                         wordId: wordQuickSheet.event.wordId,
                       }
-                    : verseAudioWordSync.activeWord
+                    : studyArrivalWord ?? verseAudioWordSync.activeWord
                 }
-                wordPressEnabled={!settings.tajweed || Boolean(settings.showByWords)}
+                wordPressEnabled
                 onReady={handleNativeListLoad}
                 onInitialPositioned={handleNativeInitialPositioned}
                 onVisibleVerseChange={handleNativeVisibleVerseChangeAndPosition}
@@ -2555,18 +2557,13 @@ export default function SurahScreen(): React.JSX.Element {
         onShare={handleShare}
       />
 
-      <WordQuickSheet
-        isOpen={wordQuickSheet.isOpen}
-        event={wordQuickSheet.event}
-        loadState={wordQuickSheet.loadState}
-        surahName={chapter?.name_simple ?? 'Surah'}
-        onClose={wordQuickSheet.close}
-        onRetry={wordQuickSheet.retry}
-        onPresented={wordQuickSheet.reportPresented}
-        onPlayWord={handlePlayStudiedWord}
-        onPlayVerseFromHere={handlePlayVerseFromStudiedWord}
-        onShare={handleShareStudiedWord}
-        onOpenFullStudy={handleOpenFullWordStudy}
+      <ReaderWordStudySheet
+        controller={wordQuickSheet}
+        resolveSurahName={(targetSurahId) =>
+          chapterNamesById.get(targetSurahId) ?? `Surah ${targetSurahId}`
+        }
+        playWord={verseAudioWordSync.playWord}
+        playVerseFromWord={verseAudioWordSync.playVerseFromWord}
       />
 
       <BookmarkModal

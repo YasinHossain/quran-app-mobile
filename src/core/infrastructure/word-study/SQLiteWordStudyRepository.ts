@@ -91,6 +91,12 @@ type AnalysisSourceRow = {
 
 type CountRow = { count: number };
 
+type VerseSurfaceRow = {
+  verse_key: string;
+  word_position: number;
+  surface_uthmani: string;
+};
+
 export interface WordStudyQueryOptions {
   readonly signal?: AbortSignal;
 }
@@ -330,9 +336,11 @@ export class SQLiteWordStudyRepository implements IWordStudyRepository {
       options.signal
     );
     const locations = rows.map((row) => row.location);
-    const [glosses, sourceRows] = await Promise.all([
+    const verseKeys = [...new Set(rows.map((row) => row.verse_key))];
+    const [glosses, sourceRows, verseSurfaceRows] = await Promise.all([
       this.loadGlossesForLocationsAsync(db, locations),
       this.loadSourcesForLocationsAsync(db, locations),
+      this.loadVerseSurfacesAsync(db, verseKeys),
     ]);
     throwIfCancelled(options.signal);
 
@@ -348,15 +356,25 @@ export class SQLiteWordStudyRepository implements IWordStudyRepository {
       current.push(sourceRow);
       sourcesByLocation.set(sourceRow.location, current);
     }
+    const contextByVerse = new Map<string, string[]>();
+    for (const verseWord of verseSurfaceRows) {
+      const current = contextByVerse.get(verseWord.verse_key) ?? [];
+      current.push(verseWord.surface_uthmani);
+      contextByVerse.set(verseWord.verse_key, current);
+    }
     const items: WordOccurrence[] = rows.map((row) => ({
       location: parseWordStudyLocation(row.location),
       surfaceUthmani: row.surface_uthmani,
       normalizedSurface: row.normalized_surface,
+      ayahContextUthmani: (contextByVerse.get(row.verse_key) ?? []).join(' '),
       contextualGlosses: (glossesByLocation.get(row.location) ?? []).map(mapGloss),
       sourceReferences: uniqueSources(
-        (sourcesByLocation.get(row.location) ?? []).map((item) =>
-          source(item.source_id, item.source_version, mapSourceRole(item.source_role))
-        )
+        [
+          ...(sourcesByLocation.get(row.location) ?? []).map((item) =>
+            source(item.source_id, item.source_version, mapSourceRole(item.source_role))
+          ),
+          source(row.source_id, row.source_version, 'occurrence-index'),
+        ]
       ),
     }));
     const nextOffset = offset + items.length;
@@ -574,6 +592,23 @@ export class SQLiteWordStudyRepository implements IWordStudyRepository {
       ORDER BY was.location, was.source_role, was.source_id;
       `,
       locations
+    );
+  }
+
+  private loadVerseSurfacesAsync(
+    db: WordStudyDatabase,
+    verseKeys: readonly string[]
+  ): Promise<VerseSurfaceRow[]> {
+    if (verseKeys.length === 0) return Promise.resolve([]);
+    const placeholders = verseKeys.map(() => '?').join(',');
+    return db.getAllAsync<VerseSurfaceRow>(
+      `
+      SELECT verse_key, word_position, surface_uthmani
+      FROM word_analysis
+      WHERE verse_key IN (${placeholders})
+      ORDER BY verse_key, word_position;
+      `,
+      verseKeys
     );
   }
 }

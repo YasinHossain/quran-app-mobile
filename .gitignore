@@ -69,3 +69,5 @@ scratch/android-debug/
 !/android/app/src/main/java/com/anonymous/quranappmobile/MainApplication.kt
 !/android/app/src/main/java/com/anonymous/quranappmobile/nativesurahreader/
 !/android/app/src/main/java/com/anonymous/quranappmobile/nativesurahreader/**
+!/android/app/src/test/
+!/android/app/src/test/**

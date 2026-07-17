@@ -23,7 +23,7 @@ function nowMs(): number {
   return globalThis.performance?.now?.() ?? Date.now();
 }
 
-export function useWordQuickSheetController(): {
+export type WordQuickSheetController = {
   isOpen: boolean;
   event: WordStudyPressEvent | null;
   loadState: WordQuickSheetLoadState;
@@ -31,7 +31,9 @@ export function useWordQuickSheetController(): {
   close: () => void;
   retry: () => void;
   reportPresented: () => void;
-} {
+};
+
+export function useWordQuickSheetController(): WordQuickSheetController {
   const nextRequestIdRef = React.useRef(0);
   const [isOpen, setIsOpen] = React.useState(false);
   const [session, setSession] = React.useState<WordQuickSheetSession | null>(null);

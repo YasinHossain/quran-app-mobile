@@ -28,6 +28,7 @@ export type MushafSingleDocumentVersePress = {
   arabicText: string;
   translationTexts: string[];
   wordPosition: number;
+  surfaceText?: string;
 };
 
 export type MushafSingleDocumentReaderHandle = {
@@ -751,6 +752,7 @@ export const MushafSingleDocumentReader = React.forwardRef<
           typeof payload.wordPosition === 'number' && Number.isFinite(payload.wordPosition)
             ? Math.trunc(payload.wordPosition)
             : 0,
+        ...(payload.text.trim() ? { surfaceText: payload.text.trim() } : {}),
       });
     },
     [chapterNamesById, onVersePress]

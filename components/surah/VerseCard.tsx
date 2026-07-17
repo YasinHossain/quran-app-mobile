@@ -17,6 +17,10 @@ import Colors from '@/constants/Colors';
 import { useUiTranslation } from '@/providers/UiLanguageContext';
 import { useAppTheme } from '@/providers/ThemeContext';
 import type { VerseWord } from '@/types';
+import {
+  normalizeWordStudyPressEvent,
+  type WordStudyPressEvent,
+} from '@/components/word-study/WordStudyPressEvent';
 
 import { WordByWordVerse } from './WordByWordVerse';
 import type { VerseAudioWordSync } from './useVerseAudioWordSync';
@@ -50,6 +54,8 @@ function VerseCardComponent({
   bodyMinHeight,
   bodyPlaceholder,
   onBodyLayout,
+  onWordStudyPress,
+  selectedStudyWordPosition,
   onOpenActions,
   onPress,
 }: {
@@ -79,6 +85,8 @@ function VerseCardComponent({
   bodyMinHeight?: number;
   bodyPlaceholder?: React.ReactNode;
   onBodyLayout?: (event: LayoutChangeEvent) => void;
+  onWordStudyPress?: (event: WordStudyPressEvent) => void;
+  selectedStudyWordPosition?: number;
   onOpenActions?: () => void;
   onPress?: () => void;
 }): React.JSX.Element {
@@ -208,7 +216,7 @@ function VerseCardComponent({
     Array.isArray(words) &&
       words.length &&
       !shouldUseTajweedMode &&
-      (showByWords || isSeekEnabled)
+      (showByWords || isSeekEnabled || Boolean(onWordStudyPress))
   );
 
   const handleSeekWordPress = React.useCallback(
@@ -258,6 +266,20 @@ function VerseCardComponent({
     [showWordTranslation]
   );
 
+  const handleWordStudyPress = React.useCallback(
+    ({ word, wordPosition }: { word: VerseWord; wordPosition: number }) => {
+      const event = normalizeWordStudyPressEvent({
+        verseKey,
+        wordPosition,
+        wordId: word.id,
+        surfaceText: word.uthmani,
+        source: 'translation',
+      });
+      if (event) onWordStudyPress?.(event);
+    },
+    [onWordStudyPress, verseKey]
+  );
+
   const defaultBodyContent = (
     <View className="gap-4">
       {shouldRenderTajweedText ? (
@@ -293,10 +315,19 @@ function VerseCardComponent({
           arabicFontSize={arabicFontSize}
           arabicFontFamily={effectiveArabicFontFamily}
           showTranslations={Boolean(showByWords)}
-          pressBehavior={isSeekEnabled ? 'seek' : showByWords ? 'none' : 'translation'}
-          onWordPress={
-            isSeekEnabled ? handleSeekWordPress : showByWords ? undefined : handleTranslationWordPress
+          pressBehavior={
+            onWordStudyPress ? 'study' : isSeekEnabled ? 'seek' : showByWords ? 'none' : 'translation'
           }
+          onWordPress={
+            onWordStudyPress
+              ? handleWordStudyPress
+              : isSeekEnabled
+                ? handleSeekWordPress
+                : showByWords
+                  ? undefined
+                  : handleTranslationWordPress
+          }
+          selectedWordPosition={selectedStudyWordPosition}
           registerWordHighlight={audioWordSync?.registerWordHighlight}
         />
       ) : (
