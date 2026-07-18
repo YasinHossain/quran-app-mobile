@@ -13,6 +13,7 @@ import { useTranslationResources } from '@/hooks/useTranslationResources';
 import { useSettings } from '@/providers/SettingsContext';
 import { useAppTheme } from '@/providers/ThemeContext';
 import { getUiLanguageLabel, UI_LANGUAGES } from '@/lib/i18n/uiLanguages';
+import { getWordLanguageName, WORD_LANGUAGES } from '@/lib/i18n/wordLanguages';
 import { useUiTranslation } from '@/providers/UiLanguageContext';
 
 import { CollapsibleSection } from './CollapsibleSection';
@@ -52,17 +53,6 @@ type Panel =
 
 export type PanelType = Panel['type'];
 type SubPanelType = Exclude<PanelType, 'root'>;
-
-const WORD_LANGUAGES = [
-  { code: 'en', name: 'English' },
-  { code: 'bn', name: 'Bangla' },
-  { code: 'ur', name: 'Urdu' },
-  { code: 'hi', name: 'Hindi' },
-  { code: 'id', name: 'Bahasa Indonesia' },
-  { code: 'fa', name: 'Persian' },
-  { code: 'tr', name: 'Turkish' },
-  { code: 'ta', name: 'Tamil' },
-] as const;
 
 const BYTES_PER_MEGABYTE = 1024 * 1024;
 const ARABIC_FONT_PREVIEW_TEXT = 'بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ';
@@ -142,8 +132,7 @@ function useResponsiveSetting<T>(
 }
 
 function getLanguageName(code: string | undefined): string {
-  if (!code) return '';
-  return WORD_LANGUAGES.find((l) => l.code === code)?.name ?? code;
+  return code ? getWordLanguageName(code) : '';
 }
 
 function getMushafPackEntryKey(entry: MushafPackManagerEntry): string {

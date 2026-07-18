@@ -31,13 +31,17 @@ import { findSelectedWordGrammarPassages } from '@/components/word-study/full-st
 import { buildOccurrenceReaderParams } from '@/components/word-study/full-study/occurrenceExplorerModel';
 import { readWordStudyNavigationHandoff } from '@/components/word-study/full-study/wordStudyNavigationHandoff';
 import {
+  useContextualMeaning,
+  type ContextualMeaningLoadState,
+} from '@/components/word-study/full-study/useContextualMeaning';
+import {
   buildWordStudyShareMessage,
   getLemmaText,
   getMorphologyDetails,
   getRootText,
   type MorphologyDetail,
 } from '@/components/word-study/full-study/wordStudyScreenModel';
-import { describeMissingReason, getPosLabel, getPrimaryGloss } from '@/components/word-study/wordQuickSheetModel';
+import { describeMissingReason, getPosLabel } from '@/components/word-study/wordQuickSheetModel';
 import { useChaptersContext } from '@/providers/ChaptersContext';
 import { useLayoutMetrics } from '@/providers/LayoutMetricsContext';
 import { useAppTheme } from '@/providers/ThemeContext';
@@ -187,6 +191,7 @@ export default function WordStudyScreen(): React.JSX.Element {
       ? handedOffAnalysis
       : undefined;
   const selected = selectedFromLoadedVerse ?? selectedFromHandoff;
+  const contextualMeaning = useContextualMeaning(selected);
   const selectPosition = React.useCallback(
     (position: number) => router.setParams({ position: String(position) }),
     [router]
@@ -309,6 +314,7 @@ export default function WordStudyScreen(): React.JSX.Element {
           ) : tab === 'morphology' ? (
             <MorphologySection
               analysis={selected}
+              contextualMeaning={contextualMeaning}
               palette={palette}
               onOpenGuide={() => setIsMorphologyGuideOpen(true)}
             />
@@ -358,8 +364,9 @@ function TabButton({ label, selected, onPress, palette }: {
   );
 }
 
-function MorphologySection({ analysis, palette, onOpenGuide }: {
+function MorphologySection({ analysis, contextualMeaning, palette, onOpenGuide }: {
   analysis: WordAnalysis;
+  contextualMeaning: ContextualMeaningLoadState;
   palette: Palette;
   onOpenGuide: () => void;
 }): React.JSX.Element {
@@ -367,10 +374,7 @@ function MorphologySection({ analysis, palette, onOpenGuide }: {
   return (
     <View style={styles.section}>
       <WordSegmentsCard analysis={analysis} compact />
-      <View style={styles.glossBlock}>
-        <Text style={[styles.eyebrow, { color: palette.muted }]}>Meaning in this ayah</Text>
-        <Text style={[styles.gloss, { color: palette.text }]}>{getPrimaryGloss(analysis)}</Text>
-      </View>
+      <ContextualMeaningBlock state={contextualMeaning} palette={palette} />
       <View style={styles.lexicalFacts}>
         <CompactStudyFact
           label="Lemma"
@@ -412,6 +416,54 @@ function MorphologySection({ analysis, palette, onOpenGuide }: {
         <Text style={[styles.guideLabel, { color: palette.text }]}>Understanding morphology terms</Text>
         <ChevronRight color={palette.tint} size={20} strokeWidth={2.2} />
       </Pressable>
+    </View>
+  );
+}
+
+function ContextualMeaningBlock({ state, palette }: {
+  state: ContextualMeaningLoadState;
+  palette: Palette;
+}): React.JSX.Element {
+  return (
+    <View style={styles.glossBlock} accessibilityLiveRegion="polite">
+      <Text accessibilityRole="header" style={[styles.eyebrow, { color: palette.muted }]}>Meaning in this ayah</Text>
+      {state.status === 'ready' ? (
+        <>
+          <Text
+            style={[
+              styles.gloss,
+              {
+                color: palette.text,
+                writingDirection: state.presentation.direction,
+                textAlign: state.presentation.direction === 'rtl' ? 'right' : 'left',
+              },
+            ]}
+          >
+            {state.presentation.text}
+          </Text>
+          <View
+            accessibilityLabel={state.presentation.sourceLabel}
+            style={[styles.meaningSourceBadge, { backgroundColor: palette.interactive }]}
+          >
+            <Text style={[styles.meaningSourceText, { color: palette.tint }]}>
+              {state.presentation.sourceLabel}
+            </Text>
+          </View>
+          {state.presentation.fallbackMessage ? (
+            <View style={styles.fallbackRow}>
+              <Info color={palette.tint} size={15} strokeWidth={2.2} />
+              <Text style={[styles.fallbackText, { color: palette.muted }]}>
+                {state.presentation.fallbackMessage}
+              </Text>
+            </View>
+          ) : null}
+        </>
+      ) : (
+        <View style={styles.meaningLoading}>
+          <ActivityIndicator color={palette.tint} size="small" />
+          <Text style={[styles.explanation, { color: palette.muted }]}>Reading the installed {state.status === 'loading' ? state.languageName : 'word-language'} pack…</Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -742,6 +794,11 @@ const styles = StyleSheet.create({
   glossBlock: { gap: 5, paddingHorizontal: 2 },
   eyebrow: { fontSize: 11, lineHeight: 16, fontWeight: '700', letterSpacing: 1 },
   gloss: { fontSize: 20, lineHeight: 29, fontWeight: '600' },
+  meaningSourceBadge: { alignSelf: 'flex-start', borderRadius: 999, paddingHorizontal: 9, paddingVertical: 4 },
+  meaningSourceText: { fontSize: 11, lineHeight: 16, fontWeight: '700' },
+  meaningLoading: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 9 },
+  fallbackRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 7, paddingTop: 2 },
+  fallbackText: { flex: 1, fontSize: 12, lineHeight: 18 },
   explanation: { fontSize: 13, lineHeight: 20 },
   lexicalFacts: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   lexicalFact: { flex: 1, minWidth: 148, borderWidth: 1, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 12, gap: 4 },

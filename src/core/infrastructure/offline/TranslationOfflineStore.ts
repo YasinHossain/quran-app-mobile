@@ -81,6 +81,27 @@ function mapJoinedRowsToOfflineVerses(
 }
 
 export class TranslationOfflineStore implements ITranslationOfflineStore {
+  async getWordTranslationWordsJson(
+    verseKey: string,
+    languageCode: string
+  ): Promise<string | null> {
+    const db = await getAppDbAsync();
+    const normalizedVerseKey = verseKey.trim();
+    const normalizedLanguageCode = normalizeWordLanguageCode(languageCode);
+    if (!normalizedVerseKey || !normalizedLanguageCode) return null;
+
+    const row = await db.getFirstAsync<{ words_json: string | null }>(
+      `
+      SELECT words_json
+      FROM offline_word_translations
+      WHERE language_code = ? AND verse_key = ?
+      LIMIT 1;
+      `,
+      [normalizedLanguageCode, normalizedVerseKey]
+    );
+    return row?.words_json?.trim() || null;
+  }
+
   async upsertVersesAndTranslations(params: {
     verses: OfflineVerseRowInput[];
     translations: OfflineTranslationRowInput[];

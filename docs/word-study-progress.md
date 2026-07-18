@@ -61,7 +61,7 @@ Quick-sheet order:
 
 Full-screen route: `/study/word/[surah]/[ayah]/[position]`.
 
-Full-screen sections: Overview, Morphology, Grammar, Occurrences, and Dictionary. Phase 10 adds source-provided Arabic prose i'rab. Phase 11A adds optional cited dictionary definitions; generated conjugation tables, dependency graphs, and AI-generated canonical analysis remain excluded.
+Full-screen sections: Morphology, Grammar, Occurrences, and Dictionary. Morphology is the default and includes contextual meaning, lemma/root, unique segment features, and terminology help. Phase 10 adds source-provided Arabic prose i'rab. Phase 11A adds optional cited dictionary definitions; generated conjugation tables, dependency graphs, and AI-generated canonical analysis remain excluded.
 
 Terminology baseline, pending reviewer approval:
 
@@ -674,9 +674,9 @@ Generated artifacts:
 | Lane 3.1.3 | 29,778 | 1,444 | 2,596 | 29,671,424 | `5c9e58e8771b392b82ae7faea390f328d1e6635c785980bb6a4623fbdebb34b2` |
 | Hans Wehr 2.14.01 | 13,980 | 1,354 | 2,347 | 4,861,952 | `88c4df1da38633874ed6be1b520346a562e0a76077fced2e3a10e8a0cfb04e59` |
 
-## Full-screen redesign Phases 1–3
+## Full-screen redesign Phases 1–4
 
-Implementation status on 2026-07-18: **complete; Phase 4 language integration and final device hardening remain pending**.
+Implementation status on 2026-07-18: **code and automated verification complete; physical-device and scholarly release sign-offs remain pending**.
 
 | Requirement | Status | Record |
 |---|---|---|
@@ -685,4 +685,7 @@ Implementation status on 2026-07-18: **complete; Phase 4 language integration an
 | Morphology terminology guide | Done | `MorphologyGuideSheet` is a scrollable, accessible bottom sheet with numeric height constraints, back/overlay/close dismissal, segment definitions, feature definitions, Arabic terms, and compact examples. |
 | Source relocation | Done | The in-flow About card is removed. Settings links to `Word Study Sources`, which reads active core and installed dictionary manifests plus the bundled grammar manifest for source/version/rights/checksum/link presentation and records methodology boundaries. |
 | Attribution retention | Done | Dictionary definitions retain source citations and Word Study sharing retains source titles and versions. |
-| Automated coverage | Done | Focused tests cover the four-tab order, unique segment features, guide content/layout constraints, About-card removal, manifest-backed source rendering, Settings navigation, dictionary citations, and attributed sharing. |
+| Selected-language meaning | Done | The full screen reads only the selected language's exact `offline_word_translations` verse row and canonical word position. English uses the bundled Word Study gloss; unavailable or unreadable selected-language values show a visible `English fallback · Bundled offline` label and reason. No network lookup is added. |
+| RTL and font scaling | Done in code/automated audit | The ayah selector remains independently RTL with selected accessibility state and font-scale-aware collapsed height. Urdu/Persian meaning text renders RTL; other supported meanings and English fallback render LTR. Content cards and the guide remain content-driven or scrollable. |
+| Automated coverage | Done | Focused tests cover the four-tab order, removed legacy UI, unique segment features, selected-language exact-position resolution, explicit English fallback, RTL/LTR meaning direction, font-scale-aware ayah sizing, guide constraints, source access, dictionary citations, and attributed sharing. |
+| Physical-device verification | Pending release gate | An API 36 emulator is available for development checks, but TalkBack, largest font/display scale, contrast, offline non-English pack, rapid selection, low-memory, and production-signed physical-device results still require the checklist record. VoiceOver remains deferred because this checkout has no iOS project. |

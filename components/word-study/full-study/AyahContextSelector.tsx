@@ -27,7 +27,6 @@ const ARABIC_FONT_SIZE = 31;
 const ARABIC_LINE_HEIGHT = 54;
 const COLLAPSED_EXCERPT_FILL_FACTOR = 1.25;
 const EXPANSION_DURATION = 260;
-const COLLAPSED_HEIGHT = COLLAPSED_LINE_COUNT * ARABIC_LINE_HEIGHT;
 
 export type AyahContextWord = {
   location: {
@@ -55,16 +54,18 @@ export function AyahContextSelector({
   const { resolvedTheme } = useAppTheme();
   const palette = Colors[resolvedTheme];
   const reduceMotion = Boolean(useReducedMotion());
-  const { width: viewportWidth } = useWindowDimensions();
+  const { width: viewportWidth, fontScale } = useWindowDimensions();
+  const effectiveFontScale = Math.max(1, fontScale);
+  const collapsedHeight = COLLAPSED_LINE_COUNT * ARABIC_LINE_HEIGHT * effectiveFontScale;
   const [expanded, setExpanded] = React.useState(false);
   const [showFullContent, setShowFullContent] = React.useState(false);
   const disclosureProgress = React.useRef(new Animated.Value(0)).current;
-  const viewportHeight = React.useRef(new Animated.Value(COLLAPSED_HEIGHT)).current;
+  const viewportHeight = React.useRef(new Animated.Value(collapsedHeight)).current;
   const fullContentHeightRef = React.useRef<number | null>(null);
   const verseKey = words[0]?.location.verseKey ?? '';
   const capacity = getCollapsedAyahCapacity(
     viewportWidth,
-    ARABIC_FONT_SIZE,
+    ARABIC_FONT_SIZE * effectiveFontScale,
     COLLAPSED_LINE_COUNT
   );
   const excerptCapacity = Math.round(capacity * COLLAPSED_EXCERPT_FILL_FACTOR);
@@ -111,9 +112,9 @@ export function AyahContextSelector({
     setExpanded(false);
     setShowFullContent(false);
     disclosureProgress.setValue(0);
-    viewportHeight.setValue(COLLAPSED_HEIGHT);
+    viewportHeight.setValue(collapsedHeight);
     fullContentHeightRef.current = null;
-  }, [disclosureProgress, verseKey, viewportHeight]);
+  }, [collapsedHeight, disclosureProgress, verseKey, viewportHeight]);
 
   const animateViewportHeight = React.useCallback((height: number, onFinished?: () => void) => {
     viewportHeight.stopAnimation();
@@ -134,12 +135,12 @@ export function AyahContextSelector({
 
   const handleFullContentLayout = React.useCallback((event: LayoutChangeEvent) => {
     if (!showFullContent) return;
-    const measuredHeight = Math.max(COLLAPSED_HEIGHT, event.nativeEvent.layout.height);
+    const measuredHeight = Math.max(collapsedHeight, event.nativeEvent.layout.height);
     const heightChanged = fullContentHeightRef.current === null
       || Math.abs(fullContentHeightRef.current - measuredHeight) >= 0.5;
     fullContentHeightRef.current = measuredHeight;
     if (expanded && heightChanged) animateViewportHeight(measuredHeight);
-  }, [animateViewportHeight, expanded, showFullContent]);
+  }, [animateViewportHeight, collapsedHeight, expanded, showFullContent]);
 
   const handleToggleExpanded = React.useCallback(() => {
     const nextExpanded = !expanded;
@@ -161,9 +162,9 @@ export function AyahContextSelector({
       if (knownFullHeight !== null) animateViewportHeight(knownFullHeight);
     } else {
       setExpanded(false);
-      animateViewportHeight(COLLAPSED_HEIGHT, () => setShowFullContent(false));
+      animateViewportHeight(collapsedHeight, () => setShowFullContent(false));
     }
-  }, [animateViewportHeight, disclosureProgress, expanded, reduceMotion]);
+  }, [animateViewportHeight, collapsedHeight, disclosureProgress, expanded, reduceMotion]);
 
   const disclosureIconStyle = {
     transform: [{

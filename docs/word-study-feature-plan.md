@@ -157,35 +157,25 @@ Suggested route: `/study/word/[surah]/[ayah]/[position]`.
 Screen structure:
 
 - app bar with surah name and `surah:ayah:word`;
-- horizontal ayah word ribbon; tapping another word changes the route/state without leaving the screen;
-- sticky summary card;
-- sticky tab bar or anchored sections:
-  - Overview;
+- wrapping full-ayah Arabic selector; tapping another word changes the route parameter without adding history;
+- horizontally scrollable tab bar:
   - Morphology;
   - Grammar;
   - Occurrences;
-  - Dictionary, when licensed content is added.
+  - Dictionary.
 
-Overview should clearly distinguish:
+Morphology is the default view and should present:
 
-- contextual gloss for this occurrence;
+- the selected segmented Arabic word with color plus readable POS labels;
+- contextual meaning from the selected installed word-language pack, or an explicitly labeled bundled-English fallback;
 - lemma/citation form;
 - root family;
-- surface spelling;
-- verb form and current inflection;
-- audio and save actions.
-
-Morphology should show both a friendly explanation and structured features:
-
-- prefix/stem/suffix segments;
+- prefix/stem/suffix/whole-word segment roles;
 - POS per segment;
-- case or mood;
-- definiteness/state;
-- gender and number;
-- person;
-- aspect and voice;
-- verb form;
-- derived nominal type.
+- each source-provided morphology value exactly once on its relevant segment;
+- a final `Understanding morphology terms` row that opens the terminology guide.
+
+Surface form, primary POS, repeated whole-word features, inline teaching paragraphs, and the former Overview tab are intentionally omitted from the full screen. Source provenance lives in the Settings-accessible `Word Study Sources` destination rather than the analysis scroll.
 
 Grammar should explain the word's role in this ayah. Full prose i'rab must be treated as a separately sourced, expert-reviewed content layer; it cannot be inferred safely from root/lemma data alone.
 
@@ -203,8 +193,9 @@ Filters should be `Surface`, `Lemma`, and `Root`. Each result should include the
 - Never encode POS only with color.
 - TalkBack/VoiceOver should read each segment and role, for example: `wa — coordinating conjunction; anzala — perfect active verb, form four`.
 - Respect Arabic RTL independently from the app content language.
+- Render Urdu/Persian contextual meanings RTL while keeping English, Bangla, Hindi, Indonesian, Turkish, and Tamil meanings LTR.
 - Keep technical Arabic terms available even in English mode, with a short explanation.
-- Support Dynamic Type/font scaling without clipping the Arabic card.
+- Support Dynamic Type/font scaling without clipping the ayah selector, Arabic cards, values, or terminology guide.
 - Keep per-definition citations where source identity affects content, and expose complete pack provenance through the Settings-accessible `Word Study Sources` destination.
 
 ## 5. Architecture

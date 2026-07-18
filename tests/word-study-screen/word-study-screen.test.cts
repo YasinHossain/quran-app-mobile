@@ -25,6 +25,10 @@ import {
 } from '../../components/word-study/full-study/wordStudyScreenModel';
 import { MORPHOLOGY_GUIDE_GROUPS } from '../../components/word-study/full-study/morphologyGuideModel';
 import {
+  getStoredWordTranslation,
+  resolveContextualMeaning,
+} from '../../components/word-study/full-study/contextualMeaningModel';
+import {
   getCollapsedAyahCapacity,
   getSelectedAyahExcerpt,
   shouldCollapseAyah,
@@ -100,6 +104,54 @@ test('morphology guide groups all segment and feature terms with Arabic labels',
   assert.ok(MORPHOLOGY_GUIDE_GROUPS.every((group) =>
     group.terms.every((term) => term.arabicTerm.length > 0 && term.definition.length > 20)
   ));
+});
+
+test('contextual meaning uses the selected installed language at the exact word position', () => {
+  const wordsJson = JSON.stringify([
+    { position: 8, charTypeName: 'word', translationText: 'previous' },
+    { position: 9, charTypeName: 'word', translationText: 'এবং তিনি নাযিল করেছেন' },
+    { position: 10, charTypeName: 'end', translationText: '(3)' },
+  ]);
+  assert.equal(getStoredWordTranslation(wordsJson, 9), 'এবং তিনি নাযিল করেছেন');
+  assert.equal(getStoredWordTranslation(wordsJson, 10), null);
+
+  const meaning = resolveContextualMeaning({
+    analysis: verb,
+    selectedLanguageCode: 'bn',
+    selectedLanguageWordsJson: wordsJson,
+  });
+  assert.deepEqual(meaning, {
+    text: 'এবং তিনি নাযিল করেছেন',
+    languageCode: 'bn',
+    languageName: 'Bangla',
+    direction: 'ltr',
+    sourceLabel: 'Bangla · Installed offline',
+    isFallback: false,
+  });
+});
+
+test('contextual meaning labels deterministic bundled-English fallback', () => {
+  const fallback = resolveContextualMeaning({
+    analysis: verb,
+    selectedLanguageCode: 'ur',
+    selectedLanguageWordsJson: null,
+  });
+  assert.equal(fallback.text, 'and He revealed');
+  assert.equal(fallback.languageCode, 'en');
+  assert.equal(fallback.direction, 'ltr');
+  assert.equal(fallback.sourceLabel, 'English fallback · Bundled offline');
+  assert.equal(fallback.isFallback, true);
+  assert.match(fallback.fallbackMessage ?? '', /Urdu is not available offline/);
+
+  const urdu = resolveContextualMeaning({
+    analysis: verb,
+    selectedLanguageCode: 'ur',
+    selectedLanguageWordsJson: JSON.stringify([
+      { position: 9, charTypeName: 'word', translationText: 'اور نازل کی' },
+    ]),
+  });
+  assert.equal(urdu.direction, 'rtl');
+  assert.equal(urdu.isFallback, false);
 });
 
 test('rootless particles explain the absence instead of rendering a blank field', () => {
@@ -230,10 +282,14 @@ test('full screen uses Morphology-first information architecture without repeate
   assert.ok(source.indexOf('label="Occurrences"') < source.indexOf('label="Dictionary"'));
   assert.match(source, /useState<StudyTab>\('morphology'\)/);
   assert.match(source, /Meaning in this ayah/);
+  assert.match(source, /useContextualMeaning\(selected\)/);
+  assert.match(source, /English fallback · Bundled offline|fallbackMessage/);
+  assert.match(source, /writingDirection: state\.presentation\.direction/);
+  assert.match(source, /accessibilityLiveRegion="polite"/);
   assert.match(source, /label="Lemma"/);
   assert.match(source, /label="Root"/);
   assert.match(source, /How this word is built/);
-  assert.ok(source.indexOf('Meaning in this ayah') < source.indexOf('How this word is built'));
+  assert.ok(source.indexOf('<ContextualMeaningBlock') < source.indexOf('How this word is built'));
   assert.ok(source.indexOf('label="Lemma"') < source.indexOf('How this word is built'));
   assert.ok(source.indexOf('label="Root"') < source.indexOf('How this word is built'));
   assert.match(source, /horizontal/);
@@ -313,7 +369,9 @@ test('ayah selector uses one stable inline Arabic layout without a measurement p
   assert.match(source, /ARABIC_FONT_SIZE = 31/);
   assert.match(source, /ARABIC_LINE_HEIGHT = 54/);
   assert.match(source, /COLLAPSED_EXCERPT_FILL_FACTOR = 1\.25/);
-  assert.match(source, /COLLAPSED_HEIGHT = COLLAPSED_LINE_COUNT \* ARABIC_LINE_HEIGHT/);
+  assert.match(source, /fontScale/);
+  assert.match(source, /effectiveFontScale = Math\.max\(1, fontScale\)/);
+  assert.match(source, /collapsedHeight = COLLAPSED_LINE_COUNT \* ARABIC_LINE_HEIGHT \* effectiveFontScale/);
   assert.match(source, /EXPANSION_DURATION = 260/);
   assert.match(source, /useReducedMotion/);
   assert.match(source, /Animated\.timing\(disclosureProgress/);
@@ -330,6 +388,47 @@ test('ayah selector uses one stable inline Arabic layout without a measurement p
   assert.doesNotMatch(source, /ChevronsDown|ChevronsUp/);
   assert.doesNotMatch(source, /underline/i);
   assert.doesNotMatch(source, /borderWidth/);
+});
+
+test('selected-language lookup reads only the exact offline language row', () => {
+  const store = readFileSync(
+    join(process.cwd(), 'src/core/infrastructure/offline/TranslationOfflineStore.ts'),
+    'utf8'
+  );
+  const hook = readFileSync(
+    join(process.cwd(), 'components/word-study/full-study/useContextualMeaning.ts'),
+    'utf8'
+  );
+  assert.match(store, /getWordTranslationWordsJson/);
+  assert.match(store, /FROM offline_word_translations/);
+  assert.match(store, /WHERE language_code = \? AND verse_key = \?/);
+  const exactLookup = store.slice(
+    store.indexOf('async getWordTranslationWordsJson'),
+    store.indexOf('async upsertVersesAndTranslations')
+  );
+  assert.doesNotMatch(exactLookup, /COALESCE|fetch\(/);
+  assert.match(hook, /settings\.wordLang/);
+  assert.match(hook, /getWordTranslationWordsJson/);
+  assert.match(hook, /lookupFailed: true/);
+});
+
+test('full-screen focus order and selection semantics do not depend on color', () => {
+  const screen = readFileSync(
+    join(process.cwd(), 'app/study/word/[surah]/[ayah]/[position].tsx'),
+    'utf8'
+  );
+  const selector = readFileSync(
+    join(process.cwd(), 'components/word-study/full-study/AyahContextSelector.tsx'),
+    'utf8'
+  );
+  assert.ok(screen.indexOf('styles.header') < screen.indexOf('<AyahContextSelector'));
+  assert.ok(screen.indexOf('<AyahContextSelector') < screen.indexOf('accessibilityRole="tablist"'));
+  assert.ok(screen.indexOf('accessibilityRole="tablist"') < screen.indexOf('Understanding morphology terms'));
+  assert.match(selector, /accessibilityLabel=\{`Word \$\{position\} of \$\{words\.length\}/);
+  assert.match(selector, /accessibilityState=\{\{ selected \}\}/);
+  assert.match(selector, /accessibilityHint=\{selected \? 'Selected for analysis'/);
+  assert.match(selector, /writingDirection: 'rtl'/);
+  assert.match(selector, /textAlign: 'right'/);
 });
 
 test('dictionary use case forwards normalized lemma and root without using surface text as a sense', async () => {

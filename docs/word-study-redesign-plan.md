@@ -1,6 +1,6 @@
 # Word Study Full-Screen Redesign Plan
 
-Status: Approved product direction; Phases 1–3 implemented on 2026-07-18, with Phase 4 pending.
+Status: Implemented product direction; Phases 1–4 completed on 2026-07-18. Physical-device and scholarly release sign-offs remain tracked separately.
 
 This plan redesigns the full Word Study route without redesigning the Surah reader quick sheet. The goal is to give the selected word its complete ayah context, remove repeated information, and keep beginner help available without displaying the same definitions for every word.
 
