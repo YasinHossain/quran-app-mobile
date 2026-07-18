@@ -70,6 +70,13 @@ function loadGrammarRepositoryModule() {
   ));
 }
 
+function loadWordReferenceRegistryModule() {
+  return require(path.join(
+    COMPILED_ROOT,
+    'infrastructure/word-reference/WordReferencePackRegistry.js'
+  ));
+}
+
 module.exports = {
   COMPILED_ROOT,
   GRAMMAR_PACK_PATH,
@@ -80,4 +87,5 @@ module.exports = {
   loadGrammarRepositoryModule,
   loadPackTypesModule,
   loadRepositoryModule,
+  loadWordReferenceRegistryModule,
 };

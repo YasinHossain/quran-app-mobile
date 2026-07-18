@@ -31,7 +31,7 @@ const POLICY_SECTIONS: PolicySection[] = [
     bullets: [
       {
         label: 'Local Storage Data',
-        text: 'Your preferences, downloaded content index, offline Quran resources, Word Study pack state, bookmarks, reading progress, and planner data are stored locally on your device using app storage, SQLite, and app files. This data is not sent to our servers.',
+        text: 'Your preferences, downloaded content index, offline Quran resources, Word Study and optional dictionary pack state, bookmarks, reading progress, and planner data are stored locally on your device using app storage, SQLite, and app files. This data is not sent to our servers.',
       },
       {
         label: 'No Personal Information',
@@ -55,7 +55,7 @@ const POLICY_SECTIONS: PolicySection[] = [
       },
       {
         label: 'Word Study Sources',
-        text: 'The bundled Word Study MVP pack includes sourced morphology and occurrence indexes from Quranic Arabic Corpus v0.4, plus canonical Uthmani surface text and contextual English glosses from the installed offline word pack. The app shows source/version details with Word Study content.',
+        text: 'The bundled Word Study MVP pack includes sourced morphology and occurrence indexes from Quranic Arabic Corpus v0.4, plus canonical Uthmani surface text and contextual English glosses from the installed offline word pack. Optional Lane and Hans Wehr English dictionary packs are downloaded only when you request them and remain stored locally. The app shows source/version details with Word Study content.',
       },
       {
         label: 'Audio Content',

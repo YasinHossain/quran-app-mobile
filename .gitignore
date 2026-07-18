@@ -16,6 +16,8 @@ dist/*
 !dist/word-study-packs/**
 !dist/word-grammar-packs/
 !dist/word-grammar-packs/**
+!dist/word-reference-packs/
+!dist/word-reference-packs/**
 web-build/
 expo-env.d.ts
 

@@ -25,6 +25,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import Colors from '@/constants/Colors';
 import { WordSegmentsCard } from '@/components/word-study/WordSegmentsCard';
 import { OccurrenceExplorer } from '@/components/word-study/full-study/OccurrenceExplorer';
+import { DictionarySection } from '@/components/word-study/full-study/DictionarySection';
 import { findSelectedWordGrammarPassages } from '@/components/word-study/full-study/grammarStudyModel';
 import { buildOccurrenceReaderParams } from '@/components/word-study/full-study/occurrenceExplorerModel';
 import {
@@ -55,7 +56,7 @@ import {
 import { container } from '@/src/core/infrastructure/di/container';
 
 type Palette = (typeof Colors)['light'];
-type StudyTab = 'overview' | 'morphology' | 'grammar' | 'occurrences';
+type StudyTab = 'overview' | 'morphology' | 'grammar' | 'occurrences' | 'dictionary';
 type LoadState =
   | { status: 'loading' }
   | { status: 'ready'; words: readonly WordAnalysis[] }
@@ -283,15 +284,18 @@ export default function WordStudyScreen(): React.JSX.Element {
               onSelect={selectPosition}
               palette={palette}
             />
-            <View
+            <ScrollView
+              horizontal
               accessibilityRole="tablist"
-              style={[styles.tabs, { backgroundColor: palette.interactive }]}
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={[styles.tabs, { backgroundColor: palette.interactive }]}
             >
               <TabButton label="Overview" selected={tab === 'overview'} onPress={() => setTab('overview')} palette={palette} />
               <TabButton label="Morphology" selected={tab === 'morphology'} onPress={() => setTab('morphology')} palette={palette} />
               <TabButton label="Grammar" selected={tab === 'grammar'} onPress={() => setTab('grammar')} palette={palette} />
               <TabButton label="Occurrences" selected={tab === 'occurrences'} onPress={() => setTab('occurrences')} palette={palette} />
-            </View>
+              <TabButton label="Dictionary" selected={tab === 'dictionary'} onPress={() => setTab('dictionary')} palette={palette} />
+            </ScrollView>
             {tab === 'overview' ? (
               <OverviewSection analysis={selected} palette={palette} />
             ) : tab === 'morphology' ? (
@@ -302,12 +306,14 @@ export default function WordStudyScreen(): React.JSX.Element {
                 grammarLoadState={grammarLoadState}
                 palette={palette}
               />
-            ) : (
+            ) : tab === 'occurrences' ? (
               <OccurrenceExplorer
                 analysis={selected}
                 palette={palette}
                 onOpenReader={handleOpenOccurrenceInReader}
               />
+            ) : (
+              <DictionarySection analysis={selected} palette={palette} />
             )}
           </ScrollView>
         </>
@@ -890,7 +896,7 @@ const styles = StyleSheet.create({
   adjacentLabel: { fontSize: 12, lineHeight: 17, fontWeight: '700' },
   positionCounter: { fontSize: 11, lineHeight: 16, textAlign: 'center' },
   tabs: { flexDirection: 'row', padding: 4, borderRadius: 15 },
-  tab: { flex: 1, minHeight: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  tab: { minWidth: 104, minHeight: 44, paddingHorizontal: 12, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   tabText: { fontSize: 12, lineHeight: 17, fontWeight: '700' },
   section: { gap: 16 },
   glossBlock: { gap: 5, paddingHorizontal: 2 },

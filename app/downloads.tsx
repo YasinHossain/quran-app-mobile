@@ -21,6 +21,7 @@ import {
   Languages,
   Volume2,
   Book,
+  LibraryBig,
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ResourceConfirmModal } from '@/components/reader/settings/resource-panel/ResourceConfirmModal';
@@ -69,6 +70,7 @@ const CATEGORY_ICONS: Record<
   'Word-by-Word': Languages,
   Audio: Volume2,
   'Mushaf Packs': Book,
+  'Word Study References': LibraryBig,
   Other: Download,
 };
 
@@ -77,7 +79,7 @@ interface DisplayDownloadItem {
   item: DownloadIndexItemWithKey;
   title: string;
   subtitle: string;
-  category: 'Translations' | 'Tafsirs' | 'Word-by-Word' | 'Audio' | 'Mushaf Packs' | 'Other';
+  category: 'Translations' | 'Tafsirs' | 'Word-by-Word' | 'Audio' | 'Mushaf Packs' | 'Word Study References' | 'Other';
   sizeBytes?: number;
   sizeLabel?: string;
 }
@@ -202,6 +204,16 @@ export default function DownloadsScreen(): React.JSX.Element {
           subtitle = '';
           break;
         }
+        case 'word-reference-pack': {
+          category = 'Word Study References';
+          title = item.content.sourceId === 'lane-lexicon'
+            ? "Lane's Arabic-English Lexicon"
+            : item.content.sourceId === 'hans-wehr'
+              ? 'Hans Wehr Dictionary'
+              : item.content.sourceId;
+          subtitle = `${item.content.languageCode.toUpperCase()} · ${item.content.version}`;
+          break;
+        }
         default:
           title = 'Unknown Offline Resource';
           subtitle = 'Offline Data';
@@ -237,6 +249,7 @@ export default function DownloadsScreen(): React.JSX.Element {
       'Word-by-Word': [],
       Audio: [],
       'Mushaf Packs': [],
+      'Word Study References': [],
       Other: [],
     };
 
@@ -303,6 +316,13 @@ export default function DownloadsScreen(): React.JSX.Element {
             .deleteInstalledVersionAsync(item.content.packId, item.content.version);
           break;
         }
+        case 'word-reference-pack': {
+          await container.getDictionaryReferenceRepository().closePack(item.content.packId);
+          await container
+            .getWordReferencePackInstaller()
+            .deleteAsync(item.content.packId, item.content.version);
+          break;
+        }
         default: {
           await container.getDownloadIndexRepository().remove(item.content);
           break;
@@ -345,6 +365,10 @@ export default function DownloadsScreen(): React.JSX.Element {
         void container
           .getMushafPackInstaller()
           .cancelDownloadablePackInstallAsync(item.content.packId, item.content.version);
+      } else if (item.content.kind === 'word-reference-pack') {
+        container
+          .getWordReferencePackInstaller()
+          .cancel(item.content.packId, item.content.version);
       } else {
         void container.getDownloadIndexRepository().remove(item.content);
       }
@@ -366,6 +390,8 @@ export default function DownloadsScreen(): React.JSX.Element {
         return t('downloads_category_audio', { fallback: 'Audio' });
       case 'Mushaf Packs':
         return t('downloads_category_mushaf_packs', { fallback: 'Mushaf Packs' });
+      case 'Word Study References':
+        return t('downloads_category_word_study_references', { fallback: 'Word Study References' });
       case 'Other':
         return t('downloads_category_other', { fallback: 'Other' });
       default:
@@ -558,7 +584,7 @@ export default function DownloadsScreen(): React.JSX.Element {
             {t('downloads_empty_title', { fallback: 'No Downloads Yet' })}
           </Text>
           <Text className="text-sm text-muted dark:text-muted-dark text-center max-w-[280px] leading-6">
-            {t('downloads_empty_desc', { fallback: 'Translations, tafsirs, audio recitations, and mushaf packs downloaded for offline reading will appear here.' })}
+            {t('downloads_empty_desc', { fallback: 'Translations, tafsirs, audio recitations, mushaf packs, and Word Study references downloaded for offline use will appear here.' })}
           </Text>
           <Pressable
             onPress={() => router.back()}

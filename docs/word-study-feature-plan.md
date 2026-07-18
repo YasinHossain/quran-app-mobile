@@ -699,7 +699,8 @@ This section is the implementation contract. A future AI task can be stated simp
 These remain independent phases and must never be bundled into a release-hardening phase. They may begin after Android Phase 9A even while Phase 8 and Phase 9B remain deferred:
 
 - **Phase 10 — Licensed deep grammar pack:** implemented as a separate verse-keyed offline SQLite pack containing ordered Arabic i'rab passages. The Grammar tab prioritizes passages matching the selected surface/morpheme, keeps the full ayah analysis expandable, and provides explicit loading/missing states. The compiler and manifest preserve provenance, checksums, coverage, and source order; the app does not generate or rewrite the prose. Distribution permission and qualified Quranic Arabic review remain mandatory release gates.
-- **Phase 11 — Dictionary and verb reference packs:** add cited root/lemma definitions and verified principal parts only after field-level licensing and linguistic review.
+- **Phase 11A — Downloadable dictionary packs:** implemented as separate optional English Lane and Hans Wehr Quran-focused SQLite packs. The Dictionary tab remains visible without a pack, installs sources independently, prefers exact lemma headwords, falls back to root articles/families, lazy-loads long definitions, and shows source/version attribution.
+- **Phase 11B — Verb reference packs:** deferred until a structured reviewed source can supply verified principal parts; Lane/Hans prose is not parsed into canonical paradigms.
 - **Phase 12 — Saved words and review:** saved word/root collections, local learning state, review queue, and basic spaced repetition.
 - **Phase 13 — Structured lessons and quizzes:** grammar-term mini-lessons, high-frequency vocabulary path, coverage score, segmentation/POS quizzes, and progress reporting.
 - **Phase 14 — Advanced syntax:** dependency graphs with a beginner explanation and technical tree view using a clearly licensed, reviewed treebank.

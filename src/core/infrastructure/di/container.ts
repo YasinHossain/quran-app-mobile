@@ -20,6 +20,7 @@ import {
   GetVerseGrammar,
   GetWordAnalysis,
   ListWordOccurrences,
+  GetDictionaryReferences,
 } from '@/src/core/application/use-cases/word-study';
 import {
   ExpoGrammarStudyDatabaseProvider,
@@ -32,6 +33,12 @@ import {
   WordStudyPackCatalogClient,
   WordStudyPackLifecycle,
 } from '@/src/core/infrastructure/word-study';
+import {
+  SQLiteDictionaryReferenceRepository,
+  WordReferencePackCatalogClient,
+  WordReferencePackFileStore,
+  WordReferencePackInstaller,
+} from '@/src/core/infrastructure/word-reference';
 
 const downloadIndexRepository = new DownloadIndexRepository();
 const tafsirRepository = new TafsirRepository();
@@ -71,6 +78,16 @@ const listWordOccurrences = new ListWordOccurrences(wordStudyRepository);
 const grammarStudyDatabaseProvider = new ExpoGrammarStudyDatabaseProvider();
 const grammarStudyRepository = new SQLiteGrammarStudyRepository(grammarStudyDatabaseProvider);
 const getVerseGrammar = new GetVerseGrammar(grammarStudyRepository);
+const wordReferencePackCatalogClient = new WordReferencePackCatalogClient();
+const wordReferencePackFileStore = new WordReferencePackFileStore();
+const wordReferencePackInstaller = new WordReferencePackInstaller(
+  wordReferencePackFileStore,
+  downloadIndexRepository
+);
+const dictionaryReferenceRepository = new SQLiteDictionaryReferenceRepository(
+  wordReferencePackInstaller
+);
+const getDictionaryReferences = new GetDictionaryReferences(dictionaryReferenceRepository);
 
 export const container = {
   getDownloadIndexRepository: (): DownloadIndexRepository => downloadIndexRepository,
@@ -102,4 +119,11 @@ export const container = {
   getGrammarStudyDatabaseProvider: (): ExpoGrammarStudyDatabaseProvider =>
     grammarStudyDatabaseProvider,
   getVerseGrammar: (): GetVerseGrammar => getVerseGrammar,
+  getWordReferencePackCatalogClient: (): WordReferencePackCatalogClient =>
+    wordReferencePackCatalogClient,
+  getWordReferencePackFileStore: (): WordReferencePackFileStore => wordReferencePackFileStore,
+  getWordReferencePackInstaller: (): WordReferencePackInstaller => wordReferencePackInstaller,
+  getDictionaryReferenceRepository: (): SQLiteDictionaryReferenceRepository =>
+    dictionaryReferenceRepository,
+  getDictionaryReferences: (): GetDictionaryReferences => getDictionaryReferences,
 };

@@ -34,6 +34,8 @@ import {
   getOccurrencePageLabel,
 } from '../../components/word-study/full-study/occurrenceExplorerModel';
 import { findSelectedWordGrammarPassages } from '../../components/word-study/full-study/grammarStudyModel';
+import { GetDictionaryReferences } from '../../src/core/application/use-cases/word-study/GetDictionaryReferences';
+import type { IDictionaryReferenceRepository } from '../../src/core/domain/repositories/IDictionaryReferenceRepository';
 
 const verb = WORD_STUDY_RICH_CONTRACT_FIXTURES[0] as WordAnalysis;
 const particle = WORD_STUDY_RICH_CONTRACT_FIXTURES[1] as WordAnalysis;
@@ -164,6 +166,8 @@ test('full screen keeps the Phase 5 route, ribbon, tabs, RTL text, and route-dri
   assert.match(source, /label="Morphology"/);
   assert.match(source, /label="Grammar"/);
   assert.match(source, /label="Occurrences"/);
+  assert.match(source, /label="Dictionary"/);
+  assert.match(source, /horizontal/);
   assert.match(source, /useFocusEffect/);
   assert.match(source, /scrollOffsetRef/);
   assert.match(source, /About this analysis/);
@@ -172,6 +176,46 @@ test('full screen keeps the Phase 5 route, ribbon, tabs, RTL text, and route-dri
   assert.match(source, /Complete ayah grammar/);
   assert.match(source, /إِعْرَابٌ مُخْتَصَرٌ/);
   assert.doesNotMatch(source, /Dictionary definition/);
+});
+
+test('dictionary use case forwards normalized lemma and root without using surface text as a sense', async () => {
+  let captured: unknown;
+  const repository: IDictionaryReferenceRepository = {
+    async listInstalledSources() { return []; },
+    async findReferences(query) {
+      captured = query;
+      return {
+        source: { packId: 'lane-en', sourceId: 'lane', title: 'Lane', languageCode: 'en', version: '1', attribution: 'fixture', url: 'https://example.test' },
+        query,
+        exactLemmaEntries: [],
+        rootEntries: [],
+        rootFamilyEntries: [],
+      };
+    },
+    async getEntry() { return null; },
+    async closePack() {},
+  };
+  await new GetDictionaryReferences(repository).execute(verb, 'lane-en');
+  assert.deepEqual(captured, {
+    packId: 'lane-en',
+    lemmaNormalized: verb.lemma.status === 'available' ? verb.lemma.value.normalized : undefined,
+    rootNormalized: verb.root.status === 'available' ? verb.root.value.normalized : undefined,
+  });
+});
+
+test('dictionary UI keeps downloads, source switching, lazy entries, and attribution in one tab', () => {
+  const source = readFileSync(
+    join(process.cwd(), 'components/word-study/full-study/DictionarySection.tsx'),
+    'utf8'
+  );
+  assert.match(source, /Choose an optional dictionary/);
+  assert.match(source, /Lane/);
+  assert.match(source, /Hans Wehr/);
+  assert.match(source, /Matching headword/);
+  assert.match(source, /Complete root family/);
+  assert.match(source, /getEntry\(/);
+  assert.match(source, /controller\.abort\(\)/);
+  assert.match(source, /source\.attribution/);
 });
 
 test('occurrence explorer cancels stale queries, keeps page size bounded, and avoids ambiguous count copy', () => {

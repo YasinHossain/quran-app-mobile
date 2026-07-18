@@ -15,6 +15,8 @@
     "../../components/word-study/full-study/occurrenceExplorerModel.ts",
     "../../components/word-study/wordQuickSheetModel.ts",
     "../../src/core/domain/word-study/**/*.ts",
+    "../../src/core/domain/repositories/IDictionaryReferenceRepository.ts",
+    "../../src/core/application/use-cases/word-study/GetDictionaryReferences.ts",
     "./*.cts"
   ]
 }

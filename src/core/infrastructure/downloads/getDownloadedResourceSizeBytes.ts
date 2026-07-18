@@ -4,6 +4,7 @@ import type { DownloadIndexItemWithKey } from '@/src/core/domain/entities/Downlo
 import { AudioFileStore } from '@/src/core/infrastructure/audio/AudioFileStore';
 import { getAppDbAsync } from '@/src/core/infrastructure/db';
 import { MushafPackFileStore } from '@/src/core/infrastructure/mushaf/MushafPackFileStore';
+import { WordReferencePackFileStore } from '@/src/core/infrastructure/word-reference/WordReferencePackFileStore';
 
 type SizeRow = { bytes: number | null };
 
@@ -59,6 +60,16 @@ async function getMushafPackSizeBytes(item: DownloadIndexItemWithKey): Promise<n
   );
 }
 
+async function getWordReferencePackSizeBytes(item: DownloadIndexItemWithKey): Promise<number> {
+  if (item.content.kind !== 'word-reference-pack') return 0;
+  return getDirectorySizeBytes(
+    new WordReferencePackFileStore().getVersionDirectoryUri(
+      item.content.packId,
+      item.content.version
+    )
+  );
+}
+
 async function getIndividualDownloadedResourceSizeBytes(
   item: DownloadIndexItemWithKey
 ): Promise<number> {
@@ -102,6 +113,8 @@ async function getIndividualDownloadedResourceSizeBytes(
       return getAudioSizeBytes(item);
     case 'mushaf-pack':
       return getMushafPackSizeBytes(item);
+    case 'word-reference-pack':
+      return getWordReferencePackSizeBytes(item);
     default:
       return 0;
   }
@@ -226,6 +239,10 @@ export async function getDownloadedResourceSizeBytes(
 
     if (item.content.kind === 'mushaf-pack') {
       return [getMushafPackSizeBytes(item)];
+    }
+
+    if (item.content.kind === 'word-reference-pack') {
+      return [getWordReferencePackSizeBytes(item)];
     }
 
     return [];

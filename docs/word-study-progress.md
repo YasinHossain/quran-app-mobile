@@ -1,7 +1,7 @@
 # Word Study Progress
 
 Status: Android Phase 9A automated hardening checks passed locally, but Android MVP approval remains blocked by qualified Quranic Arabic reviewer sign-off and the Android physical-device accessibility/stress matrix on a production-signed artifact. Phase 8 iOS parity remains intentionally deferred and does not block Android.
-Last updated: 2026-07-17.
+Last updated: 2026-07-18.
 
 This file tracks execution of `docs/word-study-feature-plan.md`. It is the product, rights, review, data, and implementation record for Word Study.
 
@@ -21,7 +21,8 @@ This file tracks execution of `docs/word-study-feature-plan.md`. It is the produ
 | Phase 9A - Android MVP release hardening | Blocked, automated checks passed | Documentation, source/checksum, privacy records, manual Android checklist, `npm run verify`, repository benchmark, Android unit tests, release Kotlin compile, and local release APK assemble passed on 2026-07-17. Android MVP approval still requires reviewer sign-off and the physical-device matrix on a production-signed artifact. |
 | Phase 9B - iOS release hardening | Deferred | Run only after deferred Phase 8 and before an iOS public release. It does not block Android release or Android post-MVP work. |
 | Phase 10 - Licensed deep grammar pack | Implemented, release permission/review pending | Separate bundled SQLite grammar pack, shared contracts, repository, professional Arabic Grammar tab, selected-word passage matching, full-ayah disclosure, missing states, compiler checksums, and tests completed on 2026-07-17. Distribution permission and qualified review remain release blockers. |
-| Phase 11 - Dictionary and verb reference packs | Future | Post-MVP only. |
+| Phase 11A - Downloadable dictionary packs | Implemented | Optional Lane/Hans Wehr English packs, deterministic Quran-focused compiler, multi-pack lifecycle, Downloads integration, shared contracts, and Dictionary tab completed on 2026-07-18. |
+| Phase 11B - Verb reference packs | Deferred | Waiting for a structured reviewed principal-parts source; no paradigms are inferred from dictionary prose. |
 | Phase 12 - Saved words and review | Future | Post-MVP only. |
 | Phase 13 - Structured lessons and quizzes | Future | Post-MVP only. |
 | Phase 14 - Advanced syntax | Future | Post-MVP only. |
@@ -60,7 +61,7 @@ Quick-sheet order:
 
 Full-screen route: `/study/word/[surah]/[ayah]/[position]`.
 
-Full-screen sections: Overview, Morphology, Grammar, Occurrences, and Dictionary only when implemented. Phase 10 adds source-provided Arabic prose i'rab as a post-MVP layer; dictionary definitions, generated conjugation tables, dependency graphs, and AI-generated canonical analysis remain excluded.
+Full-screen sections: Overview, Morphology, Grammar, Occurrences, and Dictionary. Phase 10 adds source-provided Arabic prose i'rab. Phase 11A adds optional cited dictionary definitions; generated conjugation tables, dependency graphs, and AI-generated canonical analysis remain excluded.
 
 Terminology baseline, pending reviewer approval:
 
@@ -649,4 +650,26 @@ Phase 10 generated artifact:
 | Logical SHA-256 | `69ca1d15d697703c218be8a2899ebefb323c0638bd8af8110b275e8e8839fe11` |
 | Database size | 15,876,096 bytes |
 
-Phase 10 does not start Phase 11: no dictionary, Lane Lexicon, Hans Wehr, or verb-reference content was added.
+Phase 10 remains a separate grammar layer and does not supply dictionary or verb-reference content.
+
+## Phase 11A - Downloadable Dictionary Packs
+
+Implementation status: **complete; optional artifacts are not bundled with the app**.
+
+| Requirement | Status | Record |
+|---|---|---|
+| Shared contracts | Done | Dictionary source, entry summary/detail, lookup result, repository, and use-case contracts were added in `../quran-app` first and synced to mobile. |
+| Separate optional packs | Done | `lane-en` and `hans-wehr-en` use `quran-word-reference-sqlite-v1`; neither is imported as an Expo asset. |
+| Deterministic compiler | Done | The compiler uses the Core Word Study roots/lemmas, retains matching source families, sanitizes presentation markup, emits unmatched coverage reports, and produces byte-identical output for identical fixtures. |
+| Multi-pack lifecycle | Done | Independent install/update/delete, staging, storage preflight, progress/cancel, SHA-256/schema/integrity validation, atomic activation, previous-generation rollback, and immutable versions are implemented. |
+| Repository | Done | Installed-source listing, cancellable lemma/root lookup, root-family fallback, lazy entry loading, and database closing before deletion are implemented. |
+| Dictionary UI | Done | The fifth horizontally scrollable tab shows install/offline/error states, Lane/Hans source chips, exact lemma entries, collapsed root families, lazy bodies, and source/version attribution. |
+| Downloads integration | Done | `word-reference-pack` resources appear under Word Study References with measured file sizes, cancellation, deletion, and reinstall support. |
+| Phase 11B separation | Done | No principal parts are extracted or generated from dictionary prose. |
+
+Generated artifacts:
+
+| Pack | Entries | Roots | Lemmas | Database size | Database SHA-256 |
+|---|---:|---:|---:|---:|---|
+| Lane 3.1.3 | 29,778 | 1,444 | 2,596 | 29,671,424 | `5c9e58e8771b392b82ae7faea390f328d1e6635c785980bb6a4623fbdebb34b2` |
+| Hans Wehr 2.14.01 | 13,980 | 1,354 | 2,347 | 4,861,952 | `88c4df1da38633874ed6be1b520346a562e0a76077fced2e3a10e8a0cfb04e59` |

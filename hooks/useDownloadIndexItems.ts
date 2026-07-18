@@ -38,6 +38,15 @@ function isSameDownloadContent(a: DownloadableContent, b: DownloadableContent): 
     return a.languageCode === b.languageCode;
   }
 
+  if (a.kind === 'word-reference-pack' && b.kind === 'word-reference-pack') {
+    return (
+      a.packId === b.packId &&
+      a.version === b.version &&
+      a.sourceId === b.sourceId &&
+      a.languageCode === b.languageCode
+    );
+  }
+
   if (a.kind === 'mushaf-pack' && b.kind === 'mushaf-pack') {
     return a.packId === b.packId && a.version === b.version;
   }
