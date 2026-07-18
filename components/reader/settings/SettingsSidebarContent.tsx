@@ -1,4 +1,4 @@
-import { ArrowLeft, BookOpenText, Globe, Type, Wand2, X, Download } from 'lucide-react-native';
+import { ArrowLeft, BookOpenText, ChevronRight, Database, Globe, Type, Wand2, X, Download } from 'lucide-react-native';
 import React from 'react';
 import { router } from 'expo-router';
 import { Alert, Animated, Easing, FlatList, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
@@ -1490,6 +1490,35 @@ export function SettingsSidebarContent({
                               {selectedUiLanguageName}
                             </Text>
                           </View>
+                        </Pressable>
+
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel="Word Study Sources"
+                          accessibilityHint="Opens source, version, rights, and methodology details"
+                          onPress={() => {
+                            onClose?.();
+                            router.push('/word-study-sources');
+                          }}
+                          className="flex-row items-center justify-between gap-3 rounded-2xl px-2 py-3 mt-1"
+                          style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
+                        >
+                          <View className="min-w-0 flex-1 flex-row items-center gap-3">
+                            <Database color={palette.tint} size={20} strokeWidth={2.25} />
+                            <View className="min-w-0 flex-1">
+                              <Text
+                                numberOfLines={1}
+                                className="text-base font-semibold"
+                                style={{ color: palette.text }}
+                              >
+                                Word Study Sources
+                              </Text>
+                              <Text numberOfLines={1} className="text-xs" style={{ color: palette.muted }}>
+                                Provenance, versions, and methodology
+                              </Text>
+                            </View>
+                          </View>
+                          <ChevronRight color={palette.muted} size={18} strokeWidth={2.2} />
                         </Pressable>
                       </>
                     )}

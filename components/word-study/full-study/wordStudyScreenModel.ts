@@ -4,14 +4,13 @@ import type {
   WordStudySourceReference,
 } from '../../../src/core/domain/word-study';
 
-import { describeMissingReason, getPosLabel, getPrimaryGloss } from '../wordQuickSheetModel';
+import { describeMissingReason, getPrimaryGloss } from '../wordQuickSheetModel';
 
 export type MorphologyDetail = {
   key: keyof MorphologyFeatures;
   label: string;
   arabicTerm: string;
   value: string;
-  explanation: string;
 };
 
 export type StudySourcePresentation = {
@@ -32,61 +31,51 @@ const TITLE_CASE = (value: string): string =>
 const FEATURE_PRESENTATION: Readonly<
   Record<
     Exclude<keyof MorphologyFeatures, 'rawFeatures'>,
-    { label: string; arabicTerm: string; explanation: string; format?: (value: string) => string }
+    { label: string; arabicTerm: string; format?: (value: string) => string }
   >
 > = {
   aspect: {
     label: 'Aspect',
     arabicTerm: 'الزمن والصيغة',
-    explanation: 'Shows whether a verb is perfect, imperfect, or imperative.',
   },
   mood: {
     label: 'Mood',
     arabicTerm: 'الحالة الإعرابية للفعل',
-    explanation: 'Shows how an imperfect verb is grammatically governed here.',
   },
   voice: {
     label: 'Voice',
     arabicTerm: 'البناء',
-    explanation: 'Shows whether the subject acts or receives the action.',
   },
   person: {
     label: 'Person',
     arabicTerm: 'الشخص',
-    explanation: 'Identifies whether the form refers to the speaker, addressee, or someone else.',
     format: (value) => `${TITLE_CASE(value)} person`,
   },
   gender: {
     label: 'Gender',
     arabicTerm: 'الجنس',
-    explanation: 'Records masculine, feminine, or common grammatical agreement.',
   },
   number: {
     label: 'Number',
     arabicTerm: 'العدد',
-    explanation: 'Records singular, dual, or plural grammatical agreement.',
   },
   grammaticalCase: {
     label: 'Case',
     arabicTerm: 'الإعراب',
-    explanation: 'Shows the noun or adjective case recorded for this occurrence.',
     format: (value) => `${TITLE_CASE(value)} case`,
   },
   grammaticalState: {
     label: 'State',
     arabicTerm: 'التعريف والإضافة',
-    explanation: 'Shows whether the form is definite, indefinite, or in a construct phrase.',
   },
   verbForm: {
     label: 'Verb form',
     arabicTerm: 'وزن الفعل',
-    explanation: 'Identifies the numbered Arabic derived verb pattern.',
     format: (value) => `Form ${value}`,
   },
   derivation: {
     label: 'Derivation',
     arabicTerm: 'المشتق',
-    explanation: 'Identifies a sourced derived form such as a participle or verbal noun.',
   },
 };
 
@@ -101,15 +90,8 @@ export function getMorphologyDetails(features: MorphologyFeatures): readonly Mor
         label: presentation.label,
         arabicTerm: presentation.arabicTerm,
         value: presentation.format ? presentation.format(String(value)) : TITLE_CASE(String(value)),
-        explanation: presentation.explanation,
       }];
     });
-}
-
-export function getPrimaryPosText(analysis: WordAnalysis): string {
-  return analysis.primaryPos.status === 'available'
-    ? getPosLabel(analysis.primaryPos.value)
-    : describeMissingReason(analysis.primaryPos.reason);
 }
 
 export function getLemmaText(analysis: WordAnalysis): string {

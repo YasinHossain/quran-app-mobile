@@ -55,7 +55,7 @@ const POLICY_SECTIONS: PolicySection[] = [
       },
       {
         label: 'Word Study Sources',
-        text: 'The bundled Word Study MVP pack includes sourced morphology and occurrence indexes from Quranic Arabic Corpus v0.4, plus canonical Uthmani surface text and contextual English glosses from the installed offline word pack. Optional Lane and Hans Wehr English dictionary packs are downloaded only when you request them and remain stored locally. The app shows source/version details with Word Study content.',
+        text: 'The bundled Word Study MVP pack includes sourced morphology and occurrence indexes from Quranic Arabic Corpus v0.4, plus canonical Uthmani surface text and contextual English glosses from the installed offline word pack. Optional Lane and Hans Wehr English dictionary packs are downloaded only when you request them and remain stored locally. The dedicated Word Study Sources screen shows installed source and version details.',
       },
       {
         label: 'Audio Content',

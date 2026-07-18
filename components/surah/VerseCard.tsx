@@ -18,6 +18,7 @@ import { useUiTranslation } from '@/providers/UiLanguageContext';
 import { useAppTheme } from '@/providers/ThemeContext';
 import type { VerseWord } from '@/types';
 import {
+  buildWordStudyVersePreview,
   normalizeWordStudyPressEvent,
   type WordStudyPressEvent,
 } from '@/components/word-study/WordStudyPressEvent';
@@ -122,6 +123,10 @@ function VerseCardComponent({
   const translationLineHeight = Math.max(
     translationFontSize + 8,
     Math.round(translationFontSize * 1.7)
+  );
+  const wordStudyVersePreview = React.useMemo(
+    () => buildWordStudyVersePreview(words ?? []),
+    [words]
   );
 
   const cleanedTranslationItems = React.useMemo(() => {
@@ -273,11 +278,12 @@ function VerseCardComponent({
         wordPosition,
         wordId: word.id,
         surfaceText: word.uthmani,
+        verseWords: wordStudyVersePreview,
         source: 'translation',
       });
       if (event) onWordStudyPress?.(event);
     },
-    [onWordStudyPress, verseKey]
+    [onWordStudyPress, verseKey, wordStudyVersePreview]
   );
 
   const defaultBodyContent = (

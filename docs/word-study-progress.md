@@ -636,7 +636,7 @@ Implementation status: **repository implementation complete; public distribution
 | Separate offline pack | Done | `quran-word-grammar-sqlite-v1`, schema 1, 5,785 covered ayahs and 29,881 ordered Arabic passages. |
 | Deterministic compiler | Done | `npm run compile:word-grammar-pack` parses the pinned StarDict source, removes presentation markup, maps canonical verse keys, preserves prose/order, and emits SQLite plus a manifest. |
 | Mobile repository | Done | The read-only Expo SQLite provider opens lazily; the repository queries only by canonical `surah:ayah` and returns structured missing/unavailable states. |
-| Professional Grammar view | Done | Four-tab Word Study layout, concise Arabic hero, selected-word/segment passage priority, collapsed long prose, and expandable complete-ayah analysis. No source attribution is rendered in the app by product direction. |
+| Professional Grammar view | Done | Four-tab Word Study layout, concise Arabic hero, selected-word/segment passage priority, collapsed long prose, and expandable complete-ayah analysis. Grammar pack provenance is available from the dedicated Word Study Sources destination. |
 | No generated canonical prose | Done | Runtime matching changes presentation only. Source Arabic is stored and rendered without LLM generation or editorial rewriting. |
 | Source permission | Blocked | Product owner directed implementation before permission. Permission must be recorded before public distribution. |
 | Qualified Quranic Arabic review | Blocked | The imported prose and selected-word matching require reviewer sign-off and disputed-record handling before public distribution. |
@@ -663,7 +663,7 @@ Implementation status: **complete; optional artifacts are not bundled with the a
 | Deterministic compiler | Done | The compiler uses the Core Word Study roots/lemmas, retains matching source families, sanitizes presentation markup, emits unmatched coverage reports, and produces byte-identical output for identical fixtures. |
 | Multi-pack lifecycle | Done | Independent install/update/delete, staging, storage preflight, progress/cancel, SHA-256/schema/integrity validation, atomic activation, previous-generation rollback, and immutable versions are implemented. |
 | Repository | Done | Installed-source listing, cancellable lemma/root lookup, root-family fallback, lazy entry loading, and database closing before deletion are implemented. |
-| Dictionary UI | Done | The fifth horizontally scrollable tab shows install/offline/error states, Lane/Hans source chips, exact lemma entries, collapsed root families, lazy bodies, and source/version attribution. |
+| Dictionary UI | Done | The fourth horizontally scrollable tab shows install/offline/error states, Lane/Hans source chips, exact lemma entries, collapsed root families, lazy bodies, and source/version attribution. |
 | Downloads integration | Done | `word-reference-pack` resources appear under Word Study References with measured file sizes, cancellation, deletion, and reinstall support. |
 | Phase 11B separation | Done | No principal parts are extracted or generated from dictionary prose. |
 
@@ -673,3 +673,16 @@ Generated artifacts:
 |---|---:|---:|---:|---:|---|
 | Lane 3.1.3 | 29,778 | 1,444 | 2,596 | 29,671,424 | `5c9e58e8771b392b82ae7faea390f328d1e6635c785980bb6a4623fbdebb34b2` |
 | Hans Wehr 2.14.01 | 13,980 | 1,354 | 2,347 | 4,861,952 | `88c4df1da38633874ed6be1b520346a562e0a76077fced2e3a10e8a0cfb04e59` |
+
+## Full-screen redesign Phases 1–3
+
+Implementation status on 2026-07-18: **complete; Phase 4 language integration and final device hardening remain pending**.
+
+| Requirement | Status | Record |
+|---|---|---|
+| Full ayah selector | Done | The unboxed wrapping ayah selector replaces the ribbon and visible adjacent navigation while keeping route-driven selection, reduced-motion behavior, and selected-word visibility in collapsed long ayahs. |
+| Morphology-first structure | Done | Overview is removed. Contextual meaning and compact lemma/root facts lead the default Morphology tab, followed by segment-specific POS and unique sourced features. |
+| Morphology terminology guide | Done | `MorphologyGuideSheet` is a scrollable, accessible bottom sheet with numeric height constraints, back/overlay/close dismissal, segment definitions, feature definitions, Arabic terms, and compact examples. |
+| Source relocation | Done | The in-flow About card is removed. Settings links to `Word Study Sources`, which reads active core and installed dictionary manifests plus the bundled grammar manifest for source/version/rights/checksum/link presentation and records methodology boundaries. |
+| Attribution retention | Done | Dictionary definitions retain source citations and Word Study sharing retains source titles and versions. |
+| Automated coverage | Done | Focused tests cover the four-tab order, unique segment features, guide content/layout constraints, About-card removal, manifest-backed source rendering, Settings navigation, dictionary citations, and attributed sharing. |

@@ -29,6 +29,7 @@ export type MushafSingleDocumentVersePress = {
   translationTexts: string[];
   wordPosition: number;
   surfaceText?: string;
+  verseWords?: readonly { wordPosition: number; surfaceText: string }[];
 };
 
 export type MushafSingleDocumentReaderHandle = {
@@ -753,6 +754,13 @@ export const MushafSingleDocumentReader = React.forwardRef<
             ? Math.trunc(payload.wordPosition)
             : 0,
         ...(payload.text.trim() ? { surfaceText: payload.text.trim() } : {}),
+        verseWords: verse.words
+          .filter((word) => word.charType !== 'end')
+          .map((word) => ({
+            wordPosition: word.position,
+            surfaceText: (word.textUthmani ?? word.textQpcHafs ?? word.textIndopak ?? '').trim(),
+          }))
+          .filter((word) => word.wordPosition > 0 && word.surfaceText.length > 0),
       });
     },
     [chapterNamesById, onVersePress]

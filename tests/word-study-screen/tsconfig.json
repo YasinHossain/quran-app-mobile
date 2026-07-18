@@ -11,6 +11,7 @@
   },
   "include": [
     "../../components/word-study/full-study/wordStudyScreenModel.ts",
+    "../../components/word-study/full-study/morphologyGuideModel.ts",
     "../../components/word-study/full-study/grammarStudyModel.ts",
     "../../components/word-study/full-study/occurrenceExplorerModel.ts",
     "../../components/word-study/wordQuickSheetModel.ts",

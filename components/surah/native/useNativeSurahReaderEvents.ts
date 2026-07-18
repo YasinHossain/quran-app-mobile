@@ -3,6 +3,7 @@ import type { NativeSyntheticEvent } from 'react-native';
 
 import type { SurahVerse } from '@/hooks/useSurahVerses';
 import {
+  buildWordStudyVersePreview,
   normalizeWordStudyPressEvent,
   type WordStudyPressEvent,
 } from '@/components/word-study/WordStudyPressEvent';
@@ -168,10 +169,18 @@ export function useNativeSurahReaderEvents({
 
   const handleNativeWordPress = React.useCallback(
     (event: NativeSyntheticEvent<NativeSurahReaderWordPressEvent>) => {
-      const normalized = normalizeWordStudyPressEvent(event.nativeEvent);
+      const verseNumber = event.nativeEvent.verseNumber;
+      const loadedVerse =
+        Number.isFinite(verseNumber) && verseNumber > 0
+          ? getVerseByNumberRef.current(Math.trunc(verseNumber))
+          : undefined;
+      const normalized = normalizeWordStudyPressEvent({
+        ...event.nativeEvent,
+        verseWords: buildWordStudyVersePreview(loadedVerse?.words ?? []),
+      });
       if (normalized) openWordStudy(normalized);
     },
-    [openWordStudy]
+    [getVerseByNumberRef, openWordStudy]
   );
 
   return {

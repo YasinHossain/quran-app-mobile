@@ -2,7 +2,6 @@ import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-rou
 import {
   ArrowLeft,
   ChevronRight,
-  ExternalLink,
   Info,
   RotateCw,
   Share2,
@@ -10,7 +9,6 @@ import {
 import React from 'react';
 import {
   ActivityIndicator,
-  Linking,
   Pressable,
   ScrollView,
   Share,
@@ -22,20 +20,22 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import Colors from '@/constants/Colors';
 import { WordSegmentsCard } from '@/components/word-study/WordSegmentsCard';
-import { AyahContextSelector } from '@/components/word-study/full-study/AyahContextSelector';
+import {
+  AyahContextSelector,
+  type AyahContextWord,
+} from '@/components/word-study/full-study/AyahContextSelector';
 import { OccurrenceExplorer } from '@/components/word-study/full-study/OccurrenceExplorer';
 import { DictionarySection } from '@/components/word-study/full-study/DictionarySection';
+import { MorphologyGuideSheet } from '@/components/word-study/full-study/MorphologyGuideSheet';
 import { findSelectedWordGrammarPassages } from '@/components/word-study/full-study/grammarStudyModel';
 import { buildOccurrenceReaderParams } from '@/components/word-study/full-study/occurrenceExplorerModel';
+import { readWordStudyNavigationHandoff } from '@/components/word-study/full-study/wordStudyNavigationHandoff';
 import {
   buildWordStudyShareMessage,
   getLemmaText,
   getMorphologyDetails,
-  getPrimaryPosText,
   getRootText,
-  getStudySources,
   type MorphologyDetail,
-  type StudySourcePresentation,
 } from '@/components/word-study/full-study/wordStudyScreenModel';
 import { describeMissingReason, getPosLabel, getPrimaryGloss } from '@/components/word-study/wordQuickSheetModel';
 import { useChaptersContext } from '@/providers/ChaptersContext';
@@ -54,7 +54,7 @@ import {
 import { container } from '@/src/core/infrastructure/di/container';
 
 type Palette = (typeof Colors)['light'];
-type StudyTab = 'overview' | 'morphology' | 'grammar' | 'occurrences' | 'dictionary';
+type StudyTab = 'morphology' | 'grammar' | 'occurrences' | 'dictionary';
 type LoadState =
   | { status: 'loading' }
   | { status: 'ready'; words: readonly WordAnalysis[] }
@@ -94,14 +94,18 @@ export default function WordStudyScreen(): React.JSX.Element {
     () => parseRouteLocation(params),
     [params.ayah, params.position, params.surah]
   );
+  const [navigationHandoff] = React.useState(() =>
+    location ? readWordStudyNavigationHandoff(location.locationKey) : null
+  );
   const { resolvedTheme } = useAppTheme();
   const palette = Colors[resolvedTheme];
   const { chapters } = useChaptersContext();
   const { audioPlayerBarHeight } = useLayoutMetrics();
   const insets = useSafeAreaInsets();
-  const [tab, setTab] = React.useState<StudyTab>('overview');
+  const [tab, setTab] = React.useState<StudyTab>('morphology');
   const [loadState, setLoadState] = React.useState<LoadState>({ status: 'loading' });
   const [retryNonce, setRetryNonce] = React.useState(0);
+  const [isMorphologyGuideOpen, setIsMorphologyGuideOpen] = React.useState(false);
   const [grammarLoadState, setGrammarLoadState] = React.useState<GrammarLoadState>({
     status: 'idle',
   });
@@ -162,9 +166,27 @@ export default function WordStudyScreen(): React.JSX.Element {
   }, [location?.verseKey, tab]);
 
   const words = loadState.status === 'ready' ? loadState.words : [];
-  const selected = location
+  const immediateContextWords = React.useMemo<readonly AyahContextWord[]>(() => {
+    if (!navigationHandoff || navigationHandoff.verseKey !== location?.verseKey) return [];
+    return navigationHandoff.verseWords.map((word) => ({
+      location: toWordStudyLocation(
+        `${navigationHandoff.verseKey}:${word.wordPosition}`
+      ),
+      surfaceUthmani: word.surfaceText,
+    }));
+  }, [location?.verseKey, navigationHandoff]);
+  const contextWords: readonly AyahContextWord[] = words.length
+    ? words
+    : immediateContextWords;
+  const selectedFromLoadedVerse = location
     ? words.find((word) => word.location.wordPosition === location.wordPosition)
     : undefined;
+  const handedOffAnalysis = navigationHandoff?.selectedAnalysis;
+  const selectedFromHandoff =
+    handedOffAnalysis?.location.locationKey === location?.locationKey
+      ? handedOffAnalysis
+      : undefined;
+  const selected = selectedFromLoadedVerse ?? selectedFromHandoff;
   const selectPosition = React.useCallback(
     (position: number) => router.setParams({ position: String(position) }),
     [router]
@@ -226,9 +248,9 @@ export default function WordStudyScreen(): React.JSX.Element {
         </Pressable>
       </View>
 
-      {loadState.status === 'loading' ? (
+      {loadState.status === 'loading' && contextWords.length === 0 ? (
         <CenteredState palette={palette} loading title="Loading this ayah" message="Reading the installed Word Study pack…" />
-      ) : loadState.status === 'error' ? (
+      ) : loadState.status === 'error' && contextWords.length === 0 ? (
         <CenteredState
           palette={palette}
           title="Couldn’t open Word Study"
@@ -236,7 +258,7 @@ export default function WordStudyScreen(): React.JSX.Element {
           actionLabel={location ? 'Retry' : undefined}
           onAction={location ? () => setRetryNonce((value) => value + 1) : undefined}
         />
-      ) : !selected ? (
+      ) : loadState.status === 'ready' && !selected ? (
         <CenteredState
           palette={palette}
           title="Analysis unavailable"
@@ -254,8 +276,8 @@ export default function WordStudyScreen(): React.JSX.Element {
           }}
         >
           <AyahContextSelector
-            words={words}
-            selectedPosition={selected.location.wordPosition}
+            words={contextWords}
+            selectedPosition={location?.wordPosition ?? 0}
             onSelect={selectPosition}
           />
           <ScrollView
@@ -264,16 +286,32 @@ export default function WordStudyScreen(): React.JSX.Element {
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={[styles.tabs, { backgroundColor: palette.interactive }]}
           >
-            <TabButton label="Overview" selected={tab === 'overview'} onPress={() => setTab('overview')} palette={palette} />
             <TabButton label="Morphology" selected={tab === 'morphology'} onPress={() => setTab('morphology')} palette={palette} />
             <TabButton label="Grammar" selected={tab === 'grammar'} onPress={() => setTab('grammar')} palette={palette} />
             <TabButton label="Occurrences" selected={tab === 'occurrences'} onPress={() => setTab('occurrences')} palette={palette} />
             <TabButton label="Dictionary" selected={tab === 'dictionary'} onPress={() => setTab('dictionary')} palette={palette} />
           </ScrollView>
-          {tab === 'overview' ? (
-            <OverviewSection analysis={selected} palette={palette} />
+          {!selected ? (
+            <InlineAnalysisState
+              loading={loadState.status === 'loading'}
+              message={
+                loadState.status === 'error'
+                  ? loadState.message
+                  : 'Reading the detailed word analysis…'
+              }
+              onRetry={
+                loadState.status === 'error'
+                  ? () => setRetryNonce((value) => value + 1)
+                  : undefined
+              }
+              palette={palette}
+            />
           ) : tab === 'morphology' ? (
-            <MorphologySection analysis={selected} palette={palette} />
+            <MorphologySection
+              analysis={selected}
+              palette={palette}
+              onOpenGuide={() => setIsMorphologyGuideOpen(true)}
+            />
           ) : tab === 'grammar' ? (
             <GrammarSection
               analysis={selected}
@@ -291,6 +329,10 @@ export default function WordStudyScreen(): React.JSX.Element {
           )}
         </ScrollView>
       )}
+      <MorphologyGuideSheet
+        isOpen={isMorphologyGuideOpen}
+        onClose={() => setIsMorphologyGuideOpen(false)}
+      />
     </SafeAreaView>
   );
 }
@@ -316,66 +358,37 @@ function TabButton({ label, selected, onPress, palette }: {
   );
 }
 
-function OverviewSection({ analysis, palette }: { analysis: WordAnalysis; palette: Palette }): React.JSX.Element {
-  const sources = getStudySources(analysis.sourceReferences);
-  return (
-    <View style={styles.section}>
-      <WordSegmentsCard analysis={analysis} />
-      <View style={styles.glossBlock}>
-        <Text style={[styles.eyebrow, { color: palette.muted }]}>CONTEXTUAL GLOSS</Text>
-        <Text style={[styles.gloss, { color: palette.text }]}>{getPrimaryGloss(analysis)}</Text>
-        <Text style={[styles.explanation, { color: palette.muted }]}>Meaning of this occurrence in its ayah context.</Text>
-      </View>
-      <View style={[styles.card, { borderColor: palette.border, backgroundColor: palette.surface }]}> 
-        <StudyFact
-          label="Surface form"
-          arabicTerm="الصيغة الظاهرة"
-          value={analysis.surfaceUthmani}
-          explanation="The exact spelling that appears at this location."
-          palette={palette}
-          arabic
-        />
-        <StudyFact
-          label="Lemma"
-          arabicTerm="الصيغة المعجمية"
-          value={getLemmaText(analysis)}
-          explanation="The citation form used to group this word with its inflected forms."
-          palette={palette}
-          arabic={analysis.lemma.status === 'available'}
-        />
-        <StudyFact
-          label="Root"
-          arabicTerm="الجذر"
-          value={getRootText(analysis)}
-          explanation="The consonantal family this word belongs to, when a root applies."
-          palette={palette}
-          arabic={analysis.root.status === 'available'}
-        />
-        <StudyFact
-          label="Part of speech"
-          arabicTerm="نوع الكلمة"
-          value={getPrimaryPosText(analysis)}
-          explanation="The main grammatical category recorded for this word."
-          palette={palette}
-          last
-        />
-      </View>
-      <AboutAnalysis sources={sources} palette={palette} />
-    </View>
-  );
-}
-
-function MorphologySection({ analysis, palette }: { analysis: WordAnalysis; palette: Palette }): React.JSX.Element {
-  const wholeWordDetails = analysis.morphology.status === 'available'
-    ? getMorphologyDetails(analysis.morphology.value)
-    : [];
+function MorphologySection({ analysis, palette, onOpenGuide }: {
+  analysis: WordAnalysis;
+  palette: Palette;
+  onOpenGuide: () => void;
+}): React.JSX.Element {
   const segments = analysis.morphemes.status === 'available' ? analysis.morphemes.value : [];
   return (
     <View style={styles.section}>
       <WordSegmentsCard analysis={analysis} compact />
+      <View style={styles.glossBlock}>
+        <Text style={[styles.eyebrow, { color: palette.muted }]}>Meaning in this ayah</Text>
+        <Text style={[styles.gloss, { color: palette.text }]}>{getPrimaryGloss(analysis)}</Text>
+      </View>
+      <View style={styles.lexicalFacts}>
+        <CompactStudyFact
+          label="Lemma"
+          arabicTerm="الصيغة المعجمية"
+          value={getLemmaText(analysis)}
+          available={analysis.lemma.status === 'available'}
+          palette={palette}
+        />
+        <CompactStudyFact
+          label="Root"
+          arabicTerm="الجذر"
+          value={getRootText(analysis)}
+          available={analysis.root.status === 'available'}
+          palette={palette}
+        />
+      </View>
       <SectionHeading
         title="How this word is built"
-        subtitle="Each attached segment is labeled by role and part of speech; color is only a visual aid."
         palette={palette}
       />
       {segments.length ? segments.map((segment) => (
@@ -383,28 +396,22 @@ function MorphologySection({ analysis, palette }: { analysis: WordAnalysis; pale
       )) : (
         <NoticeCard message={analysis.morphemes.status === 'available' ? 'No segments are recorded for this word.' : describeMissingReason(analysis.morphemes.reason)} palette={palette} />
       )}
-      {wholeWordDetails.length ? (
-        <>
-          <SectionHeading
-            title="Features at this location"
-            subtitle="Only features explicitly recorded by the installed source are shown."
-            palette={palette}
-          />
-          <View style={[styles.card, { borderColor: palette.border, backgroundColor: palette.surface }]}> 
-            {wholeWordDetails.map((detail, index) => (
-              <MorphologyRow key={detail.key} detail={detail} palette={palette} last={index === wholeWordDetails.length - 1} />
-            ))}
-          </View>
-        </>
-      ) : (
-        <NoticeCard message="No additional whole-word inflection is recorded or applicable here." palette={palette} />
-      )}
-      <View style={[styles.scopeNotice, { backgroundColor: palette.interactive }]}> 
-        <Info color={palette.tint} size={18} strokeWidth={2.2} />
-        <Text style={[styles.scopeNoticeText, { color: palette.muted }]}> 
-          Morphology describes how this word is formed. Open Grammar for its Arabic i‘rab in the ayah.
-        </Text>
-      </View>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Understanding morphology terms"
+        accessibilityHint="Opens a guide to segment and feature labels"
+        onPress={onOpenGuide}
+        style={({ pressed }) => [
+          styles.guideRow,
+          { borderColor: palette.border, backgroundColor: palette.surface, opacity: pressed ? 0.78 : 1 },
+        ]}
+      >
+        <View style={[styles.guideIcon, { backgroundColor: palette.interactive }]}>
+          <Info color={palette.tint} size={19} strokeWidth={2.2} />
+        </View>
+        <Text style={[styles.guideLabel, { color: palette.text }]}>Understanding morphology terms</Text>
+        <ChevronRight color={palette.tint} size={20} strokeWidth={2.2} />
+      </Pressable>
     </View>
   );
 }
@@ -597,14 +604,14 @@ function GrammarPassageCard({
 function SegmentCard({ segment, palette }: { segment: Morpheme; palette: Palette }): React.JSX.Element {
   const details = getMorphologyDetails(segment.features);
   const role = segment.segmentType === 'prefix'
-    ? ['Prefix', 'سابقة', 'An attached segment before the stem.']
+    ? ['Prefix', 'سابقة']
     : segment.segmentType === 'suffix'
-      ? ['Suffix', 'لاحقة', 'An attached ending, often encoding a pronoun or inflection.']
+      ? ['Suffix', 'لاحقة']
       : segment.segmentType === 'stem'
-        ? ['Stem', 'جذع الكلمة', 'The central lexical part of this occurrence.']
+        ? ['Stem', 'جذع الكلمة']
         : segment.segmentType === 'infix'
-          ? ['Infix', 'مقطع داخلي', 'A segment occurring inside the word form.']
-          : ['Whole word', 'الكلمة كاملة', 'The analysis applies to the word as one segment.'];
+          ? ['Infix', 'مقطع داخلي']
+          : ['Whole word', 'الكلمة كاملة'];
   return (
     <View style={[styles.segmentCard, { borderColor: palette.border, backgroundColor: palette.surface }]}> 
       <View style={styles.segmentHeader}>
@@ -614,7 +621,6 @@ function SegmentCard({ segment, palette }: { segment: Morpheme; palette: Palette
           <Text style={[styles.segmentPos, { color: palette.tint }]}>{getPosLabel(segment.posCode)} · {segment.posCode}</Text>
         </View>
       </View>
-      <Text style={[styles.explanation, { color: palette.muted }]}>{role[2]}</Text>
       {details.length ? (
         <View style={[styles.segmentDetails, { borderTopColor: palette.border }]}> 
           {details.map((detail, index) => (
@@ -636,73 +642,63 @@ function MorphologyRow({ detail, palette, last, compact = false }: {
     <View style={[styles.morphologyRow, compact && styles.morphologyRowCompact, !last && { borderBottomColor: palette.border, borderBottomWidth: StyleSheet.hairlineWidth }]}> 
       <Text style={[styles.factLabel, { color: palette.text }]}>{detail.label} · {detail.arabicTerm}</Text>
       <Text style={[styles.factValue, { color: palette.tint }]}>{detail.value}</Text>
-      <Text style={[styles.explanation, { color: palette.muted }]}>{detail.explanation}</Text>
     </View>
   );
 }
 
-function StudyFact({ label, arabicTerm, value, explanation, palette, arabic = false, last = false }: {
+function CompactStudyFact({ label, arabicTerm, value, available, palette }: {
   label: string;
   arabicTerm: string;
   value: string;
-  explanation: string;
+  available: boolean;
   palette: Palette;
-  arabic?: boolean;
-  last?: boolean;
 }): React.JSX.Element {
   return (
-    <View style={[styles.studyFact, !last && { borderBottomColor: palette.border, borderBottomWidth: StyleSheet.hairlineWidth }]}> 
+    <View style={[styles.lexicalFact, { borderColor: palette.border, backgroundColor: palette.surface }]}>
       <Text style={[styles.factLabel, { color: palette.muted }]}>{label} · {arabicTerm}</Text>
-      <Text style={[styles.factValue, arabic && styles.factValueArabic, { color: palette.text }]}>{value}</Text>
-      <Text style={[styles.explanation, { color: palette.muted }]}>{explanation}</Text>
+      <Text style={[styles.factValue, available && styles.factValueArabic, { color: palette.text }]}>{value}</Text>
     </View>
   );
 }
 
-function AboutAnalysis({ sources, palette }: { sources: readonly StudySourcePresentation[]; palette: Palette }): React.JSX.Element {
-  return (
-    <View style={[styles.aboutCard, { borderColor: palette.border, backgroundColor: palette.surface }]}> 
-      <View style={styles.aboutHeading}>
-        <Info color={palette.tint} size={19} strokeWidth={2.2} />
-        <Text style={[styles.aboutTitle, { color: palette.text }]}>About this analysis</Text>
-      </View>
-      <Text style={[styles.explanation, { color: palette.muted }]}> 
-        Source annotations are reproduced from the installed offline pack. Beginner explanations clarify the labels but do not replace expert grammatical review.
-      </Text>
-      {sources.map((source) => (
-        <Pressable
-          key={source.key}
-          accessibilityRole={source.url ? 'link' : 'text'}
-          disabled={!source.url}
-          onPress={() => source.url && void Linking.openURL(source.url)}
-          style={[styles.sourceBlock, { borderTopColor: palette.border }]}
-        >
-          <View style={styles.sourceTitleRow}>
-            <Text style={[styles.sourceTitle, { color: palette.text }]}>{source.title}</Text>
-            {source.url ? <ExternalLink color={palette.tint} size={15} strokeWidth={2.2} /> : null}
-          </View>
-          <Text style={[styles.sourceVersion, { color: palette.tint }]}>Version {source.version}</Text>
-          <Text style={[styles.sourceMeta, { color: palette.muted }]}>Layers: {source.layers.join(', ')}</Text>
-          <Text style={[styles.sourceMeta, { color: palette.muted }]}>{source.attribution}</Text>
-        </Pressable>
-      ))}
-    </View>
-  );
-}
-
-function SectionHeading({ title, subtitle, palette }: { title: string; subtitle: string; palette: Palette }): React.JSX.Element {
+function SectionHeading({ title, subtitle, palette }: { title: string; subtitle?: string; palette: Palette }): React.JSX.Element {
   return (
     <View style={styles.sectionHeading}>
       <Text style={[styles.sectionTitle, { color: palette.text }]}>{title}</Text>
-      <Text style={[styles.explanation, { color: palette.muted }]}>{subtitle}</Text>
+      {subtitle ? <Text style={[styles.explanation, { color: palette.muted }]}>{subtitle}</Text> : null}
     </View>
   );
 }
 
 function NoticeCard({ message, palette }: { message: string; palette: Palette }): React.JSX.Element {
   return (
-    <View style={[styles.noticeCard, { borderColor: palette.border, backgroundColor: palette.surface }]}> 
+    <View
+      style={[styles.noticeCard, { borderColor: palette.border, backgroundColor: palette.surface }]}
+    >
       <Text style={[styles.explanation, { color: palette.muted }]}>{message}</Text>
+    </View>
+  );
+}
+
+function InlineAnalysisState({ loading, message, onRetry, palette }: {
+  loading: boolean;
+  message: string;
+  onRetry?: () => void;
+  palette: Palette;
+}): React.JSX.Element {
+  return (
+    <View
+      accessibilityLiveRegion="polite"
+      style={[styles.inlineAnalysisState, { borderColor: palette.border, backgroundColor: palette.surface }]}
+    >
+      {loading ? <ActivityIndicator color={palette.tint} /> : null}
+      <Text style={[styles.explanation, { color: palette.muted }]}>{message}</Text>
+      {onRetry ? (
+        <Pressable accessibilityRole="button" onPress={onRetry} style={styles.retry}>
+          <RotateCw color={palette.tint} size={17} strokeWidth={2.2} />
+          <Text style={[styles.retryText, { color: palette.tint }]}>Retry</Text>
+        </Pressable>
+      ) : null}
     </View>
   );
 }
@@ -747,19 +743,14 @@ const styles = StyleSheet.create({
   eyebrow: { fontSize: 11, lineHeight: 16, fontWeight: '700', letterSpacing: 1 },
   gloss: { fontSize: 20, lineHeight: 29, fontWeight: '600' },
   explanation: { fontSize: 13, lineHeight: 20 },
-  card: { borderWidth: 1, borderRadius: 18, overflow: 'hidden' },
-  studyFact: { paddingHorizontal: 16, paddingVertical: 14, gap: 5 },
+  lexicalFacts: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  lexicalFact: { flex: 1, minWidth: 148, borderWidth: 1, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 12, gap: 4 },
   factLabel: { fontSize: 12, lineHeight: 18, fontWeight: '700' },
   factValue: { fontSize: 16, lineHeight: 23, fontWeight: '600' },
   factValueArabic: { fontFamily: 'UthmanicHafs1Ver18', fontSize: 25, lineHeight: 37, writingDirection: 'rtl', textAlign: 'left' },
-  aboutCard: { borderWidth: 1, borderRadius: 18, padding: 16, gap: 10 },
-  aboutHeading: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  aboutTitle: { fontSize: 16, lineHeight: 22, fontWeight: '700' },
-  sourceBlock: { paddingTop: 12, marginTop: 2, borderTopWidth: StyleSheet.hairlineWidth, gap: 3 },
-  sourceTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  sourceTitle: { flex: 1, fontSize: 14, lineHeight: 20, fontWeight: '700' },
-  sourceVersion: { fontSize: 12, lineHeight: 18, fontWeight: '700' },
-  sourceMeta: { fontSize: 11, lineHeight: 17 },
+  guideRow: { minHeight: 58, borderWidth: 1, borderRadius: 17, paddingHorizontal: 13, paddingVertical: 9, flexDirection: 'row', alignItems: 'center', gap: 11 },
+  guideIcon: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  guideLabel: { flex: 1, fontSize: 14, lineHeight: 20, fontWeight: '700' },
   sectionHeading: { gap: 3, paddingHorizontal: 2 },
   sectionTitle: { fontSize: 18, lineHeight: 25, fontWeight: '700' },
   segmentCard: { borderWidth: 1, borderRadius: 18, padding: 16, gap: 8 },
@@ -771,8 +762,6 @@ const styles = StyleSheet.create({
   segmentDetails: { marginTop: 5, paddingTop: 6, borderTopWidth: StyleSheet.hairlineWidth },
   morphologyRow: { paddingHorizontal: 16, paddingVertical: 13, gap: 4 },
   morphologyRowCompact: { paddingHorizontal: 0 },
-  scopeNotice: { borderRadius: 16, padding: 14, flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
-  scopeNoticeText: { flex: 1, fontSize: 13, lineHeight: 20 },
   grammarLoading: { minHeight: 180, alignItems: 'center', justifyContent: 'center', gap: 12 },
   grammarHero: { borderRadius: 20, paddingHorizontal: 18, paddingVertical: 20, alignItems: 'center', gap: 5 },
   grammarHeroWord: { fontFamily: 'UthmanicHafs1Ver18', fontSize: 38, lineHeight: 56, writingDirection: 'rtl', textAlign: 'center' },
@@ -787,6 +776,7 @@ const styles = StyleSheet.create({
   grammarDisclosureTitle: { fontSize: 16, lineHeight: 22, fontWeight: '700' },
   grammarPassageList: { gap: 12 },
   noticeCard: { borderWidth: 1, borderRadius: 16, padding: 16 },
+  inlineAnalysisState: { minHeight: 150, borderWidth: 1, borderRadius: 18, padding: 20, alignItems: 'center', justifyContent: 'center', gap: 10 },
   centeredState: { flex: 1, paddingHorizontal: 30, alignItems: 'center', justifyContent: 'center', gap: 10 },
   stateTitle: { fontSize: 20, lineHeight: 28, fontWeight: '700', textAlign: 'center' },
   stateMessage: { maxWidth: 420, fontSize: 14, lineHeight: 21, textAlign: 'center' },

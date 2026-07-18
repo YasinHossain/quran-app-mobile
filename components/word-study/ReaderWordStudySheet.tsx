@@ -4,6 +4,7 @@ import { Share } from 'react-native';
 
 import { WordQuickSheet } from './WordQuickSheet';
 import type { WordStudyPressEvent } from './WordStudyPressEvent';
+import { stageWordStudyNavigationHandoff } from './full-study/wordStudyNavigationHandoff';
 import type { WordQuickSheetController } from './useWordQuickSheetController';
 
 type WordAudioAction = (location: { verseKey: string; wordPosition: number }) => void;
@@ -57,8 +58,11 @@ export function ReaderWordStudySheet({
     if (!selectedLocation) return;
     const [surah, ayah] = selectedLocation.verseKey.split(':');
     if (!surah || !ayah) return;
+    const selectedAnalysis =
+      controller.loadState.status === 'ready' ? controller.loadState.analysis : undefined;
+    stageWordStudyNavigationHandoff(selectedLocation, selectedAnalysis);
     router.push(`/study/word/${surah}/${ayah}/${selectedLocation.wordPosition}` as never);
-  }, [router, selectedLocation]);
+  }, [controller.loadState, router, selectedLocation]);
 
   return (
     <WordQuickSheet

@@ -23,7 +23,12 @@ import {
   getRootText,
   getStudySources,
 } from '../../components/word-study/full-study/wordStudyScreenModel';
-import { getCollapsedAyahWindow } from '../../components/word-study/full-study/ayahContextSelectorModel';
+import { MORPHOLOGY_GUIDE_GROUPS } from '../../components/word-study/full-study/morphologyGuideModel';
+import {
+  getCollapsedAyahCapacity,
+  getSelectedAyahExcerpt,
+  shouldCollapseAyah,
+} from '../../components/word-study/full-study/ayahContextSelectorModel';
 import {
   OCCURRENCE_PAGE_SIZE,
   buildOccurrenceQuery,
@@ -39,16 +44,62 @@ import type { IDictionaryReferenceRepository } from '../../src/core/domain/repos
 
 const verb = WORD_STUDY_RICH_CONTRACT_FIXTURES[0] as WordAnalysis;
 const particle = WORD_STUDY_RICH_CONTRACT_FIXTURES[1] as WordAnalysis;
+const properNoun = WORD_STUDY_RICH_CONTRACT_FIXTURES[2] as WordAnalysis;
 
-test('morphology rows contain only source-applicable fields with beginner explanations', () => {
+test('morphology rows contain only source-applicable labeled values', () => {
   assert.equal(verb.morphology.status, 'available');
   if (verb.morphology.status !== 'available') return;
   const rows = getMorphologyDetails(verb.morphology.value);
   assert.deepEqual(rows.map((row) => row.key), ['aspect', 'voice', 'person', 'gender', 'number', 'verbForm']);
   assert.equal(rows.find((row) => row.key === 'verbForm')?.value, 'Form IV');
-  assert.ok(rows.every((row) => row.arabicTerm.length > 0 && row.explanation.length > 20));
+  assert.ok(rows.every((row) => row.label.length > 0 && row.arabicTerm.length > 0 && row.value.length > 0));
+  assert.ok(rows.every((row) => !('explanation' in row)));
   assert.equal(rows.some((row) => row.key === 'mood'), false);
   assert.equal(getMorphologyDetails({}).length, 0);
+});
+
+test('segment features render once for multi-segment and one-segment words', () => {
+  assert.equal(verb.morphemes.status, 'available');
+  assert.equal(properNoun.morphemes.status, 'available');
+  if (verb.morphemes.status !== 'available' || properNoun.morphemes.status !== 'available') return;
+
+  assert.deepEqual(
+    verb.morphemes.value.map((segment) => ({
+      role: segment.segmentType,
+      keys: getMorphologyDetails(segment.features).map((row) => row.key),
+    })),
+    [
+      { role: 'prefix', keys: [] },
+      { role: 'stem', keys: ['aspect', 'voice', 'person', 'gender', 'number', 'verbForm'] },
+    ]
+  );
+  assert.deepEqual(
+    properNoun.morphemes.value.map((segment) => ({
+      role: segment.segmentType,
+      keys: getMorphologyDetails(segment.features).map((row) => row.key),
+    })),
+    [{ role: 'whole-word', keys: ['grammaticalCase'] }]
+  );
+  assert.deepEqual(
+    getMorphologyDetails({ grammaticalCase: 'genitive', grammaticalState: 'definite' })
+      .map((row) => row.key),
+    ['grammaticalCase', 'grammaticalState']
+  );
+});
+
+test('morphology guide groups all segment and feature terms with Arabic labels', () => {
+  assert.deepEqual(MORPHOLOGY_GUIDE_GROUPS.map((group) => group.title), ['Segments', 'Features']);
+  assert.deepEqual(
+    MORPHOLOGY_GUIDE_GROUPS[0]?.terms.map((term) => term.label),
+    ['Prefix', 'Stem', 'Suffix', 'Infix', 'Whole word']
+  );
+  assert.deepEqual(
+    MORPHOLOGY_GUIDE_GROUPS[1]?.terms.map((term) => term.label),
+    ['Aspect', 'Mood', 'Voice', 'Person', 'Gender', 'Number', 'Case', 'State', 'Verb form', 'Derivation']
+  );
+  assert.ok(MORPHOLOGY_GUIDE_GROUPS.every((group) =>
+    group.terms.every((term) => term.arabicTerm.length > 0 && term.definition.length > 20)
+  ));
 });
 
 test('rootless particles explain the absence instead of rendering a blank field', () => {
@@ -56,31 +107,22 @@ test('rootless particles explain the absence instead of rendering a blank field'
   assert.equal(getRootText(particle), 'No root applies to this particle.');
 });
 
-test('collapsed ayah windows keep early, middle, and late selections visible', () => {
-  const layouts = Array.from({ length: 10 }, (_, index) => ({
-    position: index + 1,
-    x: index % 2 === 0 ? 120 : 40,
-    y: Math.floor(index / 2) * 50,
-    width: 70,
-    height: 40,
+test('collapsed ayah excerpts are deterministic and keep the selected word visible', () => {
+  const words = Array.from({ length: 20 }, (_, index) => ({
+    wordPosition: index + 1,
+    surfaceUthmani: index % 2 === 0 ? 'ٱلْكَلِمَةُ' : 'مِنْ',
   }));
+  const capacity = getCollapsedAyahCapacity(390, 31, 3);
 
-  assert.deepEqual(getCollapsedAyahWindow(layouts, 1), {
-    lineCount: 5,
-    startY: 0,
-    height: 140,
-  });
-  assert.deepEqual(getCollapsedAyahWindow(layouts, 5), {
-    lineCount: 5,
-    startY: 50,
-    height: 140,
-  });
-  assert.deepEqual(getCollapsedAyahWindow(layouts, 10), {
-    lineCount: 5,
-    startY: 100,
-    height: 140,
-  });
-  assert.equal(getCollapsedAyahWindow(layouts.slice(0, 6), 3), null);
+  assert.equal(shouldCollapseAyah(words.slice(0, 4), capacity), false);
+  assert.equal(shouldCollapseAyah(words, capacity), true);
+  for (const selectedPosition of [1, 10, 20]) {
+    const range = getSelectedAyahExcerpt(words, selectedPosition, capacity);
+    assert.ok(range.startIndex >= 0);
+    assert.ok(range.endIndex <= words.length);
+    assert.ok(words.slice(range.startIndex, range.endIndex)
+      .some((word) => word.wordPosition === selectedPosition));
+  }
 });
 
 test('source presentation and sharing retain source versions and attribution', () => {
@@ -169,61 +211,121 @@ test('occurrence queries remain fixed-size and reader navigation retains the exa
   });
 });
 
-test('full screen uses the full ayah selector and route-driven selection without visible adjacent navigation', () => {
+test('full screen uses Morphology-first information architecture without repeated analysis', () => {
   const source = readFileSync(
     join(process.cwd(), 'app/study/word/[surah]/[ayah]/[position].tsx'),
     'utf8'
   );
   assert.match(source, /<AyahContextSelector/);
+  assert.match(source, /readWordStudyNavigationHandoff/);
+  assert.match(source, /contextWords\.length === 0/);
+  assert.match(source, /words\.length[\s\S]*?immediateContextWords/);
   assert.match(source, /router\.setParams\(\{ position:/);
-  assert.match(source, /label="Overview"/);
   assert.match(source, /label="Morphology"/);
   assert.match(source, /label="Grammar"/);
   assert.match(source, /label="Occurrences"/);
   assert.match(source, /label="Dictionary"/);
+  assert.ok(source.indexOf('label="Morphology"') < source.indexOf('label="Grammar"'));
+  assert.ok(source.indexOf('label="Grammar"') < source.indexOf('label="Occurrences"'));
+  assert.ok(source.indexOf('label="Occurrences"') < source.indexOf('label="Dictionary"'));
+  assert.match(source, /useState<StudyTab>\('morphology'\)/);
+  assert.match(source, /Meaning in this ayah/);
+  assert.match(source, /label="Lemma"/);
+  assert.match(source, /label="Root"/);
+  assert.match(source, /How this word is built/);
+  assert.ok(source.indexOf('Meaning in this ayah') < source.indexOf('How this word is built'));
+  assert.ok(source.indexOf('label="Lemma"') < source.indexOf('How this word is built'));
+  assert.ok(source.indexOf('label="Root"') < source.indexOf('How this word is built'));
   assert.match(source, /horizontal/);
   assert.match(source, /useFocusEffect/);
   assert.match(source, /scrollOffsetRef/);
-  assert.match(source, /About this analysis/);
+  assert.match(source, /accessibilityLabel="Understanding morphology terms"/);
+  assert.match(source, /<MorphologyGuideSheet/);
   assert.match(source, /Share\.share/);
   assert.match(source, /Complete ayah grammar/);
   assert.match(source, /إِعْرَابٌ مُخْتَصَرٌ/);
+  assert.doesNotMatch(source, /label="Overview"|tab === 'overview'|'overview' \|/);
+  assert.doesNotMatch(source, /Surface form|Part of speech|Features at this location/);
+  assert.doesNotMatch(source, /Morphology describes how this word is formed/);
+  assert.doesNotMatch(source, /An attached segment before the stem|The central lexical part/);
+  assert.doesNotMatch(source, /detail\.explanation/);
+  assert.doesNotMatch(source, /getMorphologyDetails\(analysis\.morphology\.value\)/);
+  assert.doesNotMatch(source, /About this analysis|function AboutAnalysis|getStudySources/);
   assert.doesNotMatch(source, /Dictionary definition/);
   assert.doesNotMatch(source, /function WordRibbon/);
   assert.doesNotMatch(source, /function AdjacentNavigation/);
   assert.doesNotMatch(source, /positionCounter/);
 });
 
-test('ayah selector renders unboxed, spacious RTL text with color-only selection and accessibility state', () => {
+test('morphology guide is a scrollable, dismissible, explicitly height-constrained sheet', () => {
+  const source = readFileSync(
+    join(process.cwd(), 'components/word-study/full-study/MorphologyGuideSheet.tsx'),
+    'utf8'
+  );
+  assert.match(source, /useWindowDimensions\(\)/);
+  assert.match(source, /height: sheetHeight/);
+  assert.match(source, /minHeight: sheetHeight/);
+  assert.match(source, /maxHeight: maxSheetHeight/);
+  assert.match(source, /<Modal/);
+  assert.match(source, /onRequestClose=\{onClose\}/);
+  assert.match(source, /<ScrollView/);
+  assert.match(source, /accessibilityViewIsModal/);
+  assert.match(source, /accessibilityLabel="Understanding morphology terms"/);
+  assert.match(source, /MORPHOLOGY_GUIDE_GROUPS\.map/);
+});
+
+test('Word Study Sources is manifest-backed and reachable from settings', () => {
+  const screen = readFileSync(join(process.cwd(), 'app/word-study-sources.tsx'), 'utf8');
+  const settings = readFileSync(
+    join(process.cwd(), 'components/reader/settings/SettingsSidebarContent.tsx'),
+    'utf8'
+  );
+  const layout = readFileSync(join(process.cwd(), 'app/_layout.tsx'), 'utf8');
+
+  assert.match(screen, /corePack\.manifest\.sources\.map/);
+  assert.match(screen, /BUNDLED_WORD_GRAMMAR_PACK\.manifest/);
+  assert.match(screen, /listInstalledAsync\(\)/);
+  assert.match(screen, /Methodology boundaries/);
+  assert.match(screen, /source\.license/);
+  assert.match(screen, /source\.attribution/);
+  assert.match(screen, /source\.checksumSha256/);
+  assert.match(screen, /ExternalLink/);
+  assert.match(settings, /Word Study Sources/);
+  assert.match(settings, /router\.push\('\/word-study-sources'\)/);
+  assert.match(layout, /name="word-study-sources"/);
+  assert.doesNotMatch(screen, /qac-morphology-v0\.4|quran-app-offline-word-pack-en/);
+});
+
+test('ayah selector uses one stable inline Arabic layout without a measurement phase', () => {
   const source = readFileSync(
     join(process.cwd(), 'components/word-study/full-study/AyahContextSelector.tsx'),
     'utf8'
   );
-  assert.match(source, /flexDirection: 'row-reverse'/);
-  assert.match(source, /flexWrap: 'wrap'/);
+  assert.match(source, /getSelectedAyahExcerpt/);
+  assert.match(source, /shouldCollapseAyah/);
+  assert.match(source, /numberOfLines=/);
   assert.match(source, /writingDirection: 'rtl'/);
-  assert.match(source, /getCollapsedAyahWindow/);
+  assert.match(source, /textAlign: 'right'/);
   assert.match(source, /accessibilityState=\{\{ selected \}\}/);
   assert.match(source, /accessibilityState=\{\{ expanded \}\}/);
   assert.match(source, /accessibilityActions/);
-  assert.match(source, /useReducedMotion/);
   assert.match(source, /palette\.accent/);
-  assert.match(source, /columnGap: 7/);
-  assert.match(source, /fontSize: 31/);
-  assert.match(source, /VIEWPORT_HEIGHT_DURATION = 240/);
-  assert.match(source, /RECENTER_MOTION_DURATION = 300/);
-  assert.match(source, /ESTIMATED_COLLAPSED_HEIGHT = 166/);
-  assert.match(source, /measurementPending \? styles\.wordsMeasuring/);
-  assert.match(source, /wordsMeasuring: \{ opacity: 0 \}/);
-  assert.match(source, /toValue: targetHeight/);
-  assert.match(source, /toValue: targetTranslateY/);
-  assert.match(source, /Easing\.inOut\(Easing\.cubic\)/);
-  assert.match(source, /useNativeDriver: true/);
-  assert.match(source, /useLayoutEffect/);
+  assert.match(source, /ARABIC_FONT_SIZE = 31/);
+  assert.match(source, /ARABIC_LINE_HEIGHT = 54/);
+  assert.match(source, /COLLAPSED_EXCERPT_FILL_FACTOR = 1\.25/);
+  assert.match(source, /COLLAPSED_HEIGHT = COLLAPSED_LINE_COUNT \* ARABIC_LINE_HEIGHT/);
+  assert.match(source, /EXPANSION_DURATION = 260/);
+  assert.match(source, /useReducedMotion/);
+  assert.match(source, /Animated\.timing\(disclosureProgress/);
+  assert.match(source, /Animated\.timing\(viewportHeight/);
+  assert.match(source, /useNativeDriver: false/);
+  assert.match(source, /onLayout=\{handleFullContentLayout\}/);
+  assert.match(source, /fullContentMeasurement/);
   assert.match(source, /<ChevronDown[^>]+size=\{28\}/);
-  assert.match(source, /<ChevronUp[^>]+size=\{28\}/);
   assert.match(source, /direction: 'ltr'/);
   assert.match(source, /justifyContent: 'flex-end'/);
+  assert.doesNotMatch(source, /useLayoutEffect|\bmeasure\b|translateY|LayoutAnimation/);
+  assert.doesNotMatch(source, /flexWrap|row-reverse/);
   assert.doesNotMatch(source, /AYAH CONTEXT/);
   assert.doesNotMatch(source, /ChevronsDown|ChevronsUp/);
   assert.doesNotMatch(source, /underline/i);

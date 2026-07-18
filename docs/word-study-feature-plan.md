@@ -205,7 +205,7 @@ Filters should be `Surface`, `Lemma`, and `Root`. Each result should include the
 - Respect Arabic RTL independently from the app content language.
 - Keep technical Arabic terms available even in English mode, with a short explanation.
 - Support Dynamic Type/font scaling without clipping the Arabic card.
-- Use source labels and an `About this analysis` page.
+- Keep per-definition citations where source identity affects content, and expose complete pack provenance through the Settings-accessible `Word Study Sources` destination.
 
 ## 5. Architecture
 

@@ -13,6 +13,7 @@ const { join } = require('node:path') as { join(...parts: string[]): string };
 const test = require('node:test') as (name: string, callback: () => void | Promise<void>) => void;
 
 import {
+  buildWordStudyVersePreview,
   getWordStudyLocationKey,
   normalizeWordStudyPressEvent,
 } from '../../components/word-study/WordStudyPressEvent';
@@ -64,6 +65,26 @@ test('all Android reader payloads resolve the same canonical analysis location',
   });
 
   assert.deepEqual(locationKeys, ['3:3:9', '3:3:9', '3:3:9']);
+});
+
+test('carries the already-loaded reader ayah into Word Study without end markers', () => {
+  const verseWords = buildWordStudyVersePreview([
+    { position: 1, uthmani: ' قُلْ ' },
+    { position: 2, uthmani: 'هُوَ' },
+    { position: 3, uthmani: '١', charTypeName: 'end' },
+  ]);
+  assert.deepEqual(verseWords, [
+    { wordPosition: 1, surfaceText: 'قُلْ' },
+    { wordPosition: 2, surfaceText: 'هُوَ' },
+  ]);
+
+  const event = normalizeWordStudyPressEvent({
+    verseKey: '112:1',
+    wordPosition: 2,
+    verseWords,
+    source: 'translation',
+  });
+  assert.deepEqual(event?.verseWords, verseWords);
 });
 
 test('builds segmented verb content and friendly morphology copy', () => {

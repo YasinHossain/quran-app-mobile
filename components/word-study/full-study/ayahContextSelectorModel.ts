@@ -1,69 +1,97 @@
-export type AyahWordLayout = {
-  readonly position: number;
-  readonly x: number;
-  readonly y: number;
-  readonly width: number;
-  readonly height: number;
+export type AyahExcerptWord = {
+  readonly wordPosition: number;
+  readonly surfaceUthmani: string;
 };
 
-export type CollapsedAyahWindow = {
-  readonly lineCount: number;
-  readonly startY: number;
-  readonly height: number;
+export type AyahExcerptRange = {
+  readonly startIndex: number;
+  readonly endIndex: number;
 };
 
-type AyahLine = {
-  top: number;
-  bottom: number;
-  positions: number[];
-};
+const DIACRITIC_PATTERN = /\p{Mark}|\u0640/gu;
 
-const LINE_Y_TOLERANCE = 4;
+export function estimateAyahWordUnits(surfaceUthmani: string): number {
+  const baseCharacters = Array.from(
+    surfaceUthmani.normalize('NFD').replace(DIACRITIC_PATTERN, '')
+  ).length;
+  return Math.max(2, baseCharacters + 1);
+}
 
-function groupLayoutsIntoLines(layouts: readonly AyahWordLayout[]): readonly AyahLine[] {
-  const sorted = [...layouts].sort((left, right) => left.y - right.y || right.x - left.x);
-  const lines: AyahLine[] = [];
+export function getCollapsedAyahCapacity(
+  viewportWidth: number,
+  fontSize = 31,
+  lineCount = 3
+): number {
+  const contentWidth = Math.max(180, viewportWidth - 32);
+  const averageGlyphWidth = fontSize * 0.48;
+  return Math.max(18, Math.floor(contentWidth / averageGlyphWidth) * lineCount);
+}
 
-  for (const layout of sorted) {
-    const line = lines.find((candidate) => Math.abs(candidate.top - layout.y) <= LINE_Y_TOLERANCE);
-    if (line) {
-      line.top = Math.min(line.top, layout.y);
-      line.bottom = Math.max(line.bottom, layout.y + layout.height);
-      line.positions.push(layout.position);
-    } else {
-      lines.push({
-        top: layout.y,
-        bottom: layout.y + layout.height,
-        positions: [layout.position],
-      });
+export function shouldCollapseAyah(
+  words: readonly AyahExcerptWord[],
+  capacity: number
+): boolean {
+  return words.reduce(
+    (total, word) => total + estimateAyahWordUnits(word.surfaceUthmani),
+    0
+  ) > capacity;
+}
+
+export function getSelectedAyahExcerpt(
+  words: readonly AyahExcerptWord[],
+  selectedPosition: number,
+  capacity: number
+): AyahExcerptRange {
+  if (words.length === 0) return { startIndex: 0, endIndex: 0 };
+
+  const selectedIndex = Math.max(
+    0,
+    words.findIndex((word) => word.wordPosition === selectedPosition)
+  );
+  let startIndex = selectedIndex;
+  let endIndex = selectedIndex + 1;
+  let usedUnits = estimateAyahWordUnits(words[selectedIndex]?.surfaceUthmani ?? '');
+  let earlierUnits = 0;
+  let laterUnits = 0;
+  const budget = Math.max(usedUnits, capacity - 4);
+
+  while (startIndex > 0 || endIndex < words.length) {
+    const preferEarlier = startIndex > 0 && (endIndex >= words.length || earlierUnits <= laterUnits);
+    const preferredIndex = preferEarlier ? startIndex - 1 : endIndex;
+    const alternateIndex = preferEarlier ? endIndex : startIndex - 1;
+    const preferredUnits = words[preferredIndex]
+      ? estimateAyahWordUnits(words[preferredIndex].surfaceUthmani)
+      : Number.POSITIVE_INFINITY;
+    const alternateUnits = words[alternateIndex]
+      ? estimateAyahWordUnits(words[alternateIndex].surfaceUthmani)
+      : Number.POSITIVE_INFINITY;
+
+    if (usedUnits + preferredUnits <= budget) {
+      usedUnits += preferredUnits;
+      if (preferEarlier) {
+        startIndex -= 1;
+        earlierUnits += preferredUnits;
+      } else {
+        endIndex += 1;
+        laterUnits += preferredUnits;
+      }
+      continue;
     }
+
+    if (usedUnits + alternateUnits <= budget) {
+      usedUnits += alternateUnits;
+      if (preferEarlier) {
+        endIndex += 1;
+        laterUnits += alternateUnits;
+      } else {
+        startIndex -= 1;
+        earlierUnits += alternateUnits;
+      }
+      continue;
+    }
+
+    break;
   }
 
-  return lines.sort((left, right) => left.top - right.top);
+  return { startIndex, endIndex };
 }
-
-export function getCollapsedAyahWindow(
-  layouts: readonly AyahWordLayout[],
-  selectedPosition: number,
-  collapsedLineCount = 3
-): CollapsedAyahWindow | null {
-  if (collapsedLineCount < 1 || layouts.length === 0) return null;
-  const lines = groupLayoutsIntoLines(layouts);
-  if (lines.length <= collapsedLineCount) return null;
-
-  const selectedLineIndex = lines.findIndex((line) => line.positions.includes(selectedPosition));
-  if (selectedLineIndex < 0) return null;
-
-  const centeredStart = selectedLineIndex - Math.floor(collapsedLineCount / 2);
-  const startIndex = Math.max(0, Math.min(centeredStart, lines.length - collapsedLineCount));
-  const visibleLines = lines.slice(startIndex, startIndex + collapsedLineCount);
-  const startY = visibleLines[0]?.top ?? 0;
-  const endY = visibleLines.at(-1)?.bottom ?? startY;
-
-  return {
-    lineCount: lines.length,
-    startY,
-    height: Math.max(0, endY - startY),
-  };
-}
-

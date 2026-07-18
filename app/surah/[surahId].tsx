@@ -918,6 +918,7 @@ export default function SurahScreen(): React.JSX.Element {
           verseKey: verse.verseKey,
           wordPosition: verse.wordPosition,
           surfaceText: verse.surfaceText,
+          verseWords: verse.verseWords,
           source: 'mushaf',
         });
         if (event) wordQuickSheet.open(event);
