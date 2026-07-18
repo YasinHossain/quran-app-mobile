@@ -173,17 +173,24 @@ function compactFeatures(row: WordRow): MorphologyFeatures {
     ...(row.number ? { number: row.number } : {}),
     ...(row.grammatical_case ? { grammaticalCase: row.grammatical_case } : {}),
     ...(row.grammatical_state ? { grammaticalState: row.grammatical_state } : {}),
-    ...(row.verb_form ? { verbForm: row.verb_form } : {}),
+    ...(row.verb_form
+      ? { verbForm: row.verb_form }
+      : row.primary_pos === 'V'
+        ? { verbForm: 'I' }
+        : {}),
     ...(row.derivation ? { derivation: row.derivation } : {}),
   };
 }
 
-function parseMorphemeFeatures(raw: string): MorphologyFeatures {
+function parseMorphemeFeatures(raw: string, posCode: string): MorphologyFeatures {
   try {
     const value = JSON.parse(raw) as unknown;
-    return value && typeof value === 'object' ? (value as MorphologyFeatures) : {};
+    const features = value && typeof value === 'object' ? (value as MorphologyFeatures) : {};
+    return posCode === 'V' && !features.verbForm
+      ? { ...features, verbForm: 'I' }
+      : features;
   } catch {
-    return {};
+    return posCode === 'V' ? { verbForm: 'I' } : {};
   }
 }
 
@@ -449,7 +456,7 @@ export class SQLiteWordStudyRepository implements IWordStudyRepository {
       arabic: item.arabic,
       segmentType: item.segment_type,
       posCode: item.pos_code,
-      features: parseMorphemeFeatures(item.features_json),
+      features: parseMorphemeFeatures(item.features_json, item.pos_code),
       source: source(item.source_id, item.source_version, 'segmentation'),
     }));
     const analysis: WordAnalysis = {

@@ -15,6 +15,7 @@ const test = require('node:test') as (name: string, callback: () => void | Promi
 import {
   WORD_STUDY_CONTRACT_OCCURRENCE_PAGE,
   WORD_STUDY_RICH_CONTRACT_FIXTURES,
+  type Morpheme,
   type WordAnalysis,
 } from '../../src/core/domain/word-study';
 import {
@@ -22,6 +23,7 @@ import {
   getMorphologyDetails,
   getRootText,
   getStudySources,
+  groupMorphologySegments,
 } from '../../components/word-study/full-study/wordStudyScreenModel';
 import { MORPHOLOGY_GUIDE_GROUPS } from '../../components/word-study/full-study/morphologyGuideModel';
 import {
@@ -89,6 +91,30 @@ test('segment features render once for multi-segment and one-segment words', () 
       .map((row) => row.key),
     ['grammaticalCase', 'grammaticalState']
   );
+});
+
+test('consecutive prefixes and suffixes share a group without merging their morphemes', () => {
+  assert.equal(verb.morphemes.status, 'available');
+  if (verb.morphemes.status !== 'available') return;
+  const prefix = verb.morphemes.value[0] as Morpheme;
+  const stem = verb.morphemes.value[1] as Morpheme;
+  const segments: Morpheme[] = [
+    prefix,
+    { ...prefix, segmentIndex: 2, arabic: 'بِ' },
+    { ...stem, segmentIndex: 3 },
+    { ...prefix, segmentIndex: 4, arabic: 'تُ', segmentType: 'suffix', posCode: 'PRON' },
+    { ...prefix, segmentIndex: 5, arabic: 'هَا', segmentType: 'suffix', posCode: 'PRON' },
+  ];
+
+  const groups = groupMorphologySegments(segments);
+  assert.deepEqual(groups.map((group) => ({
+    type: group.segmentType,
+    arabic: group.segments.map((segment) => segment.arabic),
+  })), [
+    { type: 'prefix', arabic: ['وَ', 'بِ'] },
+    { type: 'stem', arabic: ['أَنزَلَ'] },
+    { type: 'suffix', arabic: ['تُ', 'هَا'] },
+  ]);
 });
 
 test('morphology guide groups all segment and feature terms with Arabic labels', () => {
@@ -283,7 +309,10 @@ test('full screen uses Morphology-first information architecture without repeate
   assert.match(source, /useState<StudyTab>\('morphology'\)/);
   assert.match(source, /Meaning in this ayah/);
   assert.match(source, /useContextualMeaning\(selected\)/);
-  assert.match(source, /English fallback · Bundled offline|fallbackMessage/);
+  assert.match(source, /accessibilityLabel=\{\[/);
+  assert.match(source, /state\.presentation\.sourceLabel/);
+  assert.match(source, /state\.presentation\.fallbackMessage/);
+  assert.doesNotMatch(source, /meaningSourceBadge|meaningSourceText|fallbackRow|fallbackText/);
   assert.match(source, /writingDirection: state\.presentation\.direction/);
   assert.match(source, /accessibilityLiveRegion="polite"/);
   assert.match(source, /label="Lemma"/);
@@ -296,6 +325,25 @@ test('full screen uses Morphology-first information architecture without repeate
   assert.match(source, /useFocusEffect/);
   assert.match(source, /scrollOffsetRef/);
   assert.match(source, /accessibilityLabel="Understanding morphology terms"/);
+  assert.match(source, /<SegmentedWord analysis=\{analysis\} compact alignment="end"/);
+  assert.match(source, /<WordSegmentsLegend analysis=\{analysis\} layout="wrapped"/);
+  assert.match(source, /summaryTopRow: \{ direction: 'ltr', flexDirection: 'row'/);
+  assert.match(source, /morphologyFact: \{ flexBasis: '47%'/);
+  assert.match(source, /groupMorphologySegments\(segments\)/);
+  assert.match(source, /function SegmentGroupCard/);
+  assert.match(source, /segmentGroupDivider: \{[^\n]+marginHorizontal: 12/);
+  assert.match(source, /backgroundColor: palette\.border/);
+  assert.match(source, /segmentCard: \{ borderRadius: 20/);
+  assert.doesNotMatch(source, /segmentCard: \{[^\n]+borderWidth/);
+  assert.match(source, /styles\.segmentCard, \{ backgroundColor: palette\.surface \}/);
+  assert.doesNotMatch(source, /cleanSurfaceShadow/);
+  assert.match(source, /factLabel: \{[^\n]+textAlign: 'center'/);
+  assert.match(source, /factValueArabic: \{[^\n]+fontSize: 30, lineHeight: 44/);
+  assert.match(source, /available \? value : '—'/);
+  assert.match(source, /accessibilityLabel=\{`\$\{label\}: \$\{value\}`\}/);
+  assert.match(source, /factValueUnavailable/);
+  assert.match(source, /backgroundColor: palette\.interactive/);
+  assert.match(source, /guideRowContent/);
   assert.match(source, /<MorphologyGuideSheet/);
   assert.match(source, /Share\.share/);
   assert.match(source, /Complete ayah grammar/);
@@ -311,6 +359,21 @@ test('full screen uses Morphology-first information architecture without repeate
   assert.doesNotMatch(source, /function WordRibbon/);
   assert.doesNotMatch(source, /function AdjacentNavigation/);
   assert.doesNotMatch(source, /positionCounter/);
+});
+
+test('segmented-word presentation supports a non-scrolling two-column wrapped legend', () => {
+  const source = readFileSync(
+    join(process.cwd(), 'components/word-study/WordSegmentsCard.tsx'),
+    'utf8'
+  );
+  assert.match(source, /export function SegmentedWord/);
+  assert.match(source, /export function WordSegmentsLegend/);
+  assert.match(source, /layout\?: 'stacked' \| 'horizontal' \| 'wrapped'/);
+  assert.match(source, /legendWrapped/);
+  assert.match(source, /flexWrap: 'wrap'/);
+  assert.match(source, /legendItemWrapped: \{ flexBasis: '47%', flexGrow: 1, maxWidth: '48%' \}/);
+  assert.match(source, /width < 340 \|\| fontScale > 1\.35/);
+  assert.match(source, /accessibilityLabel=\{`\$\{segment\.arabic\}, \$\{getPosLabel\(segment\.posCode\)\}`\}/);
 });
 
 test('morphology guide is a scrollable, dismissible, explicitly height-constrained sheet', () => {

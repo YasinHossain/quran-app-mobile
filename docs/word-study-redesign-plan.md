@@ -83,6 +83,18 @@ The Morphology tab uses this order:
 
 Do not render a standalone `Surface form` field. The selected word is already visible in the ayah and segmented-word presentation.
 
+The compact morphology summary uses the available mobile width instead of stacking every value vertically:
+
+- contextual meaning occupies the left side and the colored segmented Arabic word occupies the right side;
+- installed-language and fallback status do not add a separate visible badge or note in this compact row; source and fallback context remain part of the meaning's screen-reader announcement;
+- readable segment labels use subtle, non-scrolling tiles that wrap at two per row, then fall back to one column on narrow or enlarged-text layouts;
+- Lemma and Root remain side-by-side with larger Arabic values in centered, borderless, subtle-background tiles;
+- unavailable Lemma or Root values render as a quiet em dash while their complete sourced absence reason remains in the tile's accessibility label;
+- segment-specific morphology facts center both their labels and values and use at most two columns, with an accessibility fallback to one column;
+- consecutive morphemes with the same role share one pluralized Prefixes or Suffixes card while remaining distinct internal rows, separated by a subtle divider inset from both card edges;
+- Stem, Prefixes, Suffixes, Infixes, and Whole-word cards use the same clean borderless surface and corner radius as the contextual-meaning summary;
+- the sourced `Verb form` value remains one of those morphology facts. Quranic Arabic Corpus treats Form I as the default, so unmarked `V` rows are presented as `Form I`; explicit form markers remain authoritative. A six-principal-form paradigm remains a separate Phase 11B data feature and is not synthesized by this screen.
+
 Part of speech must continue to use both a readable label and color. Color is a secondary visual aid and must never be the only representation. The existing broad color groups such as verb, noun, pronoun, and particle remain acceptable; the written label communicates specific types such as preposition or conjunction.
 
 ### Each morphology value appears once
@@ -123,7 +135,7 @@ The guide is help content, not another study destination, so it must not become 
 
 The contextual word translation appears immediately after the segmented Arabic word so the user can understand the analyzed form while studying its parts.
 
-Use the user's selected word-by-word language when an installed word pack can supply the same location. Fall back to the bundled English contextual gloss when the selected language is unavailable. Do not silently display an English value as though it were the selected language; use the application's established language/fallback presentation.
+Use the user's selected word-by-word language when an installed word pack can supply the same location. Fall back to the bundled English contextual gloss when the selected language is unavailable. The compact visual summary does not show an extra language-status row; its accessible meaning announcement retains the actual source and fallback explanation.
 
 Language integration must reuse the existing offline word-language pack and settings infrastructure. Do not add a network-only dependency to Word Study.
 

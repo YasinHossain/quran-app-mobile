@@ -1,4 +1,5 @@
 import type {
+  Morpheme,
   MorphologyFeatures,
   WordAnalysis,
   WordStudySourceReference,
@@ -20,6 +21,11 @@ export type StudySourcePresentation = {
   layers: readonly string[];
   attribution: string;
   url?: string;
+};
+
+export type MorphologySegmentGroup = {
+  segmentType: Morpheme['segmentType'];
+  segments: readonly Morpheme[];
 };
 
 const TITLE_CASE = (value: string): string =>
@@ -92,6 +98,26 @@ export function getMorphologyDetails(features: MorphologyFeatures): readonly Mor
         value: presentation.format ? presentation.format(String(value)) : TITLE_CASE(String(value)),
       }];
     });
+}
+
+export function groupMorphologySegments(
+  segments: readonly Morpheme[]
+): readonly MorphologySegmentGroup[] {
+  const groups: Array<{
+    segmentType: Morpheme['segmentType'];
+    segments: Morpheme[];
+  }> = [];
+
+  for (const segment of segments) {
+    const current = groups[groups.length - 1];
+    if (current?.segmentType === segment.segmentType) {
+      current.segments.push(segment);
+    } else {
+      groups.push({ segmentType: segment.segmentType, segments: [segment] });
+    }
+  }
+
+  return groups;
 }
 
 export function getLemmaText(analysis: WordAnalysis): string {

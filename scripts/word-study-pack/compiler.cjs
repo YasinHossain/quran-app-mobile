@@ -185,6 +185,7 @@ function structuredFeatures(features, tag) {
   const parenthesizedVerbForm = tokens.find((token) => /^\([IVX]+\)$/.test(token));
   if (verbForm) result.verbForm = verbForm;
   else if (parenthesizedVerbForm) result.verbForm = parenthesizedVerbForm.slice(1, -1);
+  else if (tag === 'V') result.verbForm = 'I';
   if (tokens.includes('ACT') && tokens.includes('PCPL')) result.derivation = 'active-participle';
   if (tokens.includes('PASS') && tokens.includes('PCPL')) result.derivation = 'passive-participle';
   if (tokens.includes('VN')) result.derivation = 'verbal-noun';
@@ -677,5 +678,6 @@ module.exports = {
   parseMorphologySource,
   sha256Buffer,
   stableStringify,
+  structuredFeatures,
   writeSqliteDatabase,
 };

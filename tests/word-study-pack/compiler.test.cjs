@@ -12,6 +12,7 @@ const {
   parseCanonicalPayload,
   parseMorphologySource,
   sha256Buffer,
+  structuredFeatures,
 } = require('../../scripts/word-study-pack/compiler.cjs');
 
 const MORPHOLOGY_FIXTURE = `# Quranic Arabic Corpus fixture
@@ -82,6 +83,12 @@ test('normalizes Quranic script variants without erasing base letters', () => {
   assert.equal(buckwalterToArabic('>anzala'), 'أَنزَلَ');
   assert.equal(normalizeArabic('ٱلْـَٔاخِرَةِ ۖ'), 'الاخره');
   assert.notEqual(normalizeArabic('كتب'), normalizeArabic('قتب'));
+});
+
+test('normalizes the unmarked default verb form without changing explicit forms', () => {
+  assert.equal(structuredFeatures('STEM|POS:V|PERF|3MS', 'V').verbForm, 'I');
+  assert.equal(structuredFeatures('STEM|POS:V|PERF|(IV)|3MS', 'V').verbForm, 'IV');
+  assert.equal(structuredFeatures('STEM|POS:N|NOM', 'N').verbForm, undefined);
 });
 
 test('compiles golden morphology, segmentation, glosses, and derived counts', () => {

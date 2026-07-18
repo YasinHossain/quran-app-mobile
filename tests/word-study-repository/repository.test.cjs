@@ -66,6 +66,18 @@ test('real pack passes checksum, schema metadata, and golden word lookup', async
   assert.equal(analysis.contextualGlosses[0].text, 'and He revealed');
 });
 
+test('repository exposes the documented Form I default for unmarked verbs', async (context) => {
+  const provider = new NodeWordStudyDatabaseProvider();
+  context.after(() => provider.closeAsync());
+  const repository = new SQLiteWordStudyRepository(provider);
+  const analysis = await repository.findByLocation('100:9:2');
+
+  assert.equal(analysis.primaryPos.value, 'V');
+  assert.equal(analysis.morphology.value.verbForm, 'I');
+  assert.equal(analysis.morphemes.value[0].posCode, 'V');
+  assert.equal(analysis.morphemes.value[0].features.verbForm, 'I');
+});
+
 test('rootless and missing locations return structured states', async (context) => {
   const provider = new NodeWordStudyDatabaseProvider();
   context.after(() => provider.closeAsync());

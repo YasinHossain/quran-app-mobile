@@ -1,5 +1,5 @@
 import React from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
 import Colors from '@/constants/Colors';
 import { useAppTheme } from '@/providers/ThemeContext';
@@ -42,70 +42,158 @@ export function WordSegmentsCard({
 
   return (
     <View style={[styles.card, compact && styles.cardCompact, { backgroundColor: palette.background }]}>
-      <View
-        accessibilityRole="text"
-        accessibilityLabel={buildSegmentsAccessibilityLabel(
-          segments,
-          analysis.surfaceUthmani,
-          legendLayout === 'stacked'
-        )}
-        style={styles.segmentedWord}
-      >
-        {segments.length ? (
-          segments.map((segment) => (
-            <SegmentText
-              key={`${segment.locationKey}:${segment.segmentIndex}`}
-              segment={segment}
-              isDark={isDark}
-              compact={compact}
-              includeMorphology={legendLayout === 'stacked'}
-            />
-          ))
-        ) : (
-          <Text style={[styles.arabicWord, compact && styles.arabicWordCompact, { color: palette.text }]}>
-            {analysis.surfaceUthmani}
-          </Text>
-        )}
-      </View>
+      <SegmentedWord
+        analysis={analysis}
+        compact={compact}
+        includeMorphology={legendLayout === 'stacked'}
+      />
+      <WordSegmentsLegend analysis={analysis} layout={legendLayout} />
+    </View>
+  );
+}
 
-      {segments.length && legendLayout === 'horizontal' ? (
-        <ScrollView
-          horizontal
-          accessibilityLabel="Part of speech legend"
-          showsHorizontalScrollIndicator={false}
-          style={styles.legendHorizontal}
-          contentContainerStyle={styles.legendHorizontalContent}
-        >
-          {segments.map((segment) => {
-            const color = POS_COLORS[isDark ? 'dark' : 'light'][getPosColorGroup(segment.posCode)];
-            return (
-              <View
-                key={`legend:${segment.segmentIndex}`}
-                style={[styles.legendItemHorizontal, { backgroundColor: palette.surface }]}
-              >
-                <View style={[styles.legendLine, { backgroundColor: color }]} />
-                <Text style={[styles.legendText, { color: palette.muted }]}>
-                  {segment.arabic} — {getPosLabel(segment.posCode)}
-                </Text>
-              </View>
-            );
-          })}
-        </ScrollView>
-      ) : segments.length ? (
-        <View style={styles.legend} accessibilityLabel="Part of speech legend">
-          {segments.map((segment) => {
-            const color = POS_COLORS[isDark ? 'dark' : 'light'][getPosColorGroup(segment.posCode)];
-            return (
-              <View key={`legend:${segment.segmentIndex}`} style={styles.legendItem}>
-                <View style={[styles.legendLine, { backgroundColor: color }]} />
-                <Text style={[styles.legendText, styles.legendTextStacked, { color: palette.muted }]}>
-                  {segment.arabic} — {getPosLabel(segment.posCode)}
-                </Text>
-              </View>
-            );
-          })}
-        </View>
-      ) : null}
+export function SegmentedWord({
+  analysis,
+  compact = false,
+  alignment = 'center',
+  includeMorphology = false,
+}: {
+  analysis: WordAnalysis;
+  compact?: boolean;
+  alignment?: 'center' | 'end';
+  includeMorphology?: boolean;
+}): React.JSX.Element {
+  const { resolvedTheme, isDark } = useAppTheme();
+  const palette = Colors[resolvedTheme];
+  const segments = getAnalysisSegments(analysis);
+
+  return (
+    <View
+      accessibilityRole="text"
+      accessibilityLabel={buildSegmentsAccessibilityLabel(
+        segments,
+        analysis.surfaceUthmani,
+        includeMorphology
+      )}
+      style={[styles.segmentedWord, alignment === 'end' && styles.segmentedWordEnd]}
+    >
+      {segments.length ? (
+        segments.map((segment) => (
+          <SegmentText
+            key={`${segment.locationKey}:${segment.segmentIndex}`}
+            segment={segment}
+            isDark={isDark}
+            compact={compact}
+            includeMorphology={includeMorphology}
+          />
+        ))
+      ) : (
+        <Text style={[styles.arabicWord, compact && styles.arabicWordCompact, { color: palette.text }]}>
+          {analysis.surfaceUthmani}
+        </Text>
+      )}
+    </View>
+  );
+}
+
+export function WordSegmentsLegend({
+  analysis,
+  layout = 'stacked',
+}: {
+  analysis: WordAnalysis;
+  layout?: 'stacked' | 'horizontal' | 'wrapped';
+}): React.JSX.Element | null {
+  const { resolvedTheme, isDark } = useAppTheme();
+  const { fontScale, width } = useWindowDimensions();
+  const palette = Colors[resolvedTheme];
+  const segments = getAnalysisSegments(analysis);
+  const useSingleColumn = width < 340 || fontScale > 1.35;
+
+  if (!segments.length) return null;
+
+  if (layout === 'horizontal') {
+    return (
+      <ScrollView
+        horizontal
+        accessibilityLabel="Part of speech legend"
+        showsHorizontalScrollIndicator={false}
+        style={styles.legendHorizontal}
+        contentContainerStyle={styles.legendHorizontalContent}
+      >
+        {segments.map((segment) => (
+          <LegendItem
+            key={`legend:${segment.segmentIndex}`}
+            segment={segment}
+            isDark={isDark}
+            palette={palette}
+            layout="horizontal"
+          />
+        ))}
+      </ScrollView>
+    );
+  }
+
+  if (layout === 'wrapped') {
+    return (
+      <View style={styles.legendWrapped} accessibilityLabel="Part of speech legend">
+        {segments.map((segment) => (
+          <LegendItem
+            key={`legend:${segment.segmentIndex}`}
+            segment={segment}
+            isDark={isDark}
+            palette={palette}
+            layout={useSingleColumn ? 'full-width' : 'wrapped'}
+          />
+        ))}
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.legend} accessibilityLabel="Part of speech legend">
+      {segments.map((segment) => (
+        <LegendItem
+          key={`legend:${segment.segmentIndex}`}
+          segment={segment}
+          isDark={isDark}
+          palette={palette}
+          layout="stacked"
+        />
+      ))}
+    </View>
+  );
+}
+
+function LegendItem({
+  segment,
+  isDark,
+  palette,
+  layout,
+}: {
+  segment: Morpheme;
+  isDark: boolean;
+  palette: (typeof Colors)['light'];
+  layout: 'stacked' | 'horizontal' | 'wrapped' | 'full-width';
+}): React.JSX.Element {
+  const color = POS_COLORS[isDark ? 'dark' : 'light'][getPosColorGroup(segment.posCode)];
+  const isTile = layout !== 'stacked';
+  return (
+    <View
+      accessible
+      accessibilityRole="text"
+      accessibilityLabel={`${segment.arabic}, ${getPosLabel(segment.posCode)}`}
+      style={[
+        styles.legendItem,
+        isTile && styles.legendItemTile,
+        layout === 'wrapped' && styles.legendItemWrapped,
+        layout === 'full-width' && styles.legendItemFullWidth,
+        isTile && { backgroundColor: layout === 'horizontal' ? palette.surface : palette.interactive },
+      ]}
+    >
+      <View style={[styles.legendLine, { backgroundColor: color }]} />
+      <Text style={[styles.legendText, styles.legendTextStacked, { color: palette.muted }]}>
+        {segment.arabic} — {getPosLabel(segment.posCode)}
+      </Text>
     </View>
   );
 }
@@ -166,6 +254,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'flex-end',
   },
+  segmentedWordEnd: { alignSelf: 'stretch', justifyContent: 'flex-start' },
   arabicWord: {
     fontFamily: 'UthmanicHafs1Ver18',
     fontSize: 38,
@@ -184,6 +273,12 @@ const styles = StyleSheet.create({
   },
   arabicSegmentCompact: { fontSize: 34, lineHeight: 54 },
   legend: { alignSelf: 'stretch', gap: 8 },
+  legendWrapped: {
+    alignSelf: 'stretch',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
   legendHorizontal: { alignSelf: 'stretch' },
   legendHorizontalContent: {
     flexGrow: 1,
@@ -192,15 +287,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 2,
   },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 9 },
-  legendItemHorizontal: {
+  legendItemTile: {
     minHeight: 36,
     borderRadius: 12,
     paddingHorizontal: 10,
     paddingVertical: 7,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
   },
+  legendItemWrapped: { flexBasis: '47%', flexGrow: 1, maxWidth: '48%' },
+  legendItemFullWidth: { flexBasis: '100%', flexGrow: 1, maxWidth: '100%' },
   legendLine: { width: 18, height: 4, borderRadius: 2 },
   legendText: { fontSize: 13, lineHeight: 19 },
   legendTextStacked: { flex: 1 },

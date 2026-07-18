@@ -14,12 +14,16 @@ import {
   Share,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import Colors from '@/constants/Colors';
-import { WordSegmentsCard } from '@/components/word-study/WordSegmentsCard';
+import {
+  SegmentedWord,
+  WordSegmentsLegend,
+} from '@/components/word-study/WordSegmentsCard';
 import {
   AyahContextSelector,
   type AyahContextWord,
@@ -39,6 +43,7 @@ import {
   getLemmaText,
   getMorphologyDetails,
   getRootText,
+  groupMorphologySegments,
   type MorphologyDetail,
 } from '@/components/word-study/full-study/wordStudyScreenModel';
 import { describeMissingReason, getPosLabel } from '@/components/word-study/wordQuickSheetModel';
@@ -371,10 +376,23 @@ function MorphologySection({ analysis, contextualMeaning, palette, onOpenGuide }
   onOpenGuide: () => void;
 }): React.JSX.Element {
   const segments = analysis.morphemes.status === 'available' ? analysis.morphemes.value : [];
+  const segmentGroups = groupMorphologySegments(segments);
+  const { fontScale, width } = useWindowDimensions();
+  const useSingleColumn = width < 340 || fontScale > 1.35;
+  const stackSummary = width < 350 || fontScale > 1.25;
   return (
     <View style={styles.section}>
-      <WordSegmentsCard analysis={analysis} compact />
-      <ContextualMeaningBlock state={contextualMeaning} palette={palette} />
+      <View style={[styles.morphologySummary, { backgroundColor: palette.surface }]}>
+        <View style={[styles.summaryTopRow, stackSummary && styles.summaryTopRowStacked]}>
+          <View style={styles.summaryMeaningColumn}>
+            <ContextualMeaningBlock state={contextualMeaning} palette={palette} />
+          </View>
+          <View style={styles.summaryArabicColumn}>
+            <SegmentedWord analysis={analysis} compact alignment="end" />
+          </View>
+        </View>
+        <WordSegmentsLegend analysis={analysis} layout="wrapped" />
+      </View>
       <View style={styles.lexicalFacts}>
         <CompactStudyFact
           label="Lemma"
@@ -382,6 +400,7 @@ function MorphologySection({ analysis, contextualMeaning, palette, onOpenGuide }
           value={getLemmaText(analysis)}
           available={analysis.lemma.status === 'available'}
           palette={palette}
+          fullWidth={useSingleColumn}
         />
         <CompactStudyFact
           label="Root"
@@ -389,14 +408,20 @@ function MorphologySection({ analysis, contextualMeaning, palette, onOpenGuide }
           value={getRootText(analysis)}
           available={analysis.root.status === 'available'}
           palette={palette}
+          fullWidth={useSingleColumn}
         />
       </View>
       <SectionHeading
         title="How this word is built"
         palette={palette}
       />
-      {segments.length ? segments.map((segment) => (
-        <SegmentCard key={`${segment.locationKey}:${segment.segmentIndex}`} segment={segment} palette={palette} />
+      {segmentGroups.length ? segmentGroups.map((group) => (
+        <SegmentGroupCard
+          key={`${group.segments[0]?.locationKey}:${group.segments[0]?.segmentIndex}-${group.segments[group.segments.length - 1]?.segmentIndex}`}
+          segments={group.segments}
+          palette={palette}
+          singleColumnFacts={useSingleColumn}
+        />
       )) : (
         <NoticeCard message={analysis.morphemes.status === 'available' ? 'No segments are recorded for this word.' : describeMissingReason(analysis.morphemes.reason)} palette={palette} />
       )}
@@ -410,11 +435,13 @@ function MorphologySection({ analysis, contextualMeaning, palette, onOpenGuide }
           { borderColor: palette.border, backgroundColor: palette.surface, opacity: pressed ? 0.78 : 1 },
         ]}
       >
-        <View style={[styles.guideIcon, { backgroundColor: palette.interactive }]}>
-          <Info color={palette.tint} size={19} strokeWidth={2.2} />
+        <View style={styles.guideRowContent}>
+          <View style={[styles.guideIcon, { backgroundColor: palette.interactive }]}>
+            <Info color={palette.tint} size={19} strokeWidth={2.2} />
+          </View>
+          <Text style={[styles.guideLabel, { color: palette.text }]}>Understanding morphology terms</Text>
+          <ChevronRight color={palette.tint} size={20} strokeWidth={2.2} />
         </View>
-        <Text style={[styles.guideLabel, { color: palette.text }]}>Understanding morphology terms</Text>
-        <ChevronRight color={palette.tint} size={20} strokeWidth={2.2} />
       </Pressable>
     </View>
   );
@@ -428,36 +455,23 @@ function ContextualMeaningBlock({ state, palette }: {
     <View style={styles.glossBlock} accessibilityLiveRegion="polite">
       <Text accessibilityRole="header" style={[styles.eyebrow, { color: palette.muted }]}>Meaning in this ayah</Text>
       {state.status === 'ready' ? (
-        <>
-          <Text
-            style={[
-              styles.gloss,
-              {
-                color: palette.text,
-                writingDirection: state.presentation.direction,
-                textAlign: state.presentation.direction === 'rtl' ? 'right' : 'left',
-              },
-            ]}
-          >
-            {state.presentation.text}
-          </Text>
-          <View
-            accessibilityLabel={state.presentation.sourceLabel}
-            style={[styles.meaningSourceBadge, { backgroundColor: palette.interactive }]}
-          >
-            <Text style={[styles.meaningSourceText, { color: palette.tint }]}>
-              {state.presentation.sourceLabel}
-            </Text>
-          </View>
-          {state.presentation.fallbackMessage ? (
-            <View style={styles.fallbackRow}>
-              <Info color={palette.tint} size={15} strokeWidth={2.2} />
-              <Text style={[styles.fallbackText, { color: palette.muted }]}>
-                {state.presentation.fallbackMessage}
-              </Text>
-            </View>
-          ) : null}
-        </>
+        <Text
+          accessibilityLabel={[
+            `Meaning in this ayah: ${state.presentation.text}.`,
+            state.presentation.sourceLabel,
+            state.presentation.fallbackMessage,
+          ].filter(Boolean).join(' ')}
+          style={[
+            styles.gloss,
+            {
+              color: palette.text,
+              writingDirection: state.presentation.direction,
+              textAlign: state.presentation.direction === 'rtl' ? 'right' : 'left',
+            },
+          ]}
+        >
+          {state.presentation.text}
+        </Text>
       ) : (
         <View style={styles.meaningLoading}>
           <ActivityIndicator color={palette.tint} size="small" />
@@ -653,30 +667,97 @@ function GrammarPassageCard({
   );
 }
 
-function SegmentCard({ segment, palette }: { segment: Morpheme; palette: Palette }): React.JSX.Element {
-  const details = getMorphologyDetails(segment.features);
-  const role = segment.segmentType === 'prefix'
-    ? ['Prefix', 'سابقة']
-    : segment.segmentType === 'suffix'
-      ? ['Suffix', 'لاحقة']
-      : segment.segmentType === 'stem'
-        ? ['Stem', 'جذع الكلمة']
-        : segment.segmentType === 'infix'
-          ? ['Infix', 'مقطع داخلي']
-          : ['Whole word', 'الكلمة كاملة'];
+function getSegmentRole(
+  segmentType: Morpheme['segmentType'],
+  plural: boolean
+): readonly [string, string] {
+  if (segmentType === 'prefix') return plural ? ['Prefixes', 'السوابق'] : ['Prefix', 'سابقة'];
+  if (segmentType === 'suffix') return plural ? ['Suffixes', 'اللواحق'] : ['Suffix', 'لاحقة'];
+  if (segmentType === 'stem') return plural ? ['Stems', 'جذوع الكلمات'] : ['Stem', 'جذع الكلمة'];
+  if (segmentType === 'infix') return plural ? ['Infixes', 'المقاطع الداخلية'] : ['Infix', 'مقطع داخلي'];
+  return plural ? ['Whole words', 'الكلمات الكاملة'] : ['Whole word', 'الكلمة كاملة'];
+}
+
+function SegmentGroupCard({ segments, palette, singleColumnFacts }: {
+  segments: readonly Morpheme[];
+  palette: Palette;
+  singleColumnFacts: boolean;
+}): React.JSX.Element {
+  const firstSegment = segments[0];
+  const grouped = segments.length > 1;
+  const role = getSegmentRole(firstSegment?.segmentType ?? 'whole-word', grouped);
   return (
-    <View style={[styles.segmentCard, { borderColor: palette.border, backgroundColor: palette.surface }]}> 
-      <View style={styles.segmentHeader}>
+    <View style={[styles.segmentCard, { backgroundColor: palette.surface }]}>
+      {grouped ? (
+        <Text style={[styles.segmentGroupTitle, { color: palette.text }]}>{role[0]} · {role[1]}</Text>
+      ) : null}
+      {segments.map((segment, index) => (
+        <React.Fragment key={`${segment.locationKey}:${segment.segmentIndex}`}>
+          {index > 0 ? (
+            <View
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
+              style={[styles.segmentGroupDivider, { backgroundColor: palette.border }]}
+            />
+          ) : null}
+          <SegmentGroupMember
+            segment={segment}
+            role={role}
+            index={index}
+            count={segments.length}
+            showRole={!grouped}
+            palette={palette}
+            singleColumnFacts={singleColumnFacts}
+          />
+        </React.Fragment>
+      ))}
+    </View>
+  );
+}
+
+function SegmentGroupMember({
+  segment,
+  role,
+  index,
+  count,
+  showRole,
+  palette,
+  singleColumnFacts,
+}: {
+  segment: Morpheme;
+  role: readonly [string, string];
+  index: number;
+  count: number;
+  showRole: boolean;
+  palette: Palette;
+  singleColumnFacts: boolean;
+}): React.JSX.Element {
+  const details = getMorphologyDetails(segment.features);
+  return (
+    <View style={styles.segmentGroupMember}>
+      <View
+        accessible
+        accessibilityRole="text"
+        accessibilityLabel={`${role[0]}${count > 1 ? ` ${index + 1} of ${count}` : ''}: ${segment.arabic}, ${getPosLabel(segment.posCode)}`}
+        style={styles.segmentHeader}
+      >
         <Text style={[styles.segmentArabic, { color: palette.text }]}>{segment.arabic}</Text>
         <View style={styles.segmentHeaderCopy}>
-          <Text style={[styles.segmentTitle, { color: palette.text }]}>{role[0]} · {role[1]}</Text>
+          {showRole ? (
+            <Text style={[styles.segmentTitle, { color: palette.text }]}>{role[0]} · {role[1]}</Text>
+          ) : null}
           <Text style={[styles.segmentPos, { color: palette.tint }]}>{getPosLabel(segment.posCode)} · {segment.posCode}</Text>
         </View>
       </View>
       {details.length ? (
         <View style={[styles.segmentDetails, { borderTopColor: palette.border }]}> 
-          {details.map((detail, index) => (
-            <MorphologyRow key={detail.key} detail={detail} palette={palette} last={index === details.length - 1} compact />
+          {details.map((detail) => (
+            <MorphologyFact
+              key={detail.key}
+              detail={detail}
+              palette={palette}
+              fullWidth={singleColumnFacts}
+            />
           ))}
         </View>
       ) : null}
@@ -684,31 +765,52 @@ function SegmentCard({ segment, palette }: { segment: Morpheme; palette: Palette
   );
 }
 
-function MorphologyRow({ detail, palette, last, compact = false }: {
+function MorphologyFact({ detail, palette, fullWidth }: {
   detail: MorphologyDetail;
   palette: Palette;
-  last: boolean;
-  compact?: boolean;
+  fullWidth: boolean;
 }): React.JSX.Element {
   return (
-    <View style={[styles.morphologyRow, compact && styles.morphologyRowCompact, !last && { borderBottomColor: palette.border, borderBottomWidth: StyleSheet.hairlineWidth }]}> 
+    <View style={[
+      styles.morphologyFact,
+      fullWidth && styles.factTileFullWidth,
+      { backgroundColor: palette.interactive },
+    ]}>
       <Text style={[styles.factLabel, { color: palette.text }]}>{detail.label} · {detail.arabicTerm}</Text>
       <Text style={[styles.factValue, { color: palette.tint }]}>{detail.value}</Text>
     </View>
   );
 }
 
-function CompactStudyFact({ label, arabicTerm, value, available, palette }: {
+function CompactStudyFact({ label, arabicTerm, value, available, palette, fullWidth }: {
   label: string;
   arabicTerm: string;
   value: string;
   available: boolean;
   palette: Palette;
+  fullWidth: boolean;
 }): React.JSX.Element {
   return (
-    <View style={[styles.lexicalFact, { borderColor: palette.border, backgroundColor: palette.surface }]}>
+    <View
+      accessible
+      accessibilityRole="text"
+      accessibilityLabel={`${label}: ${value}`}
+      style={[
+        styles.lexicalFact,
+        fullWidth && styles.factTileFullWidth,
+        { backgroundColor: palette.interactive },
+      ]}
+    >
       <Text style={[styles.factLabel, { color: palette.muted }]}>{label} · {arabicTerm}</Text>
-      <Text style={[styles.factValue, available && styles.factValueArabic, { color: palette.text }]}>{value}</Text>
+      <Text
+        style={[
+          styles.factValue,
+          available ? styles.factValueArabic : styles.factValueUnavailable,
+          { color: available ? palette.text : palette.muted },
+        ]}
+      >
+        {available ? value : '—'}
+      </Text>
     </View>
   );
 }
@@ -791,34 +893,40 @@ const styles = StyleSheet.create({
   tab: { minWidth: 104, minHeight: 44, paddingHorizontal: 12, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   tabText: { fontSize: 12, lineHeight: 17, fontWeight: '700' },
   section: { gap: 16 },
+  morphologySummary: { borderRadius: 20, padding: 16, gap: 16 },
+  summaryTopRow: { direction: 'ltr', flexDirection: 'row', alignItems: 'center', gap: 14 },
+  summaryTopRowStacked: { flexDirection: 'column-reverse', alignItems: 'stretch' },
+  summaryMeaningColumn: { flex: 1, minWidth: 150 },
+  summaryArabicColumn: { minWidth: 120, alignItems: 'flex-end', justifyContent: 'center' },
   glossBlock: { gap: 5, paddingHorizontal: 2 },
   eyebrow: { fontSize: 11, lineHeight: 16, fontWeight: '700', letterSpacing: 1 },
   gloss: { fontSize: 20, lineHeight: 29, fontWeight: '600' },
-  meaningSourceBadge: { alignSelf: 'flex-start', borderRadius: 999, paddingHorizontal: 9, paddingVertical: 4 },
-  meaningSourceText: { fontSize: 11, lineHeight: 16, fontWeight: '700' },
   meaningLoading: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 9 },
-  fallbackRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 7, paddingTop: 2 },
-  fallbackText: { flex: 1, fontSize: 12, lineHeight: 18 },
   explanation: { fontSize: 13, lineHeight: 20 },
   lexicalFacts: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  lexicalFact: { flex: 1, minWidth: 148, borderWidth: 1, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 12, gap: 4 },
-  factLabel: { fontSize: 12, lineHeight: 18, fontWeight: '700' },
-  factValue: { fontSize: 16, lineHeight: 23, fontWeight: '600' },
-  factValueArabic: { fontFamily: 'UthmanicHafs1Ver18', fontSize: 25, lineHeight: 37, writingDirection: 'rtl', textAlign: 'left' },
-  guideRow: { minHeight: 58, borderWidth: 1, borderRadius: 17, paddingHorizontal: 13, paddingVertical: 9, flexDirection: 'row', alignItems: 'center', gap: 11 },
+  lexicalFact: { flexBasis: '47%', flexGrow: 1, minHeight: 100, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 12, alignItems: 'center', justifyContent: 'center', gap: 5 },
+  factTileFullWidth: { flexBasis: '100%', maxWidth: '100%' },
+  factLabel: { fontSize: 12, lineHeight: 18, fontWeight: '700', textAlign: 'center' },
+  factValue: { fontSize: 16, lineHeight: 23, fontWeight: '600', textAlign: 'center' },
+  factValueArabic: { fontFamily: 'UthmanicHafs1Ver18', fontSize: 30, lineHeight: 44, writingDirection: 'rtl' },
+  factValueUnavailable: { fontSize: 24, lineHeight: 32, fontWeight: '500' },
+  guideRow: { minHeight: 58, borderWidth: 1, borderRadius: 17, paddingHorizontal: 13, paddingVertical: 9 },
+  guideRowContent: { direction: 'ltr', flex: 1, flexDirection: 'row', alignItems: 'center', gap: 11 },
   guideIcon: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   guideLabel: { flex: 1, fontSize: 14, lineHeight: 20, fontWeight: '700' },
   sectionHeading: { gap: 3, paddingHorizontal: 2 },
   sectionTitle: { fontSize: 18, lineHeight: 25, fontWeight: '700' },
-  segmentCard: { borderWidth: 1, borderRadius: 18, padding: 16, gap: 8 },
+  segmentCard: { borderRadius: 20, padding: 16, gap: 8 },
+  segmentGroupTitle: { fontSize: 15, lineHeight: 21, fontWeight: '700' },
+  segmentGroupMember: { gap: 8 },
+  segmentGroupDivider: { alignSelf: 'stretch', height: StyleSheet.hairlineWidth, marginHorizontal: 12, marginVertical: 4 },
   segmentHeader: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 14 },
   segmentArabic: { fontFamily: 'UthmanicHafs1Ver18', fontSize: 30, lineHeight: 44, writingDirection: 'rtl' },
   segmentHeaderCopy: { flex: 1, alignItems: 'flex-start', gap: 2 },
   segmentTitle: { fontSize: 15, lineHeight: 21, fontWeight: '700' },
   segmentPos: { fontSize: 12, lineHeight: 18, fontWeight: '700' },
-  segmentDetails: { marginTop: 5, paddingTop: 6, borderTopWidth: StyleSheet.hairlineWidth },
-  morphologyRow: { paddingHorizontal: 16, paddingVertical: 13, gap: 4 },
-  morphologyRowCompact: { paddingHorizontal: 0 },
+  segmentDetails: { marginTop: 5, paddingTop: 12, borderTopWidth: StyleSheet.hairlineWidth, flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  morphologyFact: { flexBasis: '47%', flexGrow: 1, minHeight: 78, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 11, alignItems: 'center', justifyContent: 'center', gap: 4 },
   grammarLoading: { minHeight: 180, alignItems: 'center', justifyContent: 'center', gap: 12 },
   grammarHero: { borderRadius: 20, paddingHorizontal: 18, paddingVertical: 20, alignItems: 'center', gap: 5 },
   grammarHeroWord: { fontFamily: 'UthmanicHafs1Ver18', fontSize: 38, lineHeight: 56, writingDirection: 'rtl', textAlign: 'center' },
