@@ -6,7 +6,7 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        // Keep names aligned with the web app’s semantic tokens so UI code can stay consistent.
+        // Mobile semantic tokens. Shared names with web are optional, not a parity contract.
         background: { DEFAULT: '#F7F9F9', dark: '#0F172A' },
         surface: { DEFAULT: '#FFFFFF', dark: '#1E293B' },
         'surface-navigation': { DEFAULT: '#FFFFFF', dark: '#182333' },

@@ -1,6 +1,6 @@
 # Word Study Full-Screen Redesign Plan
 
-Status: Approved product direction; implementation not started by this document.
+Status: Approved product direction; Phase 1 implemented on 2026-07-18, with later phases pending.
 
 This plan redesigns the full Word Study route without redesigning the Surah reader quick sheet. The goal is to give the selected word its complete ayah context, remove repeated information, and keep beginner help available without displaying the same definitions for every word.
 
@@ -24,15 +24,27 @@ If implementation requires a shared domain or application change, make that chan
 
 ### Full ayah replaces the word ribbon
 
-The top of the full study screen will show the ayah as naturally wrapping Arabic text. Every supported Quran word is tappable, and the currently selected word has a clear, theme-aware background highlight. Selecting a word updates the canonical `position` route parameter without pushing another screen or losing the active tab.
+The top of the full study screen will show the ayah as naturally wrapping Arabic text. Every supported Quran word is tappable. Selecting a word updates the canonical `position` route parameter without pushing another screen or losing the active tab.
+
+The ayah is presented as unboxed, full-width Quran text with slightly larger type and modest spacing between tappable words. It has no instructional label above it. The selected-word treatment remains deliberately minimal so the ayah continues to read as connected Quran text:
+
+- change the selected word from the normal text color to the project's deep emerald accent;
+- animate the previous word back to its normal color while the new word changes to emerald;
+- do not add a card, chip, background fill, border, underline, or other dash beneath the selected word;
+- use the theme's accessible emerald/accent variant in dark mode rather than hard-coding the light-theme deep emerald;
+- use the existing motion system, keep the transition brief and responsive, and disable the movement in favor of an immediate state change when reduced motion is enabled.
+
+Selection must not rely on emerald color alone. Each tappable word exposes `accessibilityState={{ selected: true }}` when active, and the analysis changes immediately on tap without waiting for the visual animation to finish.
 
 For a short or medium ayah, show the complete ayah without an expansion control. For a long ayah:
 
 - constrain the collapsed presentation to a small number of readable lines;
-- show a subtle double-down chevron at the lower-right edge;
+- show a single, comfortably sized down chevron at the lower-right edge;
 - expand to the complete ayah when pressed;
-- change the control to a double-up chevron while expanded;
+- change the control to a single up chevron while expanded;
 - preserve the selected word and current tab when expanding or collapsing;
+- smoothly ease the ayah viewport height when expanding or collapsing and slide selected-centered collapsed windows instead of jumping between line groups;
+- measure long ayahs inside a hidden compact viewport so first entry never flashes the full ayah before collapsing;
 - never ship a collapsed state in which the selected word is hidden. Use measured layout, a selected-centered collapsed window, or default to expanded when necessary.
 
 The Arabic text remains independently RTL even when the application language is LTR. The verse-end marker, if displayed, is not a selectable word.
@@ -149,9 +161,10 @@ Work:
 
 - Render ordered ayah words as wrapping, independently RTL Arabic text.
 - Make each supported word a sufficiently large accessible press target without breaking Quran word spacing or shaping.
-- Highlight the route-selected word in light and dark themes.
+- Render the route-selected word only in the theme's emerald accent, without a surrounding box or underline.
+- Animate the text color between selections and respect reduced-motion settings.
 - Update selection through `router.setParams({ position })` so back navigation and the reader instance remain intact.
-- Add measured long-ayah collapse/expand behavior and subtle double-chevron control.
+- Add measured long-ayah collapse/expand behavior and a right-aligned single-chevron control.
 - Guarantee selected-word visibility in collapsed mode.
 - Add accessible selected state, word-position labels, expand/collapse state, and previous/next accessibility actions.
 - Remove the ribbon, adjacent buttons, counter, related constants, and unused icons/styles.
@@ -162,6 +175,7 @@ Acceptance criteria:
 - A long ayah displays a compact context and can reveal the complete ayah.
 - Early, middle, and late selected words are visible in the collapsed long-ayah state.
 - Tapping any displayed word updates analysis without adding navigation history.
+- The selected word uses emerald text without a box, background fill, underline, or dash, and the transition never disturbs Arabic shaping or delays selection.
 - Changing words preserves the active tab.
 - Stack back returns to the same reader position.
 - No visible previous/next controls or word counter remain.
@@ -234,7 +248,7 @@ Work:
 - Verify focus order across header, ayah selector, tabs, morphology cards, and help row.
 - Verify Dynamic Type/font scaling without clipping Quran text, selected highlight, values, or modal content.
 - Add/update focused model and screen tests for removed duplication and the new information structure.
-- Update `docs/ui-parity.md`, `docs/components.md`, `docs/word-study-feature-plan.md`, and `docs/word-study-progress.md` to reflect the shipped design.
+- Update `docs/components.md`, `docs/word-study-feature-plan.md`, and `docs/word-study-progress.md` where they record durable shipped behavior.
 - Run the relevant Word Study physical-device checklist sections and record any remaining device-only work.
 
 Acceptance criteria:

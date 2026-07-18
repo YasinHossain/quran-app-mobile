@@ -195,20 +195,24 @@ eas build -p android --profile production
 
 ## Shared core code
 
-Reusable business logic copied from the web app lives in:
+Reusable, platform-independent business logic lives in:
 
 - `src/core/domain`
 - `src/core/application`
+
+These modules can support features originating in either product. The current `npm run sync:web-core` workflow copies their canonical source from `../quran-app`; that direction is a repository mechanism, not a statement that the website owns mobile product decisions.
 
 ## Styling
 
 This repo uses NativeWind (Tailwind-style `className` on React Native components).
 
-## AI docs
+## Product and AI guidance
 
 Start here:
 
-- `docs/ai-prompt-template.md`
+- `AGENTS.md`
 - `docs/ai-workflow.md`
-- `docs/ui-parity.md`
-- `docs/ui-mapping.md`
+- `docs/design-tokens.md`
+- `docs/components.md`
+
+The mobile app is its own product. Historical web-parity migration notes are archived in `docs/archive/web-parity-history.md` and are not an active implementation contract.

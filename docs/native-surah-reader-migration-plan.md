@@ -412,7 +412,6 @@ Tasks:
 - Remove Android-only preview/handoff/correction code made obsolete by native reader.
 - Keep shared route/search/settings/audio/action-sheet logic.
 - Update docs:
-  - `docs/ui-parity.md`
   - `docs/components.md` if native component docs are useful
   - `docs/surah-navigation-performance-log.md`
 

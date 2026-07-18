@@ -1,6 +1,8 @@
-# Design Tokens Alignment
+# Mobile Design System Tokens
 
-This document mirrors the semantic design tokens used in the web app so mobile UI can stay aligned across color, typography, and spacing decisions.
+This document describes the semantic design tokens used by the mobile app. The mobile design system is the source of truth for mobile color, typography, spacing, and shape decisions.
+
+The sibling website may share some token names or values, but the two products can evolve independently. Prefer semantic token names in components so future visual changes remain centralized. Add or refine tokens when a recurring mobile need is not represented; avoid one-off hard-coded colors when an appropriate semantic role exists.
 
 ## Colors
 Semantic color tokens are defined in `tailwind.config.js` and shared with the web app. Each token maps to light/dark values.
@@ -26,7 +28,7 @@ Semantic color tokens are defined in `tailwind.config.js` and shared with the we
 ## Typography
 Typography uses Tailwind's font sizing scale with semantic weight utilities (`font-semibold`, `font-bold`, etc.). The mobile app loads `SpaceMono` for special text usage in `components/StyledText.tsx`. All other text uses the platform default font unless specified.
 
-Recommended hierarchy (mirrors current UI usage):
+Recommended hierarchy based on current mobile usage:
 
 - Page titles: `text-2xl font-bold`
 - Section titles: `text-xl font-semibold`
@@ -35,7 +37,7 @@ Recommended hierarchy (mirrors current UI usage):
 - Small labels: `text-xs font-semibold`
 
 ## Spacing
-Spacing relies on the default Tailwind scale (`space-*`, `p-*`, `m-*`) to stay consistent with the web app's spacing rhythm. Use the following guidelines:
+Spacing relies on the default Tailwind scale (`space-*`, `p-*`, `m-*`) to keep a consistent rhythm across the mobile app. Use the following guidelines as defaults, adapting them when content density, accessibility, or the device form factor requires it:
 
 - Card padding: `p-4`
 - Section padding: `px-4 py-3`
@@ -43,7 +45,7 @@ Spacing relies on the default Tailwind scale (`space-*`, `p-*`, `m-*`) to stay c
 - Screen padding: `px-4` and `pt-4`
 
 ## Radius
-Border radii are extended to match web app tokens:
+The mobile radius scale is:
 
 - `rounded-sm`: `6px`
 - `rounded-md`: `8px`

@@ -19,11 +19,11 @@ import {
 } from '../../src/core/domain/word-study';
 import {
   buildWordStudyShareMessage,
-  getAdjacentWordPositions,
   getMorphologyDetails,
   getRootText,
   getStudySources,
 } from '../../components/word-study/full-study/wordStudyScreenModel';
+import { getCollapsedAyahWindow } from '../../components/word-study/full-study/ayahContextSelectorModel';
 import {
   OCCURRENCE_PAGE_SIZE,
   buildOccurrenceQuery,
@@ -56,15 +56,31 @@ test('rootless particles explain the absence instead of rendering a blank field'
   assert.equal(getRootText(particle), 'No root applies to this particle.');
 });
 
-test('adjacent navigation follows canonical word position order', () => {
-  const words = [
-    { ...verb, location: { ...verb.location, wordPosition: 1, locationKey: '3:3:1' } },
-    { ...verb, location: { ...verb.location, wordPosition: 2, locationKey: '3:3:2' } },
-    { ...verb, location: { ...verb.location, wordPosition: 3, locationKey: '3:3:3' } },
-  ];
-  assert.deepEqual(getAdjacentWordPositions(words, 1), { next: 2 });
-  assert.deepEqual(getAdjacentWordPositions(words, 2), { previous: 1, next: 3 });
-  assert.deepEqual(getAdjacentWordPositions(words, 3), { previous: 2 });
+test('collapsed ayah windows keep early, middle, and late selections visible', () => {
+  const layouts = Array.from({ length: 10 }, (_, index) => ({
+    position: index + 1,
+    x: index % 2 === 0 ? 120 : 40,
+    y: Math.floor(index / 2) * 50,
+    width: 70,
+    height: 40,
+  }));
+
+  assert.deepEqual(getCollapsedAyahWindow(layouts, 1), {
+    lineCount: 5,
+    startY: 0,
+    height: 140,
+  });
+  assert.deepEqual(getCollapsedAyahWindow(layouts, 5), {
+    lineCount: 5,
+    startY: 50,
+    height: 140,
+  });
+  assert.deepEqual(getCollapsedAyahWindow(layouts, 10), {
+    lineCount: 5,
+    startY: 100,
+    height: 140,
+  });
+  assert.equal(getCollapsedAyahWindow(layouts.slice(0, 6), 3), null);
 });
 
 test('source presentation and sharing retain source versions and attribution', () => {
@@ -153,14 +169,12 @@ test('occurrence queries remain fixed-size and reader navigation retains the exa
   });
 });
 
-test('full screen keeps the Phase 5 route, ribbon, tabs, RTL text, and route-driven selection', () => {
+test('full screen uses the full ayah selector and route-driven selection without visible adjacent navigation', () => {
   const source = readFileSync(
     join(process.cwd(), 'app/study/word/[surah]/[ayah]/[position].tsx'),
     'utf8'
   );
-  assert.match(source, /<WordRibbon/);
-  assert.match(source, /horizontal/);
-  assert.match(source, /inverted/);
+  assert.match(source, /<AyahContextSelector/);
   assert.match(source, /router\.setParams\(\{ position:/);
   assert.match(source, /label="Overview"/);
   assert.match(source, /label="Morphology"/);
@@ -172,10 +186,48 @@ test('full screen keeps the Phase 5 route, ribbon, tabs, RTL text, and route-dri
   assert.match(source, /scrollOffsetRef/);
   assert.match(source, /About this analysis/);
   assert.match(source, /Share\.share/);
-  assert.match(source, /writingDirection: 'rtl'/);
   assert.match(source, /Complete ayah grammar/);
   assert.match(source, /إِعْرَابٌ مُخْتَصَرٌ/);
   assert.doesNotMatch(source, /Dictionary definition/);
+  assert.doesNotMatch(source, /function WordRibbon/);
+  assert.doesNotMatch(source, /function AdjacentNavigation/);
+  assert.doesNotMatch(source, /positionCounter/);
+});
+
+test('ayah selector renders unboxed, spacious RTL text with color-only selection and accessibility state', () => {
+  const source = readFileSync(
+    join(process.cwd(), 'components/word-study/full-study/AyahContextSelector.tsx'),
+    'utf8'
+  );
+  assert.match(source, /flexDirection: 'row-reverse'/);
+  assert.match(source, /flexWrap: 'wrap'/);
+  assert.match(source, /writingDirection: 'rtl'/);
+  assert.match(source, /getCollapsedAyahWindow/);
+  assert.match(source, /accessibilityState=\{\{ selected \}\}/);
+  assert.match(source, /accessibilityState=\{\{ expanded \}\}/);
+  assert.match(source, /accessibilityActions/);
+  assert.match(source, /useReducedMotion/);
+  assert.match(source, /palette\.accent/);
+  assert.match(source, /columnGap: 7/);
+  assert.match(source, /fontSize: 31/);
+  assert.match(source, /VIEWPORT_HEIGHT_DURATION = 240/);
+  assert.match(source, /RECENTER_MOTION_DURATION = 300/);
+  assert.match(source, /ESTIMATED_COLLAPSED_HEIGHT = 166/);
+  assert.match(source, /measurementPending \? styles\.wordsMeasuring/);
+  assert.match(source, /wordsMeasuring: \{ opacity: 0 \}/);
+  assert.match(source, /toValue: targetHeight/);
+  assert.match(source, /toValue: targetTranslateY/);
+  assert.match(source, /Easing\.inOut\(Easing\.cubic\)/);
+  assert.match(source, /useNativeDriver: true/);
+  assert.match(source, /useLayoutEffect/);
+  assert.match(source, /<ChevronDown[^>]+size=\{28\}/);
+  assert.match(source, /<ChevronUp[^>]+size=\{28\}/);
+  assert.match(source, /direction: 'ltr'/);
+  assert.match(source, /justifyContent: 'flex-end'/);
+  assert.doesNotMatch(source, /AYAH CONTEXT/);
+  assert.doesNotMatch(source, /ChevronsDown|ChevronsUp/);
+  assert.doesNotMatch(source, /underline/i);
+  assert.doesNotMatch(source, /borderWidth/);
 });
 
 test('dictionary use case forwards normalized lemma and root without using surface text as a sense', async () => {

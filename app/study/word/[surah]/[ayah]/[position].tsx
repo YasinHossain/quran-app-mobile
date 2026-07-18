@@ -1,7 +1,6 @@
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import {
   ArrowLeft,
-  ChevronLeft,
   ChevronRight,
   ExternalLink,
   Info,
@@ -11,7 +10,6 @@ import {
 import React from 'react';
 import {
   ActivityIndicator,
-  FlatList,
   Linking,
   Pressable,
   ScrollView,
@@ -24,13 +22,13 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import Colors from '@/constants/Colors';
 import { WordSegmentsCard } from '@/components/word-study/WordSegmentsCard';
+import { AyahContextSelector } from '@/components/word-study/full-study/AyahContextSelector';
 import { OccurrenceExplorer } from '@/components/word-study/full-study/OccurrenceExplorer';
 import { DictionarySection } from '@/components/word-study/full-study/DictionarySection';
 import { findSelectedWordGrammarPassages } from '@/components/word-study/full-study/grammarStudyModel';
 import { buildOccurrenceReaderParams } from '@/components/word-study/full-study/occurrenceExplorerModel';
 import {
   buildWordStudyShareMessage,
-  getAdjacentWordPositions,
   getLemmaText,
   getMorphologyDetails,
   getPrimaryPosText,
@@ -66,9 +64,6 @@ type GrammarLoadState =
   | { status: 'loading' }
   | { status: 'ready'; result: GrammarStudyLookupResult }
   | { status: 'error' };
-
-const RIBBON_ITEM_WIDTH = 88;
-const RIBBON_ITEM_STEP = 96;
 
 function firstParam(value: string | string[] | undefined): string {
   return Array.isArray(value) ? (value[0] ?? '') : (value ?? '');
@@ -110,7 +105,6 @@ export default function WordStudyScreen(): React.JSX.Element {
   const [grammarLoadState, setGrammarLoadState] = React.useState<GrammarLoadState>({
     status: 'idle',
   });
-  const ribbonRef = React.useRef<FlatList<WordAnalysis>>(null);
   const scrollRef = React.useRef<ScrollView>(null);
   const scrollOffsetRef = React.useRef(0);
   const restoreAfterReaderRef = React.useRef(false);
@@ -171,17 +165,6 @@ export default function WordStudyScreen(): React.JSX.Element {
   const selected = location
     ? words.find((word) => word.location.wordPosition === location.wordPosition)
     : undefined;
-  const selectedIndex = selected
-    ? words.findIndex((word) => word.location.wordPosition === selected.location.wordPosition)
-    : -1;
-
-  React.useEffect(() => {
-    if (selectedIndex < 0) return;
-    requestAnimationFrame(() => {
-      ribbonRef.current?.scrollToIndex({ index: selectedIndex, animated: true, viewPosition: 0.5 });
-    });
-  }, [selectedIndex]);
-
   const selectPosition = React.useCallback(
     (position: number) => router.setParams({ position: String(position) }),
     [router]
@@ -260,183 +243,55 @@ export default function WordStudyScreen(): React.JSX.Element {
           message="This word position is not present in the installed study pack."
         />
       ) : (
-        <>
-          <WordRibbon
+        <ScrollView
+          ref={scrollRef}
+          style={styles.scroll}
+          contentContainerStyle={[styles.content, { paddingBottom: bottomPadding }]}
+          showsVerticalScrollIndicator={false}
+          scrollEventThrottle={32}
+          onScroll={(event) => {
+            scrollOffsetRef.current = event.nativeEvent.contentOffset.y;
+          }}
+        >
+          <AyahContextSelector
             words={words}
             selectedPosition={selected.location.wordPosition}
             onSelect={selectPosition}
-            palette={palette}
-            listRef={ribbonRef}
           />
           <ScrollView
-            ref={scrollRef}
-            style={styles.scroll}
-            contentContainerStyle={[styles.content, { paddingBottom: bottomPadding }]}
-            showsVerticalScrollIndicator={false}
-            scrollEventThrottle={32}
-            onScroll={(event) => {
-              scrollOffsetRef.current = event.nativeEvent.contentOffset.y;
-            }}
+            horizontal
+            accessibilityRole="tablist"
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={[styles.tabs, { backgroundColor: palette.interactive }]}
           >
-            <AdjacentNavigation
-              words={words}
-              selectedPosition={selected.location.wordPosition}
-              onSelect={selectPosition}
+            <TabButton label="Overview" selected={tab === 'overview'} onPress={() => setTab('overview')} palette={palette} />
+            <TabButton label="Morphology" selected={tab === 'morphology'} onPress={() => setTab('morphology')} palette={palette} />
+            <TabButton label="Grammar" selected={tab === 'grammar'} onPress={() => setTab('grammar')} palette={palette} />
+            <TabButton label="Occurrences" selected={tab === 'occurrences'} onPress={() => setTab('occurrences')} palette={palette} />
+            <TabButton label="Dictionary" selected={tab === 'dictionary'} onPress={() => setTab('dictionary')} palette={palette} />
+          </ScrollView>
+          {tab === 'overview' ? (
+            <OverviewSection analysis={selected} palette={palette} />
+          ) : tab === 'morphology' ? (
+            <MorphologySection analysis={selected} palette={palette} />
+          ) : tab === 'grammar' ? (
+            <GrammarSection
+              analysis={selected}
+              grammarLoadState={grammarLoadState}
               palette={palette}
             />
-            <ScrollView
-              horizontal
-              accessibilityRole="tablist"
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={[styles.tabs, { backgroundColor: palette.interactive }]}
-            >
-              <TabButton label="Overview" selected={tab === 'overview'} onPress={() => setTab('overview')} palette={palette} />
-              <TabButton label="Morphology" selected={tab === 'morphology'} onPress={() => setTab('morphology')} palette={palette} />
-              <TabButton label="Grammar" selected={tab === 'grammar'} onPress={() => setTab('grammar')} palette={palette} />
-              <TabButton label="Occurrences" selected={tab === 'occurrences'} onPress={() => setTab('occurrences')} palette={palette} />
-              <TabButton label="Dictionary" selected={tab === 'dictionary'} onPress={() => setTab('dictionary')} palette={palette} />
-            </ScrollView>
-            {tab === 'overview' ? (
-              <OverviewSection analysis={selected} palette={palette} />
-            ) : tab === 'morphology' ? (
-              <MorphologySection analysis={selected} palette={palette} />
-            ) : tab === 'grammar' ? (
-              <GrammarSection
-                analysis={selected}
-                grammarLoadState={grammarLoadState}
-                palette={palette}
-              />
-            ) : tab === 'occurrences' ? (
-              <OccurrenceExplorer
-                analysis={selected}
-                palette={palette}
-                onOpenReader={handleOpenOccurrenceInReader}
-              />
-            ) : (
-              <DictionarySection analysis={selected} palette={palette} />
-            )}
-          </ScrollView>
-        </>
+          ) : tab === 'occurrences' ? (
+            <OccurrenceExplorer
+              analysis={selected}
+              palette={palette}
+              onOpenReader={handleOpenOccurrenceInReader}
+            />
+          ) : (
+            <DictionarySection analysis={selected} palette={palette} />
+          )}
+        </ScrollView>
       )}
     </SafeAreaView>
-  );
-}
-
-function WordRibbon({
-  words,
-  selectedPosition,
-  onSelect,
-  palette,
-  listRef,
-}: {
-  words: readonly WordAnalysis[];
-  selectedPosition: number;
-  onSelect: (position: number) => void;
-  palette: Palette;
-  listRef: React.RefObject<FlatList<WordAnalysis> | null>;
-}): React.JSX.Element {
-  return (
-    <View style={[styles.ribbonShell, { borderBottomColor: palette.border, backgroundColor: palette.surface }]}> 
-      <Text style={[styles.ribbonLabel, { color: palette.muted }]}>AYAH WORDS · SELECT A WORD</Text>
-      <FlatList
-        ref={listRef}
-        horizontal
-        inverted
-        data={[...words]}
-        keyExtractor={(item) => item.location.locationKey}
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.ribbonContent}
-        ItemSeparatorComponent={() => <View style={styles.ribbonSeparator} />}
-        getItemLayout={(_, index) => ({ length: RIBBON_ITEM_STEP, offset: RIBBON_ITEM_STEP * index, index })}
-        onScrollToIndexFailed={({ index }) => {
-          listRef.current?.scrollToOffset({ offset: Math.max(0, index * RIBBON_ITEM_STEP), animated: true });
-        }}
-        renderItem={({ item }) => {
-          const selected = item.location.wordPosition === selectedPosition;
-          return (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={`Word ${item.location.wordPosition}, ${item.surfaceUthmani}`}
-              accessibilityState={{ selected }}
-              onPress={() => onSelect(item.location.wordPosition)}
-              style={[
-                styles.ribbonWord,
-                {
-                  width: RIBBON_ITEM_WIDTH,
-                  backgroundColor: selected ? palette.tint : palette.background,
-                  borderColor: selected ? palette.tint : palette.border,
-                },
-              ]}
-            >
-              <Text style={[styles.ribbonArabic, { color: selected ? palette.onAccent : palette.text }]}> 
-                {item.surfaceUthmani}
-              </Text>
-              <Text style={[styles.ribbonPosition, { color: selected ? palette.onAccent : palette.muted }]}> 
-                {item.location.wordPosition}
-              </Text>
-            </Pressable>
-          );
-        }}
-      />
-    </View>
-  );
-}
-
-function AdjacentNavigation({
-  words,
-  selectedPosition,
-  onSelect,
-  palette,
-}: {
-  words: readonly WordAnalysis[];
-  selectedPosition: number;
-  onSelect: (position: number) => void;
-  palette: Palette;
-}): React.JSX.Element {
-  const adjacent = getAdjacentWordPositions(words, selectedPosition);
-  return (
-    <View style={styles.adjacentRow}>
-      <AdjacentButton
-        label="Previous word"
-        icon={<ChevronLeft color={adjacent.previous ? palette.tint : palette.muted} size={18} />}
-        position={adjacent.previous}
-        onSelect={onSelect}
-        palette={palette}
-      />
-      <Text style={[styles.positionCounter, { color: palette.muted }]}>Word {selectedPosition} of {words.length}</Text>
-      <AdjacentButton
-        label="Next word"
-        icon={<ChevronRight color={adjacent.next ? palette.tint : palette.muted} size={18} />}
-        position={adjacent.next}
-        onSelect={onSelect}
-        palette={palette}
-        iconAfter
-      />
-    </View>
-  );
-}
-
-function AdjacentButton({ label, icon, position, onSelect, palette, iconAfter = false }: {
-  label: string;
-  icon: React.ReactNode;
-  position?: number;
-  onSelect: (position: number) => void;
-  palette: Palette;
-  iconAfter?: boolean;
-}): React.JSX.Element {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityState={{ disabled: !position }}
-      disabled={!position}
-      onPress={() => position && onSelect(position)}
-      style={[styles.adjacentButton, { opacity: position ? 1 : 0.35 }]}
-    >
-      {!iconAfter ? icon : null}
-      <Text style={[styles.adjacentLabel, { color: position ? palette.tint : palette.muted }]}>{label}</Text>
-      {iconAfter ? icon : null}
-    </Pressable>
   );
 }
 
@@ -882,19 +737,8 @@ const styles = StyleSheet.create({
   headerCopy: { flex: 1, gap: 2 },
   headerTitle: { fontSize: 17, lineHeight: 23, fontWeight: '700' },
   location: { fontSize: 13, lineHeight: 18, fontWeight: '700', letterSpacing: 0.25 },
-  ribbonShell: { paddingTop: 10, paddingBottom: 12, borderBottomWidth: StyleSheet.hairlineWidth, gap: 8 },
-  ribbonLabel: { paddingHorizontal: 16, fontSize: 10, lineHeight: 14, fontWeight: '700', letterSpacing: 0.9 },
-  ribbonContent: { paddingHorizontal: 16 },
-  ribbonSeparator: { width: 8 },
-  ribbonWord: { minHeight: 72, borderRadius: 15, borderWidth: 1, paddingHorizontal: 8, paddingVertical: 8, alignItems: 'center', justifyContent: 'center', gap: 2 },
-  ribbonArabic: { fontFamily: 'UthmanicHafs1Ver18', fontSize: 24, lineHeight: 36, writingDirection: 'rtl', textAlign: 'center' },
-  ribbonPosition: { fontSize: 10, lineHeight: 14, fontWeight: '700' },
   scroll: { flex: 1 },
   content: { width: '100%', maxWidth: 720, alignSelf: 'center', paddingHorizontal: 16, paddingTop: 14, gap: 16 },
-  adjacentRow: { minHeight: 38, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-  adjacentButton: { minHeight: 38, flexDirection: 'row', alignItems: 'center', gap: 3 },
-  adjacentLabel: { fontSize: 12, lineHeight: 17, fontWeight: '700' },
-  positionCounter: { fontSize: 11, lineHeight: 16, textAlign: 'center' },
   tabs: { flexDirection: 'row', padding: 4, borderRadius: 15 },
   tab: { minWidth: 104, minHeight: 44, paddingHorizontal: 12, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   tabText: { fontSize: 12, lineHeight: 17, fontWeight: '700' },

@@ -179,17 +179,3 @@ export function buildWordStudyShareMessage(analysis: WordAnalysis, surahName: st
     sources ? `Analysis sources: ${sources}` : null,
   ].filter((line): line is string => Boolean(line)).join('\n');
 }
-
-export function getAdjacentWordPositions(
-  words: readonly WordAnalysis[],
-  selectedPosition: number
-): { previous?: number; next?: number } {
-  const index = words.findIndex((word) => word.location.wordPosition === selectedPosition);
-  if (index < 0) return {};
-  const previous = words[index - 1]?.location.wordPosition;
-  const next = words[index + 1]?.location.wordPosition;
-  return {
-    ...(previous ? { previous } : {}),
-    ...(next ? { next } : {}),
-  };
-}

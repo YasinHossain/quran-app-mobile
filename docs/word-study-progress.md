@@ -580,7 +580,7 @@ Source-of-truth files checked for the partial Phase 9A record:
 - `docs/word-study-release-notes.md`
 - `docs/word-study-android-physical-device-checklist.md`
 - `docs/components.md`
-- `docs/ui-parity.md`
+- `docs/archive/web-parity-history.md` (historical migration record)
 - `app/privacy.tsx`
 - `dist/word-study-packs/qac-v0.4/manifest.json`
 - `dist/word-study-packs/qac-v0.4/validation-report.json`
@@ -594,7 +594,7 @@ Source-of-truth files checked for the partial Phase 9A record:
 | Stress matrix: long Surah, large root, low memory, offline, corrupt pack, update/rollback, active audio, rapid taps | Partial | Repository tests cover corrupt/invalid lifecycle states, rollback behavior, bounded large-root occurrence queries, stale cancellation, and real-pack integrity. `npm run benchmark:word-study-repository` passed the large-root/lookup thresholds. Physical-device long-Surah, low-memory, active-audio, offline, rapid-tap, and release-build stress runs remain required. |
 | Source notices, licenses, attribution, versions, checksums, corrections/change notices | Partial | Source metadata is embedded in the pack manifest and surfaced in Word Study. `docs/word-study-release-notes.md` records pack versions/checksums and excluded future layers. Public release still requires attaching or referencing the out-of-repo written permission correspondence and reviewer approval. |
 | Privacy behavior | Done for code/docs | `app/privacy.tsx` names offline resources and Word Study pack state as local data, and states that no analytics tracks studied words, reading content, notes, or religious-profile data. Source search found no analytics dependency/path for Word Study. |
-| Product/component/release documentation | Done for blocked RC | `docs/word-study-release-notes.md`, `docs/word-study-android-physical-device-checklist.md`, `docs/components.md`, `docs/ui-parity.md`, and this progress section record the current scope and blockers. |
+| Product/component/release documentation | Done for blocked RC | `docs/word-study-release-notes.md`, `docs/word-study-android-physical-device-checklist.md`, `docs/components.md`, the archived migration record, and this progress section record the current scope and blockers. |
 | Android release build | Done locally, production-signing caveat | `./gradlew :app:testDebugUnitTest :app:compileReleaseKotlin :app:assembleRelease` passed on 2026-07-17. APK `android/app/build/outputs/apk/release/app-release.apk`, SHA-256 `bb99ccba899aba485c686289e28295b45e3a5a4d92255aa6022ee1078c6930aa`, size 132 MB. The repository signs release with the debug keystore, so production-signed verification remains required before public distribution. |
 | iOS release build | Deferred, not an Android blocker | This belongs to deferred Phase 8 and Phase 9B. This checkout has no `ios/` directory. |
 | `npm run verify` | Done | Passed on 2026-07-17 after the Phase 9A updates: type-check, core purity, Word Study pack tests, repository tests, quick-sheet tests, and screen tests were all green. |
