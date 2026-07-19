@@ -404,6 +404,13 @@ test('full screen uses Morphology-first information architecture without repeate
   assert.ok(source.indexOf('label="Root"') < source.indexOf('How this word is built'));
   assert.match(source, /<SlidingSegmentedControl/);
   assert.match(source, /items=\{WORD_STUDY_TABS\}/);
+  assert.match(source, /InteractionManager\.runAfterInteractions/);
+  assert.match(source, /function PersistentTabPanel/);
+  assert.match(source, /mountedTabs\.has\('grammar'\)/);
+  assert.match(source, /mountedTabs\.has\('occurrences'\)/);
+  assert.match(source, /mountedTabs\.has\('dictionary'\)/);
+  assert.match(source, /hiddenTab: \{ display: 'none' \}/);
+  assert.match(source, /isActive=\{tab === 'dictionary'\}/);
   assert.doesNotMatch(source, /<ScrollView\s+horizontal\s+accessibilityRole="tablist"/);
   assert.match(source, /useFocusEffect/);
   assert.match(source, /scrollOffsetRef/);
@@ -553,6 +560,7 @@ test('ayah selector uses one stable inline Arabic layout without a measurement p
   assert.match(source, /fontScale/);
   assert.match(source, /effectiveFontScale = Math\.max\(1, fontScale\)/);
   assert.match(source, /collapsedHeight = COLLAPSED_LINE_COUNT \* ARABIC_LINE_HEIGHT \* effectiveFontScale/);
+  assert.match(source, /previousLayoutIdentityRef\.current === layoutIdentity/);
   assert.match(source, /EXPANSION_DURATION = 260/);
   assert.match(source, /useReducedMotion/);
   assert.match(source, /Animated\.timing\(disclosureProgress/);
@@ -716,9 +724,12 @@ test('occurrence explorer cancels stale queries, keeps page size bounded, and av
   assert.match(source, /selected word lemma/);
   assert.match(source, /buildRootFamilyLemmaQuery/);
   assert.match(source, /useReducedMotion/);
-  assert.match(source, /LinearTransition\.duration/);
-  assert.match(source, /ReduceMotion\.Always/);
-  assert.match(source, /FadeIn\.duration/);
+  assert.match(source, /new Animated\.Value\(0\)/);
+  assert.match(source, /Animated\.timing\(bodyHeight/);
+  assert.match(source, /useNativeDriver: false/);
+  assert.match(source, /onLayout=\{handleBodyLayout\}/);
+  assert.match(source, /familyBodyViewport: \{ overflow: 'hidden' \}/);
+  assert.match(source, /accessibilityElementsHidden=\{!expanded\}/);
   assert.doesNotMatch(source, /setRootFamilyExpanded\(false\)/);
   assert.match(source, /MAX_EXPANDED_FAMILY_RESULTS_HEIGHT_FLOOR/);
   assert.match(source, /minHeight: resultsHeightFloor/);

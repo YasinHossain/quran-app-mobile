@@ -64,17 +64,19 @@ function formatBytes(bytes: number): string {
 export function DictionarySection({
   analysis,
   palette,
+  isActive = true,
 }: {
   analysis: WordAnalysis;
   palette: Palette;
+  isActive?: boolean;
 }): React.JSX.Element {
   const installer = container.getWordReferencePackInstaller();
   const repository = container.getDictionaryReferenceRepository();
   const { width } = useWindowDimensions();
   const { items, refresh: refreshDownloads } = useDownloadIndexItems({
-    enabled: true,
+    enabled: isActive,
     pollIntervalMs: 700,
-    pollWhileEnabled: true,
+    pollWhileEnabled: isActive,
   });
   const [catalog, setCatalog] = React.useState<CatalogState>({ status: 'loading' });
   const [sources, setSources] = React.useState<readonly DictionarySource[]>([]);

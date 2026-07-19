@@ -12,20 +12,16 @@ import {
 import React from 'react';
 import {
   ActivityIndicator,
+  Animated,
+  Easing,
+  type LayoutChangeEvent,
   Platform,
   Pressable,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
-import Animated, {
-  Easing,
-  FadeIn,
-  FadeOut,
-  LinearTransition,
-  ReduceMotion,
-  useReducedMotion,
-} from 'react-native-reanimated';
+import { useReducedMotion } from 'react-native-reanimated';
 
 import Colors from '@/constants/Colors';
 import { getPosLabel } from '@/components/word-study/wordQuickSheetModel';
@@ -416,7 +412,7 @@ export function OccurrenceExplorer({
             }}
             style={[
               styles.results,
-              rootFamilyExpanded && resultsHeightFloor > 0
+              resultsHeightFloor > 0
                 ? { minHeight: resultsHeightFloor }
                 : null,
             ]}
@@ -486,16 +482,50 @@ function RootFamilyBrowser({
   onSelect: (lemma: Lemma) => void;
 }): React.JSX.Element {
   const displayedLemmaCount = state.status === 'ready' ? state.lemmas.length : expectedLemmaCount;
-  const layoutTransition = LinearTransition.duration(reduceMotion ? 0 : 220)
-    .easing(Easing.out(Easing.cubic))
-    .reduceMotion(reduceMotion ? ReduceMotion.Always : ReduceMotion.System);
-  const bodyEntering = reduceMotion ? undefined : FadeIn.duration(140);
-  const bodyExiting = reduceMotion ? undefined : FadeOut.duration(100);
+  const bodyHeight = React.useRef(new Animated.Value(0)).current;
+  const measuredBodyHeightRef = React.useRef<number | null>(null);
+  const previousExpandedRef = React.useRef(expanded);
+  const [hasMeasuredBody, setHasMeasuredBody] = React.useState(false);
+
+  const moveBodyTo = React.useCallback((height: number) => {
+    bodyHeight.stopAnimation();
+    if (reduceMotion) {
+      bodyHeight.setValue(height);
+      return;
+    }
+    Animated.timing(bodyHeight, {
+      toValue: height,
+      duration: 220,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+  }, [bodyHeight, reduceMotion]);
+
+  React.useEffect(() => {
+    if (previousExpandedRef.current === expanded) return;
+    previousExpandedRef.current = expanded;
+    const measuredHeight = measuredBodyHeightRef.current;
+    if (measuredHeight === null) return;
+    moveBodyTo(expanded ? measuredHeight : 0);
+  }, [expanded, moveBodyTo]);
+
+  const handleBodyLayout = React.useCallback((event: LayoutChangeEvent) => {
+    const nextHeight = event.nativeEvent.layout.height;
+    const previousHeight = measuredBodyHeightRef.current;
+    if (previousHeight !== null && Math.abs(previousHeight - nextHeight) < 0.5) return;
+    measuredBodyHeightRef.current = nextHeight;
+    setHasMeasuredBody(true);
+    if (!expanded) {
+      bodyHeight.setValue(0);
+    } else if (previousHeight === null) {
+      bodyHeight.setValue(nextHeight);
+    } else {
+      moveBodyTo(nextHeight);
+    }
+  }, [bodyHeight, expanded, moveBodyTo]);
+
   return (
-    <Animated.View
-      layout={layoutTransition}
-      style={[styles.familyCard, { backgroundColor: palette.surface }]}
-    >
+    <View style={[styles.familyCard, { backgroundColor: palette.surface }]}>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`${expanded ? 'Collapse' : 'Expand'} ${displayedLemmaCount} forms in root ${rootArabic}`}
@@ -516,10 +546,18 @@ function RootFamilyBrowser({
         )}
       </Pressable>
 
-      {expanded ? (
-        <Animated.View
-          entering={bodyEntering}
-          exiting={bodyExiting}
+      <Animated.View
+        accessibilityElementsHidden={!expanded}
+        importantForAccessibility={expanded ? 'auto' : 'no-hide-descendants'}
+        pointerEvents={expanded ? 'auto' : 'none'}
+        style={[
+          styles.familyBodyViewport,
+          hasMeasuredBody ? { height: bodyHeight } : expanded ? null : styles.familyBodyCollapsed,
+        ]}
+      >
+        <View
+          collapsable={false}
+          onLayout={handleBodyLayout}
           style={[styles.familyBody, { borderTopColor: palette.border }]}
         >
           {state.status === 'loading' ? (
@@ -579,9 +617,9 @@ function RootFamilyBrowser({
               })}
             </View>
           )}
-        </Animated.View>
-      ) : null}
-    </Animated.View>
+        </View>
+      </Animated.View>
+    </View>
   );
 }
 
@@ -666,6 +704,8 @@ const styles = StyleSheet.create({
   familyHeaderCopy: { flex: 1, gap: 2 },
   familyEyebrow: { fontSize: 11, lineHeight: 15, fontWeight: '800', letterSpacing: 0.55 },
   familySummary: { fontSize: 12, lineHeight: 17, fontWeight: '600' },
+  familyBodyViewport: { overflow: 'hidden' },
+  familyBodyCollapsed: { height: 0 },
   familyBody: { borderTopWidth: 1 },
   familyState: { minHeight: 96, alignItems: 'center', justifyContent: 'center', gap: 8, padding: 16 },
   familyRows: { paddingBottom: 2 },

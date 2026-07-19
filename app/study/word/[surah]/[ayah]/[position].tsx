@@ -10,6 +10,7 @@ import {
 import React from 'react';
 import {
   ActivityIndicator,
+  InteractionManager,
   Pressable,
   ScrollView,
   Share,
@@ -126,6 +127,9 @@ export default function WordStudyScreen(): React.JSX.Element {
   const { audioPlayerBarHeight } = useLayoutMetrics();
   const insets = useSafeAreaInsets();
   const [tab, setTab] = React.useState<StudyTab>('morphology');
+  const [mountedTabs, setMountedTabs] = React.useState<ReadonlySet<StudyTab>>(
+    () => new Set<StudyTab>(['morphology'])
+  );
   const [loadState, setLoadState] = React.useState<LoadState>({ status: 'loading' });
   const [retryNonce, setRetryNonce] = React.useState(0);
   const [isMorphologyGuideOpen, setIsMorphologyGuideOpen] = React.useState(false);
@@ -140,6 +144,13 @@ export default function WordStudyScreen(): React.JSX.Element {
   const surahName = location
     ? chapters.find((chapter) => chapter.id === location.surah)?.name_simple ?? `Surah ${location.surah}`
     : 'Word Study';
+
+  React.useEffect(() => {
+    const task = InteractionManager.runAfterInteractions(() => {
+      setMountedTabs(new Set(WORD_STUDY_TABS.map((item) => item.key)));
+    });
+    return () => task.cancel();
+  }, []);
 
   React.useEffect(() => {
     if (!location) {
@@ -173,7 +184,7 @@ export default function WordStudyScreen(): React.JSX.Element {
   }, [location?.verseKey, retryNonce]);
 
   React.useEffect(() => {
-    if (tab !== 'grammar' || !location) return;
+    if (!location) return;
     let cancelled = false;
     setGrammarLoadState({ status: 'loading' });
     void container
@@ -188,7 +199,7 @@ export default function WordStudyScreen(): React.JSX.Element {
     return () => {
       cancelled = true;
     };
-  }, [location?.verseKey, tab]);
+  }, [location?.verseKey]);
 
   const words = loadState.status === 'ready' ? loadState.words : [];
   const immediateContextWords = React.useMemo<readonly AyahContextWord[]>(() => {
@@ -217,6 +228,13 @@ export default function WordStudyScreen(): React.JSX.Element {
     (position: number) => router.setParams({ position: String(position) }),
     [router]
   );
+  const selectTab = React.useCallback((nextTab: StudyTab) => {
+    setMountedTabs((current) => {
+      if (current.has(nextTab)) return current;
+      return new Set([...current, nextTab]);
+    });
+    setTab(nextTab);
+  }, []);
 
   const handleShare = React.useCallback(() => {
     if (!selected) return;
@@ -321,7 +339,7 @@ export default function WordStudyScreen(): React.JSX.Element {
             selectedKey={tab}
             width={Math.max(0, Math.min(688, windowWidth - 32))}
             labelFontSize={11}
-            onSelect={setTab}
+            onSelect={selectTab}
           />
           {!selected ? (
             <InlineAnalysisState
@@ -338,35 +356,52 @@ export default function WordStudyScreen(): React.JSX.Element {
               }
               palette={palette}
             />
-          ) : tab === 'morphology' ? (
-            <MorphologySection
-              analysis={selected}
-              contextualMeaning={contextualMeaning}
-              palette={palette}
-              onOpenGuide={() => setIsMorphologyGuideOpen(true)}
-            />
-          ) : tab === 'grammar' ? (
-            <GrammarSection
-              analysis={selected}
-              grammarLoadState={grammarLoadState}
-              palette={palette}
-              onOpenGuide={() => setIsGrammarGuideOpen(true)}
-            />
-          ) : tab === 'occurrences' ? (
-            <View
-              onLayout={(event) => {
-                occurrenceSectionYRef.current = event.nativeEvent.layout.y;
-              }}
-            >
-              <OccurrenceExplorer
-                analysis={selected}
-                palette={palette}
-                onOpenReader={handleOpenOccurrenceInReader}
-                onRequestScrollToFilters={handleScrollToOccurrenceFilters}
-              />
-            </View>
           ) : (
-            <DictionarySection analysis={selected} palette={palette} />
+            <>
+              <PersistentTabPanel active={tab === 'morphology'}>
+                <MorphologySection
+                  analysis={selected}
+                  contextualMeaning={contextualMeaning}
+                  palette={palette}
+                  onOpenGuide={() => setIsMorphologyGuideOpen(true)}
+                />
+              </PersistentTabPanel>
+              {mountedTabs.has('grammar') ? (
+                <PersistentTabPanel active={tab === 'grammar'}>
+                  <GrammarSection
+                    analysis={selected}
+                    grammarLoadState={grammarLoadState}
+                    palette={palette}
+                    onOpenGuide={() => setIsGrammarGuideOpen(true)}
+                  />
+                </PersistentTabPanel>
+              ) : null}
+              {mountedTabs.has('occurrences') ? (
+                <PersistentTabPanel active={tab === 'occurrences'}>
+                  <View
+                    onLayout={(event) => {
+                      occurrenceSectionYRef.current = event.nativeEvent.layout.y;
+                    }}
+                  >
+                    <OccurrenceExplorer
+                      analysis={selected}
+                      palette={palette}
+                      onOpenReader={handleOpenOccurrenceInReader}
+                      onRequestScrollToFilters={handleScrollToOccurrenceFilters}
+                    />
+                  </View>
+                </PersistentTabPanel>
+              ) : null}
+              {mountedTabs.has('dictionary') ? (
+                <PersistentTabPanel active={tab === 'dictionary'}>
+                  <DictionarySection
+                    analysis={selected}
+                    palette={palette}
+                    isActive={tab === 'dictionary'}
+                  />
+                </PersistentTabPanel>
+              ) : null}
+            </>
           )}
         </ScrollView>
       )}
@@ -379,6 +414,25 @@ export default function WordStudyScreen(): React.JSX.Element {
         onClose={() => setIsGrammarGuideOpen(false)}
       />
     </SafeAreaView>
+  );
+}
+
+function PersistentTabPanel({
+  active,
+  children,
+}: {
+  active: boolean;
+  children: React.ReactNode;
+}): React.JSX.Element {
+  return (
+    <View
+      accessibilityElementsHidden={!active}
+      importantForAccessibility={active ? 'auto' : 'no-hide-descendants'}
+      pointerEvents={active ? 'auto' : 'none'}
+      style={!active ? styles.hiddenTab : undefined}
+    >
+      {children}
+    </View>
   );
 }
 
@@ -508,8 +562,11 @@ function GrammarSection({
 }): React.JSX.Element {
   const [showFullAyah, setShowFullAyah] = React.useState(false);
   const [expandedPassages, setExpandedPassages] = React.useState<ReadonlySet<number>>(new Set());
+  const previousLocationKeyRef = React.useRef(analysis.location.locationKey);
 
   React.useEffect(() => {
+    if (previousLocationKeyRef.current === analysis.location.locationKey) return;
+    previousLocationKeyRef.current = analysis.location.locationKey;
     setShowFullAyah(false);
     setExpandedPassages(new Set());
   }, [analysis.location.locationKey]);
@@ -928,6 +985,7 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 17, lineHeight: 23, fontWeight: '700' },
   location: { fontSize: 13, lineHeight: 18, fontWeight: '700', letterSpacing: 0.25 },
   scroll: { flex: 1 },
+  hiddenTab: { display: 'none' },
   content: { width: '100%', maxWidth: 720, alignSelf: 'center', paddingHorizontal: 16, paddingTop: 14, gap: 16 },
   section: { gap: 16 },
   morphologySummary: { borderRadius: 20, padding: 16, gap: 16 },

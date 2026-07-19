@@ -63,6 +63,8 @@ export function AyahContextSelector({
   const viewportHeight = React.useRef(new Animated.Value(collapsedHeight)).current;
   const fullContentHeightRef = React.useRef<number | null>(null);
   const verseKey = words[0]?.location.verseKey ?? '';
+  const layoutIdentity = `${verseKey}:${collapsedHeight}`;
+  const previousLayoutIdentityRef = React.useRef(layoutIdentity);
   const capacity = getCollapsedAyahCapacity(
     viewportWidth,
     ARABIC_FONT_SIZE * effectiveFontScale,
@@ -109,12 +111,14 @@ export function AyahContextSelector({
   }, [collapsedRange, retainedExcerpt]);
 
   React.useEffect(() => {
+    if (previousLayoutIdentityRef.current === layoutIdentity) return;
+    previousLayoutIdentityRef.current = layoutIdentity;
     setExpanded(false);
     setShowFullContent(false);
     disclosureProgress.setValue(0);
     viewportHeight.setValue(collapsedHeight);
     fullContentHeightRef.current = null;
-  }, [collapsedHeight, disclosureProgress, verseKey, viewportHeight]);
+  }, [collapsedHeight, disclosureProgress, layoutIdentity, viewportHeight]);
 
   const animateViewportHeight = React.useCallback((height: number, onFinished?: () => void) => {
     viewportHeight.stopAnimation();
