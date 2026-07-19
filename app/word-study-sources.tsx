@@ -18,6 +18,7 @@ import Colors from '@/constants/Colors';
 import { useAppTheme } from '@/providers/ThemeContext';
 import { container } from '@/src/core/infrastructure/di/container';
 import { BUNDLED_WORD_GRAMMAR_PACK } from '@/src/core/infrastructure/word-grammar';
+import { BUNDLED_VERB_REFERENCE_PACK } from '@/src/core/infrastructure/verb-reference';
 import type { ReadyWordReferencePack } from '@/src/core/infrastructure/word-reference';
 import type { ReadyWordStudyPack, WordStudyPackSourceMetadata } from '@/src/core/infrastructure/word-study';
 
@@ -36,6 +37,7 @@ const METHODOLOGY_BOUNDARIES = [
   'Occurrence indexes group normalized surface forms, lemmas, or roots. A shared index key does not imply that every occurrence has the same contextual meaning.',
   'Arabic i‘rab is source-provided prose stored in a separate bundled pack. Selected-word matching changes presentation order only and never rewrites the source text.',
   'Dictionaries are optional local downloads. Their definitions remain attributed to their individual source and are not merged into the morphology analysis.',
+  'Verb principal parts come from a separate form-specific reference pack. The app looks up only the encountered root and derived form and does not generate a paradigm.',
 ] as const;
 
 function formatBytes(bytes: number): string {
@@ -179,6 +181,23 @@ export default function WordStudySourcesScreen(): React.JSX.Element {
               <Text style={[styles.noticeText, { color: palette.muted }]}>No optional dictionaries are installed. When installed, their manifest attribution appears here and beside their definitions.</Text>
             </View>
           )}
+
+          <SectionTitle title="Verb reference pack" palette={palette} />
+          <PackCard
+            title={BUNDLED_VERB_REFERENCE_PACK.manifest.source.title}
+            version={BUNDLED_VERB_REFERENCE_PACK.manifest.source.version}
+            rows={[
+              ['Pack', BUNDLED_VERB_REFERENCE_PACK.packId],
+              ['Schema', String(BUNDLED_VERB_REFERENCE_PACK.manifest.schemaVersion)],
+              ['Compiler', BUNDLED_VERB_REFERENCE_PACK.manifest.compilerVersion],
+              ['Coverage', `${BUNDLED_VERB_REFERENCE_PACK.manifest.rowCount.toLocaleString()} form-specific verb records`],
+              ['License', BUNDLED_VERB_REFERENCE_PACK.manifest.source.license],
+              ['Attribution', BUNDLED_VERB_REFERENCE_PACK.manifest.source.attribution],
+              ['Source SHA-256', BUNDLED_VERB_REFERENCE_PACK.manifest.source.checksumSha256],
+            ]}
+            externalUrl={BUNDLED_VERB_REFERENCE_PACK.manifest.source.url}
+            palette={palette}
+          />
 
           <SectionTitle title="Methodology boundaries" palette={palette} />
           <View style={[styles.boundariesCard, { borderColor: palette.border, backgroundColor: palette.surface }]}>

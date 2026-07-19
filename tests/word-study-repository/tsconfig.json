@@ -12,6 +12,7 @@
   "include": [
     "../../src/core/domain/repositories/IWordStudyRepository.ts",
     "../../src/core/domain/repositories/IGrammarStudyRepository.ts",
+    "../../src/core/domain/repositories/IVerbReferenceRepository.ts",
     "../../src/core/domain/word-study/**/*.ts",
     "../../src/core/infrastructure/word-study/LruCache.ts",
     "../../src/core/infrastructure/word-study/SQLiteWordStudyRepository.ts",
@@ -22,5 +23,7 @@
     ,"../../src/core/infrastructure/word-grammar/SQLiteGrammarStudyRepository.ts"
     ,"../../src/core/infrastructure/word-reference/WordReferencePack.types.ts"
     ,"../../src/core/infrastructure/word-reference/WordReferencePackRegistry.ts"
+    ,"../../src/core/infrastructure/verb-reference/VerbReferenceDatabase.ts"
+    ,"../../src/core/infrastructure/verb-reference/SQLiteVerbReferenceRepository.ts"
   ]
 }

@@ -1,6 +1,7 @@
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import {
   ArrowLeft,
+  ChevronDown,
   ChevronRight,
   Info,
   RotateCw,
@@ -30,8 +31,13 @@ import {
 } from '@/components/word-study/full-study/AyahContextSelector';
 import { OccurrenceExplorer } from '@/components/word-study/full-study/OccurrenceExplorer';
 import { DictionarySection } from '@/components/word-study/full-study/DictionarySection';
+import { VerbReferenceSection } from '@/components/word-study/full-study/VerbReferenceSection';
 import { MorphologyGuideSheet } from '@/components/word-study/full-study/MorphologyGuideSheet';
-import { findSelectedWordGrammarPassages } from '@/components/word-study/full-study/grammarStudyModel';
+import { GrammarGuideSheet } from '@/components/word-study/full-study/GrammarGuideSheet';
+import {
+  findSelectedWordGrammarPassages,
+  normalizeGrammarArabic,
+} from '@/components/word-study/full-study/grammarStudyModel';
 import { buildOccurrenceReaderParams } from '@/components/word-study/full-study/occurrenceExplorerModel';
 import { readWordStudyNavigationHandoff } from '@/components/word-study/full-study/wordStudyNavigationHandoff';
 import {
@@ -115,6 +121,7 @@ export default function WordStudyScreen(): React.JSX.Element {
   const [loadState, setLoadState] = React.useState<LoadState>({ status: 'loading' });
   const [retryNonce, setRetryNonce] = React.useState(0);
   const [isMorphologyGuideOpen, setIsMorphologyGuideOpen] = React.useState(false);
+  const [isGrammarGuideOpen, setIsGrammarGuideOpen] = React.useState(false);
   const [grammarLoadState, setGrammarLoadState] = React.useState<GrammarLoadState>({
     status: 'idle',
   });
@@ -227,7 +234,7 @@ export default function WordStudyScreen(): React.JSX.Element {
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: palette.background }]} edges={['top']}>
       <Stack.Screen options={{ headerShown: false }} />
-      <View style={[styles.header, { borderBottomColor: palette.border, backgroundColor: palette.surface }]}> 
+      <View style={[styles.header, { borderBottomColor: palette.border, backgroundColor: palette.surface }]}>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Back to reader"
@@ -238,10 +245,10 @@ export default function WordStudyScreen(): React.JSX.Element {
           <ArrowLeft color={palette.text} size={22} strokeWidth={2.25} />
         </Pressable>
         <View style={styles.headerCopy}>
-          <Text numberOfLines={1} style={[styles.headerTitle, { color: palette.text }]}> 
+          <Text numberOfLines={1} style={[styles.headerTitle, { color: palette.text }]}>
             {surahName} · Word Study
           </Text>
-          <Text style={[styles.location, { color: palette.tint }]}> 
+          <Text style={[styles.location, { color: palette.tint }]}>
             {location?.locationKey ?? 'Invalid location'}
           </Text>
         </View>
@@ -328,6 +335,7 @@ export default function WordStudyScreen(): React.JSX.Element {
               analysis={selected}
               grammarLoadState={grammarLoadState}
               palette={palette}
+              onOpenGuide={() => setIsGrammarGuideOpen(true)}
             />
           ) : tab === 'occurrences' ? (
             <OccurrenceExplorer
@@ -343,6 +351,10 @@ export default function WordStudyScreen(): React.JSX.Element {
       <MorphologyGuideSheet
         isOpen={isMorphologyGuideOpen}
         onClose={() => setIsMorphologyGuideOpen(false)}
+      />
+      <GrammarGuideSheet
+        isOpen={isGrammarGuideOpen}
+        onClose={() => setIsGrammarGuideOpen(false)}
       />
     </SafeAreaView>
   );
@@ -411,6 +423,7 @@ function MorphologySection({ analysis, contextualMeaning, palette, onOpenGuide }
           fullWidth={useSingleColumn}
         />
       </View>
+      <VerbReferenceSection analysis={analysis} palette={palette} />
       <SectionHeading
         title="How this word is built"
         palette={palette}
@@ -436,11 +449,10 @@ function MorphologySection({ analysis, contextualMeaning, palette, onOpenGuide }
         ]}
       >
         <View style={styles.guideRowContent}>
+          <Text style={[styles.guideLabel, { color: palette.text }]}>Understanding morphology terms</Text>
           <View style={[styles.guideIcon, { backgroundColor: palette.interactive }]}>
             <Info color={palette.tint} size={19} strokeWidth={2.2} />
           </View>
-          <Text style={[styles.guideLabel, { color: palette.text }]}>Understanding morphology terms</Text>
-          <ChevronRight color={palette.tint} size={20} strokeWidth={2.2} />
         </View>
       </Pressable>
     </View>
@@ -486,10 +498,12 @@ function GrammarSection({
   analysis,
   grammarLoadState,
   palette,
+  onOpenGuide,
 }: {
   analysis: WordAnalysis;
   grammarLoadState: GrammarLoadState;
   palette: Palette;
+  onOpenGuide: () => void;
 }): React.JSX.Element {
   const [showFullAyah, setShowFullAyah] = React.useState(false);
   const [expandedPassages, setExpandedPassages] = React.useState<ReadonlySet<number>>(new Set());
@@ -535,10 +549,6 @@ function GrammarSection({
 
   const grammar = grammarLoadState.result;
   const selectedPassages = findSelectedWordGrammarPassages(grammar, analysis);
-  const selectedSequences = new Set(selectedPassages.map((passage) => passage.sequence));
-  const remainingPassages = grammar.passages.filter(
-    (passage) => !selectedSequences.has(passage.sequence)
-  );
   const togglePassage = (sequence: number): void => {
     setExpandedPassages((current) => {
       const next = new Set(current);
@@ -551,20 +561,11 @@ function GrammarSection({
   return (
     <View style={styles.section}>
       <View style={[styles.grammarHero, { backgroundColor: palette.interactive }]}>
-        <Text style={[styles.eyebrow, { color: palette.tint }]}>إِعْرَابٌ مُخْتَصَرٌ</Text>
         <Text style={[styles.grammarHeroWord, { color: palette.text }]}>
           {analysis.surfaceUthmani}
         </Text>
-        <Text style={[styles.grammarHeroCaption, { color: palette.muted }]}>
-          التحليل النحوي للكلمة في سياق الآية
-        </Text>
       </View>
 
-      <SectionHeading
-        title="Selected word"
-        subtitle="The source groups closely related words when their grammatical explanation belongs together."
-        palette={palette}
-      />
       {selectedPassages.length ? (
         selectedPassages.map((passage) => (
           <GrammarPassageCard
@@ -574,49 +575,70 @@ function GrammarSection({
             onToggle={() => togglePassage(passage.sequence)}
             palette={palette}
             emphasized
+            highlightedWord={analysis.surfaceUthmani}
           />
         ))
       ) : (
-        <NoticeCard
-          message="No separate passage was matched to this word. Its analysis is included in the complete ayah grammar below."
-          palette={palette}
-        />
+        <Text style={[styles.grammarEmptyMessage, { color: palette.muted }]}>
+          No separate grammar note for this word. Open the complete verse grammar below.
+        </Text>
       )}
 
       <Pressable
         accessibilityRole="button"
         accessibilityState={{ expanded: showFullAyah }}
         onPress={() => setShowFullAyah((value) => !value)}
-        style={[styles.grammarDisclosure, { borderColor: palette.border, backgroundColor: palette.surface }]}
+        style={({ pressed }) => [
+          styles.grammarDisclosure,
+          { backgroundColor: palette.surface, opacity: pressed ? 0.68 : 1 },
+        ]}
       >
-        <View style={styles.grammarDisclosureCopy}>
+        <View style={styles.grammarDisclosureRow}>
           <Text style={[styles.grammarDisclosureTitle, { color: palette.text }]}>
-            Complete ayah grammar
+            Complete verse grammar
           </Text>
-          <Text style={[styles.explanation, { color: palette.muted }]}>
-            {grammar.passages.length} Arabic analysis sections
-          </Text>
+          <View style={[styles.guideIcon, { backgroundColor: palette.interactive }]}>
+            {showFullAyah ? (
+              <ChevronDown color={palette.tint} size={20} strokeWidth={2.2} />
+            ) : (
+              <ChevronRight color={palette.tint} size={20} strokeWidth={2.2} />
+            )}
+          </View>
         </View>
-        <ChevronRight
-          color={palette.tint}
-          size={20}
-          style={{ transform: [{ rotate: showFullAyah ? '90deg' : '0deg' }] }}
-        />
       </Pressable>
 
       {showFullAyah ? (
         <View style={styles.grammarPassageList}>
-          {remainingPassages.map((passage) => (
+          {grammar.passages.map((passage) => (
             <GrammarPassageCard
               key={passage.sequence}
               passage={passage}
               expanded={expandedPassages.has(passage.sequence)}
               onToggle={() => togglePassage(passage.sequence)}
               palette={palette}
+              highlightedWord={analysis.surfaceUthmani}
             />
           ))}
         </View>
       ) : null}
+
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="About this grammar and its source"
+        accessibilityHint="Opens grammar guidance and source details"
+        onPress={onOpenGuide}
+        style={({ pressed }) => [
+          styles.grammarGuideRow,
+          { opacity: pressed ? 0.68 : 1 },
+        ]}
+      >
+        <View style={styles.guideRowContent}>
+          <Text style={[styles.grammarGuideLabel, { color: palette.muted }]}>About this grammar</Text>
+          <View style={styles.grammarInfoIcon}>
+            <Info color={palette.tint} size={19} strokeWidth={2.2} />
+          </View>
+        </View>
+      </Pressable>
     </View>
   );
 }
@@ -627,27 +649,44 @@ function GrammarPassageCard({
   onToggle,
   palette,
   emphasized = false,
+  highlightedWord,
 }: {
   passage: GrammarPassage;
   expanded: boolean;
   onToggle: () => void;
   palette: Palette;
   emphasized?: boolean;
+  highlightedWord?: string;
 }): React.JSX.Element {
   const canCollapse = passage.bodyArabic.length > 280;
+  const normalizedHighlightedWord = highlightedWord
+    ? normalizeGrammarArabic(highlightedWord)
+    : '';
   return (
     <View
       style={[
         styles.grammarCard,
         {
-          borderColor: emphasized ? palette.tint : palette.border,
-          backgroundColor: palette.surface,
+          backgroundColor: emphasized ? palette.interactive : palette.surface,
         },
       ]}
     >
       {passage.headingArabic ? (
         <Text style={[styles.grammarHeadingArabic, { color: palette.text }]}>
-          {passage.headingArabic}
+          {passage.headingArabic
+            .split(/([^\p{Script=Arabic}\p{M}\u0640]+)/gu)
+            .map((part, index) => {
+              const highlighted = normalizedHighlightedWord
+                && normalizeGrammarArabic(part) === normalizedHighlightedWord;
+              return (
+                <Text
+                  key={`${index}:${part}`}
+                  style={highlighted ? { color: palette.tint, fontWeight: '800' } : undefined}
+                >
+                  {part}
+                </Text>
+              );
+            })}
         </Text>
       ) : null}
       <Text
@@ -750,7 +789,7 @@ function SegmentGroupMember({
         </View>
       </View>
       {details.length ? (
-        <View style={[styles.segmentDetails, { borderTopColor: palette.border }]}> 
+        <View style={[styles.segmentDetails, { borderTopColor: palette.border }]}>
           {details.map((detail) => (
             <MorphologyFact
               key={detail.key}
@@ -871,7 +910,7 @@ function CenteredState({ palette, title, message, loading = false, actionLabel, 
       <Text style={[styles.stateTitle, { color: palette.text }]}>{title}</Text>
       <Text style={[styles.stateMessage, { color: palette.muted }]}>{message}</Text>
       {actionLabel && onAction ? (
-        <Pressable accessibilityRole="button" onPress={onAction} style={styles.retry}> 
+        <Pressable accessibilityRole="button" onPress={onAction} style={styles.retry}>
           <RotateCw color={palette.tint} size={17} strokeWidth={2.2} />
           <Text style={[styles.retryText, { color: palette.tint }]}>{actionLabel}</Text>
         </Pressable>
@@ -904,7 +943,7 @@ const styles = StyleSheet.create({
   meaningLoading: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 9 },
   explanation: { fontSize: 13, lineHeight: 20 },
   lexicalFacts: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  lexicalFact: { flexBasis: '47%', flexGrow: 1, minHeight: 100, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 12, alignItems: 'center', justifyContent: 'center', gap: 5 },
+  lexicalFact: { flexBasis: '47%', flexGrow: 1, minHeight: 96, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 10, alignItems: 'center', justifyContent: 'center', gap: 1 },
   factTileFullWidth: { flexBasis: '100%', maxWidth: '100%' },
   factLabel: { fontSize: 12, lineHeight: 18, fontWeight: '700', textAlign: 'center' },
   factValue: { fontSize: 16, lineHeight: 23, fontWeight: '600', textAlign: 'center' },
@@ -928,18 +967,21 @@ const styles = StyleSheet.create({
   segmentDetails: { marginTop: 5, paddingTop: 12, borderTopWidth: StyleSheet.hairlineWidth, flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   morphologyFact: { flexBasis: '47%', flexGrow: 1, minHeight: 78, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 11, alignItems: 'center', justifyContent: 'center', gap: 4 },
   grammarLoading: { minHeight: 180, alignItems: 'center', justifyContent: 'center', gap: 12 },
-  grammarHero: { borderRadius: 20, paddingHorizontal: 18, paddingVertical: 20, alignItems: 'center', gap: 5 },
+  grammarHero: { borderRadius: 20, minHeight: 104, paddingHorizontal: 18, paddingVertical: 18, alignItems: 'center', justifyContent: 'center' },
   grammarHeroWord: { fontFamily: 'UthmanicHafs1Ver18', fontSize: 38, lineHeight: 56, writingDirection: 'rtl', textAlign: 'center' },
-  grammarHeroCaption: { fontSize: 14, lineHeight: 23, writingDirection: 'rtl', textAlign: 'center' },
-  grammarCard: { borderWidth: 1, borderRadius: 18, paddingHorizontal: 17, paddingVertical: 16, gap: 10 },
+  grammarCard: { borderRadius: 20, paddingHorizontal: 17, paddingVertical: 16, gap: 10 },
   grammarHeadingArabic: { fontFamily: 'UthmanicHafs1Ver18', fontSize: 24, lineHeight: 38, fontWeight: '600', writingDirection: 'rtl', textAlign: 'right' },
   grammarBodyArabic: { fontSize: 18, lineHeight: 34, writingDirection: 'rtl', textAlign: 'right' },
   grammarMoreButton: { minHeight: 40, alignSelf: 'flex-start', justifyContent: 'center' },
   grammarMoreText: { fontSize: 13, lineHeight: 18, fontWeight: '700' },
-  grammarDisclosure: { minHeight: 72, borderWidth: 1, borderRadius: 18, paddingHorizontal: 16, paddingVertical: 13, flexDirection: 'row', alignItems: 'center', gap: 12 },
-  grammarDisclosureCopy: { flex: 1, gap: 2 },
-  grammarDisclosureTitle: { fontSize: 16, lineHeight: 22, fontWeight: '700' },
+  grammarEmptyMessage: { paddingHorizontal: 2, fontSize: 14, lineHeight: 21 },
+  grammarDisclosure: { direction: 'ltr', minHeight: 64, borderRadius: 17, paddingHorizontal: 13, paddingVertical: 9 },
+  grammarDisclosureRow: { direction: 'ltr', flex: 1, flexDirection: 'row', alignItems: 'center', gap: 11 },
+  grammarDisclosureTitle: { flex: 1, fontSize: 16, lineHeight: 22, fontWeight: '700' },
   grammarPassageList: { gap: 12 },
+  grammarGuideRow: { minHeight: 54, paddingHorizontal: 13, paddingVertical: 7 },
+  grammarGuideLabel: { flex: 1, fontSize: 14, lineHeight: 20, fontWeight: '500' },
+  grammarInfoIcon: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
   noticeCard: { borderWidth: 1, borderRadius: 16, padding: 16 },
   inlineAnalysisState: { minHeight: 150, borderWidth: 1, borderRadius: 18, padding: 20, alignItems: 'center', justifyContent: 'center', gap: 10 },
   centeredState: { flex: 1, paddingHorizontal: 30, alignItems: 'center', justifyContent: 'center', gap: 10 },

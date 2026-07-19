@@ -1,0 +1,19 @@
+{
+  "format": "quran-verb-reference-sqlite-v1",
+  "compilerVersion": "1.0.0",
+  "schemaVersion": 1,
+  "databaseFile": "quran-verb-reference.db",
+  "databaseSizeBytes": 475136,
+  "databaseChecksumSha256": "fbcece39d8031bd4ff794c784e9f8449a68806eb9cb0b79908b659949db92985",
+  "logicalChecksumSha256": "ed5bccf4154d3f9ab8b812afc4d3161ca3ee0287998c7b661b93d41560cac9ad",
+  "rowCount": 2075,
+  "source": {
+    "sourceId": "greentech-verb-reference",
+    "title": "Quran verb principal-parts reference",
+    "version": "1.35.7",
+    "license": "Permission pending",
+    "attribution": "Six-field verb reference data from the inspected Al Quran (Tafsir & by Word) application package.",
+    "url": "https://gtaf.org/apps/quran/",
+    "checksumSha256": "f900c21577611a23c28ea5917ad6c8ea7aec8f6d912ba5352a0ef0219cd56e52"
+  }
+}

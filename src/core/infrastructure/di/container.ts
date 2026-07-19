@@ -21,6 +21,7 @@ import {
   GetWordAnalysis,
   ListWordOccurrences,
   GetDictionaryReferences,
+  GetVerbReference,
 } from '@/src/core/application/use-cases/word-study';
 import {
   ExpoGrammarStudyDatabaseProvider,
@@ -39,6 +40,10 @@ import {
   WordReferencePackFileStore,
   WordReferencePackInstaller,
 } from '@/src/core/infrastructure/word-reference';
+import {
+  ExpoVerbReferenceDatabaseProvider,
+  SQLiteVerbReferenceRepository,
+} from '@/src/core/infrastructure/verb-reference';
 
 const downloadIndexRepository = new DownloadIndexRepository();
 const tafsirRepository = new TafsirRepository();
@@ -88,6 +93,11 @@ const dictionaryReferenceRepository = new SQLiteDictionaryReferenceRepository(
   wordReferencePackInstaller
 );
 const getDictionaryReferences = new GetDictionaryReferences(dictionaryReferenceRepository);
+const verbReferenceDatabaseProvider = new ExpoVerbReferenceDatabaseProvider();
+const verbReferenceRepository = new SQLiteVerbReferenceRepository(
+  verbReferenceDatabaseProvider
+);
+const getVerbReference = new GetVerbReference(verbReferenceRepository);
 
 export const container = {
   getDownloadIndexRepository: (): DownloadIndexRepository => downloadIndexRepository,
@@ -126,4 +136,8 @@ export const container = {
   getDictionaryReferenceRepository: (): SQLiteDictionaryReferenceRepository =>
     dictionaryReferenceRepository,
   getDictionaryReferences: (): GetDictionaryReferences => getDictionaryReferences,
+  getVerbReferenceDatabaseProvider: (): ExpoVerbReferenceDatabaseProvider =>
+    verbReferenceDatabaseProvider,
+  getVerbReferenceRepository: (): SQLiteVerbReferenceRepository => verbReferenceRepository,
+  getVerbReference: (): GetVerbReference => getVerbReference,
 };

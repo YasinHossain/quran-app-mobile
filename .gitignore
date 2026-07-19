@@ -18,6 +18,8 @@ dist/*
 !dist/word-grammar-packs/**
 !dist/word-reference-packs/
 !dist/word-reference-packs/**
+!dist/verb-reference-packs/
+!dist/verb-reference-packs/**
 web-build/
 expo-env.d.ts
 

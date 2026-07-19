@@ -46,7 +46,9 @@ import {
 } from '../../components/word-study/full-study/occurrenceExplorerModel';
 import { findSelectedWordGrammarPassages } from '../../components/word-study/full-study/grammarStudyModel';
 import { GetDictionaryReferences } from '../../src/core/application/use-cases/word-study/GetDictionaryReferences';
+import { GetVerbReference } from '../../src/core/application/use-cases/word-study/GetVerbReference';
 import type { IDictionaryReferenceRepository } from '../../src/core/domain/repositories/IDictionaryReferenceRepository';
+import type { IVerbReferenceRepository } from '../../src/core/domain/repositories/IVerbReferenceRepository';
 
 const verb = WORD_STUDY_RICH_CONTRACT_FIXTURES[0] as WordAnalysis;
 const particle = WORD_STUDY_RICH_CONTRACT_FIXTURES[1] as WordAnalysis;
@@ -225,7 +227,7 @@ test('source presentation and sharing retain source versions and attribution', (
   assert.match(message, /Root:/);
 });
 
-test('Arabic grammar matching prefers the passage containing the selected word or stem', () => {
+test('Arabic grammar matching returns the passage containing the complete selected word', () => {
   const passages = findSelectedWordGrammarPassages(
     {
       verseKey: '3:3',
@@ -247,6 +249,60 @@ test('Arabic grammar matching prefers the passage containing the selected word o
     verb
   );
   assert.deepEqual(passages.map((passage) => passage.sequence), [2]);
+});
+
+test('Arabic grammar matching does not promote passages that only share a suffix', () => {
+  const selectedWord: WordAnalysis = {
+    ...verb,
+    surfaceUthmani: 'مِنْهُمْ',
+    normalizedSurface: 'منهم',
+    morphemes: {
+      status: 'available',
+      value: [
+        {
+          locationKey: '4:6:1:1',
+          segmentIndex: 1,
+          arabic: 'مِنْ',
+          segmentType: 'stem',
+          posCode: 'P',
+          features: {},
+          source: { sourceId: 'fixture', sourceVersion: '1', layer: 'segmentation' },
+        },
+        {
+          locationKey: '4:6:1:2',
+          segmentIndex: 2,
+          arabic: 'هُمْ',
+          segmentType: 'suffix',
+          posCode: 'PRON',
+          features: {},
+          source: { sourceId: 'fixture', sourceVersion: '1', layer: 'segmentation' },
+        },
+      ],
+      source: { sourceId: 'fixture', sourceVersion: '1', layer: 'segmentation' },
+    },
+  };
+  const passages = findSelectedWordGrammarPassages(
+    {
+      verseKey: '4:6',
+      passages: [
+        {
+          sequence: 1,
+          headingArabic: 'فَإِنْ آنَسْتُمْ مِنْهُمْ رُشْدًا',
+          bodyArabic: 'تحليل العبارة الأولى.',
+        },
+        {
+          sequence: 2,
+          headingArabic: 'فَادْفَعُوا إِلَيْهِمْ أَمْوَالَهُمْ',
+          bodyArabic: 'تحليل العبارة الثانية.',
+        },
+      ],
+      source: { sourceId: 'fixture', sourceVersion: '1', layer: 'grammar' },
+      reviewStatus: 'source-provided',
+    },
+    selectedWord
+  );
+
+  assert.deepEqual(passages.map((passage) => passage.sequence), [1]);
 });
 
 test('occurrence counters and filters name surface, lemma, root, and root family explicitly', () => {
@@ -317,6 +373,7 @@ test('full screen uses Morphology-first information architecture without repeate
   assert.match(source, /accessibilityLiveRegion="polite"/);
   assert.match(source, /label="Lemma"/);
   assert.match(source, /label="Root"/);
+  assert.match(source, /<VerbReferenceSection analysis=\{analysis\} palette=\{palette\}/);
   assert.match(source, /How this word is built/);
   assert.ok(source.indexOf('<ContextualMeaningBlock') < source.indexOf('How this word is built'));
   assert.ok(source.indexOf('label="Lemma"') < source.indexOf('How this word is built'));
@@ -346,8 +403,25 @@ test('full screen uses Morphology-first information architecture without repeate
   assert.match(source, /guideRowContent/);
   assert.match(source, /<MorphologyGuideSheet/);
   assert.match(source, /Share\.share/);
-  assert.match(source, /Complete ayah grammar/);
-  assert.match(source, /إِعْرَابٌ مُخْتَصَرٌ/);
+  assert.match(source, /Complete verse grammar/);
+  assert.doesNotMatch(source, /Complete ayah grammar/);
+  assert.doesNotMatch(source, /Arabic analysis sections/);
+  assert.match(source, /showFullAyah \? \([\s\S]*?<ChevronDown[\s\S]*?: \([\s\S]*?<ChevronRight/);
+  assert.match(source, /grammarDisclosureRow: \{ direction: 'ltr'[\s\S]*?flexDirection: 'row'/);
+  assert.doesNotMatch(source, /grammarDisclosureIcon|rotate: showFullAyah/);
+  assert.match(source, /<GrammarGuideSheet/);
+  assert.match(source, /No separate grammar note for this word/);
+  assert.doesNotMatch(source, /Grammar passage containing this word/);
+  assert.doesNotMatch(source, /إِعْرَابٌ مُخْتَصَرٌ/);
+  assert.doesNotMatch(source, /grammarCard: \{[^\n]+borderWidth/);
+  const grammarGuideSource = readFileSync(
+    join(process.cwd(), 'components/word-study/full-study/GrammarGuideSheet.tsx'),
+    'utf8'
+  );
+  assert.match(grammarGuideSource, /Arabic i‘rab \(إعراب\)/);
+  assert.match(grammarGuideSource, /BUNDLED_WORD_GRAMMAR_PACK\.manifest\.source/);
+  assert.doesNotMatch(grammarGuideSource, /View full source details/);
+  assert.doesNotMatch(grammarGuideSource, /Close this information to continue reading the grammar/);
   assert.doesNotMatch(source, /label="Overview"|tab === 'overview'|'overview' \|/);
   assert.doesNotMatch(source, /Surface form|Part of speech|Features at this location/);
   assert.doesNotMatch(source, /Morphology describes how this word is formed/);
@@ -359,6 +433,23 @@ test('full screen uses Morphology-first information architecture without repeate
   assert.doesNotMatch(source, /function WordRibbon/);
   assert.doesNotMatch(source, /function AdjacentNavigation/);
   assert.doesNotMatch(source, /positionCounter/);
+});
+
+test('verb reference UI presents six form-specific principal parts', () => {
+  const source = readFileSync(
+    join(process.cwd(), 'components/word-study/full-study/VerbReferenceSection.tsx'),
+    'utf8'
+  );
+  assert.match(source, /Verb Form \$\{form\}/);
+  assert.match(source, /exact derived form—not every form in the root family/);
+  assert.match(source, /Perfect/);
+  assert.match(source, /Imperfect/);
+  assert.match(source, /Imperative/);
+  assert.match(source, /Active participle/);
+  assert.match(source, /Passive participle/);
+  assert.match(source, /Verbal noun/);
+  assert.match(source, /controller\.abort\(\)/);
+  assert.match(source, /accessibilityLabel=\{`\$\{part\.label\}: \$\{value \?\? 'not recorded'\}`\}/);
 });
 
 test('segmented-word presentation supports a non-scrolling two-column wrapped legend', () => {
@@ -403,6 +494,7 @@ test('Word Study Sources is manifest-backed and reachable from settings', () => 
 
   assert.match(screen, /corePack\.manifest\.sources\.map/);
   assert.match(screen, /BUNDLED_WORD_GRAMMAR_PACK\.manifest/);
+  assert.match(screen, /BUNDLED_VERB_REFERENCE_PACK\.manifest/);
   assert.match(screen, /listInstalledAsync\(\)/);
   assert.match(screen, /Methodology boundaries/);
   assert.match(screen, /source\.license/);
@@ -516,6 +608,22 @@ test('dictionary use case forwards normalized lemma and root without using surfa
     packId: 'lane-en',
     lemmaNormalized: verb.lemma.status === 'available' ? verb.lemma.value.normalized : undefined,
     rootNormalized: verb.root.status === 'available' ? verb.root.value.normalized : undefined,
+  });
+});
+
+test('verb reference use case forwards the exact encountered form', async () => {
+  let captured: unknown;
+  const repository: IVerbReferenceRepository = {
+    async findByVerb(query) {
+      captured = query;
+      return { status: 'missing', reason: 'source-row-missing' };
+    },
+  };
+  await new GetVerbReference(repository).execute(verb);
+  assert.deepEqual(captured, {
+    rootNormalized: verb.root.status === 'available' ? verb.root.value.normalized : undefined,
+    lemmaNormalized: verb.lemma.status === 'available' ? verb.lemma.value.normalized : undefined,
+    verbForm: 'IV',
   });
 });
 

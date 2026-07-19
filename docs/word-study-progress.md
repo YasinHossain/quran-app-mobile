@@ -674,6 +674,24 @@ Generated artifacts:
 | Lane 3.1.3 | 29,778 | 1,444 | 2,596 | 29,671,424 | `5c9e58e8771b392b82ae7faea390f328d1e6635c785980bb6a4623fbdebb34b2` |
 | Hans Wehr 2.14.01 | 13,980 | 1,354 | 2,347 | 4,861,952 | `88c4df1da38633874ed6be1b520346a562e0a76077fced2e3a10e8a0cfb04e59` |
 
+## Phase 11B - Form-specific Verb Reference Pack
+
+Implementation status: **complete; public distribution blocked by source permission and scholarly review**.
+
+| Requirement | Status | Record |
+|---|---|---|
+| Exact encountered form | Done | Lookup is keyed by normalized root plus the Quranic Roman-numeral verb form and uses the normalized lemma/perfect for disambiguation. It never returns sibling forms from the root family. |
+| Six principal parts | Done | Perfect, imperfect, imperative, active participle, passive participle, and verbal noun are stored as independent nullable source fields and rendered in a responsive six-card section. |
+| Separate immutable pack | Done | `quran-verb-reference-sqlite-v1`, schema 1, contains 2,075 de-duplicated form-specific records in a 475,136-byte bundled SQLite asset. |
+| Safe ambiguity handling | Done | Conflicting Form-I or variant candidates return `ambiguous-reference`; the app does not select or generate a paradigm. Missing individual fields render as unavailable rather than being synthesized. |
+| Shared contract | Done | Verb reference query/result/principal-part, repository, and use-case contracts were added in `../quran-app` first and synced to mobile. |
+| Mobile repository and UI | Done | The read-only Expo SQLite provider opens lazily; selection changes cancel stale lookups; non-verbs omit the section; source failures and uncovered rows have explicit states. |
+| Provenance | Done in code | The installed manifest, checksum, source version, attribution, and current rights state appear under Word Study Sources. |
+| Source permission | Blocked | The product owner directed implementation before permission. Written permission must replace `Permission pending` before public distribution. |
+| Qualified Arabic review | Blocked | Principal parts, variant choices, missing fields, and terminology require reviewer sign-off before public distribution. |
+
+Phase 11B does not parse Lane/Hans prose, generate conjugations, or provide a root-family form browser.
+
 ## Full-screen redesign Phases 1–4
 
 Implementation status on 2026-07-18: **code and automated verification complete; physical-device and scholarly release sign-offs remain pending**.

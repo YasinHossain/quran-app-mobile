@@ -20,20 +20,12 @@ export function findSelectedWordGrammarPassages(
   analysis: VerseGrammarAnalysis,
   word: WordAnalysis
 ): readonly GrammarPassage[] {
-  const candidates = new Set<string>();
-  candidates.add(normalizeGrammarArabic(word.surfaceUthmani));
-  if (word.morphemes.status === 'available') {
-    for (const segment of word.morphemes.value) {
-      candidates.add(normalizeGrammarArabic(segment.arabic));
-    }
-  }
-  const meaningfulCandidates = [...candidates]
-    .filter((candidate) => candidate.length > 1)
-    .sort((left, right) => right.length - left.length);
-  return analysis.passages.filter((passage) => {
-    const heading = normalizeGrammarArabic(passage.headingArabic);
-    return meaningfulCandidates.some(
-      (candidate) => heading.includes(candidate) || candidate.includes(heading)
-    );
-  });
+  const selectedSurface = normalizeGrammarArabic(word.surfaceUthmani);
+  if (!selectedSurface) return [];
+
+  return analysis.passages.filter((passage) =>
+    passage.headingArabic
+      .split(/[^\p{Script=Arabic}\p{M}\u0640]+/gu)
+      .some((headingWord) => normalizeGrammarArabic(headingWord) === selectedSurface)
+  );
 }

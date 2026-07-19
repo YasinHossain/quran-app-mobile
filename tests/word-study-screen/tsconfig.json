@@ -18,7 +18,9 @@
     "../../components/word-study/wordQuickSheetModel.ts",
     "../../src/core/domain/word-study/**/*.ts",
     "../../src/core/domain/repositories/IDictionaryReferenceRepository.ts",
+    "../../src/core/domain/repositories/IVerbReferenceRepository.ts",
     "../../src/core/application/use-cases/word-study/GetDictionaryReferences.ts",
+    "../../src/core/application/use-cases/word-study/GetVerbReference.ts",
     "./*.cts"
   ]
 }

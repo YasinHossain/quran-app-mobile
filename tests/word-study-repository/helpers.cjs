@@ -11,6 +11,10 @@ const GRAMMAR_PACK_PATH = path.join(
   ROOT,
   'dist/word-grammar-packs/qac-irab-v1.4/quran-word-grammar.db'
 );
+const VERB_REFERENCE_PACK_PATH = path.join(
+  ROOT,
+  'dist/verb-reference-packs/quran-verbs-v1/quran-verb-reference.db'
+);
 const COMPILED_ROOT = path.join(ROOT, '.artifacts/word-study-tests');
 
 class NodeWordStudyDatabase {
@@ -77,15 +81,24 @@ function loadWordReferenceRegistryModule() {
   ));
 }
 
+function loadVerbReferenceRepositoryModule() {
+  return require(path.join(
+    COMPILED_ROOT,
+    'infrastructure/verb-reference/SQLiteVerbReferenceRepository.js'
+  ));
+}
+
 module.exports = {
   COMPILED_ROOT,
   GRAMMAR_PACK_PATH,
   MANIFEST_PATH,
   PACK_PATH,
+  VERB_REFERENCE_PACK_PATH,
   NodeWordStudyDatabaseProvider,
   loadLifecycleModule,
   loadGrammarRepositoryModule,
   loadPackTypesModule,
   loadRepositoryModule,
   loadWordReferenceRegistryModule,
+  loadVerbReferenceRepositoryModule,
 };
