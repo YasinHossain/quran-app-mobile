@@ -36,6 +36,8 @@ import { DictionarySection } from '@/components/word-study/full-study/Dictionary
 import { VerbReferenceSection } from '@/components/word-study/full-study/VerbReferenceSection';
 import { MorphologyGuideSheet } from '@/components/word-study/full-study/MorphologyGuideSheet';
 import { GrammarGuideSheet } from '@/components/word-study/full-study/GrammarGuideSheet';
+import { OccurrenceGuideSheet } from '@/components/word-study/full-study/OccurrenceGuideSheet';
+import { DictionaryGuideSheet } from '@/components/word-study/full-study/DictionaryGuideSheet';
 import {
   findSelectedWordGrammarPassages,
   normalizeGrammarArabic,
@@ -134,6 +136,8 @@ export default function WordStudyScreen(): React.JSX.Element {
   const [retryNonce, setRetryNonce] = React.useState(0);
   const [isMorphologyGuideOpen, setIsMorphologyGuideOpen] = React.useState(false);
   const [isGrammarGuideOpen, setIsGrammarGuideOpen] = React.useState(false);
+  const [isOccurrenceGuideOpen, setIsOccurrenceGuideOpen] = React.useState(false);
+  const [isDictionaryGuideOpen, setIsDictionaryGuideOpen] = React.useState(false);
   const [grammarLoadState, setGrammarLoadState] = React.useState<GrammarLoadState>({
     status: 'idle',
   });
@@ -241,6 +245,18 @@ export default function WordStudyScreen(): React.JSX.Element {
     void Share.share({ message: buildWordStudyShareMessage(selected, surahName) });
   }, [selected, surahName]);
 
+  const handleOpenGuide = React.useCallback(() => {
+    if (tab === 'morphology') {
+      setIsMorphologyGuideOpen(true);
+    } else if (tab === 'grammar') {
+      setIsGrammarGuideOpen(true);
+    } else if (tab === 'occurrences') {
+      setIsOccurrenceGuideOpen(true);
+    } else if (tab === 'dictionary') {
+      setIsDictionaryGuideOpen(true);
+    }
+  }, [tab]);
+
   const handleOpenOccurrenceInReader = React.useCallback((occurrence: WordOccurrence) => {
     restoreAfterReaderRef.current = true;
     router.push(buildOccurrenceReaderParams(occurrence) as never);
@@ -289,6 +305,25 @@ export default function WordStudyScreen(): React.JSX.Element {
             {location?.locationKey ?? 'Invalid location'}
           </Text>
         </View>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={
+            tab === 'morphology'
+              ? 'Understanding morphology terms'
+              : tab === 'grammar'
+                ? 'About this grammar'
+                : tab === 'occurrences'
+                  ? 'About occurrences'
+                  : 'About dictionary'
+          }
+          accessibilityState={{ disabled: !selected }}
+          disabled={!selected}
+          hitSlop={10}
+          onPress={handleOpenGuide}
+          style={[styles.headerButton, { opacity: selected ? 1 : 0.35 }]}
+        >
+          <Info color={palette.text} size={20} strokeWidth={2.2} />
+        </Pressable>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Share word study with source attribution"
@@ -363,7 +398,6 @@ export default function WordStudyScreen(): React.JSX.Element {
                   analysis={selected}
                   contextualMeaning={contextualMeaning}
                   palette={palette}
-                  onOpenGuide={() => setIsMorphologyGuideOpen(true)}
                 />
               </PersistentTabPanel>
               {mountedTabs.has('grammar') ? (
@@ -372,7 +406,6 @@ export default function WordStudyScreen(): React.JSX.Element {
                     analysis={selected}
                     grammarLoadState={grammarLoadState}
                     palette={palette}
-                    onOpenGuide={() => setIsGrammarGuideOpen(true)}
                   />
                 </PersistentTabPanel>
               ) : null}
@@ -388,6 +421,8 @@ export default function WordStudyScreen(): React.JSX.Element {
                       palette={palette}
                       onOpenReader={handleOpenOccurrenceInReader}
                       onRequestScrollToFilters={handleScrollToOccurrenceFilters}
+                      isGuideOpen={isOccurrenceGuideOpen}
+                      onCloseGuide={() => setIsOccurrenceGuideOpen(false)}
                     />
                   </View>
                 </PersistentTabPanel>
@@ -398,6 +433,8 @@ export default function WordStudyScreen(): React.JSX.Element {
                     analysis={selected}
                     palette={palette}
                     isActive={tab === 'dictionary'}
+                    isGuideOpen={isDictionaryGuideOpen}
+                    onCloseGuide={() => setIsDictionaryGuideOpen(false)}
                   />
                 </PersistentTabPanel>
               ) : null}
@@ -436,11 +473,10 @@ function PersistentTabPanel({
   );
 }
 
-function MorphologySection({ analysis, contextualMeaning, palette, onOpenGuide }: {
+function MorphologySection({ analysis, contextualMeaning, palette }: {
   analysis: WordAnalysis;
   contextualMeaning: ContextualMeaningLoadState;
   palette: Palette;
-  onOpenGuide: () => void;
 }): React.JSX.Element {
   const segments = analysis.morphemes.status === 'available' ? analysis.morphemes.value : [];
   const segmentGroups = groupMorphologySegments(segments);
@@ -493,23 +529,6 @@ function MorphologySection({ analysis, contextualMeaning, palette, onOpenGuide }
       )) : (
         <NoticeCard message={analysis.morphemes.status === 'available' ? 'No segments are recorded for this word.' : describeMissingReason(analysis.morphemes.reason)} palette={palette} />
       )}
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Understanding morphology terms"
-        accessibilityHint="Opens a guide to segment and feature labels"
-        onPress={onOpenGuide}
-        style={({ pressed }) => [
-          styles.guideRow,
-          { borderColor: palette.border, backgroundColor: palette.surface, opacity: pressed ? 0.78 : 1 },
-        ]}
-      >
-        <View style={styles.guideRowContent}>
-          <Text style={[styles.guideLabel, { color: palette.text }]}>Understanding morphology terms</Text>
-          <View style={[styles.guideIcon, { backgroundColor: palette.interactive }]}>
-            <Info color={palette.tint} size={19} strokeWidth={2.2} />
-          </View>
-        </View>
-      </Pressable>
     </View>
   );
 }
@@ -553,12 +572,10 @@ function GrammarSection({
   analysis,
   grammarLoadState,
   palette,
-  onOpenGuide,
 }: {
   analysis: WordAnalysis;
   grammarLoadState: GrammarLoadState;
   palette: Palette;
-  onOpenGuide: () => void;
 }): React.JSX.Element {
   const [showFullAyah, setShowFullAyah] = React.useState(false);
   const [expandedPassages, setExpandedPassages] = React.useState<ReadonlySet<number>>(new Set());
@@ -618,7 +635,7 @@ function GrammarSection({
 
   return (
     <View style={styles.section}>
-      <View style={[styles.grammarHero, { backgroundColor: palette.interactive }]}>
+      <View style={[styles.grammarHero, { backgroundColor: palette.surface }]}>
         <Text style={[styles.grammarHeroWord, { color: palette.text }]}>
           {analysis.surfaceUthmani}
         </Text>
@@ -638,7 +655,7 @@ function GrammarSection({
         ))
       ) : (
         <Text style={[styles.grammarEmptyMessage, { color: palette.muted }]}>
-          No separate grammar note for this word. Open the complete verse grammar below.
+          No separate grammar note for this word. Open complete grammar.
         </Text>
       )}
 
@@ -680,23 +697,6 @@ function GrammarSection({
         </View>
       ) : null}
 
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="About this grammar and its source"
-        accessibilityHint="Opens grammar guidance and source details"
-        onPress={onOpenGuide}
-        style={({ pressed }) => [
-          styles.grammarGuideRow,
-          { opacity: pressed ? 0.68 : 1 },
-        ]}
-      >
-        <View style={styles.guideRowContent}>
-          <Text style={[styles.grammarGuideLabel, { color: palette.muted }]}>About this grammar</Text>
-          <View style={styles.grammarInfoIcon}>
-            <Info color={palette.tint} size={19} strokeWidth={2.2} />
-          </View>
-        </View>
-      </Pressable>
     </View>
   );
 }
@@ -716,6 +716,7 @@ function GrammarPassageCard({
   emphasized?: boolean;
   highlightedWord?: string;
 }): React.JSX.Element {
+  const { resolvedTheme } = useAppTheme();
   const canCollapse = passage.bodyArabic.length > 280;
   const normalizedHighlightedWord = highlightedWord
     ? normalizeGrammarArabic(highlightedWord)
@@ -725,7 +726,7 @@ function GrammarPassageCard({
       style={[
         styles.grammarCard,
         {
-          backgroundColor: emphasized ? palette.interactive : palette.surface,
+          backgroundColor: palette.surface,
         },
       ]}
     >
@@ -873,8 +874,8 @@ function MorphologyFact({ detail, palette, fullWidth }: {
       fullWidth && styles.factTileFullWidth,
       { backgroundColor: palette.interactive },
     ]}>
-      <Text style={[styles.factLabel, { color: palette.text }]}>{detail.label} · {detail.arabicTerm}</Text>
-      <Text style={[styles.factValue, { color: palette.tint }]}>{detail.value}</Text>
+      <Text style={[styles.factLabel, { color: palette.muted }]}>{detail.label} · {detail.arabicTerm}</Text>
+      <Text style={[styles.factValue, { color: palette.text }]}>{detail.value}</Text>
     </View>
   );
 }
@@ -895,7 +896,7 @@ function CompactStudyFact({ label, arabicTerm, value, available, palette, fullWi
       style={[
         styles.lexicalFact,
         fullWidth && styles.factTileFullWidth,
-        { backgroundColor: palette.interactive },
+        { backgroundColor: palette.surface, borderColor: palette.border, borderWidth: StyleSheet.hairlineWidth },
       ]}
     >
       <Text style={[styles.factLabel, { color: palette.muted }]}>{label} · {arabicTerm}</Text>

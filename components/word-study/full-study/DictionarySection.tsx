@@ -3,7 +3,6 @@ import {
   ChevronDown,
   ChevronUp,
   Download,
-  Info,
   RefreshCw,
   X,
 } from 'lucide-react-native';
@@ -65,10 +64,14 @@ export function DictionarySection({
   analysis,
   palette,
   isActive = true,
+  isGuideOpen,
+  onCloseGuide,
 }: {
   analysis: WordAnalysis;
   palette: Palette;
   isActive?: boolean;
+  isGuideOpen: boolean;
+  onCloseGuide: () => void;
 }): React.JSX.Element {
   const installer = container.getWordReferencePackInstaller();
   const repository = container.getDictionaryReferenceRepository();
@@ -86,7 +89,6 @@ export function DictionarySection({
   const [details, setDetails] = React.useState<Record<string, DictionaryEntryDetail | null>>({});
   const [showRoot, setShowRoot] = React.useState(false);
   const [showFamily, setShowFamily] = React.useState(false);
-  const [isGuideOpen, setIsGuideOpen] = React.useState(false);
   const [refreshNonce, setRefreshNonce] = React.useState(0);
 
   const loadSources = React.useCallback(async () => {
@@ -209,16 +211,6 @@ export function DictionarySection({
     <View style={styles.section}>
       <View style={styles.toolbar}>
         <Text style={[styles.sourceLabel, { color: palette.muted }]}>DICTIONARY SOURCE</Text>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="About dictionary results and sources"
-          accessibilityHint="Explains lemma, root, related headwords, and dictionary sources"
-          hitSlop={8}
-          onPress={() => setIsGuideOpen(true)}
-          style={styles.infoButton}
-        >
-          <Info color={palette.tint} size={20} strokeWidth={2.2} />
-        </Pressable>
       </View>
 
       {sources.length > 0 && selectedPackId ? (
@@ -303,7 +295,7 @@ export function DictionarySection({
       ) : null}
       <DictionaryGuideSheet
         isOpen={isGuideOpen}
-        onClose={() => setIsGuideOpen(false)}
+        onClose={onCloseGuide}
         source={selectedSource}
       />
     </View>

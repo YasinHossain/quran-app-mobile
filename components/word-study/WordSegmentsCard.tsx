@@ -41,7 +41,7 @@ export function WordSegmentsCard({
   const segments = getAnalysisSegments(analysis);
 
   return (
-    <View style={[styles.card, compact && styles.cardCompact, { backgroundColor: palette.background }]}>
+    <View style={[styles.card, compact && styles.cardCompact, { backgroundColor: palette.surface }]}>
       <SegmentedWord
         analysis={analysis}
         compact={compact}
@@ -191,7 +191,7 @@ function LegendItem({
       ]}
     >
       <View style={[styles.legendLine, { backgroundColor: color }]} />
-      <Text style={[styles.legendText, styles.legendTextStacked, { color: palette.muted }]}>
+      <Text style={[styles.legendText, styles.legendTextStacked, { color: palette.text }]}>
         {segment.arabic} — {getPosLabel(segment.posCode)}
       </Text>
     </View>

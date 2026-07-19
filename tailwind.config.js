@@ -7,23 +7,23 @@ module.exports = {
     extend: {
       colors: {
         // Mobile semantic tokens. Shared names with web are optional, not a parity contract.
-        background: { DEFAULT: '#F7F9F9', dark: '#0F172A' },
+        background: { DEFAULT: '#F7F9F9', dark: '#0B1220' },
         surface: { DEFAULT: '#FFFFFF', dark: '#1E293B' },
         'surface-navigation': { DEFAULT: '#FFFFFF', dark: '#182333' },
         foreground: { DEFAULT: '#374151', dark: '#E7E5E4' },
-        muted: { DEFAULT: '#6B7280', dark: '#94A3B8' },
+        muted: { DEFAULT: '#6B7280', dark: '#7C8BA1' },
         accent: { DEFAULT: '#0D9488', dark: '#14B8A6' },
         'accent-hover': { DEFAULT: '#0F766E', dark: '#0D9488' },
-        interactive: { DEFAULT: '#F3F4F6', dark: '#334155' },
-        'interactive-hover': { DEFAULT: '#E5E7EB', dark: '#475569' },
-        border: { DEFAULT: '#E5E7EB', dark: '#334155' },
+        interactive: { DEFAULT: '#F3F4F6', dark: '#131B2E' },
+        'interactive-hover': { DEFAULT: '#E5E7EB', dark: '#1E293B' },
+        border: { DEFAULT: '#E5E7EB', dark: '#253041' },
         error: { DEFAULT: '#DC2626', dark: '#F87171' },
         'on-accent': { DEFAULT: '#FFFFFF', dark: '#FFFFFF' },
 
-        'number-badge': { DEFAULT: '#F3F4F6', dark: '#334155' },
+        'number-badge': { DEFAULT: '#F3F4F6', dark: '#131B2E' },
 
         'content-primary': { DEFAULT: '#374151', dark: '#E7E5E4' },
-        'content-secondary': { DEFAULT: '#6B7280', dark: '#94A3B8' },
+        'content-secondary': { DEFAULT: '#6B7280', dark: '#7C8BA1' },
       },
       borderRadius: {
         sm: '6px',

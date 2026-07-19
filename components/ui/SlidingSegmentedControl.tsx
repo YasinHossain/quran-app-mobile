@@ -12,6 +12,8 @@ import { useAppTheme } from '@/providers/ThemeContext';
 export type SlidingSegment<T extends string> = {
   key: T;
   label: string;
+  disabled?: boolean;
+  accessibilityLabel?: string;
 };
 
 export function SlidingSegmentedControl<T extends string>({
@@ -65,6 +67,8 @@ export function SlidingSegmentedControl<T extends string>({
     };
   });
 
+  const isDark = resolvedTheme === 'dark';
+
   return (
     <View
       accessibilityRole="tablist"
@@ -79,7 +83,7 @@ export function SlidingSegmentedControl<T extends string>({
         styles.track,
         {
           backgroundColor: palette.interactive,
-          borderColor: `${palette.border}55`,
+          borderColor: isDark ? `${palette.border}33` : `${palette.border}55`,
         },
         width !== undefined ? { width } : undefined,
       ]}
@@ -90,27 +94,39 @@ export function SlidingSegmentedControl<T extends string>({
           styles.indicator,
           animatedIndicatorStyle,
           activeShadow,
-          { backgroundColor: palette.surfaceNavigation },
+          { backgroundColor: isDark ? palette.border : palette.surfaceNavigation },
         ]}
       />
       {items.map((item) => {
         const selected = item.key === selectedKey;
+        const isDisabled = Boolean(item.disabled);
         return (
           <Pressable
             key={item.key}
             accessibilityRole="tab"
+            accessibilityLabel={item.accessibilityLabel}
             accessibilityState={{ selected }}
+            disabled={isDisabled}
             onPress={() => onSelect(item.key)}
             style={[
               styles.segment,
               segmentWidth === undefined ? styles.segmentFlexible : { width: segmentWidth },
+              isDisabled && { opacity: 0.4 },
             ]}
           >
             <Text
               adjustsFontSizeToFit
               minimumFontScale={0.74}
               numberOfLines={1}
-              style={[styles.label, { color: selected ? palette.text : palette.muted, fontSize: labelFontSize }]}
+              style={[
+                styles.label,
+                {
+                  color: selected
+                    ? (isDark ? '#FFFFFF' : palette.text)
+                    : palette.muted,
+                  fontSize: labelFontSize,
+                },
+              ]}
             >
               {item.label}
             </Text>

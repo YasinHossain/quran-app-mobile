@@ -5,7 +5,6 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronUp,
-  Info,
   RotateCw,
   X,
 } from 'lucide-react-native';
@@ -25,6 +24,7 @@ import { useReducedMotion } from 'react-native-reanimated';
 
 import Colors from '@/constants/Colors';
 import { getPosLabel } from '@/components/word-study/wordQuickSheetModel';
+import { useAppTheme } from '@/providers/ThemeContext';
 import type {
   Lemma,
   PaginatedWordOccurrences,
@@ -47,6 +47,7 @@ import {
   orderRootFamilyLemmas,
 } from './occurrenceExplorerModel';
 import { OccurrenceGuideSheet } from './OccurrenceGuideSheet';
+import { SlidingSegmentedControl } from '@/components/ui/SlidingSegmentedControl';
 
 type Palette = (typeof Colors)['light'];
 type PageState =
@@ -69,12 +70,17 @@ export function OccurrenceExplorer({
   palette,
   onOpenReader,
   onRequestScrollToFilters,
+  isGuideOpen,
+  onCloseGuide,
 }: {
   analysis: WordAnalysis;
   palette: Palette;
   onOpenReader: (occurrence: WordOccurrence) => void;
   onRequestScrollToFilters?: (offsetY: number, animated: boolean) => void;
+  isGuideOpen: boolean;
+  onCloseGuide: () => void;
 }): React.JSX.Element {
+  const { resolvedTheme } = useAppTheme();
   const [scope, setScope] = React.useState<WordOccurrenceScope>('surface');
   const [cursor, setCursor] = React.useState<string | undefined>();
   const [cursorHistory, setCursorHistory] = React.useState<Array<string | undefined>>([]);
@@ -86,7 +92,6 @@ export function OccurrenceExplorer({
   const [resultsHeightFloor, setResultsHeightFloor] = React.useState(0);
   const [pageState, setPageState] = React.useState<PageState>({ status: 'loading' });
   const [retryNonce, setRetryNonce] = React.useState(0);
-  const [isGuideOpen, setIsGuideOpen] = React.useState(false);
   const requestIdRef = React.useRef(0);
   const filtersOffsetYRef = React.useRef<number | null>(null);
   const rootFamilyOffsetYRef = React.useRef<number | null>(null);
@@ -250,16 +255,6 @@ export function OccurrenceExplorer({
     <View style={styles.section}>
       <View style={styles.heading}>
         <Text style={[styles.title, { color: palette.text }]}>Explore occurrences</Text>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="About occurrence counts and root-family forms"
-          accessibilityHint="Opens occurrence information"
-          hitSlop={8}
-          onPress={() => setIsGuideOpen(true)}
-          style={styles.infoButton}
-        >
-          <Info color={palette.tint} size={20} strokeWidth={2.2} />
-        </Pressable>
       </View>
 
       <View style={[styles.counterGrid, { backgroundColor: palette.surface }]}>
@@ -317,32 +312,20 @@ export function OccurrenceExplorer({
       ) : null}
 
       <View
-        accessibilityRole="tablist"
         onLayout={(event) => {
           filtersOffsetYRef.current = event.nativeEvent.layout.y;
         }}
-        style={[styles.filters, { backgroundColor: palette.interactive, borderColor: `${palette.border}55` }]}
       >
-        {filters.map((filter) => (
-          <Pressable
-            key={filter.scope}
-            accessibilityRole="tab"
-            accessibilityLabel={filter.enabled ? `${filter.label} occurrences` : filter.unavailableExplanation}
-            accessibilityState={{ selected: effectiveScope === filter.scope, disabled: !filter.enabled }}
-            disabled={!filter.enabled}
-            onPress={() => selectScope(filter.scope)}
-            style={[
-              styles.filter,
-              { opacity: filter.enabled ? 1 : 0.4 },
-              effectiveScope === filter.scope && styles.activeFilter,
-              effectiveScope === filter.scope && { backgroundColor: palette.surfaceNavigation },
-            ]}
-          >
-            <Text style={[styles.filterText, { color: effectiveScope === filter.scope ? palette.tint : palette.muted }]}> 
-              {filter.label}
-            </Text>
-          </Pressable>
-        ))}
+        <SlidingSegmentedControl
+          items={filters.map((filter) => ({
+            key: filter.scope,
+            label: filter.label,
+            disabled: !filter.enabled,
+            accessibilityLabel: filter.enabled ? `${filter.label} occurrences` : filter.unavailableExplanation,
+          }))}
+          selectedKey={effectiveScope}
+          onSelect={selectScope}
+        />
       </View>
 
       {lemmaOverride ? (
@@ -449,7 +432,7 @@ export function OccurrenceExplorer({
           <Text style={[styles.stateText, { color: palette.muted }]}>No {effectiveScope} occurrences are available.</Text>
         </View>
       )}
-      <OccurrenceGuideSheet isOpen={isGuideOpen} onClose={() => setIsGuideOpen(false)} />
+      <OccurrenceGuideSheet isOpen={isGuideOpen} onClose={onCloseGuide} />
     </View>
   );
 }
@@ -718,12 +701,7 @@ const styles = StyleSheet.create({
   familyCount: { fontSize: 13, lineHeight: 18, fontWeight: '600' },
   familyArabicBlock: { maxWidth: '48%', flexDirection: 'row', alignItems: 'center', gap: 9 },
   familyArabic: { fontFamily: 'UthmanicHafs1Ver18', fontSize: 25, lineHeight: 38, writingDirection: 'rtl', textAlign: 'right' },
-  filters: { flexDirection: 'row', padding: 4, borderWidth: 1, borderRadius: 24 },
-  filter: { zIndex: 1, flex: 1, minHeight: 40, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
-  activeFilter: Platform.OS === 'android'
-    ? { elevation: 2 }
-    : { shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 4, shadowOffset: { width: 0, height: 2 } },
-  filterText: { fontSize: 13, lineHeight: 18, fontWeight: '600' },
+
   activeLemma: { minHeight: 64, borderWidth: 1, borderRadius: 15, paddingHorizontal: 14, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 12 },
   activeLemmaCopy: { flex: 1, gap: 2 },
   activeLemmaEyebrow: { fontSize: 10, lineHeight: 14, fontWeight: '800', letterSpacing: 0.45 },

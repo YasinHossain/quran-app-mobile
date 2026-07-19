@@ -914,19 +914,20 @@ function TafsirPage({
             zIndex: 100,
             elevation: 0,
             opacity: absoluteOpacity,
-            transform: [{ translateY }],
           }}
           onTouchStart={handleHeaderTouchStart}
         >
-          <TafsirTabs
-            tafsirIds={tafsirIds}
-            activeTafsirId={activeTafsirId}
-            onActiveTafsirChange={handleActiveTafsirChange}
-            onAddTafsir={handleOpenSettings}
-            onTabsDragStart={handleTabsDragStart}
-            onTabsDragEnd={handleTabsDragEnd}
-            hideTopBorder={false}
-          />
+          <Animated.View style={{ transform: [{ translateY }] }}>
+            <TafsirTabs
+              tafsirIds={tafsirIds}
+              activeTafsirId={activeTafsirId}
+              onActiveTafsirChange={handleActiveTafsirChange}
+              onAddTafsir={handleOpenSettings}
+              onTabsDragStart={handleTabsDragStart}
+              onTabsDragEnd={handleTabsDragEnd}
+              hideTopBorder={false}
+            />
+          </Animated.View>
         </Animated.View>
       ) : null}
     </View>

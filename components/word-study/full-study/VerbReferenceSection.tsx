@@ -100,9 +100,6 @@ export function VerbReferenceSection({
         <Text accessibilityRole="header" style={[styles.title, { color: palette.text }]}> 
           {form ? `Verb Form ${form}` : 'Verb principal parts'}
         </Text>
-        <Text style={[styles.subtitle, { color: palette.muted }]}> 
-          Six reference forms for this exact derived form—not every form in the root family.
-        </Text>
       </View>
       {state.status === 'loading' ? (
         <View style={[styles.stateCard, { borderColor: palette.border, backgroundColor: palette.surface }]}> 

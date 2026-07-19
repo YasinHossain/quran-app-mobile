@@ -184,13 +184,11 @@ test('quick sheet keeps numeric height constraints and the redesigned action hie
   assert.match(source, /height: sheetHeight/);
   assert.match(source, /minHeight: sheetHeight/);
   assert.match(source, /maxHeight: sheetHeight/);
-  assert.match(source, /Math\.min\(windowHeight - 12, 570\)/);
-  assert.match(source, /accessibilityLabel="Play word"/);
-  assert.match(source, /legendLayout="horizontal"/);
-  assert.match(source, /label="Verse"/);
+  assert.match(source, /Math\.min\(windowHeight - 12, 510\)/);
+  assert.match(source, /accessibilityLabel="Play word audio"/);
+  assert.match(source, /layout="wrapped"/);
+  assert.match(source, /label="Word-Verse"/);
   assert.match(source, /label="Save"/);
-  assert.match(source, /hint="Soon"/);
-  assert.match(source, /label="Share"/);
   assert.match(source, /label="More"/);
   assert.match(source, /Open full word study/);
   assert.match(source, /accessibilityLabel="Loading word analysis"/);

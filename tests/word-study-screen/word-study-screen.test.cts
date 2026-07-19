@@ -414,7 +414,7 @@ test('full screen uses Morphology-first information architecture without repeate
   assert.doesNotMatch(source, /<ScrollView\s+horizontal\s+accessibilityRole="tablist"/);
   assert.match(source, /useFocusEffect/);
   assert.match(source, /scrollOffsetRef/);
-  assert.match(source, /accessibilityLabel="Understanding morphology terms"/);
+  assert.match(source, /'Understanding morphology terms'/);
   assert.match(source, /<SegmentedWord analysis=\{analysis\} compact alignment="end"/);
   assert.match(source, /<WordSegmentsLegend analysis=\{analysis\} layout="wrapped"/);
   assert.match(source, /summaryTopRow: \{ direction: 'ltr', flexDirection: 'row'/);
@@ -474,7 +474,6 @@ test('verb reference UI presents six form-specific principal parts', () => {
     'utf8'
   );
   assert.match(source, /Verb Form \$\{form\}/);
-  assert.match(source, /exact derived form—not every form in the root family/);
   assert.match(source, /Perfect/);
   assert.match(source, /Imperfect/);
   assert.match(source, /Imperative/);
@@ -620,7 +619,7 @@ test('full-screen focus order and selection semantics do not depend on color', (
   );
   assert.ok(screen.indexOf('styles.header') < screen.indexOf('<AyahContextSelector'));
   assert.ok(screen.indexOf('<AyahContextSelector') < screen.indexOf('<SlidingSegmentedControl'));
-  assert.ok(screen.indexOf('<SlidingSegmentedControl') < screen.indexOf('Understanding morphology terms'));
+  assert.ok(screen.indexOf('Understanding morphology terms') < screen.indexOf('<SlidingSegmentedControl'));
   assert.match(segmentedControl, /accessibilityRole="tablist"/);
   assert.match(segmentedControl, /accessibilityState=\{\{ selected \}\}/);
   assert.match(segmentedControl, /withSpring/);
