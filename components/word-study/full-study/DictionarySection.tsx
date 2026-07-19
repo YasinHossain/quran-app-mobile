@@ -35,6 +35,7 @@ import { DictionaryGuideSheet } from './DictionaryGuideSheet';
 type Palette = {
   background: string;
   surface: string;
+  surfaceNavigation: string;
   text: string;
   muted: string;
   border: string;
@@ -84,11 +85,6 @@ export function DictionarySection({
   const [catalog, setCatalog] = React.useState<CatalogState>({ status: 'loading' });
   const [sources, setSources] = React.useState<readonly DictionarySource[]>([]);
   const [selectedPackId, setSelectedPackId] = React.useState<string | null>(null);
-  const [lookup, setLookup] = React.useState<LookupState>({ status: 'idle' });
-  const [expandedEntryId, setExpandedEntryId] = React.useState<string | null>(null);
-  const [details, setDetails] = React.useState<Record<string, DictionaryEntryDetail | null>>({});
-  const [showRoot, setShowRoot] = React.useState(false);
-  const [showFamily, setShowFamily] = React.useState(false);
   const [refreshNonce, setRefreshNonce] = React.useState(0);
 
   const loadSources = React.useCallback(async () => {
@@ -132,72 +128,10 @@ export function DictionarySection({
     });
   }, [installer, loadSources, refreshDownloads]);
 
-  React.useEffect(() => {
-    if (!selectedPackId) {
-      setLookup({ status: 'idle' });
-      return;
-    }
-    const controller = new AbortController();
-    setLookup({ status: 'loading' });
-    setExpandedEntryId(null);
-    setDetails({});
-    setShowRoot(false);
-    setShowFamily(false);
-    void container
-      .getDictionaryReferences()
-      .execute(analysis, selectedPackId, { signal: controller.signal })
-      .then((result) => {
-        if (controller.signal.aborted) return;
-        setLookup({ status: 'ready', result });
-        const primaryEntry = result.exactLemmaEntries[0] ?? result.rootEntries[0];
-        if (!primaryEntry) return;
-        setExpandedEntryId(primaryEntry.entryId);
-        void repository
-          .getEntry(selectedPackId, primaryEntry.entryId, primaryEntry.matchKind, {
-            signal: controller.signal,
-          })
-          .then((detail) => {
-            if (!controller.signal.aborted) {
-              setDetails((current) => ({ ...current, [primaryEntry.entryId]: detail }));
-            }
-          })
-          .catch(() => {
-            if (!controller.signal.aborted) {
-              setDetails((current) => ({ ...current, [primaryEntry.entryId]: null }));
-            }
-          });
-      })
-      .catch((error) => {
-        if (!controller.signal.aborted) {
-          setLookup({
-            status: 'error',
-            message: error instanceof Error ? error.message : 'Dictionary lookup failed.',
-          });
-        }
-      });
-    return () => controller.abort();
-  }, [analysis, repository, selectedPackId]);
-
   const selectSource = React.useCallback((packId: string) => {
     setSelectedPackId(packId);
     void setItem(LAST_SOURCE_KEY, packId);
   }, []);
-
-  const toggleEntry = React.useCallback(
-    (entry: DictionaryEntrySummary) => {
-      if (expandedEntryId === entry.entryId) {
-        setExpandedEntryId(null);
-        return;
-      }
-      setExpandedEntryId(entry.entryId);
-      if (details[entry.entryId] !== undefined || !selectedPackId) return;
-      void repository
-        .getEntry(selectedPackId, entry.entryId, entry.matchKind)
-        .then((detail) => setDetails((current) => ({ ...current, [entry.entryId]: detail })))
-        .catch(() => setDetails((current) => ({ ...current, [entry.entryId]: null })));
-    },
-    [details, expandedEntryId, repository, selectedPackId]
-  );
 
   const installedPackIds = React.useMemo(
     () => new Set(sources.map((source) => source.packId)),
@@ -230,24 +164,18 @@ export function DictionarySection({
       ) : null}
 
       {selectedPackId ? (
-        lookup.status === 'loading' || lookup.status === 'idle' ? (
-          <LoadingCard label="Looking up this lemma and root…" palette={palette} />
-        ) : lookup.status === 'error' ? (
-          <StateCard title="Dictionary lookup failed" message={lookup.message} palette={palette} />
-        ) : (
-          <DictionaryResults
-            result={lookup.result}
-            expandedEntryId={expandedEntryId}
-            details={details}
-            showRoot={showRoot}
-            showFamily={showFamily}
-            contentWidth={Math.max(240, Math.min(680, width - 68))}
-            palette={palette}
-            onToggleEntry={toggleEntry}
-            onToggleRoot={() => setShowRoot((value) => !value)}
-            onToggleFamily={() => setShowFamily((value) => !value)}
-          />
-        )
+        <View>
+          {sources.map((source) => (
+            <DictionarySourcePanel
+              key={source.packId}
+              active={source.packId === selectedPackId}
+              analysis={analysis}
+              contentWidth={Math.max(240, Math.min(680, width - 68))}
+              packId={source.packId}
+              palette={palette}
+            />
+          ))}
+        </View>
       ) : catalog.status === 'loading' ? (
         <LoadingCard label="Checking available dictionary packs…" palette={palette} />
       ) : catalog.status === 'error' ? (
@@ -298,6 +226,110 @@ export function DictionarySection({
         onClose={onCloseGuide}
         source={selectedSource}
       />
+    </View>
+  );
+}
+
+function DictionarySourcePanel({
+  active,
+  analysis,
+  contentWidth,
+  packId,
+  palette,
+}: {
+  active: boolean;
+  analysis: WordAnalysis;
+  contentWidth: number;
+  packId: string;
+  palette: Palette;
+}): React.JSX.Element {
+  const repository = container.getDictionaryReferenceRepository();
+  const [lookup, setLookup] = React.useState<LookupState>({ status: 'loading' });
+  const [expandedEntryId, setExpandedEntryId] = React.useState<string | null>(null);
+  const [details, setDetails] = React.useState<Record<string, DictionaryEntryDetail | null>>({});
+  const [showRoot, setShowRoot] = React.useState(false);
+  const [showFamily, setShowFamily] = React.useState(false);
+
+  React.useEffect(() => {
+    const controller = new AbortController();
+    setLookup({ status: 'loading' });
+    setExpandedEntryId(null);
+    setDetails({});
+    setShowRoot(false);
+    setShowFamily(false);
+    void container
+      .getDictionaryReferences()
+      .execute(analysis, packId, { signal: controller.signal })
+      .then((result) => {
+        if (controller.signal.aborted) return;
+        setLookup({ status: 'ready', result });
+        const primaryEntry = result.exactLemmaEntries[0] ?? result.rootEntries[0];
+        if (!primaryEntry) return;
+        setExpandedEntryId(primaryEntry.entryId);
+        void repository
+          .getEntry(packId, primaryEntry.entryId, primaryEntry.matchKind, {
+            signal: controller.signal,
+          })
+          .then((detail) => {
+            if (!controller.signal.aborted) {
+              setDetails((current) => ({ ...current, [primaryEntry.entryId]: detail }));
+            }
+          })
+          .catch(() => {
+            if (!controller.signal.aborted) {
+              setDetails((current) => ({ ...current, [primaryEntry.entryId]: null }));
+            }
+          });
+      })
+      .catch((error) => {
+        if (!controller.signal.aborted) {
+          setLookup({
+            status: 'error',
+            message: error instanceof Error ? error.message : 'Dictionary lookup failed.',
+          });
+        }
+      });
+    return () => controller.abort();
+  }, [analysis, packId, repository]);
+
+  const toggleEntry = React.useCallback((entry: DictionaryEntrySummary) => {
+    if (expandedEntryId === entry.entryId) {
+      setExpandedEntryId(null);
+      return;
+    }
+    setExpandedEntryId(entry.entryId);
+    if (details[entry.entryId] !== undefined) return;
+    void repository
+      .getEntry(packId, entry.entryId, entry.matchKind)
+      .then((detail) => setDetails((current) => ({ ...current, [entry.entryId]: detail })))
+      .catch(() => setDetails((current) => ({ ...current, [entry.entryId]: null })));
+  }, [details, expandedEntryId, packId, repository]);
+
+  return (
+    <View
+      accessibilityElementsHidden={!active}
+      importantForAccessibility={active ? 'auto' : 'no-hide-descendants'}
+      pointerEvents={active ? 'auto' : 'none'}
+      style={!active ? styles.hiddenSource : undefined}
+    >
+      {lookup.status === 'loading' || lookup.status === 'idle' ? (
+        <LoadingCard label="Looking up this lemma and root…" palette={palette} />
+      ) : lookup.status === 'error' ? (
+        <StateCard title="Dictionary lookup failed" message={lookup.message} palette={palette} />
+      ) : (
+        <DictionaryResults
+          result={lookup.result}
+          expandedEntryId={expandedEntryId}
+          details={details}
+          showRoot={showRoot}
+          showFamily={showFamily}
+          contentWidth={contentWidth}
+          palette={palette}
+          onToggleEntry={toggleEntry}
+          onToggleRoot={() => setShowRoot((value) => !value)}
+          onToggleFamily={() => setShowFamily((value) => !value)}
+        />
+      )}
     </View>
   );
 }
@@ -369,7 +401,7 @@ function DictionaryResults({
             accessibilityRole="button"
             accessibilityState={{ expanded: showRoot }}
             onPress={onToggleRoot}
-            style={[styles.rootToggle, { backgroundColor: palette.surface }]}
+            style={[styles.rootToggle, { backgroundColor: palette.surfaceNavigation }]}
           >
             <View style={styles.familyCopy}>
               <Text style={[styles.groupTitle, { color: palette.text }]}>Explore the root{rootLabel ? ` · ${rootLabel}` : ''}</Text>
@@ -436,7 +468,7 @@ function RootFamilyDisclosure({
         accessibilityRole="button"
         accessibilityState={{ expanded }}
         onPress={onToggle}
-        style={[styles.familyToggle, { backgroundColor: palette.surface }]}
+        style={[styles.familyToggle, { backgroundColor: palette.surfaceNavigation }]}
       >
         <View style={styles.familyCopy}>
           <Text style={[styles.groupTitle, { color: palette.text }]}>Related dictionary headwords</Text>
@@ -515,7 +547,7 @@ function EntryCard({
   onToggleEntry: (entry: DictionaryEntrySummary) => void;
 }): React.JSX.Element {
   return (
-    <View style={[styles.entryCard, { backgroundColor: palette.surface }]}>
+    <View style={[styles.entryCard, { backgroundColor: palette.surfaceNavigation }]}>
       <Pressable
         accessibilityRole="button"
         accessibilityState={{ expanded }}
@@ -561,7 +593,7 @@ function DownloadCard({ entry, status, percent, error, palette, onDownload, onCa
 }): React.JSX.Element {
   const active = status === 'queued' || status === 'downloading';
   return (
-    <View style={[styles.downloadCard, { borderColor: palette.border, backgroundColor: palette.surface }]}> 
+    <View style={[styles.downloadCard, { borderColor: palette.border, backgroundColor: palette.surfaceNavigation }]}> 
       <View style={styles.familyCopy}>
         <Text style={[styles.downloadTitle, { color: palette.text }]}>{entry.title}</Text>
         <Text style={[styles.caption, { color: palette.muted }]}>English · {formatBytes(entry.databaseSizeBytes)}</Text>
@@ -587,7 +619,7 @@ function DownloadCard({ entry, status, percent, error, palette, onDownload, onCa
 
 function LoadingCard({ label, palette }: { label: string; palette: Palette }): React.JSX.Element {
   return (
-    <View style={[styles.stateCard, { borderColor: palette.border, backgroundColor: palette.surface }]}> 
+    <View style={[styles.stateCard, { borderColor: palette.border, backgroundColor: palette.surfaceNavigation }]}> 
       <ActivityIndicator color={palette.tint} />
       <Text style={[styles.description, { color: palette.muted }]}>{label}</Text>
     </View>
@@ -602,7 +634,7 @@ function StateCard({ title, message, palette, actionLabel, onAction }: {
   onAction?: () => void;
 }): React.JSX.Element {
   return (
-    <View style={[styles.stateCard, { borderColor: palette.border, backgroundColor: palette.surface }]}> 
+    <View style={[styles.stateCard, { borderColor: palette.border, backgroundColor: palette.surfaceNavigation }]}> 
       <Text style={[styles.stateTitle, { color: palette.text }]}>{title}</Text>
       <Text style={[styles.description, { color: palette.muted }]}>{message}</Text>
       {actionLabel && onAction ? (
@@ -617,6 +649,7 @@ function StateCard({ title, message, palette, actionLabel, onAction }: {
 
 const styles = StyleSheet.create({
   section: { gap: 16 },
+  hiddenSource: { display: 'none' },
   toolbar: { minHeight: 34, paddingLeft: 2, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   sourceLabel: { fontSize: 11, lineHeight: 16, fontWeight: '800', letterSpacing: 0.9 },
   infoButton: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },

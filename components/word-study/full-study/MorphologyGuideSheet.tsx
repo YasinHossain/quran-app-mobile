@@ -106,7 +106,7 @@ export function MorphologyGuideSheet({
               {MORPHOLOGY_GUIDE_GROUPS.map((group) => (
                 <View key={group.key} style={styles.group}>
                   <Text style={[styles.groupTitle, { color: palette.text }]}>{group.title}</Text>
-                  <View style={[styles.termList, { borderColor: palette.border, backgroundColor: palette.surface }]}>
+                  <View style={[styles.termList, { borderColor: palette.border, backgroundColor: palette.surfaceNavigation }]}>
                     {group.terms.map((term, index) => (
                       <View
                         key={term.key}

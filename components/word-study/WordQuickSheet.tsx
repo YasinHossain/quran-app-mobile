@@ -172,7 +172,7 @@ export function WordQuickSheet({
                 />
               )}
 
-              <View style={[styles.actionsCard, { backgroundColor: palette.surface }]}>
+              <View style={[styles.actionsCard, { backgroundColor: palette.surfaceNavigation }]}>
                 <SecondaryAction
                   icon={<Volume2 color={palette.tint} size={20} strokeWidth={2.2} />}
                   label="Play"
@@ -232,7 +232,7 @@ function AnalysisContent({
 
   return (
     <View style={styles.analysisContent}>
-      <View style={[styles.morphologySummary, { backgroundColor: palette.surface }]}>
+      <View style={[styles.morphologySummary, { backgroundColor: palette.surfaceNavigation }]}>
         <View style={[styles.summaryTopRow, stackSummary && styles.summaryTopRowStacked]}>
           <View style={styles.summaryMeaningColumn}>
             <View style={styles.glossBlock}>
@@ -286,7 +286,7 @@ function FactTile({
       accessible
       accessibilityRole="text"
       accessibilityLabel={`${label}: ${accessibilityValue}`}
-      style={[styles.factTile, { backgroundColor: palette.surface }]}
+      style={[styles.factTile, { backgroundColor: palette.surfaceNavigation }]}
     >
       <Text style={[styles.factLabel, { color: palette.muted }]}>{label}</Text>
       <Text
@@ -381,7 +381,7 @@ function WordQuickSheetSkeleton({
 }): React.JSX.Element {
   return (
     <View accessibilityLabel="Loading word analysis" style={styles.skeleton}>
-      <View style={[styles.morphologySummary, { backgroundColor: palette.surface }]}>
+      <View style={[styles.morphologySummary, { backgroundColor: palette.surfaceNavigation }]}>
         <View style={styles.summaryTopRow}>
           <View style={styles.summaryMeaningColumn}>
             <View style={styles.glossBlock}>
@@ -407,7 +407,7 @@ function WordQuickSheetSkeleton({
         {[0, 1].map((index) => (
           <View
             key={index}
-            style={[styles.skeletonFact, { backgroundColor: palette.surface }]}
+            style={[styles.skeletonFact, { backgroundColor: palette.surfaceNavigation }]}
           >
             <SkeletonBar width="32%" height={12} palette={palette} />
             <SkeletonBar width="58%" height={18} palette={palette} />

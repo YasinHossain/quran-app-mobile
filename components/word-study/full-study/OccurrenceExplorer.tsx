@@ -257,7 +257,7 @@ export function OccurrenceExplorer({
         <Text style={[styles.title, { color: palette.text }]}>Explore occurrences</Text>
       </View>
 
-      <View style={[styles.counterGrid, { backgroundColor: palette.surface }]}>
+      <View style={[styles.counterGrid, { backgroundColor: palette.surfaceNavigation }]}>
         {counters.length > 1 ? (
           <View pointerEvents="none" style={[styles.counterVerticalDivider, { backgroundColor: palette.border }]} />
         ) : null}
@@ -331,7 +331,7 @@ export function OccurrenceExplorer({
       {lemmaOverride ? (
         <View
           accessibilityLiveRegion="polite"
-          style={[styles.activeLemma, { borderColor: palette.tint, backgroundColor: palette.surface }]}
+          style={[styles.activeLemma, { borderColor: palette.tint, backgroundColor: palette.surfaceNavigation }]}
         >
           <View style={styles.activeLemmaCopy}>
             <Text style={[styles.activeLemmaEyebrow, { color: palette.tint }]}>VIEWING ROOT-FAMILY FORM</Text>
@@ -363,7 +363,7 @@ export function OccurrenceExplorer({
           <Text style={[styles.stateText, { color: palette.muted }]}>Loading {effectiveScope} occurrences…</Text>
         </View>
       ) : pageState.status === 'error' ? (
-        <View style={[styles.stateCard, { borderColor: palette.border, backgroundColor: palette.surface }]} accessibilityLiveRegion="polite">
+        <View style={[styles.stateCard, { borderColor: palette.border, backgroundColor: palette.surfaceNavigation }]} accessibilityLiveRegion="polite">
           <Text style={[styles.stateText, { color: palette.muted }]}>{pageState.message}</Text>
           <Pressable accessibilityRole="button" onPress={() => setRetryNonce((value) => value + 1)} style={styles.retry}>
             <RotateCw color={palette.tint} size={17} />
@@ -428,7 +428,7 @@ export function OccurrenceExplorer({
           </View>
         </>
       ) : (
-        <View style={[styles.stateCard, { borderColor: palette.border, backgroundColor: palette.surface }]}>
+        <View style={[styles.stateCard, { borderColor: palette.border, backgroundColor: palette.surfaceNavigation }]}>
           <Text style={[styles.stateText, { color: palette.muted }]}>No {effectiveScope} occurrences are available.</Text>
         </View>
       )}
@@ -508,7 +508,7 @@ function RootFamilyBrowser({
   }, [bodyHeight, expanded, moveBodyTo]);
 
   return (
-    <View style={[styles.familyCard, { backgroundColor: palette.surface }]}>
+    <View style={[styles.familyCard, { backgroundColor: palette.surfaceNavigation }]}>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`${expanded ? 'Collapse' : 'Expand'} ${displayedLemmaCount} forms in root ${rootArabic}`}
@@ -571,7 +571,7 @@ function RootFamilyBrowser({
                     onPress={() => onSelect(lemma)}
                     style={[
                       styles.familyRow,
-                      { borderTopColor: palette.border, backgroundColor: isActive ? palette.interactive : palette.surface },
+                      { borderTopColor: palette.border, backgroundColor: isActive ? palette.interactive : palette.surfaceNavigation },
                     ]}
                   >
                     <View style={styles.familyRowMeta}>
@@ -620,7 +620,7 @@ function OccurrenceResult({
       accessibilityRole="button"
       accessibilityLabel={`Open reader at ${occurrence.location.locationKey}, ${getOccurrenceGloss(occurrence)}`}
       onPress={() => onOpenReader(occurrence)}
-      style={[styles.resultCard, { borderColor: palette.border, backgroundColor: palette.surface }]}
+      style={[styles.resultCard, { borderColor: palette.border, backgroundColor: palette.surfaceNavigation }]}
     >
       <View style={styles.resultHeader}>
         <View style={styles.resultLocationBlock}>

@@ -17,6 +17,7 @@ import { container } from '@/src/core/infrastructure/di/container';
 
 type Palette = {
   surface: string;
+  surfaceNavigation: string;
   text: string;
   muted: string;
   border: string;
@@ -102,7 +103,7 @@ export function VerbReferenceSection({
         </Text>
       </View>
       {state.status === 'loading' ? (
-        <View style={[styles.stateCard, { borderColor: palette.border, backgroundColor: palette.surface }]}> 
+        <View style={[styles.stateCard, { borderColor: palette.border, backgroundColor: palette.surfaceNavigation }]}> 
           <ActivityIndicator color={palette.tint} />
           <Text style={[styles.stateText, { color: palette.muted }]}>Reading verb reference…</Text>
         </View>
@@ -123,7 +124,7 @@ export function VerbReferenceSection({
                     : threeColumns
                       ? styles.cardThird
                       : styles.cardHalf,
-                  { borderColor: palette.border, backgroundColor: palette.surface },
+                  { borderColor: palette.border, backgroundColor: palette.surfaceNavigation },
                 ]}
               >
                 <Text style={[styles.label, { color: palette.muted }]}>{part.label}</Text>
@@ -142,7 +143,7 @@ export function VerbReferenceSection({
           })}
         </View>
       ) : (
-        <View style={[styles.stateCard, { borderColor: palette.border, backgroundColor: palette.surface }]}> 
+        <View style={[styles.stateCard, { borderColor: palette.border, backgroundColor: palette.surfaceNavigation }]}> 
           <Text style={[styles.stateText, { color: palette.muted }]}> 
             {state.status === 'error'
               ? 'The verb reference could not be loaded.'

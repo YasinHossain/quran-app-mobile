@@ -425,7 +425,7 @@ test('full screen uses Morphology-first information architecture without repeate
   assert.match(source, /backgroundColor: palette\.border/);
   assert.match(source, /segmentCard: \{ borderRadius: 20/);
   assert.doesNotMatch(source, /segmentCard: \{[^\n]+borderWidth/);
-  assert.match(source, /styles\.segmentCard, \{ backgroundColor: palette\.surface \}/);
+  assert.match(source, /styles\.segmentCard, \{ backgroundColor: palette\.surfaceNavigation \}/);
   assert.doesNotMatch(source, /cleanSurfaceShadow/);
   assert.match(source, /factLabel: \{[^\n]+textAlign: 'center'/);
   assert.match(source, /factValueArabic: \{[^\n]+fontSize: 30, lineHeight: 44/);
@@ -691,6 +691,10 @@ test('dictionary UI prioritizes the best match and moves guidance into an inform
   assert.doesNotMatch(source, /See Quran occurrences|OccurrenceLink|onExploreRootOccurrences/);
   assert.match(source, /DictionaryGuideSheet/);
   assert.match(source, /SlidingSegmentedControl/);
+  assert.match(source, /function DictionarySourcePanel/);
+  assert.match(source, /sources\.map\(\(source\) => \(/);
+  assert.match(source, /active=\{source\.packId === selectedPackId\}/);
+  assert.match(source, /hiddenSource: \{ display: 'none' \}/);
   assert.match(source, /const primaryEntry = result\.exactLemmaEntries\[0\] \?\? result\.rootEntries\[0\]/);
   assert.doesNotMatch(source, /Contextual meaning remains in Overview|Complete root family|Matching headword/);
   assert.doesNotMatch(source, /result\.source\.(?:title|version|attribution|url)/);

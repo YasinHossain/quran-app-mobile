@@ -139,7 +139,7 @@ export function DictionaryGuideSheet({
                   accessibilityRole="link"
                   accessibilityLabel={`Open source page for ${source.title}`}
                   onPress={() => void Linking.openURL(source.url)}
-                  style={[styles.sourceCard, { borderColor: palette.border, backgroundColor: palette.surface }]}
+                  style={[styles.sourceCard, { borderColor: palette.border, backgroundColor: palette.surfaceNavigation }]}
                 >
                   <BookOpen color={palette.tint} size={21} strokeWidth={2.1} />
                   <View style={styles.sourceCopy}>

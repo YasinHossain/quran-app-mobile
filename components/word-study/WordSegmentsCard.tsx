@@ -41,7 +41,7 @@ export function WordSegmentsCard({
   const segments = getAnalysisSegments(analysis);
 
   return (
-    <View style={[styles.card, compact && styles.cardCompact, { backgroundColor: palette.surface }]}>
+    <View style={[styles.card, compact && styles.cardCompact, { backgroundColor: palette.surfaceNavigation }]}>
       <SegmentedWord
         analysis={analysis}
         compact={compact}
@@ -187,7 +187,7 @@ function LegendItem({
         isTile && styles.legendItemTile,
         layout === 'wrapped' && styles.legendItemWrapped,
         layout === 'full-width' && styles.legendItemFullWidth,
-        isTile && { backgroundColor: layout === 'horizontal' ? palette.surface : palette.interactive },
+        isTile && { backgroundColor: layout === 'horizontal' ? palette.surfaceNavigation : palette.interactive },
       ]}
     >
       <View style={[styles.legendLine, { backgroundColor: color }]} />

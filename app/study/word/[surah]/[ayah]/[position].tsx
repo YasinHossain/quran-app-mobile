@@ -485,7 +485,7 @@ function MorphologySection({ analysis, contextualMeaning, palette }: {
   const stackSummary = width < 350 || fontScale > 1.25;
   return (
     <View style={styles.section}>
-      <View style={[styles.morphologySummary, { backgroundColor: palette.surface }]}>
+      <View style={[styles.morphologySummary, { backgroundColor: palette.surfaceNavigation }]}>
         <View style={[styles.summaryTopRow, stackSummary && styles.summaryTopRowStacked]}>
           <View style={styles.summaryMeaningColumn}>
             <ContextualMeaningBlock state={contextualMeaning} palette={palette} />
@@ -635,7 +635,7 @@ function GrammarSection({
 
   return (
     <View style={styles.section}>
-      <View style={[styles.grammarHero, { backgroundColor: palette.surface }]}>
+      <View style={[styles.grammarHero, { backgroundColor: palette.surfaceNavigation }]}>
         <Text style={[styles.grammarHeroWord, { color: palette.text }]}>
           {analysis.surfaceUthmani}
         </Text>
@@ -665,7 +665,7 @@ function GrammarSection({
         onPress={() => setShowFullAyah((value) => !value)}
         style={({ pressed }) => [
           styles.grammarDisclosure,
-          { backgroundColor: palette.surface, opacity: pressed ? 0.68 : 1 },
+          { backgroundColor: palette.surfaceNavigation, opacity: pressed ? 0.68 : 1 },
         ]}
       >
         <View style={styles.grammarDisclosureRow}>
@@ -726,7 +726,7 @@ function GrammarPassageCard({
       style={[
         styles.grammarCard,
         {
-          backgroundColor: palette.surface,
+          backgroundColor: palette.surfaceNavigation,
         },
       ]}
     >
@@ -785,7 +785,7 @@ function SegmentGroupCard({ segments, palette, singleColumnFacts }: {
   const grouped = segments.length > 1;
   const role = getSegmentRole(firstSegment?.segmentType ?? 'whole-word', grouped);
   return (
-    <View style={[styles.segmentCard, { backgroundColor: palette.surface }]}>
+    <View style={[styles.segmentCard, { backgroundColor: palette.surfaceNavigation }]}>
       {grouped ? (
         <Text style={[styles.segmentGroupTitle, { color: palette.text }]}>{role[0]} · {role[1]}</Text>
       ) : null}
@@ -896,7 +896,7 @@ function CompactStudyFact({ label, arabicTerm, value, available, palette, fullWi
       style={[
         styles.lexicalFact,
         fullWidth && styles.factTileFullWidth,
-        { backgroundColor: palette.surface, borderColor: palette.border, borderWidth: StyleSheet.hairlineWidth },
+        { backgroundColor: palette.surfaceNavigation, borderColor: palette.border, borderWidth: StyleSheet.hairlineWidth },
       ]}
     >
       <Text style={[styles.factLabel, { color: palette.muted }]}>{label} · {arabicTerm}</Text>
@@ -925,7 +925,7 @@ function SectionHeading({ title, subtitle, palette }: { title: string; subtitle?
 function NoticeCard({ message, palette }: { message: string; palette: Palette }): React.JSX.Element {
   return (
     <View
-      style={[styles.noticeCard, { borderColor: palette.border, backgroundColor: palette.surface }]}
+      style={[styles.noticeCard, { borderColor: palette.border, backgroundColor: palette.surfaceNavigation }]}
     >
       <Text style={[styles.explanation, { color: palette.muted }]}>{message}</Text>
     </View>
@@ -941,7 +941,7 @@ function InlineAnalysisState({ loading, message, onRetry, palette }: {
   return (
     <View
       accessibilityLiveRegion="polite"
-      style={[styles.inlineAnalysisState, { borderColor: palette.border, backgroundColor: palette.surface }]}
+      style={[styles.inlineAnalysisState, { borderColor: palette.border, backgroundColor: palette.surfaceNavigation }]}
     >
       {loading ? <ActivityIndicator color={palette.tint} /> : null}
       <Text style={[styles.explanation, { color: palette.muted }]}>{message}</Text>
