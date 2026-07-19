@@ -312,7 +312,7 @@ export const MushafSingleDocumentReader = React.forwardRef<
 ): React.JSX.Element {
   const { width, height } = useWindowDimensions();
   const { resolvedTheme } = useAppTheme();
-  const readerBackgroundColor = resolvedTheme === 'dark' ? '#0F172A' : '#F7F9F9';
+  const readerBackgroundColor = resolvedTheme === 'dark' ? '#0B1220' : '#F7F9F9';
   const webViewRef = React.useRef<WebView>(null);
   const isReaderReadyRef = React.useRef(false);
   const hasInitialPaintRef = React.useRef(false);

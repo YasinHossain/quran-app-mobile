@@ -1061,7 +1061,7 @@ export default function JuzScreen(): React.JSX.Element {
   }, [activeVerse, chapterNamesById]);
 
   const mushafEntryProgress = React.useRef(new Animated.Value(isMushafView ? 1 : 0)).current;
-  const mushafSurfaceBackground = resolvedTheme === 'dark' ? '#102033' : palette.background;
+  const mushafSurfaceBackground = palette.background;
   const mushafEntryStyle = React.useMemo(
     () => ({
       opacity: mushafEntryProgress,

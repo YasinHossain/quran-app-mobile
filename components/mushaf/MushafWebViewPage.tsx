@@ -136,7 +136,7 @@ export function MushafWebViewPagePlaceholder({
           style={[
             styles.placeholderSurface,
             {
-              backgroundColor: resolvedTheme === 'dark' ? '#102033' : '#F7F9F9',
+              backgroundColor: resolvedTheme === 'dark' ? '#0B1220' : '#F7F9F9',
               borderColor:
                 resolvedTheme === 'dark' ? 'rgba(255, 255, 255, 0.08)' : 'rgba(15, 23, 42, 0.08)',
               height: Math.max(estimatedHeight, 280),
@@ -421,7 +421,7 @@ export function MushafWebViewPage({
           style={[
             styles.webView,
             {
-              backgroundColor: resolvedTheme === 'dark' ? '#102033' : '#F7F9F9',
+              backgroundColor: resolvedTheme === 'dark' ? '#0B1220' : '#F7F9F9',
               height: webViewHeight,
             },
           ]}

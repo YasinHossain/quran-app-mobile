@@ -1,5 +1,5 @@
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { Settings } from 'lucide-react-native';
+import { ArrowLeft, Settings } from 'lucide-react-native';
 import React from 'react';
 
 import { AppHeader } from '@/components/navigation/AppHeader';
@@ -15,6 +15,7 @@ import {
 import { FlashList } from '@shopify/flash-list';
 
 import { GoToSurahVerseCard } from '@/components/search/GoToSurahVerseCard';
+import { HeaderActionButton } from '@/components/search/HeaderSearchBar';
 import { SearchVerseResultCard } from '@/components/search/SearchVerseResultCard';
 import { SettingsSidebar } from '@/components/reader/settings/SettingsSidebar';
 import { VerseActionsSheet } from '@/components/surah/VerseActionsSheet';
@@ -436,9 +437,23 @@ export default function SearchScreen(): React.JSX.Element {
   ]);
 
   return (
-    <View className="flex-1 bg-background dark:bg-background-dark">
+    <View className="flex-1 bg-background dark:bg-background-dark" style={{ backgroundColor: palette.background }}>
       <AppHeader
         title="Search"
+        left={
+          <HeaderActionButton
+            accessibilityLabel="Go back"
+            onPress={() => {
+              if (router.canGoBack()) {
+                router.back();
+              } else {
+                router.replace('/');
+              }
+            }}
+          >
+            <ArrowLeft color={palette.text} size={22} strokeWidth={2.25} />
+          </HeaderActionButton>
+        }
         right={
           <Pressable
             onPress={() => setIsSettingsOpen(true)}

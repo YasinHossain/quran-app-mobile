@@ -1781,8 +1781,8 @@ export default function TafsirScreen(): React.JSX.Element {
 
   if (!currentTarget) {
     return (
-      <View className={isDark ? 'flex-1 dark' : 'flex-1'}>
-        <View className="flex-1 items-center justify-center bg-background px-6 dark:bg-background-dark">
+      <View className={isDark ? 'flex-1 dark' : 'flex-1'} style={{ backgroundColor: palette.background }}>
+        <View className="flex-1 items-center justify-center bg-background px-6 dark:bg-background-dark" style={{ backgroundColor: palette.background }}>
           <Text className="text-center text-sm text-error dark:text-error-dark">
             Invalid verse reference.
           </Text>
@@ -1792,8 +1792,8 @@ export default function TafsirScreen(): React.JSX.Element {
   }
 
   return (
-    <View className={isDark ? 'flex-1 dark' : 'flex-1'}>
-      <View className="flex-1 bg-background dark:bg-background-dark">
+    <View className={isDark ? 'flex-1 dark' : 'flex-1'} style={{ backgroundColor: palette.background }}>
+      <View className="flex-1 bg-background dark:bg-background-dark" style={{ backgroundColor: palette.background }}>
         <Stack.Screen
           options={{
             headerShown: false,

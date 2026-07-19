@@ -747,7 +747,7 @@ export default function PageScreen(): React.JSX.Element {
   );
 
   return (
-    <View className="flex-1 bg-background dark:bg-background-dark">
+    <View className="flex-1 bg-background dark:bg-background-dark" style={{ backgroundColor: palette.background }}>
       <Stack.Screen
         options={{
           headerShown: false,

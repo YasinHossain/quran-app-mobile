@@ -58,7 +58,7 @@ export default function PlannerScreen(): React.JSX.Element {
   );
 
   return (
-    <View className="flex-1 bg-background dark:bg-background-dark">
+    <View className="flex-1 bg-background dark:bg-background-dark" style={{ backgroundColor: palette.background }}>
       <AppHeader
         title={t('binder_tab_planner')}
         right={

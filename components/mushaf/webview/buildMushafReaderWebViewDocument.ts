@@ -277,7 +277,7 @@ function buildShellDocumentHtml({
   const palette =
     theme === 'dark'
       ? {
-          background: '#0F172A',
+          background: '#0B1220',
           border: 'rgba(255,255,255,0.12)',
           highlight: 'rgba(34, 197, 94, 0.26)',
           text: '#E7E5E4',
