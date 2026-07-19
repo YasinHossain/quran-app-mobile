@@ -93,6 +93,7 @@ export function OccurrenceExplorer({
   const [isGuideOpen, setIsGuideOpen] = React.useState(false);
   const requestIdRef = React.useRef(0);
   const filtersOffsetYRef = React.useRef<number | null>(null);
+  const rootFamilyOffsetYRef = React.useRef<number | null>(null);
   const reduceMotion = Boolean(useReducedMotion());
   const filters = React.useMemo(() => getOccurrenceFilters(analysis), [analysis]);
   const effectiveScope = filters.some((filter) => filter.scope === scope && filter.enabled)
@@ -193,6 +194,13 @@ export function OccurrenceExplorer({
     return () => controller.abort();
   }, [analysis, cursor, effectiveScope, lemmaOverride, retryNonce]);
 
+  const scrollToFilters = React.useCallback(() => {
+    requestAnimationFrame(() => {
+      const offsetY = filtersOffsetYRef.current;
+      if (offsetY !== null) onRequestScrollToFilters?.(Math.max(0, offsetY - 12), !reduceMotion);
+    });
+  }, [onRequestScrollToFilters, reduceMotion]);
+
   const selectScope = React.useCallback((nextScope: WordOccurrenceScope) => {
     setLemmaOverride(null);
     setScope(nextScope);
@@ -200,16 +208,26 @@ export function OccurrenceExplorer({
     setCursorHistory([]);
   }, []);
 
+  const selectCounter = React.useCallback((counterKey: 'surface' | 'lemma' | 'root' | 'root-lemma-family') => {
+    if (counterKey === 'root-lemma-family') {
+      setRootFamilyExpanded(true);
+      requestAnimationFrame(() => {
+        const offsetY = rootFamilyOffsetYRef.current;
+        if (offsetY !== null) onRequestScrollToFilters?.(Math.max(0, offsetY - 12), !reduceMotion);
+      });
+      return;
+    }
+    selectScope(counterKey);
+    scrollToFilters();
+  }, [onRequestScrollToFilters, reduceMotion, scrollToFilters, selectScope]);
+
   const selectRootFamilyLemma = React.useCallback((lemma: Lemma) => {
     setLemmaOverride(lemma);
     setScope('lemma');
     setCursor(undefined);
     setCursorHistory([]);
-    requestAnimationFrame(() => {
-      const offsetY = filtersOffsetYRef.current;
-      if (offsetY !== null) onRequestScrollToFilters?.(Math.max(0, offsetY - 12), !reduceMotion);
-    });
-  }, [onRequestScrollToFilters, reduceMotion]);
+    scrollToFilters();
+  }, [scrollToFilters]);
 
   const toggleRootFamily = React.useCallback(() => {
     setRootFamilyExpanded((value) => !value);
@@ -257,29 +275,49 @@ export function OccurrenceExplorer({
         ) : null}
         {counters.map((counter) => (
           <View key={counter.key} style={styles.counterCell}>
-            <Text style={[styles.counterValue, { color: palette.tint }]}> 
-              {counter.value === undefined ? '…' : counter.value.toLocaleString()}
-            </Text>
-            <Text style={[styles.counterLabel, { color: palette.text }]}>{counter.label}</Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`${counter.value === undefined ? 'Loading' : counter.value.toLocaleString()} ${counter.label}. ${counter.key === 'root-lemma-family' ? 'Show root-family forms' : `Show ${counter.label.toLowerCase()} occurrences`}`}
+              accessibilityState={counter.key === 'root-lemma-family'
+                ? { expanded: rootFamilyExpanded }
+                : { selected: effectiveScope === counter.key && !lemmaOverride }}
+              onPress={() => selectCounter(counter.key)}
+              style={({ pressed }) => [
+                StyleSheet.absoluteFill,
+                { backgroundColor: pressed ? palette.interactive : 'transparent' },
+              ]}
+            />
+            <View pointerEvents="none" style={styles.counterContent}>
+              <Text style={[styles.counterValue, { color: palette.tint }]}>
+                {counter.value === undefined ? '…' : counter.value.toLocaleString()}
+              </Text>
+              <Text style={[styles.counterLabel, { color: palette.text }]}>{counter.label}</Text>
+            </View>
           </View>
         ))}
       </View>
 
       {root ? (
-        <RootFamilyBrowser
-          rootArabic={root.arabic}
-          rootOccurrenceCount={root.occurrenceCount}
-          expectedLemmaCount={root.lemmaCount}
-          selectedLemmaId={selectedLemmaId}
-          activeLemmaId={lemmaOverride?.id}
-          expanded={rootFamilyExpanded}
-          reduceMotion={reduceMotion}
-          state={rootFamilyState}
-          palette={palette}
-          onToggle={toggleRootFamily}
-          onRetry={() => setRootFamilyRetryNonce((value) => value + 1)}
-          onSelect={selectRootFamilyLemma}
-        />
+        <View
+          onLayout={(event) => {
+            rootFamilyOffsetYRef.current = event.nativeEvent.layout.y;
+          }}
+        >
+          <RootFamilyBrowser
+            rootArabic={root.arabic}
+            rootOccurrenceCount={root.occurrenceCount}
+            expectedLemmaCount={root.lemmaCount}
+            selectedLemmaId={selectedLemmaId}
+            activeLemmaId={lemmaOverride?.id}
+            expanded={rootFamilyExpanded}
+            reduceMotion={reduceMotion}
+            state={rootFamilyState}
+            palette={palette}
+            onToggle={toggleRootFamily}
+            onRetry={() => setRootFamilyRetryNonce((value) => value + 1)}
+            onSelect={selectRootFamilyLemma}
+          />
+        </View>
       ) : null}
 
       <View
@@ -617,7 +655,8 @@ const styles = StyleSheet.create({
   title: { fontSize: 18, lineHeight: 25, fontWeight: '700' },
   infoButton: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   counterGrid: { position: 'relative', flexDirection: 'row', flexWrap: 'wrap', borderRadius: 20, overflow: 'hidden', paddingVertical: 6 },
-  counterCell: { width: '50%', minHeight: 92, paddingHorizontal: 13, paddingVertical: 12, alignItems: 'center', justifyContent: 'center', gap: 2 },
+  counterCell: { width: '50%', flexBasis: '50%', flexGrow: 0, flexShrink: 0, minHeight: 92, paddingHorizontal: 13, alignItems: 'center', justifyContent: 'center' },
+  counterContent: { alignItems: 'center', justifyContent: 'center', gap: 2 },
   counterVerticalDivider: { position: 'absolute', width: StyleSheet.hairlineWidth, top: 17, bottom: 17, left: '50%' },
   counterHorizontalDivider: { position: 'absolute', height: StyleSheet.hairlineWidth, left: 17, right: 17, top: '50%' },
   counterValue: { fontSize: 24, lineHeight: 31, fontWeight: '800', textAlign: 'center' },

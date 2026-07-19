@@ -377,13 +377,13 @@ test('full screen uses Morphology-first information architecture without repeate
   assert.match(source, /contextWords\.length === 0/);
   assert.match(source, /words\.length[\s\S]*?immediateContextWords/);
   assert.match(source, /router\.setParams\(\{ position:/);
-  assert.match(source, /label="Morphology"/);
-  assert.match(source, /label="Grammar"/);
-  assert.match(source, /label="Occurrences"/);
-  assert.match(source, /label="Dictionary"/);
-  assert.ok(source.indexOf('label="Morphology"') < source.indexOf('label="Grammar"'));
-  assert.ok(source.indexOf('label="Grammar"') < source.indexOf('label="Occurrences"'));
-  assert.ok(source.indexOf('label="Occurrences"') < source.indexOf('label="Dictionary"'));
+  assert.match(source, /label: 'Morphology'/);
+  assert.match(source, /label: 'Grammar'/);
+  assert.match(source, /label: 'Occurrences'/);
+  assert.match(source, /label: 'Dictionary'/);
+  assert.ok(source.indexOf("label: 'Morphology'") < source.indexOf("label: 'Grammar'"));
+  assert.ok(source.indexOf("label: 'Grammar'") < source.indexOf("label: 'Occurrences'"));
+  assert.ok(source.indexOf("label: 'Occurrences'") < source.indexOf("label: 'Dictionary'"));
   assert.match(source, /useState<StudyTab>\('morphology'\)/);
   assert.match(source, /Meaning in this ayah/);
   assert.match(source, /useContextualMeaning\(selected\)/);
@@ -402,7 +402,9 @@ test('full screen uses Morphology-first information architecture without repeate
   assert.ok(source.indexOf('<ContextualMeaningBlock') < source.indexOf('How this word is built'));
   assert.ok(source.indexOf('label="Lemma"') < source.indexOf('How this word is built'));
   assert.ok(source.indexOf('label="Root"') < source.indexOf('How this word is built'));
-  assert.match(source, /horizontal/);
+  assert.match(source, /<SlidingSegmentedControl/);
+  assert.match(source, /items=\{WORD_STUDY_TABS\}/);
+  assert.doesNotMatch(source, /<ScrollView\s+horizontal\s+accessibilityRole="tablist"/);
   assert.match(source, /useFocusEffect/);
   assert.match(source, /scrollOffsetRef/);
   assert.match(source, /accessibilityLabel="Understanding morphology terms"/);
@@ -600,9 +602,22 @@ test('full-screen focus order and selection semantics do not depend on color', (
     join(process.cwd(), 'components/word-study/full-study/AyahContextSelector.tsx'),
     'utf8'
   );
+  const segmentedControl = readFileSync(
+    join(process.cwd(), 'components/ui/SlidingSegmentedControl.tsx'),
+    'utf8'
+  );
+  const homeToggle = readFileSync(
+    join(process.cwd(), 'components/home/HomeTabToggle.tsx'),
+    'utf8'
+  );
   assert.ok(screen.indexOf('styles.header') < screen.indexOf('<AyahContextSelector'));
-  assert.ok(screen.indexOf('<AyahContextSelector') < screen.indexOf('accessibilityRole="tablist"'));
-  assert.ok(screen.indexOf('accessibilityRole="tablist"') < screen.indexOf('Understanding morphology terms'));
+  assert.ok(screen.indexOf('<AyahContextSelector') < screen.indexOf('<SlidingSegmentedControl'));
+  assert.ok(screen.indexOf('<SlidingSegmentedControl') < screen.indexOf('Understanding morphology terms'));
+  assert.match(segmentedControl, /accessibilityRole="tablist"/);
+  assert.match(segmentedControl, /accessibilityState=\{\{ selected \}\}/);
+  assert.match(segmentedControl, /withSpring/);
+  assert.match(segmentedControl, /palette\.surfaceNavigation/);
+  assert.match(homeToggle, /<SlidingSegmentedControl/);
   assert.match(selector, /accessibilityLabel=\{`Word \$\{position\} of \$\{words\.length\}/);
   assert.match(selector, /accessibilityState=\{\{ selected \}\}/);
   assert.match(selector, /accessibilityHint=\{selected \? 'Selected for analysis'/);
@@ -651,19 +666,37 @@ test('verb reference use case forwards the exact encountered form', async () => 
   });
 });
 
-test('dictionary UI keeps downloads, source switching, lazy entries, and attribution in one tab', () => {
+test('dictionary UI prioritizes the best match and moves guidance into an information sheet', () => {
   const source = readFileSync(
     join(process.cwd(), 'components/word-study/full-study/DictionarySection.tsx'),
+    'utf8'
+  );
+  const guide = readFileSync(
+    join(process.cwd(), 'components/word-study/full-study/DictionaryGuideSheet.tsx'),
     'utf8'
   );
   assert.match(source, /Choose an optional dictionary/);
   assert.match(source, /Lane/);
   assert.match(source, /Hans Wehr/);
-  assert.match(source, /Matching headword/);
-  assert.match(source, /Complete root family/);
+  assert.match(source, /Best match for this word/);
+  assert.match(source, /Root meaning/);
+  assert.match(source, /Related dictionary headwords/);
+  assert.doesNotMatch(source, /See Quran occurrences|OccurrenceLink|onExploreRootOccurrences/);
+  assert.match(source, /DictionaryGuideSheet/);
+  assert.match(source, /SlidingSegmentedControl/);
+  assert.match(source, /const primaryEntry = result\.exactLemmaEntries\[0\] \?\? result\.rootEntries\[0\]/);
+  assert.doesNotMatch(source, /Contextual meaning remains in Overview|Complete root family|Matching headword/);
+  assert.doesNotMatch(source, /result\.source\.(?:title|version|attribution|url)/);
+  assert.match(source, /entryCard: \{ borderRadius: 18/);
+  assert.doesNotMatch(source, /entryCard: \{[^\n]+borderWidth|familyToggle: \{[^\n]+borderWidth/);
   assert.match(source, /getEntry\(/);
   assert.match(source, /controller\.abort\(\)/);
-  assert.match(source, /source\.attribution/);
+  assert.match(guide, /Selected Quran word/);
+  assert.match(guide, /Lemma/);
+  assert.match(guide, /Root dictionary entry/);
+  assert.match(guide, /Lane is a detailed classical Arabic reference/);
+  assert.match(guide, /source\.attribution/);
+  assert.match(guide, /height: sheetHeight/);
 });
 
 test('occurrence explorer cancels stale queries, keeps page size bounded, and avoids ambiguous count copy', () => {
@@ -691,6 +724,10 @@ test('occurrence explorer cancels stale queries, keeps page size bounded, and av
   assert.match(source, /minHeight: resultsHeightFloor/);
   assert.match(source, /requestAnimationFrame/);
   assert.match(source, /onRequestScrollToFilters\?\./);
+  assert.match(source, /const selectScope[\s\S]*?setCursorHistory\(\[\]\);\s*\}, \[\]\);/);
+  assert.match(source, /const selectCounter[\s\S]*?selectScope\(counterKey\);\s*scrollToFilters\(\);/);
+  assert.match(source, /rootFamilyOffsetYRef[\s\S]*?setRootFamilyExpanded\(true\)/);
+  assert.match(source, /const selectRootFamilyLemma[\s\S]*?scrollToFilters\(\);/);
   assert.match(source, /current\.status === 'ready'[\s\S]*?refreshing: true/);
   assert.match(source, /accessibilityState=\{\{ busy: isPageRefreshing \}\}/);
   assert.match(source, /ayahContextUthmani/);

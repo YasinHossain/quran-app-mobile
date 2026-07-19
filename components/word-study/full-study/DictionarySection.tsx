@@ -1,10 +1,9 @@
 import {
   AlertCircle,
-  Check,
   ChevronDown,
   ChevronUp,
   Download,
-  ExternalLink,
+  Info,
   RefreshCw,
   X,
 } from 'lucide-react-native';
@@ -12,7 +11,6 @@ import React from 'react';
 import RenderHTML from 'react-native-render-html';
 import {
   ActivityIndicator,
-  Linking,
   Pressable,
   StyleSheet,
   Text,
@@ -20,6 +18,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 
+import { SlidingSegmentedControl } from '@/components/ui/SlidingSegmentedControl';
 import { useDownloadIndexItems } from '@/hooks/useDownloadIndexItems';
 import { getItem, setItem } from '@/lib/storage/appStorage';
 import type {
@@ -31,6 +30,8 @@ import type {
 } from '@/src/core/domain/word-study';
 import { container } from '@/src/core/infrastructure/di/container';
 import type { WordReferencePackCatalogEntry } from '@/src/core/infrastructure/word-reference';
+
+import { DictionaryGuideSheet } from './DictionaryGuideSheet';
 
 type Palette = {
   background: string;
@@ -81,7 +82,9 @@ export function DictionarySection({
   const [lookup, setLookup] = React.useState<LookupState>({ status: 'idle' });
   const [expandedEntryId, setExpandedEntryId] = React.useState<string | null>(null);
   const [details, setDetails] = React.useState<Record<string, DictionaryEntryDetail | null>>({});
+  const [showRoot, setShowRoot] = React.useState(false);
   const [showFamily, setShowFamily] = React.useState(false);
+  const [isGuideOpen, setIsGuideOpen] = React.useState(false);
   const [refreshNonce, setRefreshNonce] = React.useState(0);
 
   const loadSources = React.useCallback(async () => {
@@ -92,7 +95,9 @@ export function DictionarySection({
       const preferred = current ?? remembered;
       return next.some((source) => source.packId === preferred)
         ? preferred
-        : next[0]?.packId ?? null;
+        : next.find((source) => source.sourceId === 'lane-lexicon')?.packId
+          ?? next[0]?.packId
+          ?? null;
     });
   }, [repository]);
 
@@ -132,12 +137,31 @@ export function DictionarySection({
     setLookup({ status: 'loading' });
     setExpandedEntryId(null);
     setDetails({});
+    setShowRoot(false);
     setShowFamily(false);
     void container
       .getDictionaryReferences()
       .execute(analysis, selectedPackId, { signal: controller.signal })
       .then((result) => {
-        if (!controller.signal.aborted) setLookup({ status: 'ready', result });
+        if (controller.signal.aborted) return;
+        setLookup({ status: 'ready', result });
+        const primaryEntry = result.exactLemmaEntries[0] ?? result.rootEntries[0];
+        if (!primaryEntry) return;
+        setExpandedEntryId(primaryEntry.entryId);
+        void repository
+          .getEntry(selectedPackId, primaryEntry.entryId, primaryEntry.matchKind, {
+            signal: controller.signal,
+          })
+          .then((detail) => {
+            if (!controller.signal.aborted) {
+              setDetails((current) => ({ ...current, [primaryEntry.entryId]: detail }));
+            }
+          })
+          .catch(() => {
+            if (!controller.signal.aborted) {
+              setDetails((current) => ({ ...current, [primaryEntry.entryId]: null }));
+            }
+          });
       })
       .catch((error) => {
         if (!controller.signal.aborted) {
@@ -148,7 +172,7 @@ export function DictionarySection({
         }
       });
     return () => controller.abort();
-  }, [analysis, selectedPackId]);
+  }, [analysis, repository, selectedPackId]);
 
   const selectSource = React.useCallback((packId: string) => {
     setSelectedPackId(packId);
@@ -177,42 +201,38 @@ export function DictionarySection({
   );
   const catalogEntries = catalog.status === 'ready' ? catalog.entries : [];
   const downloadableEntries = catalogEntries.filter((entry) => !installedPackIds.has(entry.packId));
+  const selectedSource = sources.find((source) => source.packId === selectedPackId);
 
   return (
     <View style={styles.section}>
-      <View style={styles.heading}>
-        <Text style={[styles.title, { color: palette.text }]}>Dictionary</Text>
-        <Text style={[styles.description, { color: palette.muted }]}> 
-          Contextual meaning remains in Overview. These are cited lexicon entries for the lemma and root.
-        </Text>
+      <View style={styles.toolbar}>
+        <Text style={[styles.sourceLabel, { color: palette.muted }]}>DICTIONARY SOURCE</Text>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="About dictionary results and sources"
+          accessibilityHint="Explains lemma, root, related headwords, and dictionary sources"
+          hitSlop={8}
+          onPress={() => setIsGuideOpen(true)}
+          style={styles.infoButton}
+        >
+          <Info color={palette.tint} size={20} strokeWidth={2.2} />
+        </Pressable>
       </View>
 
-      {sources.length > 0 ? (
-        <View accessibilityRole="tablist" style={styles.sourceRow}>
-          {sources.map((source) => {
-            const selected = source.packId === selectedPackId;
-            return (
-              <Pressable
-                key={source.packId}
-                accessibilityRole="tab"
-                accessibilityState={{ selected }}
-                onPress={() => selectSource(source.packId)}
-                style={[
-                  styles.sourceChip,
-                  {
-                    borderColor: selected ? palette.tint : palette.border,
-                    backgroundColor: selected ? palette.tint : palette.surface,
-                  },
-                ]}
-              >
-                {selected ? <Check color={palette.onAccent} size={14} /> : null}
-                <Text style={[styles.sourceChipText, { color: selected ? palette.onAccent : palette.text }]}> 
-                  {source.sourceId === 'lane-lexicon' ? 'Lane' : source.sourceId === 'hans-wehr' ? 'Hans Wehr' : source.title}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
+      {sources.length > 0 && selectedPackId ? (
+        <SlidingSegmentedControl
+          items={sources.map((source) => ({
+            key: source.packId,
+            label: source.sourceId === 'lane-lexicon'
+              ? 'Lane'
+              : source.sourceId === 'hans-wehr'
+                ? 'Hans Wehr'
+                : source.title,
+          }))}
+          selectedKey={selectedPackId}
+          width={Math.max(0, Math.min(688, width - 32))}
+          onSelect={selectSource}
+        />
       ) : null}
 
       {selectedPackId ? (
@@ -225,10 +245,12 @@ export function DictionarySection({
             result={lookup.result}
             expandedEntryId={expandedEntryId}
             details={details}
+            showRoot={showRoot}
             showFamily={showFamily}
             contentWidth={Math.max(240, Math.min(680, width - 68))}
             palette={palette}
             onToggleEntry={toggleEntry}
+            onToggleRoot={() => setShowRoot((value) => !value)}
             onToggleFamily={() => setShowFamily((value) => !value)}
           />
         )
@@ -277,6 +299,11 @@ export function DictionarySection({
           })}
         </View>
       ) : null}
+      <DictionaryGuideSheet
+        isOpen={isGuideOpen}
+        onClose={() => setIsGuideOpen(false)}
+        source={selectedSource}
+      />
     </View>
   );
 }
@@ -285,25 +312,32 @@ function DictionaryResults({
   result,
   expandedEntryId,
   details,
+  showRoot,
   showFamily,
   contentWidth,
   palette,
   onToggleEntry,
+  onToggleRoot,
   onToggleFamily,
 }: {
   result: DictionaryLookupResult;
   expandedEntryId: string | null;
   details: Record<string, DictionaryEntryDetail | null>;
+  showRoot: boolean;
   showFamily: boolean;
   contentWidth: number;
   palette: Palette;
   onToggleEntry: (entry: DictionaryEntrySummary) => void;
+  onToggleRoot: () => void;
   onToggleFamily: () => void;
 }): React.JSX.Element {
   const hasMatches =
     result.exactLemmaEntries.length > 0 ||
     result.rootEntries.length > 0 ||
     result.rootFamilyEntries.length > 0;
+  const hasExactLemma = result.exactLemmaEntries.length > 0;
+  const rootLabel = result.query.rootNormalized;
+  const sharedEntryProps = { expandedEntryId, details, contentWidth, palette, onToggleEntry };
   return (
     <View style={styles.results}>
       {!hasMatches ? (
@@ -313,69 +347,124 @@ function DictionaryResults({
           palette={palette}
         />
       ) : null}
-      {result.exactLemmaEntries.length > 0 ? (
+      {hasExactLemma ? (
         <EntryGroup
-          title="Matching headword"
-          caption="Exact normalized lemma match; the source may still contain more than one sense."
+          title="Best match for this word"
+          caption="Exact lemma match · the entry may contain more than one sense."
           entries={result.exactLemmaEntries}
-          {...{ expandedEntryId, details, contentWidth, palette, onToggleEntry }}
+          {...sharedEntryProps}
         />
       ) : result.rootEntries.length > 0 ? (
-        <Text style={[styles.description, { color: palette.muted }]}> 
-          No exact headword matched this lemma. Showing its root article and family instead.
-        </Text>
+        <View style={[styles.fallbackNotice, { backgroundColor: palette.interactive }]}>
+          <Text style={[styles.fallbackTitle, { color: palette.text }]}>No separate lemma entry in this source</Text>
+          <Text style={[styles.description, { color: palette.muted }]}>The broader root meaning is shown as a fallback.</Text>
+        </View>
       ) : null}
-      {result.rootEntries.length > 0 ? (
+      {!hasExactLemma && result.rootEntries.length > 0 ? (
         <EntryGroup
-          title="Root article"
+          title="Root meaning"
+          caption="Broad root entry · not necessarily the exact sense used in this ayah."
           entries={result.rootEntries}
-          {...{ expandedEntryId, details, contentWidth, palette, onToggleEntry }}
+          {...sharedEntryProps}
         />
       ) : null}
-      {result.rootFamilyEntries.length > 0 ? (
+
+      {hasExactLemma && (result.rootEntries.length > 0 || result.rootFamilyEntries.length > 0) ? (
         <View style={styles.group}>
           <Pressable
             accessibilityRole="button"
-            accessibilityState={{ expanded: showFamily }}
-            onPress={onToggleFamily}
-            style={[styles.familyToggle, { borderColor: palette.border, backgroundColor: palette.surface }]}
+            accessibilityState={{ expanded: showRoot }}
+            onPress={onToggleRoot}
+            style={[styles.rootToggle, { backgroundColor: palette.surface }]}
           >
             <View style={styles.familyCopy}>
-              <Text style={[styles.groupTitle, { color: palette.text }]}>Complete root family</Text>
-              <Text style={[styles.caption, { color: palette.muted }]}> 
-                {result.rootFamilyEntries.length} related source headwords
-              </Text>
+              <Text style={[styles.groupTitle, { color: palette.text }]}>Explore the root{rootLabel ? ` · ${rootLabel}` : ''}</Text>
+              <Text style={[styles.caption, { color: palette.muted }]}>Root meaning and related dictionary words</Text>
             </View>
-            {showFamily ? <ChevronUp color={palette.tint} size={20} /> : <ChevronDown color={palette.tint} size={20} />}
+            {showRoot ? <ChevronUp color={palette.tint} size={20} /> : <ChevronDown color={palette.tint} size={20} />}
           </Pressable>
-          {showFamily ? (
-            <View style={styles.entries}>
-              {result.rootFamilyEntries.map((entry) => (
-                <EntryCard
-                  key={entry.entryId}
-                  entry={entry}
-                  expanded={expandedEntryId === entry.entryId}
-                  detail={details[entry.entryId]}
-                  {...{ contentWidth, palette, onToggleEntry }}
+          {showRoot ? (
+            <View style={styles.rootDetails}>
+              {result.rootEntries.length > 0 ? (
+                <EntryGroup
+                  title="Root dictionary entry"
+                  caption="The broad semantic family behind the selected lemma."
+                  entries={result.rootEntries}
+                  {...sharedEntryProps}
                 />
-              ))}
+              ) : null}
+              <RootFamilyDisclosure
+                entries={result.rootFamilyEntries}
+                expanded={showFamily}
+                onToggle={onToggleFamily}
+                {...sharedEntryProps}
+              />
             </View>
           ) : null}
         </View>
+      ) : !hasExactLemma ? (
+        <>
+          <RootFamilyDisclosure
+            entries={result.rootFamilyEntries}
+            expanded={showFamily}
+            onToggle={onToggleFamily}
+            {...sharedEntryProps}
+          />
+        </>
       ) : null}
+    </View>
+  );
+}
+
+function RootFamilyDisclosure({
+  entries,
+  expanded,
+  onToggle,
+  expandedEntryId,
+  details,
+  contentWidth,
+  palette,
+  onToggleEntry,
+}: {
+  entries: readonly DictionaryEntrySummary[];
+  expanded: boolean;
+  onToggle: () => void;
+  expandedEntryId: string | null;
+  details: Record<string, DictionaryEntryDetail | null>;
+  contentWidth: number;
+  palette: Palette;
+  onToggleEntry: (entry: DictionaryEntrySummary) => void;
+}): React.JSX.Element | null {
+  if (!entries.length) return null;
+  return (
+    <View style={styles.group}>
       <Pressable
-        accessibilityRole="link"
-        onPress={() => void Linking.openURL(result.source.url)}
-        style={[styles.attribution, { borderColor: palette.border }]}
+        accessibilityRole="button"
+        accessibilityState={{ expanded }}
+        onPress={onToggle}
+        style={[styles.familyToggle, { backgroundColor: palette.surface }]}
       >
         <View style={styles.familyCopy}>
-          <Text style={[styles.attributionTitle, { color: palette.text }]}>{result.source.title}</Text>
+          <Text style={[styles.groupTitle, { color: palette.text }]}>Related dictionary headwords</Text>
           <Text style={[styles.caption, { color: palette.muted }]}> 
-            English · {result.source.version} · {result.source.attribution}
+            {entries.length} {entries.length === 1 ? 'entry' : 'entries'} organized under this root
           </Text>
         </View>
-        <ExternalLink color={palette.tint} size={17} />
+        {expanded ? <ChevronUp color={palette.tint} size={20} /> : <ChevronDown color={palette.tint} size={20} />}
       </Pressable>
+      {expanded ? (
+        <View style={styles.entries}>
+          {entries.map((entry) => (
+            <EntryCard
+              key={entry.entryId}
+              entry={entry}
+              expanded={expandedEntryId === entry.entryId}
+              detail={details[entry.entryId]}
+              {...{ contentWidth, palette, onToggleEntry }}
+            />
+          ))}
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -432,7 +521,7 @@ function EntryCard({
   onToggleEntry: (entry: DictionaryEntrySummary) => void;
 }): React.JSX.Element {
   return (
-    <View style={[styles.entryCard, { borderColor: palette.border, backgroundColor: palette.surface }]}> 
+    <View style={[styles.entryCard, { backgroundColor: palette.surface }]}>
       <Pressable
         accessibilityRole="button"
         accessibilityState={{ expanded }}
@@ -449,7 +538,7 @@ function EntryCard({
         ) : detail === null ? (
           <Text style={[styles.definition, { color: palette.muted }]}>Definition could not be opened.</Text>
         ) : detail.definitionFormat === 'sanitized-html' ? (
-          <View style={[styles.definitionBody, { borderTopColor: palette.border }]}> 
+          <View style={styles.definitionBody}>
             <RenderHTML
               contentWidth={contentWidth}
               source={{ html: detail.definition || '<i>Definition unavailable.</i>' }}
@@ -458,7 +547,7 @@ function EntryCard({
             />
           </View>
         ) : (
-          <Text style={[styles.definition, styles.definitionBody, { color: palette.text, borderTopColor: palette.border }]}> 
+          <Text style={[styles.definition, styles.definitionBody, { color: palette.text }]}>
             {detail.definition || 'Definition unavailable.'}
           </Text>
         )
@@ -534,29 +623,29 @@ function StateCard({ title, message, palette, actionLabel, onAction }: {
 
 const styles = StyleSheet.create({
   section: { gap: 16 },
-  heading: { gap: 4, paddingHorizontal: 2 },
-  title: { fontSize: 20, lineHeight: 28, fontWeight: '700' },
+  toolbar: { minHeight: 34, paddingLeft: 2, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  sourceLabel: { fontSize: 11, lineHeight: 16, fontWeight: '800', letterSpacing: 0.9 },
+  infoButton: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   subheading: { fontSize: 16, lineHeight: 23, fontWeight: '700' },
   description: { fontSize: 13, lineHeight: 20 },
-  sourceRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  sourceChip: { minHeight: 40, paddingHorizontal: 14, borderWidth: 1, borderRadius: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
-  sourceChipText: { fontSize: 13, lineHeight: 18, fontWeight: '700' },
   results: { gap: 16 },
   group: { gap: 9 },
   groupHeading: { gap: 2, paddingHorizontal: 2 },
   groupTitle: { fontSize: 16, lineHeight: 22, fontWeight: '700' },
   caption: { fontSize: 11, lineHeight: 17 },
   entries: { gap: 8 },
-  entryCard: { borderWidth: 1, borderRadius: 16, overflow: 'hidden' },
+  entryCard: { borderRadius: 18, overflow: 'hidden' },
   entryHeader: { minHeight: 56, paddingHorizontal: 15, paddingVertical: 9, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   headword: { flex: 1, fontFamily: 'UthmanicHafs1Ver18', fontSize: 24, lineHeight: 36, writingDirection: 'rtl', textAlign: 'right' },
-  definitionBody: { borderTopWidth: StyleSheet.hairlineWidth, paddingHorizontal: 15, paddingVertical: 13 },
+  definitionBody: { paddingHorizontal: 15, paddingVertical: 13 },
   definition: { fontSize: 15, lineHeight: 25 },
   entryLoader: { paddingVertical: 20 },
-  familyToggle: { minHeight: 66, borderWidth: 1, borderRadius: 16, paddingHorizontal: 15, paddingVertical: 11, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  fallbackNotice: { borderRadius: 16, paddingHorizontal: 15, paddingVertical: 13, gap: 3 },
+  fallbackTitle: { fontSize: 14, lineHeight: 20, fontWeight: '700' },
+  rootToggle: { minHeight: 68, borderRadius: 18, paddingHorizontal: 15, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  rootDetails: { paddingTop: 4, gap: 16 },
+  familyToggle: { minHeight: 66, borderRadius: 16, paddingHorizontal: 15, paddingVertical: 11, flexDirection: 'row', alignItems: 'center', gap: 12 },
   familyCopy: { flex: 1, gap: 2 },
-  attribution: { minHeight: 68, borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 13, flexDirection: 'row', alignItems: 'center', gap: 12 },
-  attributionTitle: { fontSize: 13, lineHeight: 19, fontWeight: '700' },
   downloadList: { gap: 10 },
   downloadCard: { minHeight: 82, borderWidth: 1, borderRadius: 16, paddingHorizontal: 15, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
   downloadTitle: { fontSize: 14, lineHeight: 20, fontWeight: '700' },

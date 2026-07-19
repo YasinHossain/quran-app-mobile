@@ -20,6 +20,7 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { SlidingSegmentedControl, type SlidingSegment } from '@/components/ui/SlidingSegmentedControl';
 import Colors from '@/constants/Colors';
 import {
   SegmentedWord,
@@ -70,6 +71,12 @@ import { container } from '@/src/core/infrastructure/di/container';
 
 type Palette = (typeof Colors)['light'];
 type StudyTab = 'morphology' | 'grammar' | 'occurrences' | 'dictionary';
+const WORD_STUDY_TABS: readonly SlidingSegment<StudyTab>[] = [
+  { key: 'morphology', label: 'Morphology' },
+  { key: 'grammar', label: 'Grammar' },
+  { key: 'occurrences', label: 'Occurrences' },
+  { key: 'dictionary', label: 'Dictionary' },
+];
 type LoadState =
   | { status: 'loading' }
   | { status: 'ready'; words: readonly WordAnalysis[] }
@@ -114,6 +121,7 @@ export default function WordStudyScreen(): React.JSX.Element {
   );
   const { resolvedTheme } = useAppTheme();
   const palette = Colors[resolvedTheme];
+  const { width: windowWidth } = useWindowDimensions();
   const { chapters } = useChaptersContext();
   const { audioPlayerBarHeight } = useLayoutMetrics();
   const insets = useSafeAreaInsets();
@@ -308,17 +316,13 @@ export default function WordStudyScreen(): React.JSX.Element {
             selectedPosition={location?.wordPosition ?? 0}
             onSelect={selectPosition}
           />
-          <ScrollView
-            horizontal
-            accessibilityRole="tablist"
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={[styles.tabs, { backgroundColor: palette.interactive }]}
-          >
-            <TabButton label="Morphology" selected={tab === 'morphology'} onPress={() => setTab('morphology')} palette={palette} />
-            <TabButton label="Grammar" selected={tab === 'grammar'} onPress={() => setTab('grammar')} palette={palette} />
-            <TabButton label="Occurrences" selected={tab === 'occurrences'} onPress={() => setTab('occurrences')} palette={palette} />
-            <TabButton label="Dictionary" selected={tab === 'dictionary'} onPress={() => setTab('dictionary')} palette={palette} />
-          </ScrollView>
+          <SlidingSegmentedControl
+            items={WORD_STUDY_TABS}
+            selectedKey={tab}
+            width={Math.max(0, Math.min(688, windowWidth - 32))}
+            labelFontSize={11}
+            onSelect={setTab}
+          />
           {!selected ? (
             <InlineAnalysisState
               loading={loadState.status === 'loading'}
@@ -375,27 +379,6 @@ export default function WordStudyScreen(): React.JSX.Element {
         onClose={() => setIsGrammarGuideOpen(false)}
       />
     </SafeAreaView>
-  );
-}
-
-function TabButton({ label, selected, onPress, palette }: {
-  label: string;
-  selected: boolean;
-  onPress: () => void;
-  palette: Palette;
-}): React.JSX.Element {
-  return (
-    <Pressable
-      accessibilityRole="tab"
-      accessibilityState={{ selected }}
-      onPress={onPress}
-      style={[
-        styles.tab,
-        { backgroundColor: selected ? palette.surface : 'transparent' },
-      ]}
-    >
-      <Text style={[styles.tabText, { color: selected ? palette.tint : palette.muted }]}>{label}</Text>
-    </Pressable>
   );
 }
 
@@ -946,9 +929,6 @@ const styles = StyleSheet.create({
   location: { fontSize: 13, lineHeight: 18, fontWeight: '700', letterSpacing: 0.25 },
   scroll: { flex: 1 },
   content: { width: '100%', maxWidth: 720, alignSelf: 'center', paddingHorizontal: 16, paddingTop: 14, gap: 16 },
-  tabs: { flexDirection: 'row', padding: 4, borderRadius: 15 },
-  tab: { minWidth: 104, minHeight: 44, paddingHorizontal: 12, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  tabText: { fontSize: 12, lineHeight: 17, fontWeight: '700' },
   section: { gap: 16 },
   morphologySummary: { borderRadius: 20, padding: 16, gap: 16 },
   summaryTopRow: { direction: 'ltr', flexDirection: 'row', alignItems: 'center', gap: 14 },

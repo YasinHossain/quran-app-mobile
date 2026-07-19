@@ -33,7 +33,9 @@ The compiler reads the installed Core Word Study database as the authoritative Q
 - Lane and Hans Wehr install, update, roll back, and delete independently.
 - Downloads use staging directories, SHA-256/size checks, SQLite application/schema/integrity checks, and atomic registry promotion.
 - Lookup prioritizes exact normalized lemma headwords, then root articles and the complete root family.
-- Definitions load only when their headword card is expanded.
-- The app labels source/version on every result and does not claim that a root-family match is the exact contextual sense.
+- The best exact-lemma result—or the root entry fallback—opens automatically; other definitions load only when their headword card is expanded.
+- Root articles and related dictionary headwords are visually separated from the Quran root family in Occurrences.
+- A Dictionary information sheet explains the word/lemma/root hierarchy, source differences, and full selected-source attribution.
+- The source switcher identifies the active dictionary; its version and full attribution live in the information sheet. The app does not claim that a root-family match is the exact contextual sense.
 
 Phase 11B verb principal parts remain deferred until a structured reviewed source is supplied.
