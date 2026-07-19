@@ -127,6 +127,7 @@ export default function WordStudyScreen(): React.JSX.Element {
   });
   const scrollRef = React.useRef<ScrollView>(null);
   const scrollOffsetRef = React.useRef(0);
+  const occurrenceSectionYRef = React.useRef(0);
   const restoreAfterReaderRef = React.useRef(false);
   const surahName = location
     ? chapters.find((chapter) => chapter.id === location.surah)?.name_simple ?? `Surah ${location.surah}`
@@ -218,6 +219,16 @@ export default function WordStudyScreen(): React.JSX.Element {
     restoreAfterReaderRef.current = true;
     router.push(buildOccurrenceReaderParams(occurrence) as never);
   }, [router]);
+
+  const handleScrollToOccurrenceFilters = React.useCallback(
+    (offsetY: number, animated: boolean) => {
+      scrollRef.current?.scrollTo({
+        y: Math.max(0, occurrenceSectionYRef.current + offsetY),
+        animated,
+      });
+    },
+    []
+  );
 
   useFocusEffect(
     React.useCallback(() => {
@@ -338,11 +349,18 @@ export default function WordStudyScreen(): React.JSX.Element {
               onOpenGuide={() => setIsGrammarGuideOpen(true)}
             />
           ) : tab === 'occurrences' ? (
-            <OccurrenceExplorer
-              analysis={selected}
-              palette={palette}
-              onOpenReader={handleOpenOccurrenceInReader}
-            />
+            <View
+              onLayout={(event) => {
+                occurrenceSectionYRef.current = event.nativeEvent.layout.y;
+              }}
+            >
+              <OccurrenceExplorer
+                analysis={selected}
+                palette={palette}
+                onOpenReader={handleOpenOccurrenceInReader}
+                onRequestScrollToFilters={handleScrollToOccurrenceFilters}
+              />
+            </View>
           ) : (
             <DictionarySection analysis={selected} palette={palette} />
           )}

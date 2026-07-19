@@ -39,10 +39,12 @@ import {
   OCCURRENCE_PAGE_SIZE,
   buildOccurrenceQuery,
   buildOccurrenceReaderParams,
+  buildRootFamilyLemmaQuery,
   getOccurrenceCounters,
   getOccurrenceFilters,
   getOccurrenceGloss,
   getOccurrencePageLabel,
+  orderRootFamilyLemmas,
 } from '../../components/word-study/full-study/occurrenceExplorerModel';
 import { findSelectedWordGrammarPassages } from '../../components/word-study/full-study/grammarStudyModel';
 import { GetDictionaryReferences } from '../../src/core/application/use-cases/word-study/GetDictionaryReferences';
@@ -305,14 +307,14 @@ test('Arabic grammar matching does not promote passages that only share a suffix
   assert.deepEqual(passages.map((passage) => passage.sequence), [1]);
 });
 
-test('occurrence counters and filters name surface, lemma, root, and root family explicitly', () => {
+test('occurrence counters use brief surface, lemma, root, and root-family labels', () => {
   assert.deepEqual(
     getOccurrenceCounters(verb, 7).map((counter) => [counter.label, counter.value]),
     [
-      ['Normalized surface occurrences', 7],
-      ['Lemma occurrences', 183],
-      ['Root occurrences', 293],
-      ['Distinct lemmas in this root family', 12],
+      ['Surface', 7],
+      ['Lemma', 183],
+      ['Root', 293],
+      ['Root forms', 12],
     ]
   );
   assert.deepEqual(
@@ -345,6 +347,26 @@ test('occurrence queries remain fixed-size and reader navigation retains the exa
   });
 });
 
+test('root-family forms pin the selected lemma and drill into its occurrence query', () => {
+  assert.equal(verb.lemma.status, 'available');
+  if (verb.lemma.status !== 'available') return;
+  const selectedLemma = verb.lemma.value;
+  const lessFrequentLemma = {
+    ...selectedLemma,
+    id: 'lemma-nzl-form-i',
+    arabic: 'نَزَلَ',
+    occurrenceCount: 75,
+  };
+  const ordered = orderRootFamilyLemmas([lessFrequentLemma, selectedLemma], selectedLemma.id);
+  assert.deepEqual(ordered.map((lemma) => lemma.id), [selectedLemma.id, lessFrequentLemma.id]);
+  assert.deepEqual(buildRootFamilyLemmaQuery(lessFrequentLemma, '30'), {
+    scope: 'lemma',
+    lemmaId: 'lemma-nzl-form-i',
+    limit: 30,
+    cursor: '30',
+  });
+});
+
 test('full screen uses Morphology-first information architecture without repeated analysis', () => {
   const source = readFileSync(
     join(process.cwd(), 'app/study/word/[surah]/[ayah]/[position].tsx'),
@@ -374,6 +396,8 @@ test('full screen uses Morphology-first information architecture without repeate
   assert.match(source, /label="Lemma"/);
   assert.match(source, /label="Root"/);
   assert.match(source, /<VerbReferenceSection analysis=\{analysis\} palette=\{palette\}/);
+  assert.match(source, /onRequestScrollToFilters=\{handleScrollToOccurrenceFilters\}/);
+  assert.match(source, /occurrenceSectionYRef\.current \+ offsetY/);
   assert.match(source, /How this word is built/);
   assert.ok(source.indexOf('<ContextualMeaningBlock') < source.indexOf('How this word is built'));
   assert.ok(source.indexOf('label="Lemma"') < source.indexOf('How this word is built'));
@@ -650,8 +674,27 @@ test('occurrence explorer cancels stale queries, keeps page size bounded, and av
   assert.match(source, /new AbortController\(\)/);
   assert.match(source, /requestId !== requestIdRef\.current/);
   assert.match(source, /controller\.abort\(\)/);
-  assert.match(source, /Distinct lemmas in this root family|counter\.label/);
+  assert.match(source, /counter\.label/);
+  assert.doesNotMatch(source, />Forms in this root</);
+  assert.match(source, /OccurrenceGuideSheet/);
+  assert.match(source, /counterVerticalDivider/);
+  assert.match(source, /counterHorizontalDivider/);
+  assert.match(source, /findLemmasByRoot/);
+  assert.match(source, /selected word lemma/);
+  assert.match(source, /buildRootFamilyLemmaQuery/);
+  assert.match(source, /useReducedMotion/);
+  assert.match(source, /LinearTransition\.duration/);
+  assert.match(source, /ReduceMotion\.Always/);
+  assert.match(source, /FadeIn\.duration/);
+  assert.doesNotMatch(source, /setRootFamilyExpanded\(false\)/);
+  assert.match(source, /MAX_EXPANDED_FAMILY_RESULTS_HEIGHT_FLOOR/);
+  assert.match(source, /minHeight: resultsHeightFloor/);
+  assert.match(source, /requestAnimationFrame/);
+  assert.match(source, /onRequestScrollToFilters\?\./);
+  assert.match(source, /current\.status === 'ready'[\s\S]*?refreshing: true/);
+  assert.match(source, /accessibilityState=\{\{ busy: isPageRefreshing \}\}/);
   assert.match(source, /ayahContextUthmani/);
   assert.match(source, /Open in reader/);
+  assert.doesNotMatch(source, />Reset</);
   assert.doesNotMatch(source, /this word occurs/i);
 });

@@ -124,6 +124,9 @@ async function testUseCases(): Promise<void> {
         (fixture) => fixture.location.verseKey === verseKey
       );
     },
+    async findLemmasByRoot() {
+      return [];
+    },
     async findOccurrences(query) {
       return {
         ...WORD_STUDY_CONTRACT_OCCURRENCE_PAGE,

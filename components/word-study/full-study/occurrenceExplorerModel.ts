@@ -1,4 +1,5 @@
 import type {
+  Lemma,
   WordAnalysis,
   WordOccurrence,
   WordOccurrenceQuery,
@@ -25,16 +26,16 @@ export function getOccurrenceCounters(
   surfaceCount?: number
 ): readonly OccurrenceCounter[] {
   return [
-    { key: 'surface', label: 'Normalized surface occurrences', value: surfaceCount },
+    { key: 'surface', label: 'Surface', value: surfaceCount },
     ...(analysis.lemma.status === 'available'
-      ? [{ key: 'lemma' as const, label: 'Lemma occurrences', value: analysis.lemma.value.occurrenceCount }]
+      ? [{ key: 'lemma' as const, label: 'Lemma', value: analysis.lemma.value.occurrenceCount }]
       : []),
     ...(analysis.root.status === 'available'
       ? [
-          { key: 'root' as const, label: 'Root occurrences', value: analysis.root.value.occurrenceCount },
+          { key: 'root' as const, label: 'Root', value: analysis.root.value.occurrenceCount },
           {
             key: 'root-lemma-family' as const,
-            label: 'Distinct lemmas in this root family',
+            label: 'Root forms',
             value: analysis.root.value.lemmaCount,
           },
         ]
@@ -94,6 +95,31 @@ export function buildOccurrenceQuery(
     limit: OCCURRENCE_PAGE_SIZE,
     ...(cursor ? { cursor } : {}),
   };
+}
+
+export function buildRootFamilyLemmaQuery(
+  lemma: Lemma,
+  cursor?: string
+): WordOccurrenceQuery {
+  return {
+    scope: 'lemma',
+    lemmaId: lemma.id,
+    limit: OCCURRENCE_PAGE_SIZE,
+    ...(cursor ? { cursor } : {}),
+  };
+}
+
+export function orderRootFamilyLemmas(
+  lemmas: readonly Lemma[],
+  selectedLemmaId?: string
+): readonly Lemma[] {
+  return [...lemmas].sort((left, right) => {
+    if (left.id === selectedLemmaId && right.id !== selectedLemmaId) return -1;
+    if (right.id === selectedLemmaId && left.id !== selectedLemmaId) return 1;
+    const countDifference = right.occurrenceCount - left.occurrenceCount;
+    if (countDifference !== 0) return countDifference;
+    return left.arabic.localeCompare(right.arabic, 'ar');
+  });
 }
 
 export function getOccurrenceGloss(occurrence: WordOccurrence): string {

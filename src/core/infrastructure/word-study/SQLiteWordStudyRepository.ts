@@ -202,6 +202,17 @@ function mapGloss(row: GlossRow): WordGloss {
   };
 }
 
+function mapLemma(row: LemmaRow): Lemma {
+  return {
+    id: String(row.id),
+    arabic: row.arabic,
+    normalized: row.normalized,
+    ...(row.pos_code ? { posCode: row.pos_code } : {}),
+    occurrenceCount: row.occurrence_count,
+    source: source(row.source_id, row.source_version, 'lemma'),
+  };
+}
+
 const ROOTLESS_PARTICLE_POS_CODES = new Set([
   'P',
   'CONJ',
@@ -398,6 +409,35 @@ export class SQLiteWordStudyRepository implements IWordStudyRepository {
     };
   }
 
+  findLemmasByRoot(rootId: string): Promise<readonly Lemma[]>;
+  findLemmasByRoot(
+    rootId: string,
+    options: WordStudyQueryOptions
+  ): Promise<readonly Lemma[]>;
+  async findLemmasByRoot(
+    rootId: string,
+    options: WordStudyQueryOptions = {}
+  ): Promise<readonly Lemma[]> {
+    const databaseRootId = positiveDatabaseId(rootId, 'rootId');
+    throwIfCancelled(options.signal);
+    const db = await this.databaseProvider.getDatabaseAsync();
+    const rows = await cancellable(
+      db.getAllAsync<LemmaRow>(
+        `
+        SELECT l.*
+        FROM lemma l
+        JOIN word_analysis wa ON wa.lemma_id = l.id
+        WHERE wa.root_id = ?
+        GROUP BY l.id
+        ORDER BY l.occurrence_count DESC, l.id;
+        `,
+        [databaseRootId]
+      ),
+      options.signal
+    );
+    return rows.map(mapLemma);
+  }
+
   clearCache(): void {
     this.wordCache.clear();
     this.lemmaCache.clear();
@@ -498,18 +538,7 @@ export class SQLiteWordStudyRepository implements IWordStudyRepository {
     if (!pending) {
       pending = db
         .getFirstAsync<LemmaRow>('SELECT * FROM lemma WHERE id = ? LIMIT 1;', [id])
-        .then((row) =>
-          row
-            ? {
-                id: String(row.id),
-                arabic: row.arabic,
-                normalized: row.normalized,
-                ...(row.pos_code ? { posCode: row.pos_code } : {}),
-                occurrenceCount: row.occurrence_count,
-                source: source(row.source_id, row.source_version, 'lemma'),
-              }
-            : null
-        )
+        .then((row) => (row ? mapLemma(row) : null))
         .catch((error) => {
           this.lemmaCache.delete(id);
           throw error;

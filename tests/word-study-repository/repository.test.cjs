@@ -134,6 +134,30 @@ test('real lemma/root pagination has stable golden counts and first/last pages',
   assert.equal(rootPage.pageInfo.hasNextPage, false);
 });
 
+test('root-family lookup exposes every lemma with exact corpus counts', async (context) => {
+  const provider = new NodeWordStudyDatabaseProvider();
+  context.after(() => provider.closeAsync());
+  const repository = new SQLiteWordStudyRepository(provider);
+
+  const lemmas = await repository.findLemmasByRoot('154');
+  assert.equal(lemmas.length, 9);
+  assert.equal(lemmas.reduce((sum, lemma) => sum + lemma.occurrenceCount, 0), 172);
+  assert.deepEqual(
+    lemmas.map((lemma) => [lemma.arabic, lemma.posCode, lemma.occurrenceCount]),
+    [
+      ['ٱتَّبَعَ', 'V', 136],
+      ['أَتْبَعَ', 'V', 15],
+      ['تَبِعَ', 'V', 9],
+      ['تَابِع', 'N', 3],
+      ['ٱتِّبَاع', 'N', 2],
+      ['تَبَع', 'N', 2],
+      ['مُّتَّبَعُون', 'N', 2],
+      ['مُتَتَابِعَيْن', 'ADJ', 2],
+      ['تَبِيع', 'N', 1],
+    ]
+  );
+});
+
 test('surface pagination keeps normalized duplicates exact and includes concise ayah context', async (context) => {
   const provider = new NodeWordStudyDatabaseProvider();
   context.after(() => provider.closeAsync());
@@ -208,6 +232,10 @@ test('word, lemma, and root LRUs stay bounded and callers can cancel stale work'
       { scope: 'root', rootId: '1438', limit: 50 },
       { signal: controller.signal }
     ),
+    WordStudyQueryCancelledError
+  );
+  await assert.rejects(
+    repository.findLemmasByRoot('1438', { signal: controller.signal }),
     WordStudyQueryCancelledError
   );
 });
