@@ -25,6 +25,7 @@ import { useModalTransition, verticalSheetTransform } from '@/components/motion/
 import Colors from '@/constants/Colors';
 import { useAppTheme } from '@/providers/ThemeContext';
 import type { WordAnalysis } from '@/src/core/domain/word-study';
+import { resolveQuranTextFontFamily } from '@/src/core/infrastructure/fonts/resolveQuranTextFont';
 
 import type { WordStudyPressEvent } from './WordStudyPressEvent';
 import { SegmentedWord, WordSegmentsLegend } from './WordSegmentsCard';
@@ -390,7 +391,15 @@ function WordQuickSheetSkeleton({
           </View>
           <View style={styles.summaryArabicColumn}>
             {optimisticSurface ? (
-              <Text style={[styles.arabicWordCompact, { color: palette.text }]}>
+              <Text
+                style={[
+                  styles.arabicWordCompact,
+                  {
+                    color: palette.text,
+                    fontFamily: resolveQuranTextFontFamily(optimisticSurface),
+                  },
+                ]}
+              >
                 {optimisticSurface}
               </Text>
             ) : (

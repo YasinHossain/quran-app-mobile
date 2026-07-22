@@ -10,7 +10,6 @@ import {
 import React from 'react';
 import {
   ActivityIndicator,
-  InteractionManager,
   Pressable,
   ScrollView,
   Share,
@@ -39,8 +38,8 @@ import { GrammarGuideSheet } from '@/components/word-study/full-study/GrammarGui
 import { OccurrenceGuideSheet } from '@/components/word-study/full-study/OccurrenceGuideSheet';
 import { DictionaryGuideSheet } from '@/components/word-study/full-study/DictionaryGuideSheet';
 import {
+  areGrammarArabicWordsEquivalent,
   findSelectedWordGrammarPassages,
-  normalizeGrammarArabic,
 } from '@/components/word-study/full-study/grammarStudyModel';
 import { buildOccurrenceReaderParams } from '@/components/word-study/full-study/occurrenceExplorerModel';
 import { readWordStudyNavigationHandoff } from '@/components/word-study/full-study/wordStudyNavigationHandoff';
@@ -71,6 +70,7 @@ import {
   type WordStudyLocation,
 } from '@/src/core/domain/word-study';
 import { container } from '@/src/core/infrastructure/di/container';
+import { resolveQuranTextFontFamily } from '@/src/core/infrastructure/fonts/resolveQuranTextFont';
 
 type Palette = (typeof Colors)['light'];
 type StudyTab = 'morphology' | 'grammar' | 'occurrences' | 'dictionary';
@@ -129,6 +129,7 @@ export default function WordStudyScreen(): React.JSX.Element {
   const { audioPlayerBarHeight } = useLayoutMetrics();
   const insets = useSafeAreaInsets();
   const [tab, setTab] = React.useState<StudyTab>('morphology');
+  const [optimisticWordPosition, setOptimisticWordPosition] = React.useState<number | null>(null);
   const [mountedTabs, setMountedTabs] = React.useState<ReadonlySet<StudyTab>>(
     () => new Set<StudyTab>(['morphology'])
   );
@@ -148,13 +149,6 @@ export default function WordStudyScreen(): React.JSX.Element {
   const surahName = location
     ? chapters.find((chapter) => chapter.id === location.surah)?.name_simple ?? `Surah ${location.surah}`
     : 'Word Study';
-
-  React.useEffect(() => {
-    const task = InteractionManager.runAfterInteractions(() => {
-      setMountedTabs(new Set(WORD_STUDY_TABS.map((item) => item.key)));
-    });
-    return () => task.cancel();
-  }, []);
 
   React.useEffect(() => {
     if (!location) {
@@ -188,7 +182,7 @@ export default function WordStudyScreen(): React.JSX.Element {
   }, [location?.verseKey, retryNonce]);
 
   React.useEffect(() => {
-    if (!location) return;
+    if (!location || !mountedTabs.has('grammar')) return;
     let cancelled = false;
     setGrammarLoadState({ status: 'loading' });
     void container
@@ -203,7 +197,7 @@ export default function WordStudyScreen(): React.JSX.Element {
     return () => {
       cancelled = true;
     };
-  }, [location?.verseKey]);
+  }, [location?.verseKey, mountedTabs]);
 
   const words = loadState.status === 'ready' ? loadState.words : [];
   const immediateContextWords = React.useMemo<readonly AyahContextWord[]>(() => {
@@ -227,9 +221,22 @@ export default function WordStudyScreen(): React.JSX.Element {
       ? handedOffAnalysis
       : undefined;
   const selected = selectedFromLoadedVerse ?? selectedFromHandoff;
+  const selectedWordPosition = optimisticWordPosition ?? location?.wordPosition ?? 0;
   const contextualMeaning = useContextualMeaning(selected);
+
+  React.useEffect(() => {
+    if (optimisticWordPosition === location?.wordPosition) {
+      setOptimisticWordPosition(null);
+    }
+  }, [location?.wordPosition, optimisticWordPosition]);
+
   const selectPosition = React.useCallback(
-    (position: number) => router.setParams({ position: String(position) }),
+    (position: number) => {
+      setOptimisticWordPosition(position);
+      React.startTransition(() => {
+        router.setParams({ position: String(position) });
+      });
+    },
     [router]
   );
   const selectTab = React.useCallback((nextTab: StudyTab) => {
@@ -366,7 +373,7 @@ export default function WordStudyScreen(): React.JSX.Element {
         >
           <AyahContextSelector
             words={contextWords}
-            selectedPosition={location?.wordPosition ?? 0}
+            selectedPosition={selectedWordPosition}
             onSelect={selectPosition}
           />
           <SlidingSegmentedControl
@@ -404,6 +411,7 @@ export default function WordStudyScreen(): React.JSX.Element {
                 <PersistentTabPanel active={tab === 'grammar'}>
                   <GrammarSection
                     analysis={selected}
+                    verseWords={contextWords}
                     grammarLoadState={grammarLoadState}
                     palette={palette}
                   />
@@ -570,10 +578,12 @@ function ContextualMeaningBlock({ state, palette }: {
 
 function GrammarSection({
   analysis,
+  verseWords,
   grammarLoadState,
   palette,
 }: {
   analysis: WordAnalysis;
+  verseWords: readonly AyahContextWord[];
   grammarLoadState: GrammarLoadState;
   palette: Palette;
 }): React.JSX.Element {
@@ -623,7 +633,7 @@ function GrammarSection({
   }
 
   const grammar = grammarLoadState.result;
-  const selectedPassages = findSelectedWordGrammarPassages(grammar, analysis);
+  const selectedPassages = findSelectedWordGrammarPassages(grammar, analysis, verseWords);
   const togglePassage = (sequence: number): void => {
     setExpandedPassages((current) => {
       const next = new Set(current);
@@ -636,7 +646,15 @@ function GrammarSection({
   return (
     <View style={styles.section}>
       <View style={[styles.grammarHero, { backgroundColor: palette.surfaceNavigation }]}>
-        <Text style={[styles.grammarHeroWord, { color: palette.text }]}>
+        <Text
+          style={[
+            styles.grammarHeroWord,
+            {
+              color: palette.text,
+              fontFamily: resolveQuranTextFontFamily(analysis.surfaceUthmani),
+            },
+          ]}
+        >
           {analysis.surfaceUthmani}
         </Text>
       </View>
@@ -718,9 +736,6 @@ function GrammarPassageCard({
 }): React.JSX.Element {
   const { resolvedTheme } = useAppTheme();
   const canCollapse = passage.bodyArabic.length > 280;
-  const normalizedHighlightedWord = highlightedWord
-    ? normalizeGrammarArabic(highlightedWord)
-    : '';
   return (
     <View
       style={[
@@ -735,8 +750,9 @@ function GrammarPassageCard({
           {passage.headingArabic
             .split(/([^\p{Script=Arabic}\p{M}\u0640]+)/gu)
             .map((part, index) => {
-              const highlighted = normalizedHighlightedWord
-                && normalizeGrammarArabic(part) === normalizedHighlightedWord;
+              const highlighted = highlightedWord
+                ? areGrammarArabicWordsEquivalent(part, highlightedWord)
+                : false;
               return (
                 <Text
                   key={`${index}:${part}`}
@@ -839,7 +855,17 @@ function SegmentGroupMember({
         accessibilityLabel={`${role[0]}${count > 1 ? ` ${index + 1} of ${count}` : ''}: ${segment.arabic}, ${getPosLabel(segment.posCode)}`}
         style={styles.segmentHeader}
       >
-        <Text style={[styles.segmentArabic, { color: palette.text }]}>{segment.arabic}</Text>
+        <Text
+          style={[
+            styles.segmentArabic,
+            {
+              color: palette.text,
+              fontFamily: resolveQuranTextFontFamily(segment.arabic),
+            },
+          ]}
+        >
+          {segment.arabic}
+        </Text>
         <View style={styles.segmentHeaderCopy}>
           {showRole ? (
             <Text style={[styles.segmentTitle, { color: palette.text }]}>{role[0]} · {role[1]}</Text>

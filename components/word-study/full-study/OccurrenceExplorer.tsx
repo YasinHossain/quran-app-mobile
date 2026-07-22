@@ -36,6 +36,7 @@ import {
   WordStudyQueryCancelledError,
 } from '@/src/core/infrastructure/word-study/SQLiteWordStudyRepository';
 import { container } from '@/src/core/infrastructure/di/container';
+import { resolveQuranTextFontFamily } from '@/src/core/infrastructure/fonts/resolveQuranTextFont';
 
 import {
   buildOccurrenceQuery,
@@ -627,9 +628,28 @@ function OccurrenceResult({
           <Text style={[styles.resultLocation, { color: palette.tint }]}>{occurrence.location.locationKey}</Text>
           <Text style={[styles.resultGloss, { color: palette.text }]}>{getOccurrenceGloss(occurrence)}</Text>
         </View>
-        <Text style={[styles.resultArabic, { color: palette.text }]}>{occurrence.surfaceUthmani}</Text>
+        <Text
+          style={[
+            styles.resultArabic,
+            {
+              color: palette.text,
+              fontFamily: resolveQuranTextFontFamily(occurrence.surfaceUthmani),
+            },
+          ]}
+        >
+          {occurrence.surfaceUthmani}
+        </Text>
       </View>
-      <Text numberOfLines={2} style={[styles.ayahContext, { color: palette.muted }]}> 
+      <Text
+        numberOfLines={2}
+        style={[
+          styles.ayahContext,
+          {
+            color: palette.text,
+            fontFamily: resolveQuranTextFontFamily(occurrence.ayahContextUthmani),
+          },
+        ]}
+      >
         {occurrence.ayahContextUthmani || 'Ayah context unavailable.'}
       </Text>
       <View style={styles.openRow}>

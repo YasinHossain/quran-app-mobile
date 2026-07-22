@@ -21,6 +21,7 @@
     "../../src/core/domain/repositories/IVerbReferenceRepository.ts",
     "../../src/core/application/use-cases/word-study/GetDictionaryReferences.ts",
     "../../src/core/application/use-cases/word-study/GetVerbReference.ts",
+    "../../src/core/infrastructure/fonts/resolveQuranTextFont.ts",
     "./*.cts"
   ]
 }

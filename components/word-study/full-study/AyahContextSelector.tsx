@@ -14,6 +14,7 @@ import { useReducedMotion } from 'react-native-reanimated';
 
 import Colors from '@/constants/Colors';
 import { useAppTheme } from '@/providers/ThemeContext';
+import { resolveQuranTextFontFamily } from '@/src/core/infrastructure/fonts/resolveQuranTextFont';
 
 import {
   getCollapsedAyahCapacity,
@@ -230,7 +231,10 @@ export function AyahContextSelector({
                   }
                 }}
                 onPress={() => onSelect(position)}
-                style={{ color: selected ? palette.accent : palette.text }}
+                style={{
+                  color: selected ? palette.accent : palette.text,
+                  fontFamily: resolveQuranTextFontFamily(word.surfaceUthmani),
+                }}
               >
                 {word.surfaceUthmani}
                 {index < displayedWords.length - 1 ? ' ' : ''}
@@ -250,7 +254,14 @@ export function AyahContextSelector({
           style={styles.fullContentMeasurement}
         >
           <Text style={styles.ayahText}>
-            {words.map((word) => word.surfaceUthmani).join(' ')}
+            {words.map((word, index) => (
+              <Text
+                key={`measurement:${word.location.locationKey}`}
+                style={{ fontFamily: resolveQuranTextFontFamily(word.surfaceUthmani) }}
+              >
+                {word.surfaceUthmani}{index < words.length - 1 ? ' ' : ''}
+              </Text>
+            ))}
           </Text>
         </View>
       ) : null}

@@ -1,5 +1,7 @@
 import * as Font from 'expo-font';
 
+import { QURAN_TEXT_SUPPORT_FONT_FAMILY } from './resolveQuranTextFont';
+
 export const FONT_ASSETS = {
   SpaceMono: require('../../../../assets/fonts/SpaceMono-Regular.ttf'),
   UthmanicHafs1Ver18: require('../../../../assets/fonts/UthmanicHafs1Ver18.ttf'),
@@ -26,6 +28,7 @@ export const STARTUP_FONT_ASSETS = {
   'Noto Naskh Arabic': FONT_ASSETS['Noto Naskh Arabic'],
   'Me Quran': FONT_ASSETS['Me Quran'],
   'KFGQ V2': FONT_ASSETS['KFGQ V2'],
+  [QURAN_TEXT_SUPPORT_FONT_FAMILY]: FONT_ASSETS[QURAN_TEXT_SUPPORT_FONT_FAMILY],
 } as const;
 
 const SUPPORT_FONT_FAMILIES: readonly AppFontFamily[] = ['Scheherazade New'];

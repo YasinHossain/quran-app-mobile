@@ -54,11 +54,22 @@ type LookupState =
   | { status: 'loading' }
   | { status: 'ready'; result: DictionaryLookupResult }
   | { status: 'error'; message: string };
+type ActiveLookupState = {
+  readonly lookupKey: string;
+  readonly state: LookupState;
+};
 
 const LAST_SOURCE_KEY = 'wordStudyDictionaryLastPack_v1';
 
 function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(bytes >= 10 * 1024 * 1024 ? 0 : 1)} MB`;
+}
+
+function getLookupKey(analysis: WordAnalysis): string {
+  return JSON.stringify([
+    analysis.lemma.status === 'available' ? analysis.lemma.value.normalized : null,
+    analysis.root.status === 'available' ? analysis.root.value.normalized : null,
+  ]);
 }
 
 export function DictionarySection({
@@ -171,6 +182,7 @@ export function DictionarySection({
               active={source.packId === selectedPackId}
               analysis={analysis}
               contentWidth={Math.max(240, Math.min(680, width - 68))}
+              enabled={isActive}
               packId={source.packId}
               palette={palette}
             />
@@ -230,80 +242,144 @@ export function DictionarySection({
   );
 }
 
-function DictionarySourcePanel({
+const DictionarySourcePanel = React.memo(function DictionarySourcePanel({
   active,
   analysis,
   contentWidth,
+  enabled,
   packId,
   palette,
 }: {
   active: boolean;
   analysis: WordAnalysis;
   contentWidth: number;
+  enabled: boolean;
   packId: string;
   palette: Palette;
 }): React.JSX.Element {
   const repository = container.getDictionaryReferenceRepository();
-  const [lookup, setLookup] = React.useState<LookupState>({ status: 'loading' });
-  const [expandedEntryId, setExpandedEntryId] = React.useState<string | null>(null);
-  const [details, setDetails] = React.useState<Record<string, DictionaryEntryDetail | null>>({});
-  const [showRoot, setShowRoot] = React.useState(false);
-  const [showFamily, setShowFamily] = React.useState(false);
+  const lookupKey = getLookupKey(analysis);
+  const lookupCacheRef = React.useRef(new Map<string, DictionaryLookupResult>());
+  const [activeLookup, setActiveLookup] = React.useState<ActiveLookupState>({
+    lookupKey,
+    state: { status: 'loading' },
+  });
+  const [expandedEntryIds, setExpandedEntryIds] = React.useState<Record<string, string | null>>({});
+  const [detailsByLookupKey, setDetailsByLookupKey] = React.useState<
+    Record<string, Record<string, DictionaryEntryDetail | null>>
+  >({});
+  const [shownRoots, setShownRoots] = React.useState<ReadonlySet<string>>(() => new Set());
+  const [shownFamilies, setShownFamilies] = React.useState<ReadonlySet<string>>(() => new Set());
+
+  const cachedResult = lookupCacheRef.current.get(lookupKey);
+  const lookup: LookupState = cachedResult
+    ? { status: 'ready', result: cachedResult }
+    : activeLookup.lookupKey === lookupKey
+      ? activeLookup.state
+      : { status: 'loading' };
+  const expandedEntryId = expandedEntryIds[lookupKey] ?? null;
+  const details = detailsByLookupKey[lookupKey] ?? {};
+  const showRoot = shownRoots.has(lookupKey);
+  const showFamily = shownFamilies.has(lookupKey);
 
   React.useEffect(() => {
+    if (!enabled) return;
     const controller = new AbortController();
-    setLookup({ status: 'loading' });
-    setExpandedEntryId(null);
-    setDetails({});
-    setShowRoot(false);
-    setShowFamily(false);
+    const loadPrimaryEntry = (result: DictionaryLookupResult) => {
+      const primaryEntry = result.exactLemmaEntries[0] ?? result.rootEntries[0];
+      if (!primaryEntry) return;
+      setExpandedEntryIds((current) => Object.prototype.hasOwnProperty.call(current, lookupKey)
+        ? current
+        : { ...current, [lookupKey]: primaryEntry.entryId });
+      if (details[primaryEntry.entryId] !== undefined) return;
+      void repository
+        .getEntry(packId, primaryEntry.entryId, primaryEntry.matchKind, {
+          signal: controller.signal,
+        })
+        .then((detail) => {
+          if (!controller.signal.aborted) {
+            setDetailsByLookupKey((current) => ({
+              ...current,
+              [lookupKey]: {
+                ...current[lookupKey],
+                [primaryEntry.entryId]: detail,
+              },
+            }));
+          }
+        })
+        .catch(() => {
+          if (!controller.signal.aborted) {
+            setDetailsByLookupKey((current) => ({
+              ...current,
+              [lookupKey]: {
+                ...current[lookupKey],
+                [primaryEntry.entryId]: null,
+              },
+            }));
+          }
+        });
+    };
+
+    const cached = lookupCacheRef.current.get(lookupKey);
+    if (cached) {
+      loadPrimaryEntry(cached);
+      return () => controller.abort();
+    }
+
+    setActiveLookup({ lookupKey, state: { status: 'loading' } });
     void container
       .getDictionaryReferences()
       .execute(analysis, packId, { signal: controller.signal })
       .then((result) => {
         if (controller.signal.aborted) return;
-        setLookup({ status: 'ready', result });
-        const primaryEntry = result.exactLemmaEntries[0] ?? result.rootEntries[0];
-        if (!primaryEntry) return;
-        setExpandedEntryId(primaryEntry.entryId);
-        void repository
-          .getEntry(packId, primaryEntry.entryId, primaryEntry.matchKind, {
-            signal: controller.signal,
-          })
-          .then((detail) => {
-            if (!controller.signal.aborted) {
-              setDetails((current) => ({ ...current, [primaryEntry.entryId]: detail }));
-            }
-          })
-          .catch(() => {
-            if (!controller.signal.aborted) {
-              setDetails((current) => ({ ...current, [primaryEntry.entryId]: null }));
-            }
-          });
+        lookupCacheRef.current.set(lookupKey, result);
+        setActiveLookup({ lookupKey, state: { status: 'ready', result } });
+        loadPrimaryEntry(result);
       })
       .catch((error) => {
         if (!controller.signal.aborted) {
-          setLookup({
-            status: 'error',
-            message: error instanceof Error ? error.message : 'Dictionary lookup failed.',
+          setActiveLookup({
+            lookupKey,
+            state: {
+              status: 'error',
+              message: error instanceof Error ? error.message : 'Dictionary lookup failed.',
+            },
           });
         }
       });
     return () => controller.abort();
-  }, [analysis, packId, repository]);
+  }, [analysis, enabled, lookupKey, packId, repository]);
 
   const toggleEntry = React.useCallback((entry: DictionaryEntrySummary) => {
     if (expandedEntryId === entry.entryId) {
-      setExpandedEntryId(null);
+      setExpandedEntryIds((current) => ({ ...current, [lookupKey]: null }));
       return;
     }
-    setExpandedEntryId(entry.entryId);
+    setExpandedEntryIds((current) => ({ ...current, [lookupKey]: entry.entryId }));
     if (details[entry.entryId] !== undefined) return;
     void repository
       .getEntry(packId, entry.entryId, entry.matchKind)
-      .then((detail) => setDetails((current) => ({ ...current, [entry.entryId]: detail })))
-      .catch(() => setDetails((current) => ({ ...current, [entry.entryId]: null })));
-  }, [details, expandedEntryId, packId, repository]);
+      .then((detail) => setDetailsByLookupKey((current) => ({
+        ...current,
+        [lookupKey]: { ...current[lookupKey], [entry.entryId]: detail },
+      })))
+      .catch(() => setDetailsByLookupKey((current) => ({
+        ...current,
+        [lookupKey]: { ...current[lookupKey], [entry.entryId]: null },
+      })));
+  }, [details, expandedEntryId, lookupKey, packId, repository]);
+
+  const toggleDisclosure = React.useCallback(
+    (setter: React.Dispatch<React.SetStateAction<ReadonlySet<string>>>) => {
+      setter((current) => {
+        const next = new Set(current);
+        if (next.has(lookupKey)) next.delete(lookupKey);
+        else next.add(lookupKey);
+        return next;
+      });
+    },
+    [lookupKey]
+  );
 
   return (
     <View
@@ -326,13 +402,13 @@ function DictionarySourcePanel({
           contentWidth={contentWidth}
           palette={palette}
           onToggleEntry={toggleEntry}
-          onToggleRoot={() => setShowRoot((value) => !value)}
-          onToggleFamily={() => setShowFamily((value) => !value)}
+          onToggleRoot={() => toggleDisclosure(setShownRoots)}
+          onToggleFamily={() => toggleDisclosure(setShownFamilies)}
         />
       )}
     </View>
   );
-}
+});
 
 function DictionaryResults({
   result,

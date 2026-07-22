@@ -108,7 +108,7 @@ export function GrammarGuideSheet({
                   Arabic i‘rab (إعراب) explains the grammatical role of the selected word in the context of this ayah.
                 </Text>
                 <Text style={[styles.body, { color: palette.muted }]}>
-                  A separate word note appears only when the complete selected word is named in a source heading. Otherwise, use the complete verse grammar; no source text is inferred or rewritten.
+                  A focused note appears when a source heading covers the selected word, including headings that group several words. Otherwise, use the complete verse grammar; no source text is inferred or rewritten.
                 </Text>
               </View>
 

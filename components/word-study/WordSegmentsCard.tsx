@@ -4,6 +4,7 @@ import { ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-n
 import Colors from '@/constants/Colors';
 import { useAppTheme } from '@/providers/ThemeContext';
 import type { Morpheme, WordAnalysis } from '@/src/core/domain/word-study';
+import { resolveQuranTextFontFamily } from '@/src/core/infrastructure/fonts/resolveQuranTextFont';
 
 import {
   describeMorphology,
@@ -88,7 +89,16 @@ export function SegmentedWord({
           />
         ))
       ) : (
-        <Text style={[styles.arabicWord, compact && styles.arabicWordCompact, { color: palette.text }]}>
+        <Text
+          style={[
+            styles.arabicWord,
+            compact && styles.arabicWordCompact,
+            {
+              color: palette.text,
+              fontFamily: resolveQuranTextFontFamily(analysis.surfaceUthmani),
+            },
+          ]}
+        >
           {analysis.surfaceUthmani}
         </Text>
       )}
@@ -216,7 +226,15 @@ function SegmentText({
   return (
     <Text
       accessibilityLabel={accessibilityLabel}
-      style={[styles.arabicSegment, compact && styles.arabicSegmentCompact, { color, borderBottomColor: color }]}
+      style={[
+        styles.arabicSegment,
+        compact && styles.arabicSegmentCompact,
+        {
+          color,
+          borderBottomColor: color,
+          fontFamily: resolveQuranTextFontFamily(segment.arabic),
+        },
+      ]}
     >
       {segment.arabic}
     </Text>

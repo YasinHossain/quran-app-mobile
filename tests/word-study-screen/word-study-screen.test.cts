@@ -15,6 +15,7 @@ const test = require('node:test') as (name: string, callback: () => void | Promi
 import {
   WORD_STUDY_CONTRACT_OCCURRENCE_PAGE,
   WORD_STUDY_RICH_CONTRACT_FIXTURES,
+  toWordStudyLocation,
   type Morpheme,
   type WordAnalysis,
 } from '../../src/core/domain/word-study';
@@ -46,15 +47,27 @@ import {
   getOccurrencePageLabel,
   orderRootFamilyLemmas,
 } from '../../components/word-study/full-study/occurrenceExplorerModel';
-import { findSelectedWordGrammarPassages } from '../../components/word-study/full-study/grammarStudyModel';
+import {
+  areGrammarArabicWordsEquivalent,
+  findSelectedWordGrammarPassages,
+} from '../../components/word-study/full-study/grammarStudyModel';
 import { GetDictionaryReferences } from '../../src/core/application/use-cases/word-study/GetDictionaryReferences';
 import { GetVerbReference } from '../../src/core/application/use-cases/word-study/GetVerbReference';
 import type { IDictionaryReferenceRepository } from '../../src/core/domain/repositories/IDictionaryReferenceRepository';
 import type { IVerbReferenceRepository } from '../../src/core/domain/repositories/IVerbReferenceRepository';
+import { resolveQuranTextFontFamily } from '../../src/core/infrastructure/fonts/resolveQuranTextFont';
 
 const verb = WORD_STUDY_RICH_CONTRACT_FIXTURES[0] as WordAnalysis;
 const particle = WORD_STUDY_RICH_CONTRACT_FIXTURES[1] as WordAnalysis;
 const properNoun = WORD_STUDY_RICH_CONTRACT_FIXTURES[2] as WordAnalysis;
+
+test('Uthmani text keeps unsupported marks and uses the Quran support font', () => {
+  const textWithSmallHighRoundedZero = 'أُو۟لَـٰٓئِكَ';
+
+  assert.equal(resolveQuranTextFontFamily(textWithSmallHighRoundedZero), 'Scheherazade New');
+  assert.equal(textWithSmallHighRoundedZero.includes('\u06DF'), true);
+  assert.equal(resolveQuranTextFontFamily('ٱللَّهُ'), 'UthmanicHafs1Ver18');
+});
 
 test('morphology rows contain only source-applicable labeled values', () => {
   assert.equal(verb.morphology.status, 'available');
@@ -253,6 +266,91 @@ test('Arabic grammar matching returns the passage containing the complete select
   assert.deepEqual(passages.map((passage) => passage.sequence), [2]);
 });
 
+test('Arabic grammar matching covers every word in a grouped source heading', () => {
+  const verseWords = [
+    { ...verb, location: toWordStudyLocation('10:54:1'), surfaceUthmani: 'وَلَوْ' },
+    { ...verb, location: toWordStudyLocation('10:54:2'), surfaceUthmani: 'أَنَّ' },
+    { ...verb, location: toWordStudyLocation('10:54:3'), surfaceUthmani: 'لِكُلِّ' },
+    { ...verb, location: toWordStudyLocation('10:54:4'), surfaceUthmani: 'نَفْسٍ' },
+  ];
+  const grammar = {
+    verseKey: '10:54',
+    passages: [
+      {
+        sequence: 1,
+        headingArabic: 'وَلَوْأَنَّ لِكُلِّ نَفْسٍ',
+        bodyArabic: 'تحليل العبارة.',
+      },
+    ],
+    source: { sourceId: 'fixture', sourceVersion: '1', layer: 'grammar' as const },
+    reviewStatus: 'source-provided' as const,
+  };
+
+  for (const selectedWord of verseWords) {
+    assert.deepEqual(
+      findSelectedWordGrammarPassages(grammar, selectedWord, verseWords)
+        .map((passage) => passage.sequence),
+      [1]
+    );
+  }
+});
+
+test('Arabic grammar matching aligns conventional alif spelling with Uthmani spelling', () => {
+  const selectedWord: WordAnalysis = {
+    ...verb,
+    location: toWordStudyLocation('100:1:1'),
+    surfaceUthmani: 'وَٱلْعَـٰدِيَـٰتِ',
+  };
+  const passages = findSelectedWordGrammarPassages(
+    {
+      verseKey: '100:1',
+      passages: [
+        {
+          sequence: 1,
+          headingArabic: 'وَالْعَادِيَاتِ',
+          bodyArabic: 'تحليل الكلمة.',
+        },
+      ],
+      source: { sourceId: 'fixture', sourceVersion: '1', layer: 'grammar' },
+      reviewStatus: 'source-provided',
+    },
+    selectedWord,
+    [selectedWord]
+  );
+
+  assert.deepEqual(passages.map((passage) => passage.sequence), [1]);
+});
+
+test('Arabic grammar heading highlighting accepts equivalent Uthmani spelling only', () => {
+  assert.equal(areGrammarArabicWordsEquivalent('ءَامَنُوا۟', 'آمَنُوا'), true);
+  assert.equal(areGrammarArabicWordsEquivalent('مِنْهُمْ', 'إِلَيْهِمْ'), false);
+});
+
+test('Arabic grammar matching handles a source phrase split inside one study word', () => {
+  const verseWords = [
+    { ...verb, location: toWordStudyLocation('2:181:3'), surfaceUthmani: 'بَعْدَ مَا' },
+    { ...verb, location: toWordStudyLocation('2:181:4'), surfaceUthmani: 'سَمِعَهُۥ' },
+  ];
+  const passages = findSelectedWordGrammarPassages(
+    {
+      verseKey: '2:181',
+      passages: [
+        {
+          sequence: 1,
+          headingArabic: 'بَعْدَ ما سَمِعَهُ',
+          bodyArabic: 'تحليل العبارة.',
+        },
+      ],
+      source: { sourceId: 'fixture', sourceVersion: '1', layer: 'grammar' },
+      reviewStatus: 'source-provided',
+    },
+    verseWords[0],
+    verseWords
+  );
+
+  assert.deepEqual(passages.map((passage) => passage.sequence), [1]);
+});
+
 test('Arabic grammar matching does not promote passages that only share a suffix', () => {
   const selectedWord: WordAnalysis = {
     ...verb,
@@ -404,7 +502,9 @@ test('full screen uses Morphology-first information architecture without repeate
   assert.ok(source.indexOf('label="Root"') < source.indexOf('How this word is built'));
   assert.match(source, /<SlidingSegmentedControl/);
   assert.match(source, /items=\{WORD_STUDY_TABS\}/);
-  assert.match(source, /InteractionManager\.runAfterInteractions/);
+  assert.doesNotMatch(source, /InteractionManager\.runAfterInteractions/);
+  assert.match(source, /setOptimisticWordPosition\(position\)/);
+  assert.match(source, /React\.startTransition/);
   assert.match(source, /function PersistentTabPanel/);
   assert.match(source, /mountedTabs\.has\('grammar'\)/);
   assert.match(source, /mountedTabs\.has\('occurrences'\)/);
@@ -694,7 +794,9 @@ test('dictionary UI prioritizes the best match and moves guidance into an inform
   assert.match(source, /function DictionarySourcePanel/);
   assert.match(source, /sources\.map\(\(source\) => \(/);
   assert.match(source, /active=\{source\.packId === selectedPackId\}/);
+  assert.match(source, /enabled=\{isActive\}/);
   assert.match(source, /hiddenSource: \{ display: 'none' \}/);
+  assert.match(source, /React\.memo\(function DictionarySourcePanel/);
   assert.match(source, /const primaryEntry = result\.exactLemmaEntries\[0\] \?\? result\.rootEntries\[0\]/);
   assert.doesNotMatch(source, /Contextual meaning remains in Overview|Complete root family|Matching headword/);
   assert.doesNotMatch(source, /result\.source\.(?:title|version|attribution|url)/);
