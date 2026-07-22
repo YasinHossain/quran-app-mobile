@@ -1,0 +1,22 @@
+{
+  "format": "quran-word-reference-sqlite-v1",
+  "compilerVersion": "1.0.0",
+  "schemaVersion": 1,
+  "databaseFile": "quran-word-reference.db",
+  "databaseSizeBytes": 4861952,
+  "databaseChecksumSha256": "88c4df1da38633874ed6be1b520346a562e0a76077fced2e3a10e8a0cfb04e59",
+  "logicalChecksumSha256": "25e6fc7245f12ada54566527ae60be5dbb4eef96523fe2ea22fa02b0819082a4",
+  "entryCount": 13980,
+  "matchedRootCount": 1354,
+  "matchedLemmaCount": 2347,
+  "source": {
+    "packId": "hans-wehr-en",
+    "sourceId": "hans-wehr",
+    "title": "Hans Wehr Dictionary of Modern Written Arabic",
+    "languageCode": "en",
+    "version": "2.14.01",
+    "attribution": "Hans Wehr, edited by J. Milton Cowan; digital database published by GibreelAbdullah/HansWehrDictionary.",
+    "url": "https://github.com/GibreelAbdullah/HansWehrDictionary",
+    "checksumSha256": "4e58d048157d0efc826948805cc908e8aa23d3fbdc0fc85b1bdea793c8ab81d2"
+  }
+}
