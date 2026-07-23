@@ -216,6 +216,20 @@ test('an uninstalled Essentials pack is treated as an expected download state', 
     join(process.cwd(), 'components/downloads/DownloadProgressRing.tsx'),
     'utf8'
   );
+  const downloadCard = readFileSync(
+    join(
+      process.cwd(),
+      'components/word-study/full-study/StudyPackDownloadCard.tsx'
+    ),
+    'utf8'
+  );
+  const grammarPanel = readFileSync(
+    join(
+      process.cwd(),
+      'components/word-study/full-study/GrammarPackDownloadPanel.tsx'
+    ),
+    'utf8'
+  );
 
   assert.match(
     controller,
@@ -232,6 +246,9 @@ test('an uninstalled Essentials pack is treated as an expected download state', 
   assert.match(panel, /StudyPackDownloadCard/);
   assert.match(progressRing, /strokeDashoffset/);
   assert.match(progressRing, /<X color=\{crossColor\}/);
+  assert.doesNotMatch(downloadCard, /% downloaded/);
+  assert.match(grammarPanel, /getInstalledAsync\(\)/);
+  assert.match(grammarPanel, /const displayStatus = itemIsActive/);
 });
 
 test('Android Surah, Juz, Page, Mushaf, and Tajweed readers share the React Native sheet', () => {

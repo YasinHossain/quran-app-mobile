@@ -4,7 +4,10 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 
 import { useDownloadIndexItems } from '@/hooks/useDownloadIndexItems';
 import { container } from '@/src/core/infrastructure/di/container';
-import type { WordGrammarPackCatalogEntry } from '@/src/core/infrastructure/word-grammar';
+import type {
+  ReadyWordGrammarPack,
+  WordGrammarPackCatalogEntry,
+} from '@/src/core/infrastructure/word-grammar';
 
 import { StudyPackDownloadCard } from './StudyPackDownloadCard';
 
@@ -43,6 +46,7 @@ export function GrammarPackDownloadPanel({
     pollWhileEnabled: true,
   });
   const [catalog, setCatalog] = React.useState<CatalogState>({ status: 'loading' });
+  const [installedPack, setInstalledPack] = React.useState<ReadyWordGrammarPack | null>(null);
   const [retryNonce, setRetryNonce] = React.useState(0);
 
   React.useEffect(() => {
@@ -63,6 +67,26 @@ export function GrammarPackDownloadPanel({
     return () => controller.abort();
   }, [retryNonce]);
 
+  React.useEffect(() => {
+    let active = true;
+    const loadInstalled = (): void => {
+      void installer
+        .getInstalledAsync()
+        .then((installed) => {
+          if (active) setInstalledPack(installed);
+        })
+        .catch(() => {
+          if (active) setInstalledPack(null);
+        });
+    };
+    loadInstalled();
+    const unsubscribe = installer.subscribe(loadInstalled);
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, [installer]);
+
   const entry = catalog.status === 'ready' ? catalog.entry : null;
   const item = entry
     ? items.find(
@@ -72,6 +96,18 @@ export function GrammarPackDownloadPanel({
           candidate.content.version === entry.version
       )
     : undefined;
+  const itemIsActive = item?.status === 'queued' || item?.status === 'downloading';
+  const entryIsInstalled = Boolean(
+    entry &&
+      installedPack?.packId === entry.packId &&
+      installedPack.version === entry.version
+  );
+  const displayStatus = itemIsActive
+    ? item.status
+    : entryIsInstalled
+      ? 'installed'
+      : item?.status;
+
   return (
     <View style={styles.section}>
       {catalog.status === 'loading' ? (
@@ -105,7 +141,7 @@ export function GrammarPackDownloadPanel({
         <StudyPackDownloadCard
           title={entry.title}
           detail={formatBytes(entry.databaseSizeBytes)}
-          status={item?.status}
+          status={displayStatus}
           progress={item?.progress}
           error={item?.error}
           palette={palette}
@@ -117,7 +153,8 @@ export function GrammarPackDownloadPanel({
               .getGrammarStudyDatabaseProvider()
               .closeAsync()
               .then(() => installer.installAsync(entry))
-              .then(() => {
+              .then((installed) => {
+                setInstalledPack(installed);
                 void refresh();
                 onInstalled();
               })

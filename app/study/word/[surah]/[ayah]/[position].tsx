@@ -42,9 +42,11 @@ import { DictionaryGuideSheet } from '@/components/word-study/full-study/Diction
 import {
   areGrammarArabicWordsEquivalent,
   findSelectedWordGrammarPassages,
+  type GrammarSelectedWord,
 } from '@/components/word-study/full-study/grammarStudyModel';
 import { buildOccurrenceReaderParams } from '@/components/word-study/full-study/occurrenceExplorerModel';
 import { readWordStudyNavigationHandoff } from '@/components/word-study/full-study/wordStudyNavigationHandoff';
+import { getOfflineVersePreview } from '@/components/word-study/full-study/wordStudyVerseContextModel';
 import {
   useContextualMeaning,
   type ContextualMeaningLoadState,
@@ -84,6 +86,9 @@ const WORD_STUDY_TABS: readonly SlidingSegment<StudyTab>[] = [
   { key: 'occurrences', label: 'Occurrences' },
   { key: 'dictionary', label: 'Dictionary' },
 ];
+const MemoizedOccurrenceExplorer = React.memo(OccurrenceExplorer);
+const MemoizedDictionarySection = React.memo(DictionarySection);
+const MemoizedGrammarSection = React.memo(GrammarSection);
 type LoadState =
   | { status: 'loading' }
   | { status: 'ready'; words: readonly WordAnalysis[] }
@@ -133,6 +138,7 @@ export default function WordStudyScreen(): React.JSX.Element {
   const { audioPlayerBarHeight } = useLayoutMetrics();
   const insets = useSafeAreaInsets();
   const [tab, setTab] = React.useState<StudyTab>('morphology');
+  const contentTab = React.useDeferredValue(tab);
   const [optimisticWordPosition, setOptimisticWordPosition] = React.useState<number | null>(null);
   const [mountedTabs, setMountedTabs] = React.useState<ReadonlySet<StudyTab>>(
     () => new Set<StudyTab>(['morphology'])
@@ -146,6 +152,12 @@ export default function WordStudyScreen(): React.JSX.Element {
   const [grammarLoadState, setGrammarLoadState] = React.useState<GrammarLoadState>({
     status: 'idle',
   });
+  const grammarCacheRef = React.useRef(new Map<string, GrammarStudyLookupResult>());
+  const activeGrammarVerseKeyRef = React.useRef<string | null>(null);
+  const [offlineContext, setOfflineContext] = React.useState<{
+    verseKey: string;
+    words: readonly AyahContextWord[];
+  } | null>(null);
   const [grammarRetryNonce, setGrammarRetryNonce] = React.useState(0);
   const [requestedOccurrenceScope, setRequestedOccurrenceScope] = React.useState<{
     scope: WordOccurrenceScope;
@@ -199,16 +211,27 @@ export default function WordStudyScreen(): React.JSX.Element {
 
   React.useEffect(() => {
     if (!location || tab !== 'grammar') return;
+    const cached = grammarCacheRef.current.get(location.verseKey);
+    if (cached) {
+      activeGrammarVerseKeyRef.current = location.verseKey;
+      setGrammarLoadState({ status: 'ready', result: cached });
+      return;
+    }
     let cancelled = false;
+    activeGrammarVerseKeyRef.current = location.verseKey;
     setGrammarLoadState({ status: 'loading' });
     void container
       .getVerseGrammar()
       .execute(location.verseKey)
       .then((result) => {
-        if (!cancelled) setGrammarLoadState({ status: 'ready', result });
+        if (cancelled) return;
+        grammarCacheRef.current.set(location.verseKey, result);
+        setGrammarLoadState({ status: 'ready', result });
       })
       .catch(() => {
-        if (!cancelled) setGrammarLoadState({ status: 'error' });
+        if (!cancelled && activeGrammarVerseKeyRef.current === location.verseKey) {
+          setGrammarLoadState({ status: 'error' });
+        }
       });
     return () => {
       cancelled = true;
@@ -218,16 +241,56 @@ export default function WordStudyScreen(): React.JSX.Element {
   const words = loadState.status === 'ready' ? loadState.words : [];
   const immediateContextWords = React.useMemo<readonly AyahContextWord[]>(() => {
     if (!navigationHandoff || navigationHandoff.verseKey !== location?.verseKey) return [];
-    return navigationHandoff.verseWords.map((word) => ({
+    const previewWords = navigationHandoff.verseWords.length
+      ? navigationHandoff.verseWords
+      : navigationHandoff.selectedSurfaceText && location
+        ? [{
+            wordPosition: location.wordPosition,
+            surfaceText: navigationHandoff.selectedSurfaceText,
+          }]
+        : [];
+    return previewWords.map((word) => ({
       location: toWordStudyLocation(
         `${navigationHandoff.verseKey}:${word.wordPosition}`
       ),
       surfaceUthmani: word.surfaceText,
     }));
   }, [location?.verseKey, navigationHandoff]);
+
+  React.useEffect(() => {
+    if (!location || words.length) return;
+    let cancelled = false;
+    void container
+      .getTranslationOfflineStore()
+      .getVerseWithTranslations(location.verseKey, [], 'en')
+      .then((verse) => {
+        if (cancelled || !verse) return;
+        const contextWords = getOfflineVersePreview({
+          wordsJson: verse.wordsJson,
+          arabicUthmani: verse.arabicUthmani,
+        }).map((word) => ({
+          location: toWordStudyLocation(`${verse.verseKey}:${word.wordPosition}`),
+          surfaceUthmani: word.surfaceText,
+        }));
+        if (contextWords.length) {
+          setOfflineContext({ verseKey: verse.verseKey, words: contextWords });
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [location?.verseKey, words.length]);
+
+  const offlineContextWords =
+    offlineContext && offlineContext.verseKey === location?.verseKey
+      ? offlineContext.words
+      : [];
   const contextWords: readonly AyahContextWord[] = words.length
     ? words
-    : immediateContextWords;
+    : offlineContextWords.length
+      ? offlineContextWords
+      : immediateContextWords;
   const selectedFromLoadedVerse = location
     ? words.find((word) => word.location.wordPosition === location.wordPosition)
     : undefined;
@@ -238,6 +301,12 @@ export default function WordStudyScreen(): React.JSX.Element {
       : undefined;
   const selected = selectedFromLoadedVerse ?? selectedFromHandoff;
   const selectedWordPosition = optimisticWordPosition ?? location?.wordPosition ?? 0;
+  const selectedContextWord = contextWords.find(
+    (word) => word.location.wordPosition === selectedWordPosition
+  );
+  const grammarSelectedWord: GrammarSelectedWord | undefined =
+    selected ?? selectedContextWord;
+  const dictionarySelectedWord = selected ?? selectedContextWord;
   const contextualMeaning = useContextualMeaning(selected);
 
   React.useEffect(() => {
@@ -256,11 +325,13 @@ export default function WordStudyScreen(): React.JSX.Element {
     [router]
   );
   const selectTab = React.useCallback((nextTab: StudyTab) => {
-    setMountedTabs((current) => {
-      if (current.has(nextTab)) return current;
-      return new Set([...current, nextTab]);
-    });
     setTab(nextTab);
+    React.startTransition(() => {
+      setMountedTabs((current) => {
+        if (current.has(nextTab)) return current;
+        return new Set([...current, nextTab]);
+      });
+    });
   }, []);
   const openOccurrenceScope = React.useCallback((scope: WordOccurrenceScope) => {
     occurrenceRequestIdRef.current += 1;
@@ -299,6 +370,20 @@ export default function WordStudyScreen(): React.JSX.Element {
     },
     []
   );
+  const handleOccurrenceLayout = React.useCallback((event: {
+    nativeEvent: { layout: { y: number } };
+  }) => {
+    occurrenceSectionYRef.current = event.nativeEvent.layout.y;
+  }, []);
+  const handleCloseOccurrenceGuide = React.useCallback(() => {
+    setIsOccurrenceGuideOpen(false);
+  }, []);
+  const handleCloseDictionaryGuide = React.useCallback(() => {
+    setIsDictionaryGuideOpen(false);
+  }, []);
+  const handleGrammarInstalled = React.useCallback(() => {
+    setGrammarRetryNonce((value) => value + 1);
+  }, []);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -344,11 +429,30 @@ export default function WordStudyScreen(): React.JSX.Element {
                   ? 'About occurrences'
                   : 'About dictionary'
           }
-          accessibilityState={{ disabled: !selected }}
-          disabled={!selected}
+          accessibilityState={{
+            disabled:
+              !selected &&
+              !(tab === 'grammar' && grammarSelectedWord) &&
+              !(tab === 'dictionary' && dictionarySelectedWord),
+          }}
+          disabled={
+            !selected &&
+            !(tab === 'grammar' && grammarSelectedWord) &&
+            !(tab === 'dictionary' && dictionarySelectedWord)
+          }
           hitSlop={10}
           onPress={handleOpenGuide}
-          style={[styles.headerButton, { opacity: selected ? 1 : 0.35 }]}
+          style={[
+            styles.headerButton,
+            {
+              opacity:
+                selected ||
+                (tab === 'grammar' && grammarSelectedWord) ||
+                (tab === 'dictionary' && dictionarySelectedWord)
+                  ? 1
+                  : 0.35,
+            },
+          ]}
         >
           <Info color={palette.text} size={20} strokeWidth={2.2} />
         </Pressable>
@@ -407,9 +511,16 @@ export default function WordStudyScreen(): React.JSX.Element {
             onSelect={selectTab}
           />
           {!selected && loadState.status === 'error' && loadState.needsDownload ? (
-            <UnavailableStudyTab
-              tab={tab}
+            <UnavailableStudyTabPanels
+              activeTab={contentTab}
+              mountedTabs={mountedTabs}
+              grammarSelectedWord={grammarSelectedWord}
+              dictionarySelectedWord={dictionarySelectedWord}
+              verseWords={contextWords}
+              grammarLoadState={grammarLoadState}
               palette={palette}
+              isDictionaryGuideOpen={isDictionaryGuideOpen}
+              onCloseDictionaryGuide={() => setIsDictionaryGuideOpen(false)}
               onEssentialsInstalled={() => setRetryNonce((value) => value + 1)}
               onGrammarInstalled={() => setGrammarRetryNonce((value) => value + 1)}
             />
@@ -430,52 +541,53 @@ export default function WordStudyScreen(): React.JSX.Element {
             />
           ) : (
             <>
-              <PersistentTabPanel active={tab === 'morphology'}>
+              {contentTab === 'morphology' ? (
                 <MorphologySection
                   analysis={selected}
                   contextualMeaning={contextualMeaning}
                   palette={palette}
                   onSelectOccurrenceScope={openOccurrenceScope}
                 />
-              </PersistentTabPanel>
+              ) : null}
               {mountedTabs.has('grammar') ? (
-                <PersistentTabPanel active={tab === 'grammar'}>
-                  <GrammarSection
+                <PersistentTabPanel active={contentTab === 'grammar'}>
+                  <MemoizedGrammarSection
                     analysis={selected}
                     verseWords={contextWords}
                     grammarLoadState={grammarLoadState}
                     palette={palette}
-                    onGrammarInstalled={() => setGrammarRetryNonce((value) => value + 1)}
+                    onGrammarInstalled={handleGrammarInstalled}
                   />
                 </PersistentTabPanel>
               ) : null}
               {mountedTabs.has('occurrences') ? (
-                <PersistentTabPanel active={tab === 'occurrences'}>
+                <PersistentTabPanel active={contentTab === 'occurrences'}>
                   <View
-                    onLayout={(event) => {
-                      occurrenceSectionYRef.current = event.nativeEvent.layout.y;
-                    }}
+                    onLayout={handleOccurrenceLayout}
                   >
-                    <OccurrenceExplorer
+                    <MemoizedOccurrenceExplorer
                       analysis={selected}
+                      isActive={contentTab === 'occurrences'}
+                      prefetchAnalyses={words}
                       palette={palette}
                       onOpenReader={handleOpenOccurrenceInReader}
                       onRequestScrollToFilters={handleScrollToOccurrenceFilters}
                       requestedScope={requestedOccurrenceScope}
                       isGuideOpen={isOccurrenceGuideOpen}
-                      onCloseGuide={() => setIsOccurrenceGuideOpen(false)}
+                      onCloseGuide={handleCloseOccurrenceGuide}
                     />
                   </View>
                 </PersistentTabPanel>
               ) : null}
               {mountedTabs.has('dictionary') ? (
-                <PersistentTabPanel active={tab === 'dictionary'}>
-                  <DictionarySection
+                <PersistentTabPanel active={contentTab === 'dictionary'}>
+                  <MemoizedDictionarySection
                     analysis={selected}
+                    prefetchAnalyses={words}
                     palette={palette}
-                    isActive={tab === 'dictionary'}
+                    isActive={contentTab === 'dictionary'}
                     isGuideOpen={isDictionaryGuideOpen}
-                    onCloseGuide={() => setIsDictionaryGuideOpen(false)}
+                    onCloseGuide={handleCloseDictionaryGuide}
                   />
                 </PersistentTabPanel>
               ) : null}
@@ -518,6 +630,101 @@ function UnavailableStudyTab({
       showHeading={false}
       onInstalled={onEssentialsInstalled}
     />
+  );
+}
+
+function UnavailableStudyTabPanels({
+  activeTab,
+  mountedTabs,
+  grammarSelectedWord,
+  dictionarySelectedWord,
+  verseWords,
+  grammarLoadState,
+  palette,
+  isDictionaryGuideOpen,
+  onCloseDictionaryGuide,
+  onEssentialsInstalled,
+  onGrammarInstalled,
+}: {
+  activeTab: StudyTab;
+  mountedTabs: ReadonlySet<StudyTab>;
+  grammarSelectedWord?: GrammarSelectedWord;
+  dictionarySelectedWord?: {
+    readonly location: {
+      readonly locationKey: string;
+      readonly wordPosition: number;
+    };
+    readonly surfaceUthmani: string;
+  };
+  verseWords: readonly AyahContextWord[];
+  grammarLoadState: GrammarLoadState;
+  palette: Palette;
+  isDictionaryGuideOpen: boolean;
+  onCloseDictionaryGuide: () => void;
+  onEssentialsInstalled: () => void;
+  onGrammarInstalled: () => void;
+}): React.JSX.Element {
+  return (
+    <>
+      <PersistentTabPanel active={activeTab === 'morphology'}>
+        <UnavailableStudyTab
+          tab="morphology"
+          palette={palette}
+          onEssentialsInstalled={onEssentialsInstalled}
+          onGrammarInstalled={onGrammarInstalled}
+        />
+      </PersistentTabPanel>
+      {mountedTabs.has('grammar') ? (
+        <PersistentTabPanel active={activeTab === 'grammar'}>
+          {grammarSelectedWord ? (
+            <GrammarSection
+              analysis={grammarSelectedWord}
+              verseWords={verseWords}
+              grammarLoadState={grammarLoadState}
+              palette={palette}
+              onGrammarInstalled={onGrammarInstalled}
+            />
+          ) : (
+            <UnavailableStudyTab
+              tab="grammar"
+              palette={palette}
+              onEssentialsInstalled={onEssentialsInstalled}
+              onGrammarInstalled={onGrammarInstalled}
+            />
+          )}
+        </PersistentTabPanel>
+      ) : null}
+      {mountedTabs.has('occurrences') ? (
+        <PersistentTabPanel active={activeTab === 'occurrences'}>
+          <UnavailableStudyTab
+            tab="occurrences"
+            palette={palette}
+            onEssentialsInstalled={onEssentialsInstalled}
+            onGrammarInstalled={onGrammarInstalled}
+          />
+        </PersistentTabPanel>
+      ) : null}
+      {mountedTabs.has('dictionary') ? (
+        <PersistentTabPanel active={activeTab === 'dictionary'}>
+          {dictionarySelectedWord ? (
+            <DictionarySection
+              selectedWord={dictionarySelectedWord}
+              palette={palette}
+              isActive={activeTab === 'dictionary'}
+              isGuideOpen={isDictionaryGuideOpen}
+              onCloseGuide={onCloseDictionaryGuide}
+            />
+          ) : (
+            <UnavailableStudyTab
+              tab="dictionary"
+              palette={palette}
+              onEssentialsInstalled={onEssentialsInstalled}
+              onGrammarInstalled={onGrammarInstalled}
+            />
+          )}
+        </PersistentTabPanel>
+      ) : null}
+    </>
   );
 }
 
@@ -564,10 +771,9 @@ function MorphologySection({ analysis, contextualMeaning, palette, onSelectOccur
         </View>
         <WordSegmentsLegend analysis={analysis} layout="wrapped" />
       </View>
-      <View style={styles.lexicalFacts}>
+      <View style={[styles.lexicalFactsRow, useSingleColumn && styles.lexicalFactsColumn]}>
         <CompactStudyFact
           label="Lemma"
-          arabicTerm="الصيغة المعجمية"
           value={getLemmaText(analysis)}
           available={analysis.lemma.status === 'available'}
           onPress={analysis.lemma.status === 'available' ? () => onSelectOccurrenceScope('lemma') : undefined}
@@ -576,7 +782,6 @@ function MorphologySection({ analysis, contextualMeaning, palette, onSelectOccur
         />
         <CompactStudyFact
           label="Root"
-          arabicTerm="الجذر"
           value={getRootText(analysis)}
           available={analysis.root.status === 'available'}
           onPress={analysis.root.status === 'available' ? () => onSelectOccurrenceScope('root') : undefined}
@@ -644,7 +849,7 @@ function GrammarSection({
   palette,
   onGrammarInstalled,
 }: {
-  analysis: WordAnalysis;
+  analysis: GrammarSelectedWord;
   verseWords: readonly AyahContextWord[];
   grammarLoadState: GrammarLoadState;
   palette: Palette;
@@ -746,43 +951,44 @@ function GrammarSection({
         </Text>
       )}
 
-      <Pressable
-        accessibilityRole="button"
-        accessibilityState={{ expanded: showFullAyah }}
-        onPress={() => setShowFullAyah((value) => !value)}
-        style={({ pressed }) => [
-          styles.grammarDisclosure,
-          { backgroundColor: palette.surfaceNavigation, opacity: pressed ? 0.68 : 1 },
-        ]}
-      >
-        <View style={styles.grammarDisclosureRow}>
-          <Text style={[styles.grammarDisclosureTitle, { color: palette.text }]}>
-            Complete verse grammar
-          </Text>
-          <View style={[styles.guideIcon, { backgroundColor: palette.interactive }]}>
-            {showFullAyah ? (
-              <ChevronDown color={palette.tint} size={20} strokeWidth={2.2} />
-            ) : (
-              <ChevronRight color={palette.tint} size={20} strokeWidth={2.2} />
-            )}
+      <View style={[styles.grammarCompleteBox, { backgroundColor: palette.surfaceNavigation, borderColor: palette.border }]}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityState={{ expanded: showFullAyah }}
+          android_ripple={{ color: palette.interactive }}
+          onPress={() => setShowFullAyah((value) => !value)}
+          style={styles.grammarDisclosure}
+        >
+          <View style={styles.grammarDisclosureRow}>
+            <Text style={[styles.grammarDisclosureTitle, { color: palette.text }]}>
+              Complete verse grammar
+            </Text>
+            <View style={[styles.grammarChevronBox, { backgroundColor: palette.interactive }]}>
+              {showFullAyah ? (
+                <ChevronDown color={palette.tint} size={20} strokeWidth={2.2} />
+              ) : (
+                <ChevronRight color={palette.tint} size={20} strokeWidth={2.2} />
+              )}
+            </View>
           </View>
-        </View>
-      </Pressable>
+        </Pressable>
 
-      {showFullAyah ? (
-        <View style={styles.grammarPassageList}>
-          {grammar.passages.map((passage) => (
-            <GrammarPassageCard
-              key={passage.sequence}
-              passage={passage}
-              expanded={expandedPassages.has(passage.sequence)}
-              onToggle={() => togglePassage(passage.sequence)}
-              palette={palette}
-              highlightedWord={analysis.surfaceUthmani}
-            />
-          ))}
-        </View>
-      ) : null}
+        {showFullAyah ? (
+          <View style={[styles.grammarPassageList, { borderTopColor: palette.border }]}>
+            {grammar.passages.map((passage) => (
+              <GrammarPassageCard
+                key={passage.sequence}
+                passage={passage}
+                expanded={expandedPassages.has(passage.sequence)}
+                onToggle={() => togglePassage(passage.sequence)}
+                palette={palette}
+                highlightedWord={analysis.surfaceUthmani}
+                inset
+              />
+            ))}
+          </View>
+        ) : null}
+      </View>
 
     </View>
   );
@@ -795,6 +1001,7 @@ function GrammarPassageCard({
   palette,
   emphasized = false,
   highlightedWord,
+  inset = false,
 }: {
   passage: GrammarPassage;
   expanded: boolean;
@@ -802,6 +1009,7 @@ function GrammarPassageCard({
   palette: Palette;
   emphasized?: boolean;
   highlightedWord?: string;
+  inset?: boolean;
 }): React.JSX.Element {
   const { resolvedTheme } = useAppTheme();
   const canCollapse = passage.bodyArabic.length > 280;
@@ -809,8 +1017,9 @@ function GrammarPassageCard({
     <View
       style={[
         styles.grammarCard,
+        inset && styles.grammarCardInset,
         {
-          backgroundColor: palette.surfaceNavigation,
+          backgroundColor: inset ? palette.interactive : palette.surfaceNavigation,
         },
       ]}
     >
@@ -975,9 +1184,8 @@ function MorphologyFact({ detail, palette, fullWidth }: {
   );
 }
 
-function CompactStudyFact({ label, arabicTerm, value, available, palette, fullWidth, onPress }: {
+function CompactStudyFact({ label, value, available, palette, fullWidth, onPress }: {
   label: string;
-  arabicTerm: string;
   value: string;
   available: boolean;
   palette: Palette;
@@ -986,7 +1194,7 @@ function CompactStudyFact({ label, arabicTerm, value, available, palette, fullWi
 }): React.JSX.Element {
   const content = (
     <>
-      <Text style={[styles.factLabel, { color: palette.muted }]}>{label} · {arabicTerm}</Text>
+      <Text style={[styles.factLabel, { color: palette.muted }]}>{label}</Text>
       <Text
         style={[
           styles.factValue,
@@ -1001,15 +1209,16 @@ function CompactStudyFact({ label, arabicTerm, value, available, palette, fullWi
   const style = [
     styles.lexicalFact,
     fullWidth && styles.factTileFullWidth,
-    { backgroundColor: palette.surfaceNavigation, borderColor: palette.border, borderWidth: StyleSheet.hairlineWidth },
+    { backgroundColor: palette.surfaceNavigation, borderColor: palette.border },
   ];
   return onPress ? (
     <Pressable
       accessible
       accessibilityRole="button"
       accessibilityLabel={`${label}: ${value}. Show ${label.toLowerCase()} occurrences`}
+      android_ripple={{ color: palette.interactive }}
       onPress={onPress}
-      style={({ pressed }) => [...style, { opacity: pressed ? 0.72 : 1 }]}
+      style={style}
     >
       {content}
     </Pressable>
@@ -1106,9 +1315,10 @@ const styles = StyleSheet.create({
   gloss: { fontSize: 20, lineHeight: 29, fontWeight: '600' },
   meaningLoading: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 9 },
   explanation: { fontSize: 13, lineHeight: 20 },
-  lexicalFacts: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  lexicalFact: { flexBasis: '47%', flexGrow: 1, minHeight: 96, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 10, alignItems: 'center', justifyContent: 'center', gap: 1 },
-  factTileFullWidth: { flexBasis: '100%', maxWidth: '100%' },
+  lexicalFactsRow: { width: '100%', flexDirection: 'row', gap: 10 },
+  lexicalFactsColumn: { flexDirection: 'column' },
+  lexicalFact: { flex: 1, minWidth: 0, minHeight: 98, overflow: 'hidden', borderWidth: StyleSheet.hairlineWidth, borderRadius: 18, paddingHorizontal: 14, paddingVertical: 12, alignItems: 'center', justifyContent: 'center', gap: 5 },
+  factTileFullWidth: { flex: 0, width: '100%' },
   factLabel: { fontSize: 12, lineHeight: 18, fontWeight: '700', textAlign: 'center' },
   factValue: { fontSize: 16, lineHeight: 23, fontWeight: '600', textAlign: 'center' },
   factValueArabic: { fontFamily: 'UthmanicHafs1Ver18', fontSize: 30, lineHeight: 44, writingDirection: 'rtl' },
@@ -1134,15 +1344,18 @@ const styles = StyleSheet.create({
   grammarHero: { borderRadius: 20, minHeight: 104, paddingHorizontal: 18, paddingVertical: 18, alignItems: 'center', justifyContent: 'center' },
   grammarHeroWord: { fontFamily: 'UthmanicHafs1Ver18', fontSize: 38, lineHeight: 56, writingDirection: 'rtl', textAlign: 'center' },
   grammarCard: { borderRadius: 20, paddingHorizontal: 17, paddingVertical: 16, gap: 10 },
+  grammarCardInset: { borderRadius: 16 },
   grammarHeadingArabic: { fontFamily: 'UthmanicHafs1Ver18', fontSize: 24, lineHeight: 38, fontWeight: '600', writingDirection: 'rtl', textAlign: 'right' },
   grammarBodyArabic: { fontSize: 18, lineHeight: 34, writingDirection: 'rtl', textAlign: 'right' },
   grammarMoreButton: { minHeight: 40, alignSelf: 'flex-start', justifyContent: 'center' },
   grammarMoreText: { fontSize: 13, lineHeight: 18, fontWeight: '700' },
   grammarEmptyMessage: { paddingHorizontal: 2, fontSize: 14, lineHeight: 21 },
-  grammarDisclosure: { direction: 'ltr', minHeight: 64, borderRadius: 17, paddingHorizontal: 13, paddingVertical: 9 },
-  grammarDisclosureRow: { direction: 'ltr', flex: 1, flexDirection: 'row', alignItems: 'center', gap: 11 },
-  grammarDisclosureTitle: { flex: 1, fontSize: 16, lineHeight: 22, fontWeight: '700' },
-  grammarPassageList: { gap: 12 },
+  grammarCompleteBox: { overflow: 'hidden', borderWidth: StyleSheet.hairlineWidth, borderRadius: 20 },
+  grammarDisclosure: { direction: 'ltr', minHeight: 92, paddingHorizontal: 16, paddingVertical: 14 },
+  grammarDisclosureRow: { direction: 'ltr', flex: 1, flexDirection: 'row', alignItems: 'center', gap: 14 },
+  grammarDisclosureTitle: { flex: 1, fontSize: 17, lineHeight: 23, fontWeight: '700' },
+  grammarChevronBox: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  grammarPassageList: { borderTopWidth: StyleSheet.hairlineWidth, padding: 12, gap: 12 },
   grammarGuideRow: { minHeight: 54, paddingHorizontal: 13, paddingVertical: 7 },
   grammarGuideLabel: { flex: 1, fontSize: 14, lineHeight: 20, fontWeight: '500' },
   grammarInfoIcon: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },

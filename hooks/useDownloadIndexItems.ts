@@ -168,6 +168,13 @@ export function useDownloadIndexItems({
 
   React.useEffect(() => {
     if (!enabled) return;
+    return container.getDownloadIndexRepository().subscribe(() => {
+      void load(false);
+    });
+  }, [enabled, load]);
+
+  React.useEffect(() => {
+    if (!enabled) return;
     if (!pollIntervalMs || pollIntervalMs <= 0) return;
     if (!hasActiveItems && !pollWhileEnabled) return;
 

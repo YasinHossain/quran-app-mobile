@@ -32,9 +32,8 @@ import type {
   WordOccurrence,
   WordOccurrenceScope,
 } from '@/src/core/domain/word-study';
-import {
-  WordStudyQueryCancelledError,
-} from '@/src/core/infrastructure/word-study/SQLiteWordStudyRepository';
+import { LruCache } from '@/src/core/infrastructure/word-study/LruCache';
+import { WordStudyQueryCancelledError } from '@/src/core/infrastructure/word-study/SQLiteWordStudyRepository';
 import { container } from '@/src/core/infrastructure/di/container';
 import { resolveQuranTextFontFamily } from '@/src/core/infrastructure/fonts/resolveQuranTextFont';
 
@@ -68,6 +67,8 @@ function formatOccurrenceCount(count: number): string {
 
 export function OccurrenceExplorer({
   analysis,
+  isActive = true,
+  prefetchAnalyses = [],
   palette,
   onOpenReader,
   onRequestScrollToFilters,
@@ -76,6 +77,8 @@ export function OccurrenceExplorer({
   onCloseGuide,
 }: {
   analysis: WordAnalysis;
+  isActive?: boolean;
+  prefetchAnalyses?: readonly WordAnalysis[];
   palette: Palette;
   onOpenReader: (occurrence: WordOccurrence) => void;
   onRequestScrollToFilters?: (offsetY: number, animated: boolean) => void;
@@ -84,6 +87,9 @@ export function OccurrenceExplorer({
   onCloseGuide: () => void;
 }): React.JSX.Element {
   const { resolvedTheme } = useAppTheme();
+  const [selectionLocationKey, setSelectionLocationKey] = React.useState(
+    analysis.location.locationKey
+  );
   const [scope, setScope] = React.useState<WordOccurrenceScope>('surface');
   const [cursor, setCursor] = React.useState<string | undefined>();
   const [cursorHistory, setCursorHistory] = React.useState<Array<string | undefined>>([]);
@@ -97,6 +103,8 @@ export function OccurrenceExplorer({
   const [pageState, setPageState] = React.useState<PageState>({ status: 'loading' });
   const [retryNonce, setRetryNonce] = React.useState(0);
   const requestIdRef = React.useRef(0);
+  const pageCacheRef = React.useRef(new LruCache<string, PaginatedWordOccurrences>(24));
+  const rootFamilyCacheRef = React.useRef(new LruCache<string, readonly Lemma[]>(16));
   const filtersOffsetYRef = React.useRef<number | null>(null);
   const rootFamilyOffsetYRef = React.useRef<number | null>(null);
   const reduceMotion = Boolean(useReducedMotion());
@@ -106,8 +114,11 @@ export function OccurrenceExplorer({
     : 'surface';
   const root = analysis.root.status === 'available' ? analysis.root.value : null;
   const selectedLemmaId = analysis.lemma.status === 'available' ? analysis.lemma.value.id : undefined;
+  const selectionMatchesAnalysis =
+    selectionLocationKey === analysis.location.locationKey;
 
   React.useEffect(() => {
+    setSelectionLocationKey(analysis.location.locationKey);
     setScope('surface');
     setCursor(undefined);
     setCursorHistory([]);
@@ -134,8 +145,17 @@ export function OccurrenceExplorer({
   }, [filters, requestedScope]);
 
   React.useEffect(() => {
+    if (!isActive) return;
     if (!root) {
       setRootFamilyState({ status: 'ready', lemmas: [] });
+      return;
+    }
+    const cached = rootFamilyCacheRef.current.get(root.id);
+    if (cached) {
+      setRootFamilyState({
+        status: 'ready',
+        lemmas: orderRootFamilyLemmas(cached, selectedLemmaId),
+      });
       return;
     }
     const controller = new AbortController();
@@ -145,6 +165,7 @@ export function OccurrenceExplorer({
       .findLemmasByRoot(root.id, { signal: controller.signal })
       .then((lemmas) => {
         if (controller.signal.aborted) return;
+        rootFamilyCacheRef.current.set(root.id, lemmas);
         setRootFamilyState({
           status: 'ready',
           lemmas: orderRootFamilyLemmas(lemmas, selectedLemmaId),
@@ -158,9 +179,15 @@ export function OccurrenceExplorer({
         });
       });
     return () => controller.abort();
-  }, [root, rootFamilyRetryNonce, selectedLemmaId]);
+  }, [isActive, root, rootFamilyRetryNonce, selectedLemmaId]);
 
   React.useEffect(() => {
+    if (
+      !isActive ||
+      !selectionMatchesAnalysis ||
+      effectiveScope === 'surface' ||
+      surfaceCount !== undefined
+    ) return;
     const controller = new AbortController();
     const surfaceQuery = buildOccurrenceQuery(analysis, 'surface');
     void container
@@ -173,21 +200,36 @@ export function OccurrenceExplorer({
         // The active page keeps its own retry state; an unavailable count remains visibly pending.
       });
     return () => controller.abort();
-  }, [analysis, retryNonce]);
+  }, [
+    analysis,
+    effectiveScope,
+    isActive,
+    retryNonce,
+    selectionMatchesAnalysis,
+    surfaceCount,
+  ]);
 
   React.useEffect(() => {
+    if (!isActive || !selectionMatchesAnalysis) return;
     const controller = new AbortController();
     const requestId = ++requestIdRef.current;
-    setPageState((current) =>
-      current.status === 'ready'
-        ? { ...current, refreshing: true }
-        : { status: 'loading' }
-    );
 
     const query =
       effectiveScope === 'lemma' && lemmaOverride
         ? buildRootFamilyLemmaQuery(lemmaOverride, cursor)
         : buildOccurrenceQuery(analysis, effectiveScope, cursor);
+    const queryKey = JSON.stringify(query);
+    const cached = pageCacheRef.current.get(queryKey);
+    if (cached) {
+      if (effectiveScope === 'surface') setSurfaceCount(cached.pageInfo.totalCount);
+      setPageState({ status: 'ready', page: cached, refreshing: false });
+      return;
+    }
+    setPageState((current) =>
+      current.status === 'ready'
+        ? { ...current, refreshing: true }
+        : { status: 'loading' }
+    );
     void container
       .getWordStudyRepository()
       .findOccurrences(query, {
@@ -195,6 +237,7 @@ export function OccurrenceExplorer({
       })
       .then((page) => {
         if (controller.signal.aborted || requestId !== requestIdRef.current) return;
+        pageCacheRef.current.set(queryKey, page);
         if (effectiveScope === 'surface') setSurfaceCount(page.pageInfo.totalCount);
         setPageState({ status: 'ready', page, refreshing: false });
       })
@@ -213,7 +256,72 @@ export function OccurrenceExplorer({
       });
 
     return () => controller.abort();
-  }, [analysis, cursor, effectiveScope, lemmaOverride, retryNonce]);
+  }, [
+    analysis,
+    cursor,
+    effectiveScope,
+    isActive,
+    lemmaOverride,
+    retryNonce,
+    selectionMatchesAnalysis,
+  ]);
+
+  React.useEffect(() => {
+    if (!isActive || pageState.status !== 'ready') return;
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      const nearby = prefetchAnalyses
+        .filter((candidate) => candidate.location.locationKey !== analysis.location.locationKey)
+        .sort(
+          (left, right) =>
+            Math.abs(left.location.wordPosition - analysis.location.wordPosition) -
+            Math.abs(right.location.wordPosition - analysis.location.wordPosition)
+        )
+        .slice(0, 4);
+
+      void (async () => {
+        for (const candidate of nearby) {
+          if (controller.signal.aborted) return;
+          const query = buildOccurrenceQuery(candidate, 'surface');
+          const queryKey = JSON.stringify(query);
+          const root =
+            candidate.root.status === 'available' ? candidate.root.value : null;
+          const pagePending = pageCacheRef.current.get(queryKey)
+            ? Promise.resolve()
+            : container
+                .getWordStudyRepository()
+                .findOccurrences(query, { signal: controller.signal })
+                .then((page) => {
+                  if (!controller.signal.aborted) {
+                    pageCacheRef.current.set(queryKey, page);
+                  }
+                });
+          const rootPending =
+            !root || rootFamilyCacheRef.current.get(root.id)
+              ? Promise.resolve()
+              : container
+                  .getWordStudyRepository()
+                  .findLemmasByRoot(root.id, { signal: controller.signal })
+                  .then((lemmas) => {
+                    if (!controller.signal.aborted) {
+                      rootFamilyCacheRef.current.set(root.id, lemmas);
+                    }
+                  });
+          await Promise.allSettled([pagePending, rootPending]);
+        }
+      })();
+    }, 80);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [
+    analysis.location.locationKey,
+    analysis.location.wordPosition,
+    isActive,
+    pageState.status,
+    prefetchAnalyses,
+  ]);
 
   const scrollToFilters = React.useCallback(() => {
     requestAnimationFrame(() => {
@@ -269,8 +377,31 @@ export function OccurrenceExplorer({
   }, []);
 
   const counters = getOccurrenceCounters(analysis, surfaceCount);
-  const readyPage = pageState.status === 'ready' ? pageState.page : null;
-  const isPageRefreshing = pageState.status === 'ready' && pageState.refreshing;
+  const immediateSurfaceQuery = buildOccurrenceQuery(analysis, 'surface');
+  const immediateSurfacePage = selectionMatchesAnalysis
+    ? undefined
+    : pageCacheRef.current.peek(JSON.stringify(immediateSurfaceQuery));
+  const visiblePageState: PageState = selectionMatchesAnalysis
+    ? pageState
+    : immediateSurfacePage
+      ? { status: 'ready', page: immediateSurfacePage, refreshing: false }
+      : { status: 'loading' };
+  const visibleRootFamilyState: RootFamilyState = selectionMatchesAnalysis
+    ? rootFamilyState
+    : root
+      ? rootFamilyCacheRef.current.peek(root.id)
+        ? {
+            status: 'ready',
+            lemmas: orderRootFamilyLemmas(
+              rootFamilyCacheRef.current.peek(root.id) ?? [],
+              selectedLemmaId
+            ),
+          }
+        : { status: 'loading' }
+      : { status: 'ready', lemmas: [] };
+  const readyPage = visiblePageState.status === 'ready' ? visiblePageState.page : null;
+  const isPageRefreshing =
+    visiblePageState.status === 'ready' && visiblePageState.refreshing;
 
   return (
     <View style={styles.section}>
@@ -323,7 +454,7 @@ export function OccurrenceExplorer({
             activeLemmaId={lemmaOverride?.id}
             expanded={rootFamilyExpanded}
             reduceMotion={reduceMotion}
-            state={rootFamilyState}
+            state={visibleRootFamilyState}
             palette={palette}
             onToggle={toggleRootFamily}
             onRetry={() => setRootFamilyRetryNonce((value) => value + 1)}
@@ -390,14 +521,14 @@ export function OccurrenceExplorer({
         </View>
       ) : null}
 
-      {pageState.status === 'loading' ? (
+      {visiblePageState.status === 'loading' ? (
         <View style={styles.state} accessibilityLiveRegion="polite">
           <ActivityIndicator color={palette.tint} />
           <Text style={[styles.stateText, { color: palette.muted }]}>Loading {effectiveScope} occurrences…</Text>
         </View>
-      ) : pageState.status === 'error' ? (
+      ) : visiblePageState.status === 'error' ? (
         <View style={[styles.stateCard, { borderColor: palette.border, backgroundColor: palette.surfaceNavigation }]} accessibilityLiveRegion="polite">
-          <Text style={[styles.stateText, { color: palette.muted }]}>{pageState.message}</Text>
+          <Text style={[styles.stateText, { color: palette.muted }]}>{visiblePageState.message}</Text>
           <Pressable accessibilityRole="button" onPress={() => setRetryNonce((value) => value + 1)} style={styles.retry}>
             <RotateCw color={palette.tint} size={17} />
             <Text style={[styles.retryText, { color: palette.tint }]}>Retry</Text>

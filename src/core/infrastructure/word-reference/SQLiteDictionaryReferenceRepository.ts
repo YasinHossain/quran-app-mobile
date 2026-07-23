@@ -11,6 +11,7 @@ import type {
 } from '@/src/core/domain/word-study';
 
 import { WordReferencePackInstaller } from './WordReferencePackInstaller';
+import { getDictionarySurfaceCandidates } from './dictionarySurfaceLookup';
 
 type EntryRow = {
   entry_id: string;
@@ -21,6 +22,8 @@ type EntryRow = {
   sequence: number;
   definition?: string;
   definition_format?: 'plain-text' | 'sanitized-html';
+  normalized_key?: string;
+  lookup_rank?: number;
 };
 
 function throwIfAborted(signal?: AbortSignal): void {
@@ -71,23 +74,24 @@ export class SQLiteDictionaryReferenceRepository implements IDictionaryReference
     ]);
     throwIfAborted(options.signal);
 
-    const exactRows = query.lemmaNormalized
-      ? await db.getAllAsync<EntryRow>(
-          `SELECT e.entry_id,e.parent_entry_id,e.headword_arabic,e.normalized_headword,e.is_root,e.sequence
-           FROM quran_lookup q JOIN dictionary_entry e ON e.entry_id=q.entry_id
-           WHERE q.kind='lemma' AND q.normalized_key=? ORDER BY q.rank,e.sequence;`,
-          [query.lemmaNormalized]
-        )
-      : [];
-    throwIfAborted(options.signal);
-    const rootRows = query.rootNormalized
-      ? await db.getAllAsync<EntryRow>(
-          `SELECT e.entry_id,e.parent_entry_id,e.headword_arabic,e.normalized_headword,e.is_root,e.sequence
-           FROM quran_lookup q JOIN dictionary_entry e ON e.entry_id=q.entry_id
-           WHERE q.kind='root' AND q.normalized_key=? ORDER BY q.rank,e.sequence;`,
-          [query.rootNormalized]
-        )
-      : [];
+    const [exactRows, rootRows] = await Promise.all([
+      query.lemmaNormalized
+        ? db.getAllAsync<EntryRow>(
+            `SELECT e.entry_id,e.parent_entry_id,e.headword_arabic,e.normalized_headword,e.is_root,e.sequence
+             FROM quran_lookup q JOIN dictionary_entry e ON e.entry_id=q.entry_id
+             WHERE q.kind='lemma' AND q.normalized_key=? ORDER BY q.rank,e.sequence;`,
+            [query.lemmaNormalized]
+          )
+        : Promise.resolve([]),
+      query.rootNormalized
+        ? db.getAllAsync<EntryRow>(
+            `SELECT e.entry_id,e.parent_entry_id,e.headword_arabic,e.normalized_headword,e.is_root,e.sequence
+             FROM quran_lookup q JOIN dictionary_entry e ON e.entry_id=q.entry_id
+             WHERE q.kind='root' AND q.normalized_key=? ORDER BY q.rank,e.sequence;`,
+            [query.rootNormalized]
+          )
+        : Promise.resolve([]),
+    ]);
     throwIfAborted(options.signal);
 
     const rootIds = rootRows.map((row) => row.entry_id);
@@ -105,6 +109,94 @@ export class SQLiteDictionaryReferenceRepository implements IDictionaryReference
     return {
       source,
       query,
+      exactLemmaEntries: exactRows.map((row) => summary(row, 'lemma-exact')),
+      rootEntries: rootRows.map((row) => summary(row, 'root-article')),
+      rootFamilyEntries: familyRows
+        .filter((row) => !exactIds.has(row.entry_id))
+        .map((row) => summary(row, 'root-family')),
+    };
+  }
+
+  async findReferencesBySurface(
+    packId: string,
+    surfaceArabic: string,
+    options: { readonly signal?: AbortSignal } = {}
+  ): Promise<DictionaryLookupResult> {
+    throwIfAborted(options.signal);
+    const candidates = getDictionarySurfaceCandidates(surfaceArabic);
+    const [source, db] = await Promise.all([
+      this.source(packId),
+      this.database(packId),
+    ]);
+    throwIfAborted(options.signal);
+
+    if (!candidates.length) {
+      return {
+        source,
+        query: { packId },
+        exactLemmaEntries: [],
+        rootEntries: [],
+        rootFamilyEntries: [],
+      };
+    }
+
+    const rows = await db.getAllAsync<EntryRow>(
+      `SELECT e.entry_id,e.parent_entry_id,e.headword_arabic,e.normalized_headword,
+              e.is_root,e.sequence,q.normalized_key,q.rank AS lookup_rank
+       FROM quran_lookup q JOIN dictionary_entry e ON e.entry_id=q.entry_id
+       WHERE q.kind='lemma' AND q.normalized_key IN (${placeholders(candidates)})
+       ORDER BY q.rank,e.sequence;`,
+      [...candidates]
+    );
+    throwIfAborted(options.signal);
+
+    const candidateRank = new Map(candidates.map((candidate, index) => [candidate, index]));
+    const orderedRows = rows
+      .slice()
+      .sort(
+        (left, right) =>
+          (candidateRank.get(left.normalized_key ?? '') ?? candidates.length) -
+            (candidateRank.get(right.normalized_key ?? '') ?? candidates.length) ||
+          (left.lookup_rank ?? 0) - (right.lookup_rank ?? 0) ||
+          left.sequence - right.sequence
+      );
+    const exactRows = orderedRows.filter(
+      (row, index, all) => all.findIndex((candidate) => candidate.entry_id === row.entry_id) === index
+    );
+    const parentIds = [
+      ...new Set(
+        exactRows
+          .map((row) => row.parent_entry_id)
+          .filter((entryId): entryId is string => Boolean(entryId))
+      ),
+    ];
+    const rootRows = parentIds.length
+      ? await db.getAllAsync<EntryRow>(
+          `SELECT entry_id,parent_entry_id,headword_arabic,normalized_headword,is_root,sequence
+           FROM dictionary_entry
+           WHERE entry_id IN (${placeholders(parentIds)}) AND is_root=1
+           ORDER BY sequence;`,
+          parentIds
+        )
+      : [];
+    throwIfAborted(options.signal);
+
+    const rootIds = rootRows.map((row) => row.entry_id);
+    const exactIds = new Set(exactRows.map((row) => row.entry_id));
+    const familyRows = rootIds.length
+      ? await db.getAllAsync<EntryRow>(
+          `SELECT entry_id,parent_entry_id,headword_arabic,normalized_headword,is_root,sequence
+           FROM dictionary_entry
+           WHERE parent_entry_id IN (${placeholders(rootIds)}) AND is_root=0
+           ORDER BY sequence;`,
+          rootIds
+        )
+      : [];
+    throwIfAborted(options.signal);
+
+    return {
+      source,
+      query: { packId },
       exactLemmaEntries: exactRows.map((row) => summary(row, 'lemma-exact')),
       rootEntries: rootRows.map((row) => summary(row, 'root-article')),
       rootFamilyEntries: familyRows

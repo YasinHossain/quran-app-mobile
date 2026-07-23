@@ -15,6 +15,10 @@ export class LruCache<TKey, TValue> {
     return value;
   }
 
+  peek(key: TKey): TValue | undefined {
+    return this.values.get(key);
+  }
+
   set(key: TKey, value: TValue): void {
     this.values.delete(key);
     this.values.set(key, value);

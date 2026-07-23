@@ -51,11 +51,16 @@ import {
   areGrammarArabicWordsEquivalent,
   findSelectedWordGrammarPassages,
 } from '../../components/word-study/full-study/grammarStudyModel';
+import { getOfflineVersePreview } from '../../components/word-study/full-study/wordStudyVerseContextModel';
 import { GetDictionaryReferences } from '../../src/core/application/use-cases/word-study/GetDictionaryReferences';
 import { GetVerbReference } from '../../src/core/application/use-cases/word-study/GetVerbReference';
 import type { IDictionaryReferenceRepository } from '../../src/core/domain/repositories/IDictionaryReferenceRepository';
 import type { IVerbReferenceRepository } from '../../src/core/domain/repositories/IVerbReferenceRepository';
 import { resolveQuranTextFontFamily } from '../../src/core/infrastructure/fonts/resolveQuranTextFont';
+import {
+  getDictionarySurfaceCandidates,
+  normalizeDictionaryArabic,
+} from '../../src/core/infrastructure/word-reference/dictionarySurfaceLookup';
 
 const verb = WORD_STUDY_RICH_CONTRACT_FIXTURES[0] as WordAnalysis;
 const particle = WORD_STUDY_RICH_CONTRACT_FIXTURES[1] as WordAnalysis;
@@ -218,6 +223,33 @@ test('collapsed ayah excerpts are deterministic and keep the selected word visib
     assert.ok(words.slice(range.startIndex, range.endIndex)
       .some((word) => word.wordPosition === selectedPosition));
   }
+});
+
+test('ayah context remains available without the Essentials morphology pack', () => {
+  const storedWords = JSON.stringify([
+    { position: 1, uthmani: 'قَالَ', charTypeName: 'word' },
+    { position: 2, uthmani: 'ءَادَمُ', charTypeName: 'word' },
+    { position: 3, uthmani: '٣٣', charTypeName: 'end' },
+  ]);
+  assert.deepEqual(
+    getOfflineVersePreview({
+      wordsJson: storedWords,
+      arabicUthmani: 'unused fallback',
+    }),
+    [
+      { wordPosition: 1, surfaceText: 'قَالَ' },
+      { wordPosition: 2, surfaceText: 'ءَادَمُ' },
+    ]
+  );
+
+  const fallback = getOfflineVersePreview({
+    arabicUthmani: 'قَالَ يَـٰٓـَٔادَمُ ۖ أَنۢبِئْهُم',
+  });
+  assert.deepEqual(fallback, [
+    { wordPosition: 1, surfaceText: 'قَالَ' },
+    { wordPosition: 2, surfaceText: 'يَـٰٓـَٔادَمُ' },
+    { wordPosition: 3, surfaceText: 'أَنۢبِئْهُم' },
+  ]);
 });
 
 test('source presentation and sharing retain source versions and attribution', () => {
@@ -507,12 +539,15 @@ test('full screen uses Morphology-first information architecture without repeate
   assert.doesNotMatch(source, /InteractionManager\.runAfterInteractions/);
   assert.match(source, /setOptimisticWordPosition\(position\)/);
   assert.match(source, /React\.startTransition/);
+  assert.match(source, /useDeferredValue\(tab\)/);
+  assert.match(source, /React\.memo\(OccurrenceExplorer\)/);
+  assert.match(source, /React\.memo\(DictionarySection\)/);
   assert.match(source, /function PersistentTabPanel/);
   assert.match(source, /mountedTabs\.has\('grammar'\)/);
   assert.match(source, /mountedTabs\.has\('occurrences'\)/);
   assert.match(source, /mountedTabs\.has\('dictionary'\)/);
   assert.match(source, /hiddenTab: \{ display: 'none' \}/);
-  assert.match(source, /isActive=\{tab === 'dictionary'\}/);
+  assert.match(source, /isActive=\{contentTab === 'dictionary'\}/);
   assert.doesNotMatch(source, /<ScrollView\s+horizontal\s+accessibilityRole="tablist"/);
   assert.match(source, /useFocusEffect/);
   assert.match(source, /scrollOffsetRef/);
@@ -534,6 +569,9 @@ test('full screen uses Morphology-first information architecture without repeate
   assert.match(source, /available \? value : '—'/);
   assert.match(source, /accessibilityLabel=\{`\$\{label\}: \$\{value\}`\}/);
   assert.match(source, /factValueUnavailable/);
+  assert.match(source, /lexicalFactsRow: \{ width: '100%', flexDirection: 'row', gap: 10 \}/);
+  assert.match(source, /lexicalFact: \{ flex: 1,[^\n]+minHeight: 98/);
+  assert.match(source, /onPress=\{onPress\}[\s\S]*?style=\{style\}/);
   assert.match(source, /backgroundColor: palette\.interactive/);
   assert.match(source, /guideRowContent/);
   assert.match(source, /<MorphologyGuideSheet/);
@@ -543,6 +581,9 @@ test('full screen uses Morphology-first information architecture without repeate
   assert.doesNotMatch(source, /Arabic analysis sections/);
   assert.match(source, /showFullAyah \? \([\s\S]*?<ChevronDown[\s\S]*?: \([\s\S]*?<ChevronRight/);
   assert.match(source, /grammarDisclosureRow: \{ direction: 'ltr'[\s\S]*?flexDirection: 'row'/);
+  assert.match(source, /style=\{styles\.grammarDisclosure\}/);
+  assert.match(source, /grammarDisclosure: \{[^\n]+minHeight: 92/);
+  assert.doesNotMatch(source, /Read the full grammatical analysis for this ayah/);
   assert.doesNotMatch(source, /grammarDisclosureIcon|rotate: showFullAyah/);
   assert.match(source, /<GrammarGuideSheet/);
   assert.match(source, /No separate grammar note for this word/);
@@ -759,6 +800,27 @@ test('dictionary use case forwards normalized lemma and root without using surfa
   });
 });
 
+test('standalone dictionary lookup keeps written-form matches explicit and conservative', () => {
+  assert.equal(normalizeDictionaryArabic('فَأَخْرَجَهُمَا'), 'فاخرجهما');
+  const candidates = getDictionarySurfaceCandidates('فَأَخْرَجَهُمَا');
+  assert.equal(candidates[0], 'فاخرجهما');
+  assert.ok(candidates.includes('اخرج'));
+  assert.equal(candidates.includes('خرج'), false);
+
+  const fullStudy = readFileSync(
+    join(process.cwd(), 'app/study/word/[surah]/[ayah]/[position].tsx'),
+    'utf8'
+  );
+  const dictionary = readFileSync(
+    join(process.cwd(), 'components/word-study/full-study/DictionarySection.tsx'),
+    'utf8'
+  );
+  assert.match(fullStudy, /tab === 'dictionary' && dictionarySelectedWord/);
+  assert.match(dictionary, /findReferencesBySurface/);
+  assert.match(dictionary, /Matched from the written form/);
+  assert.match(dictionary, /Essentials is required to confirm the lemma and root/);
+});
+
 test('verb reference use case forwards the exact encountered form', async () => {
   let captured: unknown;
   const repository: IVerbReferenceRepository = {
@@ -796,7 +858,9 @@ test('dictionary UI prioritizes the best match and moves guidance into an inform
   assert.match(source, /function DictionarySourcePanel/);
   assert.match(source, /sources\.map\(\(source\) => \(/);
   assert.match(source, /active=\{source\.packId === selectedPackId\}/);
-  assert.match(source, /enabled=\{isActive\}/);
+  assert.match(source, /enabled=\{isActive && source\.packId === selectedPackId\}/);
+  assert.match(source, /new LruCache<string, DictionaryLookupResult>\(32\)/);
+  assert.match(source, /\.slice\(0, 4\)/);
   assert.match(source, /hiddenSource: \{ display: 'none' \}/);
   assert.match(source, /React\.memo\(function DictionarySourcePanel/);
   assert.match(source, /const primaryEntry = result\.exactLemmaEntries\[0\] \?\? result\.rootEntries\[0\]/);
@@ -820,6 +884,8 @@ test('occurrence explorer cancels stale queries, keeps page size bounded, and av
     'utf8'
   );
   assert.match(source, /new AbortController\(\)/);
+  assert.match(source, /new LruCache<string, PaginatedWordOccurrences>\(24\)/);
+  assert.match(source, /\.slice\(0, 4\)/);
   assert.match(source, /requestId !== requestIdRef\.current/);
   assert.match(source, /controller\.abort\(\)/);
   assert.match(source, /counter\.label/);
@@ -879,6 +945,8 @@ test('Downloads always exposes a dedicated download-only Word Study manager', ()
   assert.match(fullStudy, /DictionaryPackDownloadPanel/);
   assert.match(fullStudy, /showHeading=\{false\}/);
   assert.doesNotMatch(fullStudy, /Occurrences index/);
+  assert.match(fullStudy, /getVerseWithTranslations\(location\.verseKey, \[\], 'en'\)/);
+  assert.match(fullStudy, /tab === 'grammar' && grammarSelectedWord/);
 });
 
 test('lemma and root facts open their selectable occurrence scopes', () => {

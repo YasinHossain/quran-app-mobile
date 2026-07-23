@@ -55,14 +55,7 @@ export function StudyPackDownloadCard({
       <View style={styles.copy}>
         <Text style={[styles.title, { color: palette.text }]}>{title}</Text>
         <Text style={[styles.detail, { color: palette.muted }]}>{detail}</Text>
-        {active ? (
-          <Text
-            accessibilityLiveRegion="polite"
-            style={[styles.progress, { color: palette.tint }]}
-          >
-            {Math.round(percent)}% downloaded
-          </Text>
-        ) : installed ? (
+        {installed ? (
           <Text style={[styles.progress, { color: palette.tint }]}>
             Downloaded · available offline
           </Text>

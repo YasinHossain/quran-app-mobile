@@ -10,6 +10,7 @@ export type WordStudyNavigationHandoff = {
   locationKey: string;
   verseKey: string;
   verseWords: readonly WordStudyVersePreviewWord[];
+  selectedSurfaceText?: string;
   selectedAnalysis?: WordAnalysis;
 };
 
@@ -23,6 +24,7 @@ export function stageWordStudyNavigationHandoff(
     locationKey: getWordStudyLocationKey(event),
     verseKey: event.verseKey,
     verseWords: event.verseWords ?? [],
+    ...(event.surfaceText ? { selectedSurfaceText: event.surfaceText } : {}),
     ...(selectedAnalysis ? { selectedAnalysis } : {}),
   };
 }

@@ -25,9 +25,12 @@ export function ResourceConfirmModal({
   description,
   confirmLabel,
   confirmTone = 'accent',
+  showCancelAction = true,
+  secondaryLabel,
   mutedColor,
   tintColor,
   onConfirm,
+  onSecondary,
   onClose,
 }: {
   visible: boolean;
@@ -38,9 +41,12 @@ export function ResourceConfirmModal({
   description: string;
   confirmLabel: string;
   confirmTone?: 'accent' | 'danger';
+  showCancelAction?: boolean;
+  secondaryLabel?: string;
   mutedColor: string;
   tintColor: string;
   onConfirm: () => void;
+  onSecondary?: () => void;
   onClose: () => void;
 }): React.JSX.Element {
   const { resolvedTheme, isDark } = useAppTheme();
@@ -118,18 +124,34 @@ export function ResourceConfirmModal({
 
           <Text className="mt-4 text-xs text-muted dark:text-muted-dark">{description}</Text>
 
-          <View className="mt-5 flex-row items-center justify-end gap-3">
-            <Pressable
-              onPress={onClose}
-              accessibilityRole="button"
-              accessibilityLabel="Cancel"
-              className="rounded-lg bg-interactive px-5 py-2.5 dark:bg-interactive-dark"
-              style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
-            >
-              <Text className="text-sm font-semibold text-foreground dark:text-foreground-dark">
-                Cancel
-              </Text>
-            </Pressable>
+          <View style={styles.actions}>
+            {showCancelAction ? (
+              <Pressable
+                onPress={onClose}
+                accessibilityRole="button"
+                accessibilityLabel="Cancel"
+                className="rounded-lg bg-interactive px-5 py-2.5 dark:bg-interactive-dark"
+                style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
+              >
+                <Text className="text-sm font-semibold text-foreground dark:text-foreground-dark">
+                  Cancel
+                </Text>
+              </Pressable>
+            ) : null}
+
+            {secondaryLabel && onSecondary ? (
+              <Pressable
+                onPress={onSecondary}
+                accessibilityRole="button"
+                accessibilityLabel={secondaryLabel}
+                className="rounded-lg bg-interactive px-5 py-2.5 dark:bg-interactive-dark"
+                style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
+              >
+                <Text className="text-sm font-semibold text-foreground dark:text-foreground-dark">
+                  {secondaryLabel}
+                </Text>
+              </Pressable>
+            ) : null}
 
             <Pressable
               onPress={onConfirm}
@@ -161,5 +183,13 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 420,
     alignSelf: 'center',
+  },
+  actions: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    justifyContent: 'flex-end',
+    marginTop: 20,
   },
 });

@@ -33,7 +33,6 @@ import { ResourceConfirmModal } from './resource-panel/ResourceConfirmModal';
 import { ResourceDownloadAction } from './resource-panel/ResourceDownloadAction';
 import { ResourceItem } from './resource-panel/ResourceItem';
 import { ResourceTabs } from './resource-panel/ResourceTabs';
-import { TranslationAvailabilitySheet } from './TranslationAvailabilitySheet';
 import { buildLanguages, filterResources, groupResources, type ResourceRecord } from './resource-panel/resourcePanel.utils';
 
 export const MAX_TRANSLATION_SELECTIONS = 5;
@@ -345,7 +344,6 @@ export function ManageTranslationsPanel({
   const { resolvedTheme, isDark } = useAppTheme();
   const { settings } = useSettings();
   const palette = Colors[resolvedTheme];
-  const { t } = useUiTranslation();
   const [isReordering, setIsReordering] = React.useState(false);
   const [searchTerm, setSearchTerm] = React.useState('');
   const [activeFilter, setActiveFilter] = React.useState('All');
@@ -568,6 +566,21 @@ export function ManageTranslationsPanel({
       interactionHandle.cancel();
     };
   }, [downloadTarget, ensureDownloadSizeInfo]);
+
+  React.useEffect(() => {
+    if (!selectionTarget) return;
+
+    let cancelled = false;
+    const interactionHandle = InteractionManager.runAfterInteractions(() => {
+      if (cancelled) return;
+      void ensureDownloadSizeInfo(selectionTarget.id);
+    });
+
+    return () => {
+      cancelled = true;
+      interactionHandle.cancel();
+    };
+  }, [ensureDownloadSizeInfo, selectionTarget]);
 
   const handleConfirmDownload = React.useCallback(() => {
     if (!downloadTarget) return;
@@ -879,6 +892,19 @@ export function ManageTranslationsPanel({
         ? `Download size: ${downloadSizeInfo.mb.toFixed(1)} MB`
         : `Estimated size: ~${downloadSizeInfo.mb.toFixed(1)} MB`
       : 'Download size unavailable';
+  const selectionDownloadSizeInfo = selectionTarget
+    ? downloadSizeInfoById[selectionTarget.id]
+    : undefined;
+  const isEstimatingSelectionDownloadSize =
+    selectionTarget !== null &&
+    (selectionDownloadSizeInfo === undefined || estimatingTranslationIds.has(selectionTarget.id));
+  const selectionDownloadEstimateLabel = isEstimatingSelectionDownloadSize
+    ? 'Estimating size...'
+    : selectionDownloadSizeInfo && typeof selectionDownloadSizeInfo.mb === 'number'
+      ? selectionDownloadSizeInfo.isExact
+        ? `Download size: ${selectionDownloadSizeInfo.mb.toFixed(1)} MB`
+        : `Estimated size: ~${selectionDownloadSizeInfo.mb.toFixed(1)} MB`
+      : 'Download size unavailable';
 
   return (
     <View className="flex-1">
@@ -930,12 +956,21 @@ export function ManageTranslationsPanel({
         onClose={() => setDeleteTarget(null)}
       />
 
-      <TranslationAvailabilitySheet
+      <ResourceConfirmModal
         visible={selectionTarget !== null}
-        translationName={selectionTarget?.name ?? null}
+        title="Translation not downloaded"
+        resourceName={selectionTarget?.name ?? null}
+        detailLabel={selectionDownloadEstimateLabel}
+        isDetailLoading={isEstimatingSelectionDownloadSize}
+        description="Download it for offline reading, or continue online for in-app reading only. The Verse Spotlight widget cannot use online-only translations."
+        confirmLabel="Download"
+        showCancelAction={false}
+        secondaryLabel="Continue online"
+        mutedColor={palette.muted}
+        tintColor={palette.tint}
+        onConfirm={downloadAndSelect}
+        onSecondary={commitOnlineSelection}
         onClose={() => setSelectionTarget(null)}
-        onDownload={downloadAndSelect}
-        onContinueOnline={commitOnlineSelection}
       />
     </View>
   );

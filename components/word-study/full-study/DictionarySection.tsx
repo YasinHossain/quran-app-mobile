@@ -26,6 +26,7 @@ import type {
 } from '@/src/core/domain/word-study';
 import { container } from '@/src/core/infrastructure/di/container';
 import type { WordReferencePackCatalogEntry } from '@/src/core/infrastructure/word-reference';
+import { LruCache } from '@/src/core/infrastructure/word-study/LruCache';
 
 import { DictionaryGuideSheet } from './DictionaryGuideSheet';
 import { StudyPackDownloadCard } from './StudyPackDownloadCard';
@@ -56,6 +57,13 @@ type ActiveLookupState = {
   readonly lookupKey: string;
   readonly state: LookupState;
 };
+type DictionarySelectedWord = {
+  readonly location: {
+    readonly locationKey: string;
+    readonly wordPosition: number;
+  };
+  readonly surfaceUthmani: string;
+};
 
 const LAST_SOURCE_KEY = 'wordStudyDictionaryLastPack_v1';
 
@@ -63,26 +71,38 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(bytes >= 10 * 1024 * 1024 ? 0 : 1)} MB`;
 }
 
-function getLookupKey(analysis: WordAnalysis): string {
-  return JSON.stringify([
-    analysis.lemma.status === 'available' ? analysis.lemma.value.normalized : null,
-    analysis.root.status === 'available' ? analysis.root.value.normalized : null,
-  ]);
+function getLookupKey(
+  analysis: WordAnalysis | undefined,
+  selectedWord: DictionarySelectedWord
+): string {
+  return analysis
+    ? JSON.stringify([
+        analysis.lemma.status === 'available' ? analysis.lemma.value.normalized : null,
+        analysis.root.status === 'available' ? analysis.root.value.normalized : null,
+      ])
+    : JSON.stringify(['surface', selectedWord.surfaceUthmani]);
 }
 
 export function DictionarySection({
   analysis,
+  selectedWord = analysis,
+  prefetchAnalyses = [],
   palette,
   isActive = true,
   isGuideOpen,
   onCloseGuide,
 }: {
-  analysis: WordAnalysis;
+  analysis?: WordAnalysis;
+  selectedWord?: DictionarySelectedWord;
+  prefetchAnalyses?: readonly WordAnalysis[];
   palette: Palette;
   isActive?: boolean;
   isGuideOpen: boolean;
   onCloseGuide: () => void;
 }): React.JSX.Element {
+  if (!selectedWord) {
+    throw new Error('DictionarySection requires a selected word');
+  }
   const installer = container.getWordReferencePackInstaller();
   const repository = container.getDictionaryReferenceRepository();
   const { width } = useWindowDimensions();
@@ -181,8 +201,10 @@ export function DictionarySection({
               key={source.packId}
               active={source.packId === selectedPackId}
               analysis={analysis}
+              selectedWord={selectedWord}
+              prefetchAnalyses={prefetchAnalyses}
               contentWidth={Math.max(240, Math.min(680, width - 68))}
-              enabled={isActive}
+              enabled={isActive && source.packId === selectedPackId}
               packId={source.packId}
               palette={palette}
             />
@@ -247,21 +269,25 @@ export function DictionarySection({
 const DictionarySourcePanel = React.memo(function DictionarySourcePanel({
   active,
   analysis,
+  selectedWord,
+  prefetchAnalyses,
   contentWidth,
   enabled,
   packId,
   palette,
 }: {
   active: boolean;
-  analysis: WordAnalysis;
+  analysis?: WordAnalysis;
+  selectedWord: DictionarySelectedWord;
+  prefetchAnalyses: readonly WordAnalysis[];
   contentWidth: number;
   enabled: boolean;
   packId: string;
   palette: Palette;
 }): React.JSX.Element {
   const repository = container.getDictionaryReferenceRepository();
-  const lookupKey = getLookupKey(analysis);
-  const lookupCacheRef = React.useRef(new Map<string, DictionaryLookupResult>());
+  const lookupKey = getLookupKey(analysis, selectedWord);
+  const lookupCacheRef = React.useRef(new LruCache<string, DictionaryLookupResult>(32));
   const [activeLookup, setActiveLookup] = React.useState<ActiveLookupState>({
     lookupKey,
     state: { status: 'loading' },
@@ -329,9 +355,16 @@ const DictionarySourcePanel = React.memo(function DictionarySourcePanel({
     }
 
     setActiveLookup({ lookupKey, state: { status: 'loading' } });
-    void container
-      .getDictionaryReferences()
-      .execute(analysis, packId, { signal: controller.signal })
+    const lookupPromise = analysis
+      ? container
+          .getDictionaryReferences()
+          .execute(analysis, packId, { signal: controller.signal })
+      : repository.findReferencesBySurface(
+          packId,
+          selectedWord.surfaceUthmani,
+          { signal: controller.signal }
+        );
+    void lookupPromise
       .then((result) => {
         if (controller.signal.aborted) return;
         lookupCacheRef.current.set(lookupKey, result);
@@ -350,7 +383,50 @@ const DictionarySourcePanel = React.memo(function DictionarySourcePanel({
         }
       });
     return () => controller.abort();
-  }, [analysis, enabled, lookupKey, packId, repository]);
+  }, [analysis, enabled, lookupKey, packId, repository, selectedWord.surfaceUthmani]);
+
+  React.useEffect(() => {
+    if (!enabled || !analysis || lookup.status !== 'ready') return;
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      const nearby = prefetchAnalyses
+        .filter((candidate) => candidate.location.locationKey !== analysis.location.locationKey)
+        .sort(
+          (left, right) =>
+            Math.abs(left.location.wordPosition - analysis.location.wordPosition) -
+            Math.abs(right.location.wordPosition - analysis.location.wordPosition)
+        )
+        .slice(0, 4);
+
+      void (async () => {
+        for (const candidate of nearby) {
+          if (controller.signal.aborted) return;
+          const candidateKey = getLookupKey(candidate, candidate);
+          if (lookupCacheRef.current.get(candidateKey)) continue;
+          try {
+            const result = await container
+              .getDictionaryReferences()
+              .execute(candidate, packId, { signal: controller.signal });
+            if (!controller.signal.aborted) {
+              lookupCacheRef.current.set(candidateKey, result);
+            }
+          } catch {
+            if (controller.signal.aborted) return;
+          }
+        }
+      })();
+    }, 80);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [
+    analysis,
+    enabled,
+    lookup.status,
+    packId,
+    prefetchAnalyses,
+  ]);
 
   const toggleEntry = React.useCallback((entry: DictionaryEntrySummary) => {
     if (expandedEntryId === entry.entryId) {
@@ -403,6 +479,7 @@ const DictionarySourcePanel = React.memo(function DictionarySourcePanel({
           showFamily={showFamily}
           contentWidth={contentWidth}
           palette={palette}
+          lookupMode={analysis ? 'morphology' : 'surface'}
           onToggleEntry={toggleEntry}
           onToggleRoot={() => toggleDisclosure(setShownRoots)}
           onToggleFamily={() => toggleDisclosure(setShownFamilies)}
@@ -423,6 +500,7 @@ function DictionaryResults({
   onToggleEntry,
   onToggleRoot,
   onToggleFamily,
+  lookupMode,
 }: {
   result: DictionaryLookupResult;
   expandedEntryId: string | null;
@@ -434,6 +512,7 @@ function DictionaryResults({
   onToggleEntry: (entry: DictionaryEntrySummary) => void;
   onToggleRoot: () => void;
   onToggleFamily: () => void;
+  lookupMode: 'morphology' | 'surface';
 }): React.JSX.Element {
   const hasMatches =
     result.exactLemmaEntries.length > 0 ||
@@ -447,14 +526,22 @@ function DictionaryResults({
       {!hasMatches ? (
         <StateCard
           title="No matching entry"
-          message="This source does not contain an exact lemma or matching Quran root for the selected word."
+          message={
+            lookupMode === 'surface'
+              ? 'No safe written-form match was found. Word Study Essentials adds exact lemma and root matching.'
+              : 'This source does not contain an exact lemma or matching Quran root for the selected word.'
+          }
           palette={palette}
         />
       ) : null}
       {hasExactLemma ? (
         <EntryGroup
-          title="Best match for this word"
-          caption="Exact lemma match · the entry may contain more than one sense."
+          title={lookupMode === 'surface' ? 'Possible match for this word' : 'Best match for this word'}
+          caption={
+            lookupMode === 'surface'
+              ? 'Matched from the written form · Essentials is required to confirm the lemma and root.'
+              : 'Exact lemma match · the entry may contain more than one sense.'
+          }
           entries={result.exactLemmaEntries}
           {...sharedEntryProps}
         />

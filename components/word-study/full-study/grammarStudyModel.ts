@@ -1,7 +1,6 @@
 import type {
   GrammarPassage,
   VerseGrammarAnalysis,
-  WordAnalysis,
 } from '../../../src/core/domain/word-study';
 
 export function normalizeGrammarArabic(value: string): string {
@@ -18,6 +17,14 @@ export function normalizeGrammarArabic(value: string): string {
 
 type GrammarVerseWord = {
   readonly location: { readonly wordPosition: number };
+  readonly surfaceUthmani: string;
+};
+
+export type GrammarSelectedWord = {
+  readonly location: {
+    readonly locationKey: string;
+    readonly wordPosition: number;
+  };
   readonly surfaceUthmani: string;
 };
 
@@ -75,7 +82,7 @@ function rangeContains(ranges: readonly WordPositionRange[], wordPosition: numbe
 
 function passageCoversSelectedWord(
   passage: GrammarPassage,
-  selectedWord: WordAnalysis,
+  selectedWord: GrammarSelectedWord,
   verseWords: readonly GrammarVerseWord[]
 ): boolean {
   const selectedPosition = selectedWord.location.wordPosition;
@@ -108,7 +115,7 @@ function passageCoversSelectedWord(
 
 export function findSelectedWordGrammarPassages(
   analysis: VerseGrammarAnalysis,
-  word: WordAnalysis,
+  word: GrammarSelectedWord,
   verseWords: readonly GrammarVerseWord[] = [word]
 ): readonly GrammarPassage[] {
   return analysis.passages.filter((passage) =>

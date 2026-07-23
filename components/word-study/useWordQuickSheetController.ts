@@ -20,8 +20,62 @@ type WordQuickSheetSession = {
   requestId: number;
 };
 
+const QUICK_SHEET_CACHE_LIMIT = 96;
+let wordStudyWarmupPromise: Promise<void> | null = null;
+
 function nowMs(): number {
   return globalThis.performance?.now?.() ?? Date.now();
+}
+
+function isCacheableLoadState(loadState: WordQuickSheetLoadState): boolean {
+  return loadState.status === 'ready' || loadState.status === 'missing';
+}
+
+function rememberCachedLoadState(
+  cache: Map<string, WordQuickSheetLoadState>,
+  locationKey: string,
+  loadState: WordQuickSheetLoadState
+): void {
+  if (!isCacheableLoadState(loadState)) return;
+  cache.delete(locationKey);
+  cache.set(locationKey, loadState);
+  if (cache.size <= QUICK_SHEET_CACHE_LIMIT) return;
+
+  const oldestKey = cache.keys().next().value;
+  if (oldestKey) cache.delete(oldestKey);
+}
+
+function getCachedLoadState(
+  cache: Map<string, WordQuickSheetLoadState>,
+  locationKey: string
+): WordQuickSheetLoadState | undefined {
+  const cached = cache.get(locationKey);
+  if (!cached) return undefined;
+  cache.delete(locationKey);
+  cache.set(locationKey, cached);
+  return cached;
+}
+
+function warmWordStudyDatabaseOnce(): Promise<void> {
+  if (!wordStudyWarmupPromise) {
+    wordStudyWarmupPromise = container
+      .getWordStudyPackInstaller()
+      .getInstalledAsync()
+      .then((installed) => {
+        if (!installed) return undefined;
+        return container.getWordStudyDatabaseProvider().getDatabaseAsync();
+      })
+      .then(() => undefined)
+      .catch((error: unknown) => {
+        wordStudyWarmupPromise = null;
+        logger.warn(
+          'Word Study quick-sheet warmup skipped',
+          undefined,
+          error instanceof Error ? error : new Error(String(error))
+        );
+      });
+  }
+  return wordStudyWarmupPromise;
 }
 
 export type WordQuickSheetController = {
@@ -36,8 +90,16 @@ export type WordQuickSheetController = {
 
 export function useWordQuickSheetController(): WordQuickSheetController {
   const nextRequestIdRef = React.useRef(0);
+  const cacheRef = React.useRef(new Map<string, WordQuickSheetLoadState>());
   const [isOpen, setIsOpen] = React.useState(false);
   const [session, setSession] = React.useState<WordQuickSheetSession | null>(null);
+
+  React.useEffect(() => {
+    const frameId = requestAnimationFrame(() => {
+      void warmWordStudyDatabaseOnce();
+    });
+    return () => cancelAnimationFrame(frameId);
+  }, []);
 
   const load = React.useCallback(
     (
@@ -46,8 +108,22 @@ export function useWordQuickSheetController(): WordQuickSheetController {
       deferUntilNextFrame = false
     ) => {
       const requestId = ++nextRequestIdRef.current;
-      setSession({ event, loadState: { status: 'loading' }, tapStartedAtMs, requestId });
       const locationKey = getWordStudyLocationKey(event);
+      const cachedLoadState = getCachedLoadState(cacheRef.current, locationKey);
+      setSession({
+        event,
+        loadState: cachedLoadState ?? { status: 'loading' },
+        tapStartedAtMs,
+        requestId,
+      });
+      if (cachedLoadState) {
+        logger.info('Word Study quick-sheet lookup reused cache', {
+          locationKey,
+          durationMs: Number((nowMs() - tapStartedAtMs).toFixed(2)),
+          offline: true,
+        });
+        return;
+      }
 
       const query = (): void => {
         if (nextRequestIdRef.current !== requestId) return;
@@ -56,6 +132,8 @@ export function useWordQuickSheetController(): WordQuickSheetController {
           .execute(locationKey)
           .then((result) => {
             const resolvedAtMs = nowMs();
+            const nextLoadState = toWordQuickSheetLoadState(result);
+            rememberCachedLoadState(cacheRef.current, locationKey, nextLoadState);
             setSession((current) => {
               if (!current || current.requestId !== requestId) return current;
               logger.info('Word Study quick-sheet lookup resolved', {
@@ -63,7 +141,7 @@ export function useWordQuickSheetController(): WordQuickSheetController {
                 durationMs: Number((resolvedAtMs - tapStartedAtMs).toFixed(2)),
                 offline: true,
               });
-              return { ...current, loadState: toWordQuickSheetLoadState(result) };
+              return { ...current, loadState: nextLoadState };
             });
           })
           .catch((error: unknown) => {
