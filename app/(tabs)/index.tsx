@@ -338,7 +338,7 @@ function HomeIntro({
 }): React.JSX.Element {
   return (
     <View
-      className="pt-8 pb-4"
+      className="pb-4"
       onLayout={(event) => onHeightChange?.(event.nativeEvent.layout.height)}
     >
       <View className="px-3">
