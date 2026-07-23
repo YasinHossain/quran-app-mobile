@@ -1,5 +1,8 @@
 package com.anonymous.quranappmobile
 
+import com.anonymous.quranappmobile.versespotlight.VerseSpotlightProcess
+import com.anonymous.quranappmobile.versespotlight.VerseSpotlightWidgetPackage
+
 import android.app.Application
 import android.content.res.Configuration
 
@@ -24,12 +27,14 @@ class MainApplication : Application(), ReactApplication {
         PackageList(this).packages.apply {
           // Packages that cannot be autolinked yet can be added manually here, for example:
           add(NativeSurahReaderPackage())
+          add(VerseSpotlightWidgetPackage())
         }
     )
   }
 
   override fun onCreate() {
     super.onCreate()
+    if (VerseSpotlightProcess.isWidgetProcess(this)) return
     DefaultNewArchitectureEntryPoint.releaseLevel = try {
       ReleaseLevel.valueOf(BuildConfig.REACT_NATIVE_RELEASE_LEVEL.uppercase())
     } catch (e: IllegalArgumentException) {
@@ -41,6 +46,7 @@ class MainApplication : Application(), ReactApplication {
 
   override fun onConfigurationChanged(newConfig: Configuration) {
     super.onConfigurationChanged(newConfig)
+    if (VerseSpotlightProcess.isWidgetProcess(this)) return
     ApplicationLifecycleDispatcher.onConfigurationChanged(this, newConfig)
   }
 }

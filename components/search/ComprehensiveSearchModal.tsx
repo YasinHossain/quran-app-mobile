@@ -375,7 +375,7 @@ export function ComprehensiveSearchModal({
   const hasResults = hasNavigationResults || hasVerseResults;
 
   const maxHeight = Math.max(0, Math.round(windowHeight * 0.9));
-  const goToMinHeight = Math.min(360, Math.max(300, Math.round(windowHeight * 0.3)));
+  const goToMinHeight = Math.min(520, Math.max(440, Math.round(windowHeight * 0.72)));
   const minHeight = showGoTo
     ? Math.min(maxHeight, goToMinHeight)
     : Math.min(maxHeight, Math.max(520, Math.round(windowHeight * 0.72)));
@@ -571,7 +571,7 @@ const styles = StyleSheet.create({
   },
   safeArea: { flex: 1 },
   inner: { flex: 1 },
-  goToContent: { padding: 16, paddingBottom: 4 },
+  goToContent: { padding: 12, paddingBottom: 20 },
   resultsContainer: { flex: 1 },
   resultsScrollContent: { paddingVertical: 4 },
 });

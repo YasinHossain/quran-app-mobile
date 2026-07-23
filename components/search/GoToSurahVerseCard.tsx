@@ -2,6 +2,7 @@ import { BookOpen, Hash } from 'lucide-react-native';
 import React from 'react';
 import {
   Pressable,
+  StyleSheet,
   Text,
   View,
 } from 'react-native';
@@ -112,7 +113,7 @@ export function GoToSurahVerseCard({
   const suggestionRows = React.useMemo(() => toSuggestionRows(SEARCH_SUGGESTIONS), []);
   const hasDestinationButtons = Boolean(onNavigateToMushaf && onNavigateToTafsir);
 
-  const formPaddingClass = variant === 'card' ? 'px-5 pt-5 pb-4' : 'px-6 pt-5 pb-4';
+  const formPaddingClass = variant === 'card' ? 'px-4 pt-3 pb-4' : 'px-5 pt-3 pb-4';
   const isDestinationDisabled = !selectedSurah;
   const destinationButtonClass = 'min-w-0 flex-1 rounded-lg bg-accent px-2 py-2.5';
 
@@ -129,7 +130,10 @@ export function GoToSurahVerseCard({
           {/* Header */}
           <View>
             <View className="min-w-0 flex-1">
-              <Text className="text-lg font-semibold text-foreground dark:text-foreground-dark">
+              <Text
+                className="text-base font-semibold text-foreground dark:text-foreground-dark"
+                style={styles.titleText}
+              >
                 {title === 'Go To' ? t('go_to') : title}
               </Text>
               {subtitleText ? (
@@ -139,7 +143,7 @@ export function GoToSurahVerseCard({
           </View>
 
           {hasDestinationButtons ? (
-            <View className="mt-4 flex-row gap-2">
+            <View style={styles.destinationButtons} className="flex-row gap-2">
               <Pressable
                 onPress={submitMushaf}
                 disabled={isDestinationDisabled}
@@ -188,7 +192,7 @@ export function GoToSurahVerseCard({
           ) : null}
 
           {/* Surah & Verse Selectors - Side by Side */}
-          <View className="mt-4">
+          <View style={styles.selectorRow}>
             <SurahVerseSelectorRow
               chapters={chapters}
               isLoading={isLoading}
@@ -196,6 +200,7 @@ export function GoToSurahVerseCard({
               selectedVerse={selectedVerse}
               onSelectSurah={handleSelectSurah}
               onSelectVerse={handleSelectVerse}
+              hideLabels
               dropdownVisualOffset={dropdownVisualOffset}
             />
           </View>
@@ -274,3 +279,15 @@ export function GoToSurahVerseCard({
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  destinationButtons: {
+    marginTop: 12,
+  },
+  selectorRow: {
+    marginTop: 16,
+  },
+  titleText: {
+    lineHeight: 20,
+  },
+});

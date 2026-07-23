@@ -1,8 +1,8 @@
-import { Download, Trash2, X } from 'lucide-react-native';
+import { Download, Trash2 } from 'lucide-react-native';
 import React from 'react';
 import { ActivityIndicator, View } from 'react-native';
-import Svg, { Circle } from 'react-native-svg';
 
+import { DownloadProgressRing } from '@/components/downloads/DownloadProgressRing';
 import type { DownloadProgress, DownloadStatus } from '@/src/core/domain/entities/DownloadIndexItem';
 
 function clampPercent(value: number): number {
@@ -20,65 +20,6 @@ export function toProgressPercent(progress: DownloadProgress | undefined): numbe
     return rawPercent;
   }
   return 0;
-}
-
-function CompactProgressRing({
-  percent,
-  tintColor,
-  trackColor,
-  crossColor,
-  isSelected,
-}: {
-  percent: number;
-  tintColor: string;
-  trackColor: string;
-  crossColor: string;
-  isSelected: boolean;
-}): React.JSX.Element {
-  const size = 24;
-  const strokeWidth = 3;
-  const clampedPercent = clampPercent(percent);
-  const radius = (size - strokeWidth) / 2;
-  const circumference = 2 * Math.PI * radius;
-  const strokeDashoffset = circumference - (clampedPercent / 100) * circumference;
-
-  return (
-    <View
-      className="h-8 w-8 items-center justify-center"
-      style={{
-        backgroundColor: isSelected ? 'rgba(255,255,255,0.15)' : undefined,
-        borderColor: isSelected ? 'rgba(255,255,255,0.3)' : undefined,
-        borderRadius: 16,
-        borderWidth: 1,
-      }}
-    >
-      <Svg width={size} height={size} style={{ transform: [{ rotate: '-90deg' }] }}>
-        <Circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          stroke={trackColor}
-          strokeWidth={strokeWidth}
-          fill="transparent"
-        />
-        <Circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          stroke={tintColor}
-          strokeWidth={strokeWidth}
-          fill="transparent"
-          strokeDasharray={`${circumference} ${circumference}`}
-          strokeDashoffset={strokeDashoffset}
-          strokeLinecap="round"
-        />
-      </Svg>
-
-      <View className="absolute inset-0 items-center justify-center">
-        <X color={crossColor} size={12} strokeWidth={2.75} />
-      </View>
-    </View>
-  );
 }
 
 export function ResourceDownloadAction({
@@ -145,12 +86,12 @@ export function ResourceDownloadAction({
 
   if (isDownloading) {
     return (
-      <CompactProgressRing
+      <DownloadProgressRing
         percent={progressPercent}
         tintColor={progressColor}
         trackColor={trackColor}
         crossColor={crossColor}
-        isSelected={isSelected}
+        emphasized={isSelected}
       />
     );
   }

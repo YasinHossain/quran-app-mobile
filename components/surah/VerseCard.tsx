@@ -399,12 +399,9 @@ function VerseCardComponent({
   // Keep this wrapper content-sized. Adding flex-1 here can collapse the verse body
   // inside tafsir's nested pager/ScrollView, leaving only the header/action row visible.
   const content = (
-    <View className="gap-4">
+    <View className="gap-3">
         <View
-          className={[
-            'flex-row items-center',
-            onOpenActions ? 'justify-between' : 'justify-start',
-          ].join(' ')}
+          className="flex-row items-center justify-start gap-2.5"
         >
           <Text className="text-sm font-semibold" style={{ color: palette.tint }}>
             {localizeDigits(verseKey)}
@@ -433,7 +430,7 @@ function VerseCardComponent({
   );
 
   const containerClassName = [
-    'border-b py-4',
+    'border-b py-3.5',
   ]
     .filter(Boolean)
     .join(' ');

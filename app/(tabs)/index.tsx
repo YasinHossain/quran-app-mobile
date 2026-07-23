@@ -20,7 +20,7 @@ import { HomeQuickLinksCard } from '@/components/home/HomeQuickLinksCard';
 import { HomeShortcutGrid } from '@/components/home/HomeShortcutGrid';
 import { RevelationType, Surah } from '@/src/core/domain/entities/Surah';
 import { HomeTabToggle, type HomeTab } from '@/components/home/HomeTabToggle';
-import { HomeVersePlaceholder } from '@/components/home/HomeVersePlaceholder';
+import { HomeVerseSpotlight } from '@/components/home/HomeVerseSpotlight';
 import { JuzCard, type JuzSummary } from '@/components/home/JuzCard';
 import { PageCard } from '@/components/home/PageCard';
 import { SurahCard } from '@/components/home/SurahCard';
@@ -43,7 +43,7 @@ import type { Chapter } from '@/types';
 const LIST_HORIZONTAL_PADDING = 0;
 const TABS_BAR_HORIZONTAL_PADDING = 12;
 const HOME_TABS_BAR_ESTIMATED_HEIGHT = 64;
-const HOME_INTRO_ESTIMATED_HEIGHT = 476;
+const HOME_INTRO_ESTIMATED_HEIGHT = 496;
 const HOME_NAV_CARD_HEIGHT = 72;
 const HOME_GRID_ROW_BOTTOM_GAP = 10;
 const HOME_GRID_ROW_HEIGHT = HOME_NAV_CARD_HEIGHT + HOME_GRID_ROW_BOTTOM_GAP;
@@ -338,11 +338,11 @@ function HomeIntro({
 }): React.JSX.Element {
   return (
     <View
-      className="pt-3 pb-4"
+      className="pt-8 pb-4"
       onLayout={(event) => onHeightChange?.(event.nativeEvent.layout.height)}
     >
       <View className="px-3">
-        <HomeVersePlaceholder />
+        <HomeVerseSpotlight />
       </View>
       <View className="mt-4 px-3">
         <HomeShortcutGrid />

@@ -154,7 +154,6 @@ export function WordQuickSheet({
               ) : loadState.status === 'error' && loadState.needsDownload ? (
                 <CoreStudyPackDownloadPanel
                   palette={palette}
-                  description="Download once to open Word Study from any Quran word and keep it fully offline."
                   onInstalled={onRetry}
                 />
               ) : loadState.status === 'error' ? (

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="verse_spotlight_widget_name">Verse Spotlight</string>
+    <string name="verse_spotlight_widget_description">An offline Quran verse with shuffle, previous, and next controls.</string>
+    <string name="verse_spotlight_previous">Previous verse</string>
+    <string name="verse_spotlight_shuffle">Show another verse</string>
+    <string name="verse_spotlight_next">Next verse</string>
+    <string name="verse_spotlight_open">Open the full verse</string>
+    <string name="verse_spotlight_preview_arabic">فَإِنَّ مَعَ ٱلْعُسْرِ يُسْرًا</string>
+    <string name="verse_spotlight_preview_translation">For indeed, with hardship [will be] ease [i.e., relief].</string>
+    <string name="verse_spotlight_preview_metadata">Ash-Sharh  •  94:5</string>
+</resources>

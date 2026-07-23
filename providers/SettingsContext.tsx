@@ -1,9 +1,11 @@
 import React, { createContext, useContext, useEffect, useMemo } from 'react';
 
 import { useDownloadIndexItems } from '@/hooks/useDownloadIndexItems';
+import { syncAndroidVerseSpotlightWidget } from '@/lib/verse-spotlight/androidWidgetSync';
 import { usePersistentSettings } from '@/providers/hooks/usePersistentSettings';
 import { ARABIC_FONTS } from '@/providers/settingsStorage';
 import { getDownloadKey } from '@/src/core/domain/entities/DownloadIndexItem';
+import { container } from '@/src/core/infrastructure/di/container';
 import { loadArabicSupportFontsAsync } from '@/src/core/infrastructure/fonts/arabicFonts';
 
 import type { MushafPackId, MushafScaleStep, Settings } from '@/types';
@@ -92,6 +94,9 @@ export const SettingsProvider = ({ children }: { children: React.ReactNode }): R
   const selectedTafsirIds = settings.tafsirIds ?? [];
   const selectedTafsirIdsKey = useMemo(() => selectedTafsirIds.join(','), [selectedTafsirIds]);
   const [verifiedTafsirSelectionKey, setVerifiedTafsirSelectionKey] = React.useState('');
+  const requestedTranslationId = Array.isArray(settings.translationIds)
+    ? (settings.translationIds[0] ?? null)
+    : (settings.translationId ?? null);
   const {
     itemsByKey: downloadItemsByKey,
     isLoading: isDownloadIndexLoading,
@@ -105,6 +110,18 @@ export const SettingsProvider = ({ children }: { children: React.ReactNode }): R
   useEffect(() => {
     void loadArabicSupportFontsAsync(settings.arabicFontFace);
   }, [settings.arabicFontFace]);
+
+  useEffect(() => {
+    if (!isHydrated) return;
+
+    const repository = container.getDownloadIndexRepository();
+    const synchronize = (): void => {
+      void syncAndroidVerseSpotlightWidget(requestedTranslationId);
+    };
+
+    synchronize();
+    return repository.subscribe(synchronize);
+  }, [isHydrated, requestedTranslationId]);
 
   useEffect(() => {
     if (!isHydrated) return;

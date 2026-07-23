@@ -16,6 +16,7 @@
     "postinstall": "node scripts/postinstall.js",
     "sync:web-core": "node scripts/sync-web-core.js",
     "generate:translation-packs": "node scripts/generate-translation-packs.js",
+    "generate:verse-spotlight": "node scripts/verse-spotlight/generate-assets.cjs",
     "generate:word-translation-packs": "node scripts/generate-word-translation-packs.js",
     "generate:tafsir-packs": "node scripts/generate-tafsir-packs.js",
     "generate:mushaf-packs": "node scripts/generate-mushaf-packs.js",
@@ -32,6 +33,10 @@
     "build:test-word-study-screen": "tsc -p tests/word-study-screen/tsconfig.json",
     "test:word-study-screen": "npm run build:test-word-study-screen && node --test .artifacts/word-study-screen-tests/tests/word-study-screen/*.test.cjs",
     "test:welcome-resource-setup": "node --test tests/welcome-resource-setup/*.test.cjs",
+    "build:test-verse-spotlight": "tsc -p tests/verse-spotlight/tsconfig.json",
+    "test:verse-spotlight": "npm run build:test-verse-spotlight && node --test .artifacts/verse-spotlight-tests/tests/verse-spotlight/*.test.cjs",
+    "test:verse-spotlight-widget-plugin": "node --test tests/verse-spotlight-widget/*.test.cjs",
+    "test:verse-spotlight-widget-android": "node -e \"require('./plugins/withVerseSpotlightWidget').syncNativeFiles(process.cwd())\" && cd android && ./gradlew :app:testDebugUnitTest --tests 'com.anonymous.quranappmobile.versespotlight.*'",
     "debug:android": "node scripts/android-debug.js",
     "debug:android:devices": "node scripts/android-debug.js devices",
     "debug:android:logs": "node scripts/android-debug.js logs",
@@ -39,7 +44,7 @@
     "debug:android:ui": "node scripts/android-debug.js ui",
     "type-check": "tsc --noEmit",
     "check:core": "node scripts/check-core-purity.js",
-    "verify": "npm run type-check && npm run check:core && npm run test:welcome-resource-setup && npm run test:word-study-pack && npm run test:word-study-repository && npm run test:word-study-quick-sheet && npm run test:word-study-screen"
+    "verify": "npm run type-check && npm run check:core && npm run test:verse-spotlight && npm run test:verse-spotlight-widget-plugin && npm run test:welcome-resource-setup && npm run test:word-study-pack && npm run test:word-study-repository && npm run test:word-study-quick-sheet && npm run test:word-study-screen"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",

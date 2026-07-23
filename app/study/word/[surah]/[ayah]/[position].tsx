@@ -515,12 +515,7 @@ function UnavailableStudyTab({
   return (
     <CoreStudyPackDownloadPanel
       palette={palette}
-      title={tab === 'occurrences' ? 'Occurrences index' : 'Morphology & meanings'}
-      description={
-        tab === 'occurrences'
-          ? 'Download the Essentials pack to search Quran occurrences by surface form, lemma, root, and root family fully offline.'
-          : 'Download the Essentials pack to study morphology, word meanings, roots, lemmas, and segments fully offline.'
-      }
+      showHeading={false}
       onInstalled={onEssentialsInstalled}
     />
   );

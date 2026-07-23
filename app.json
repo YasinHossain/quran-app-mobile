@@ -49,7 +49,8 @@
         }
       ],
       "expo-status-bar",
-      "expo-asset"
+      "expo-asset",
+      "./plugins/withVerseSpotlightWidget"
     ],
     "extra": {
       "translationPackCatalogUrl": "https://yasinhossain.github.io/quran-app-mobile/translation-packs/catalog.json",

@@ -1,10 +1,7 @@
 import {
-  AlertCircle,
   ChevronDown,
   ChevronUp,
-  Download,
   RefreshCw,
-  X,
 } from 'lucide-react-native';
 import React from 'react';
 import RenderHTML from 'react-native-render-html';
@@ -31,6 +28,7 @@ import { container } from '@/src/core/infrastructure/di/container';
 import type { WordReferencePackCatalogEntry } from '@/src/core/infrastructure/word-reference';
 
 import { DictionaryGuideSheet } from './DictionaryGuideSheet';
+import { StudyPackDownloadCard } from './StudyPackDownloadCard';
 
 type Palette = {
   background: string;
@@ -154,9 +152,11 @@ export function DictionarySection({
 
   return (
     <View style={styles.section}>
-      <View style={styles.toolbar}>
-        <Text style={[styles.sourceLabel, { color: palette.muted }]}>DICTIONARY SOURCE</Text>
-      </View>
+      {sources.length > 0 ? (
+        <View style={styles.toolbar}>
+          <Text style={[styles.sourceLabel, { color: palette.muted }]}>DICTIONARY SOURCE</Text>
+        </View>
+      ) : null}
 
       {sources.length > 0 && selectedPackId ? (
         <SlidingSegmentedControl
@@ -198,17 +198,19 @@ export function DictionarySection({
           actionLabel="Retry"
           onAction={() => setRefreshNonce((value) => value + 1)}
         />
-      ) : (
+      ) : downloadableEntries.length === 0 ? (
         <StateCard
           title="Choose an optional dictionary"
           message="Dictionary definitions are not included with the app. Download only the English sources you want to use."
           palette={palette}
         />
-      )}
+      ) : null}
 
       {downloadableEntries.length > 0 ? (
         <View style={styles.downloadList}>
-          <Text style={[styles.subheading, { color: palette.text }]}>Available downloads</Text>
+          {sources.length > 0 ? (
+            <Text style={[styles.subheading, { color: palette.text }]}>Available downloads</Text>
+          ) : null}
           {downloadableEntries.map((entry) => {
             const downloadItem = items.find(
               (item) =>
@@ -667,29 +669,23 @@ function DownloadCard({ entry, status, percent, error, palette, onDownload, onCa
   onDownload: () => void;
   onCancel: () => void;
 }): React.JSX.Element {
-  const active = status === 'queued' || status === 'downloading';
   return (
-    <View style={[styles.downloadCard, { borderColor: palette.border, backgroundColor: palette.surfaceNavigation }]}> 
-      <View style={styles.familyCopy}>
-        <Text style={[styles.downloadTitle, { color: palette.text }]}>{entry.title}</Text>
-        <Text style={[styles.caption, { color: palette.muted }]}>English · {formatBytes(entry.databaseSizeBytes)}</Text>
-        {active ? <Text style={[styles.progressText, { color: palette.tint }]}>{percent ?? 0}% downloaded</Text> : null}
-        {status === 'failed' && error ? (
-          <View style={styles.errorRow}>
-            <AlertCircle color={palette.error} size={13} />
-            <Text numberOfLines={2} style={[styles.errorText, { color: palette.error }]}>{error}</Text>
-          </View>
-        ) : null}
-      </View>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={active ? `Cancel ${entry.title} download` : `Download ${entry.title}`}
-        onPress={active ? onCancel : onDownload}
-        style={[styles.downloadButton, { backgroundColor: active ? palette.interactive : palette.tint }]}
-      >
-        {active ? <X color={palette.text} size={18} /> : status === 'failed' ? <RefreshCw color={palette.onAccent} size={18} /> : <Download color={palette.onAccent} size={18} />}
-      </Pressable>
-    </View>
+    <StudyPackDownloadCard
+      title={entry.title}
+      detail={`English · ${formatBytes(entry.databaseSizeBytes)}`}
+      status={status}
+      progress={
+        status === 'queued' || status === 'downloading'
+          ? { kind: 'percent', percent: percent ?? 0 }
+          : undefined
+      }
+      error={error}
+      palette={palette}
+      downloadAccessibilityLabel={`Download ${entry.title}`}
+      cancelAccessibilityLabel={`Cancel ${entry.title} download`}
+      onDownload={onDownload}
+      onCancel={onCancel}
+    />
   );
 }
 
@@ -750,12 +746,6 @@ const styles = StyleSheet.create({
   familyToggle: { minHeight: 66, borderRadius: 16, paddingHorizontal: 15, paddingVertical: 11, flexDirection: 'row', alignItems: 'center', gap: 12 },
   familyCopy: { flex: 1, gap: 2 },
   downloadList: { gap: 10 },
-  downloadCard: { minHeight: 82, borderWidth: 1, borderRadius: 16, paddingHorizontal: 15, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
-  downloadTitle: { fontSize: 14, lineHeight: 20, fontWeight: '700' },
-  downloadButton: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
-  progressText: { fontSize: 11, lineHeight: 16, fontWeight: '700' },
-  errorRow: { marginTop: 3, flexDirection: 'row', alignItems: 'flex-start', gap: 5 },
-  errorText: { flex: 1, fontSize: 10, lineHeight: 15 },
   stateCard: { minHeight: 126, borderWidth: 1, borderRadius: 18, paddingHorizontal: 20, paddingVertical: 20, alignItems: 'center', justifyContent: 'center', gap: 8 },
   stateTitle: { fontSize: 17, lineHeight: 23, fontWeight: '700', textAlign: 'center' },
   retryButton: { minHeight: 40, flexDirection: 'row', alignItems: 'center', gap: 7 },

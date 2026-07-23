@@ -29,6 +29,7 @@ export function SurahVerseSelectorRow({
   onSelectSurah,
   onSelectVerse,
   hideVerse = false,
+  hideLabels = false,
   dropdownVisualOffset,
 }: {
   chapters: Chapter[];
@@ -40,6 +41,7 @@ export function SurahVerseSelectorRow({
   onSelectSurah: (surahId: number) => void;
   onSelectVerse?: (verseNumber: number) => void;
   hideVerse?: boolean;
+  hideLabels?: boolean;
   dropdownVisualOffset?: number;
 }): React.JSX.Element {
   const { t, formatNumber } = useUiTranslation();
@@ -108,9 +110,11 @@ export function SurahVerseSelectorRow({
   return (
     <View className="flex-row gap-3">
       <View style={{ flex: hideVerse ? 1 : 3 }}>
-        <Text className="mb-2 text-sm font-semibold text-foreground dark:text-foreground-dark">
-          {surahLabel}
-        </Text>
+        {!hideLabels ? (
+          <Text className="mb-2 text-sm font-semibold text-foreground dark:text-foreground-dark">
+            {surahLabel}
+          </Text>
+        ) : null}
         <SurahSelector
           options={surahOptions}
           selectedValue={selectedSurah}
@@ -124,9 +128,11 @@ export function SurahVerseSelectorRow({
 
       {!hideVerse ? (
         <View style={{ flex: 2 }}>
-          <Text className="mb-2 text-sm font-semibold text-foreground dark:text-foreground-dark">
-            {verseLabel}
-          </Text>
+          {!hideLabels ? (
+            <Text className="mb-2 text-sm font-semibold text-foreground dark:text-foreground-dark">
+              {verseLabel}
+            </Text>
+          ) : null}
           <VerseSelector
             ref={verseSelectorRef}
             options={verseOptions}

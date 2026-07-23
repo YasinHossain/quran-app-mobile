@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/verse_spotlight_text_item"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@android:color/transparent"
+    android:orientation="vertical"
+    android:paddingTop="2dp"
+    android:paddingStart="4dp"
+    android:paddingBottom="5dp">
+
+    <TextView
+        android:id="@+id/verse_spotlight_text"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:fontFamily="serif"
+        android:gravity="end"
+        android:includeFontPadding="false"
+        android:lineSpacingExtra="4dp"
+        android:textColor="@color/verse_spotlight_widget_text"
+        android:textDirection="rtl"
+        android:textSize="21sp" />
+</LinearLayout>

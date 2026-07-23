@@ -13,6 +13,7 @@ import { logger } from '@/src/core/infrastructure/monitoring/logger';
 const DOWNLOAD_INDEX_STORAGE_KEY = 'quranAppDownloadIndex_v1';
 
 type StoredDownloadIndex = Record<DownloadKey, DownloadIndexItem>;
+type DownloadIndexListener = () => void;
 
 async function loadIndexFromStorage(): Promise<StoredDownloadIndex> {
   try {
@@ -83,6 +84,16 @@ export class DownloadIndexRepository implements IDownloadIndexRepository {
   private cache: StoredDownloadIndex | null = null;
   private loadingPromise: Promise<StoredDownloadIndex> | null = null;
   private persistQueue: Promise<void> = Promise.resolve();
+  private readonly listeners = new Set<DownloadIndexListener>();
+
+  subscribe(listener: DownloadIndexListener): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  private emitChange(): void {
+    this.listeners.forEach((listener) => listener());
+  }
 
   private async ensureLoaded(): Promise<StoredDownloadIndex> {
     if (this.cache) return this.cache;
@@ -137,6 +148,7 @@ export class DownloadIndexRepository implements IDownloadIndexRepository {
     index[key] = updated;
     this.cache = index;
     await this.persist(index);
+    this.emitChange();
 
     return { key, ...updated };
   }
@@ -149,6 +161,7 @@ export class DownloadIndexRepository implements IDownloadIndexRepository {
     delete index[key];
     this.cache = index;
     await this.persist(index);
+    this.emitChange();
   }
 
   async clearErrors(content?: DownloadableContent): Promise<void> {

@@ -877,7 +877,8 @@ test('Downloads always exposes a dedicated download-only Word Study manager', ()
   assert.match(fullStudy, /function UnavailableStudyTab/);
   assert.match(fullStudy, /GrammarPackDownloadPanel/);
   assert.match(fullStudy, /DictionaryPackDownloadPanel/);
-  assert.match(fullStudy, /Occurrences index/);
+  assert.match(fullStudy, /showHeading=\{false\}/);
+  assert.doesNotMatch(fullStudy, /Occurrences index/);
 });
 
 test('lemma and root facts open their selectable occurrence scopes', () => {

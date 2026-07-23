@@ -200,6 +200,40 @@ test('quick sheet keeps numeric height constraints and the redesigned action hie
   assert.match(segmentsSource, /showsHorizontalScrollIndicator=\{false\}/);
 });
 
+test('an uninstalled Essentials pack is treated as an expected download state', () => {
+  const controller = readFileSync(
+    join(process.cwd(), 'components/word-study/useWordQuickSheetController.ts'),
+    'utf8'
+  );
+  const panel = readFileSync(
+    join(
+      process.cwd(),
+      'components/word-study/full-study/CoreStudyPackDownloadPanel.tsx'
+    ),
+    'utf8'
+  );
+  const progressRing = readFileSync(
+    join(process.cwd(), 'components/downloads/DownloadProgressRing.tsx'),
+    'utf8'
+  );
+
+  assert.match(
+    controller,
+    /if \(needsDownload\) \{[\s\S]*?logger\.info\('Word Study quick-sheet requires Essentials download'/
+  );
+  assert.match(
+    controller,
+    /\} else \{[\s\S]*?logger\.error\([\s\S]*?'Word Study quick-sheet lookup failed'/
+  );
+  assert.match(panel, /Word Study Essentials/);
+  assert.doesNotMatch(panel, /Download once to open Word Study/);
+  assert.doesNotMatch(panel, /Version \{entry\.version\}/);
+  assert.match(panel, /roots & word families/);
+  assert.match(panel, /StudyPackDownloadCard/);
+  assert.match(progressRing, /strokeDashoffset/);
+  assert.match(progressRing, /<X color=\{crossColor\}/);
+});
+
 test('Android Surah, Juz, Page, Mushaf, and Tajweed readers share the React Native sheet', () => {
   const surahScreen = readFileSync(join(process.cwd(), 'app/surah/[surahId].tsx'), 'utf8');
   const juzScreen = readFileSync(join(process.cwd(), 'app/juz/[juzNumber].tsx'), 'utf8');

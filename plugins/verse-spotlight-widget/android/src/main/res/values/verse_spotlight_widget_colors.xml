@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="verse_spotlight_widget_surface">#FFF9EE</color>
+    <color name="verse_spotlight_widget_surface_end">#F5EBD8</color>
+    <color name="verse_spotlight_widget_text">#262018</color>
+    <color name="verse_spotlight_widget_accent">#386A5A</color>
+    <color name="verse_spotlight_widget_accent_pressed">#2B5145</color>
+    <color name="verse_spotlight_widget_border">#33A78D73</color>
+    <color name="verse_spotlight_widget_control">#22705A42</color>
+    <color name="verse_spotlight_widget_control_pressed">#39705A42</color>
+    <color name="verse_spotlight_widget_icon">#4E4133</color>
+    <color name="verse_spotlight_widget_shuffle_icon">#FFFDF8</color>
+</resources>

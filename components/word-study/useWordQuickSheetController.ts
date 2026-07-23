@@ -72,11 +72,17 @@ export function useWordQuickSheetController(): WordQuickSheetController {
               (error instanceof Error && error.name === 'WordStudyPackNotInstalledError');
             setSession((current) => {
               if (!current || current.requestId !== requestId) return current;
-              logger.error(
-                'Word Study quick-sheet lookup failed',
-                { locationKey },
-                error instanceof Error ? error : new Error(String(error))
-              );
+              if (needsDownload) {
+                logger.info('Word Study quick-sheet requires Essentials download', {
+                  locationKey,
+                });
+              } else {
+                logger.error(
+                  'Word Study quick-sheet lookup failed',
+                  { locationKey },
+                  error instanceof Error ? error : new Error(String(error))
+                );
+              }
               return {
                 ...current,
                 loadState: {

@@ -169,7 +169,7 @@ export default function ManageWordStudyScreen(): React.JSX.Element {
         <SectionTitle text="Essential analysis" color={palette.text} />
         <ResourceCard
           title="Word Study Essentials"
-          description="Morphology, word meanings, roots, lemmas, and occurrence search. Required before Word Study can open."
+          description="Morphology, word meanings, roots, lemmas, verb forms, and word-family occurrence search. Required before Word Study can open."
           size={coreEntry?.databaseSizeBytes ?? state.coreInstalled?.manifest.databaseSizeBytes}
           installed={Boolean(state.coreInstalled)}
           unavailable={!state.loading && !coreEntry && !state.coreInstalled}
