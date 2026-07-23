@@ -26,12 +26,16 @@ Generated files:
 
 - `dist/word-grammar-packs/qac-irab-v1.4/quran-word-grammar.db`
 - `dist/word-grammar-packs/qac-irab-v1.4/manifest.json`
+- `dist/word-grammar-packs/catalog.json` (publishes the development pack; permission remains a release gate)
 
 The compiler parses StarDict entries, removes presentation markup, retains the original Arabic headings and prose, maps chapter names to canonical `surah:ayah` keys, and emits deterministic ordered passages.
 
 ## Runtime behavior
 
-- The pack opens lazily through Expo SQLite when the Grammar tab is selected.
+- The database is not bundled. The Grammar tab reads the hosted catalog, downloads an approved entry on request, verifies it, and registers it in Manage Downloads.
+- The public catalog intentionally contains no entries until redistribution permission and qualified review are recorded.
+- An installed pack opens lazily through Expo SQLite only when the Grammar tab is selected.
+- Installed grammar remains visible under Word Study in Manage Downloads, where it can be canceled or deleted.
 - Selected-word matching is presentation-only: the app normalizes the complete selected surface and shows a match only when an entire word in the Arabic heading has the same normalized form. Morpheme fragments do not qualify.
 - The original verse-level passage order remains unchanged.
 - The complete ayah analysis stays collapsed until requested and always contains every source passage in its original order.

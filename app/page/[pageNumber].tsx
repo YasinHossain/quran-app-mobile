@@ -24,7 +24,9 @@ import { AppSearchHeader, ReaderOverlayHeader } from '@/components/navigation/Ap
 import { useCollapsibleReaderHeader } from '@/components/navigation/useCollapsibleReaderHeader';
 import { useHeaderSearch } from '@/components/navigation/useHeaderSearch';
 import { HeaderActionButton } from '@/components/search/HeaderSearchBar';
+import { ReaderBottomMessage } from '@/components/reader/ReaderBottomMessage';
 import { SettingsSidebar } from '@/components/reader/settings/SettingsSidebar';
+import type { PanelType } from '@/components/reader/settings/SettingsSidebarContent';
 import { BookmarkModal } from '@/components/bookmarks/BookmarkModal';
 import { VerseActionsSheet } from '@/components/surah/VerseActionsSheet';
 import { VerseCard } from '@/components/surah/VerseCard';
@@ -36,19 +38,19 @@ import { normalizeWordStudyPressEvent } from '@/components/word-study/WordStudyP
 import { useWordQuickSheetController } from '@/components/word-study/useWordQuickSheetController';
 import { AddToPlannerModal, type VerseSummaryDetails } from '@/components/verse-planner-modal';
 import Colors from '@/constants/Colors';
-import { DEFAULT_MUSHAF_ID, findMushafOption } from '@/data/mushaf/options';
+import { SUGGESTED_MUSHAF_ID, findMushafOption } from '@/data/mushaf/options';
 import { useChapters } from '@/hooks/useChapters';
 import { useMushafPageData } from '@/hooks/useMushafPageData';
 import { usePageVerses } from '@/hooks/usePageVerses';
 import { preloadOfflineTafsirWindow } from '@/lib/tafsir/tafsirCache';
 import { useTranslationResources } from '@/hooks/useTranslationResources';
 import { primeVerseDetailsCache } from '@/lib/verse/verseDetailsCache';
+import { getQuranPageVerseRange } from '../../src/data/quranPageVerseRanges';
 import { useBookmarks } from '@/providers/BookmarkContext';
 import { useAudioPlayer } from '@/providers/AudioPlayerContext';
 import { useLayoutMetrics } from '@/providers/LayoutMetricsContext';
 import { useSettings } from '@/providers/SettingsContext';
 import { useAppTheme } from '@/providers/ThemeContext';
-import { getBundledMushafPack } from '@/src/core/infrastructure/mushaf/bundledPacks';
 import { container } from '@/src/core/infrastructure/di/container';
 
 import type { Bookmark, MushafPackId } from '@/types';
@@ -169,6 +171,8 @@ export default function PageScreen(): React.JSX.Element {
   const startVerse = startVerseParam ? Number(startVerseParam) : NaN;
 
   const [isSettingsOpen, setIsSettingsOpen] = React.useState(false);
+  const [settingsInitialPanel, setSettingsInitialPanel] = React.useState<PanelType | undefined>();
+  const [showMushafRequiredMessage, setShowMushafRequiredMessage] = React.useState(false);
   const [isVerseActionsOpen, setIsVerseActionsOpen] = React.useState(false);
   const [isBookmarkModalOpen, setIsBookmarkModalOpen] = React.useState(false);
   const [isAddToPlannerOpen, setIsAddToPlannerOpen] = React.useState(false);
@@ -185,8 +189,9 @@ export default function PageScreen(): React.JSX.Element {
   const { resolvedTheme } = useAppTheme();
   const palette = Colors[resolvedTheme];
   const readerHeader = useCollapsibleReaderHeader();
-  const { settings, isHydrated } = useSettings();
-  const isMushafView = settings.readingMode === 'mushaf';
+  const { settings, isHydrated, setReadingMode } = useSettings();
+  const requestedMushafView = settings.readingMode === 'mushaf';
+  const isMushafView = requestedMushafView && Boolean(settings.mushafId);
   const headerSearch = useHeaderSearch({ preserveMushafView: isMushafView, replace: true });
   const { chapters } = useChapters();
   const audio = useAudioPlayer();
@@ -198,6 +203,16 @@ export default function PageScreen(): React.JSX.Element {
     }
   }, [headerSearch.close, isSettingsOpen]);
 
+  React.useEffect(() => {
+    if (!isHydrated || !requestedMushafView || settings.mushafId) return;
+    setReadingMode('translations');
+    setSettingsInitialPanel('mushaf');
+    setIsSettingsOpen(true);
+    setShowMushafRequiredMessage(true);
+    const timeout = setTimeout(() => setShowMushafRequiredMessage(false), 3600);
+    return () => clearTimeout(timeout);
+  }, [isHydrated, requestedMushafView, setReadingMode, settings.mushafId]);
+
   const listContentContainerStyle = React.useMemo(
     () => ({
       paddingHorizontal: 16,
@@ -208,7 +223,7 @@ export default function PageScreen(): React.JSX.Element {
   );
 
   const { isPinned, setLastRead } = useBookmarks();
-  const selectedMushafId = settings.mushafId ?? DEFAULT_MUSHAF_ID;
+  const selectedMushafId = settings.mushafId ?? SUGGESTED_MUSHAF_ID;
   const selectedMushafOption = findMushafOption(selectedMushafId);
   const selectedMushafVersion = selectedMushafOption?.version ?? 'unknown';
   const initialMushafPageProbe = useMushafPageData({
@@ -247,12 +262,9 @@ export default function PageScreen(): React.JSX.Element {
 
   const surahRange = React.useMemo(() => {
     if (chapters.length === 0) return '';
-    const pack = getBundledMushafPack('unicode-uthmani-v1');
-    const lookup = pack?.payload.lookup[String(pageNumber)];
-    if (!lookup) return '';
-
-    const startParsed = parseVerseKeyNumbers(lookup.firstVerseKey || lookup.from);
-    const endParsed = parseVerseKeyNumbers(lookup.lastVerseKey || lookup.to);
+    const range = getQuranPageVerseRange(pageNumber);
+    const startParsed = parseVerseKeyNumbers(range?.[0] ?? null);
+    const endParsed = parseVerseKeyNumbers(range?.[1] ?? null);
     if (!startParsed || !endParsed) return '';
 
     const startName = chapterNamesById.get(startParsed.surahId) || '';
@@ -270,10 +282,9 @@ export default function PageScreen(): React.JSX.Element {
       const parsed = parseVerseKeyNumbers(audio.activeVerseKey);
       return parsed?.surahId ?? 1;
     }
-    const pack = getBundledMushafPack('unicode-uthmani-v1');
-    const lookup = pack?.payload.lookup[String(pageNumber)];
-    if (lookup) {
-      const parsed = parseVerseKeyNumbers(lookup.firstVerseKey || lookup.from);
+    const firstVerseKey = getQuranPageVerseRange(pageNumber)?.[0];
+    if (firstVerseKey) {
+      const parsed = parseVerseKeyNumbers(firstVerseKey);
       return parsed?.surahId ?? 1;
     }
     return 1;
@@ -377,12 +388,19 @@ export default function PageScreen(): React.JSX.Element {
   }, []);
 
   const openTranslationSettings = React.useCallback(() => {
+    setSettingsInitialPanel(undefined);
     setIsSettingsOpen(true);
   }, []);
 
   const closeSettingsSidebar = React.useCallback(() => {
     setIsSettingsOpen(false);
   }, []);
+
+  const handleMushafInstalled = React.useCallback(() => {
+    setSettingsInitialPanel(undefined);
+    setIsSettingsOpen(false);
+    setReadingMode('mushaf');
+  }, [setReadingMode]);
 
   React.useEffect(() => {
     if (!isMushafView || selectedMushafOption?.renderer !== 'webview') return;
@@ -931,6 +949,12 @@ export default function PageScreen(): React.JSX.Element {
       <SettingsSidebar
         isOpen={isSettingsOpen}
         onClose={closeSettingsSidebar}
+        initialPanel={settingsInitialPanel}
+        onMushafInstalled={handleMushafInstalled}
+      />
+      <ReaderBottomMessage
+        visible={showMushafRequiredMessage}
+        message="Download a Mushaf to use page reading."
       />
 
       <VerseActionsSheet

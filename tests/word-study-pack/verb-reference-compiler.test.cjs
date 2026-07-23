@@ -21,7 +21,7 @@ test('verb reference compiler maps source patterns to Quranic verb forms', () =>
   assert.equal(clean('\u00a0مُنْزَل  عَنْهُ  '), 'مُنْزَل عَنْهُ');
 });
 
-test('bundled verb reference manifest matches its immutable database', () => {
+test('non-distributed verb reference candidate manifest matches its immutable database', () => {
   const manifest = JSON.parse(fs.readFileSync(path.join(PACK_DIRECTORY, 'manifest.json'), 'utf8'));
   const database = fs.readFileSync(path.join(PACK_DIRECTORY, manifest.databaseFile));
   assert.equal(database.length, manifest.databaseSizeBytes);

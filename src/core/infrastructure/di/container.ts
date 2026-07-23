@@ -26,6 +26,9 @@ import {
 import {
   ExpoGrammarStudyDatabaseProvider,
   SQLiteGrammarStudyRepository,
+  WordGrammarPackCatalogClient,
+  WordGrammarPackFileStore,
+  WordGrammarPackInstaller,
 } from '@/src/core/infrastructure/word-grammar';
 import {
   ExpoWordStudyDatabaseProvider,
@@ -33,6 +36,7 @@ import {
   SQLiteWordStudyRepository,
   WordStudyPackCatalogClient,
   WordStudyPackLifecycle,
+  WordStudyPackInstaller,
 } from '@/src/core/infrastructure/word-study';
 import {
   SQLiteDictionaryReferenceRepository,
@@ -75,12 +79,25 @@ const mushafPageRepository = new LocalMushafPageRepository(
 const wordStudyPackBackend = new ExpoWordStudyPackBackend();
 const wordStudyPackLifecycle = new WordStudyPackLifecycle(wordStudyPackBackend);
 const wordStudyDatabaseProvider = new ExpoWordStudyDatabaseProvider(wordStudyPackLifecycle);
+const wordStudyPackInstaller = new WordStudyPackInstaller(
+  wordStudyPackLifecycle,
+  wordStudyDatabaseProvider,
+  downloadIndexRepository
+);
 const wordStudyRepository = new SQLiteWordStudyRepository(wordStudyDatabaseProvider);
 const wordStudyPackCatalogClient = new WordStudyPackCatalogClient();
 const getWordAnalysis = new GetWordAnalysis(wordStudyRepository);
 const getVerseWordAnalyses = new GetVerseWordAnalyses(wordStudyRepository);
 const listWordOccurrences = new ListWordOccurrences(wordStudyRepository);
-const grammarStudyDatabaseProvider = new ExpoGrammarStudyDatabaseProvider();
+const wordGrammarPackCatalogClient = new WordGrammarPackCatalogClient();
+const wordGrammarPackFileStore = new WordGrammarPackFileStore();
+const wordGrammarPackInstaller = new WordGrammarPackInstaller(
+  wordGrammarPackFileStore,
+  downloadIndexRepository
+);
+const grammarStudyDatabaseProvider = new ExpoGrammarStudyDatabaseProvider(
+  wordGrammarPackInstaller
+);
 const grammarStudyRepository = new SQLiteGrammarStudyRepository(grammarStudyDatabaseProvider);
 const getVerseGrammar = new GetVerseGrammar(grammarStudyRepository);
 const wordReferencePackCatalogClient = new WordReferencePackCatalogClient();
@@ -122,10 +139,15 @@ export const container = {
   getWordStudyPackLifecycle: (): WordStudyPackLifecycle => wordStudyPackLifecycle,
   getWordStudyDatabaseProvider: (): ExpoWordStudyDatabaseProvider => wordStudyDatabaseProvider,
   getWordStudyPackCatalogClient: (): WordStudyPackCatalogClient => wordStudyPackCatalogClient,
+  getWordStudyPackInstaller: (): WordStudyPackInstaller => wordStudyPackInstaller,
   getWordAnalysis: (): GetWordAnalysis => getWordAnalysis,
   getVerseWordAnalyses: (): GetVerseWordAnalyses => getVerseWordAnalyses,
   listWordOccurrences: (): ListWordOccurrences => listWordOccurrences,
   getGrammarStudyRepository: (): SQLiteGrammarStudyRepository => grammarStudyRepository,
+  getWordGrammarPackCatalogClient: (): WordGrammarPackCatalogClient =>
+    wordGrammarPackCatalogClient,
+  getWordGrammarPackFileStore: (): WordGrammarPackFileStore => wordGrammarPackFileStore,
+  getWordGrammarPackInstaller: (): WordGrammarPackInstaller => wordGrammarPackInstaller,
   getGrammarStudyDatabaseProvider: (): ExpoGrammarStudyDatabaseProvider =>
     grammarStudyDatabaseProvider,
   getVerseGrammar: (): GetVerseGrammar => getVerseGrammar,

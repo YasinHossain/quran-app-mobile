@@ -17,12 +17,19 @@ export type DownloadableContent =
   | { kind: 'audio'; reciterId: number; scope: 'surah'; surahId: number }
   | { kind: 'words'; scope: 'surah'; surahId: number }
   | { kind: 'word-translation'; languageCode: string }
+  | { kind: 'word-study-pack'; packId: string; version: string }
   | {
       kind: 'word-reference-pack';
       packId: string;
       version: string;
       sourceId: string;
       languageCode: string;
+    }
+  | {
+      kind: 'word-grammar-pack';
+      packId: string;
+      version: string;
+      sourceId: string;
     }
   | { kind: 'mushaf-pack'; packId: MushafPackId; version: string };
 
@@ -66,8 +73,12 @@ export function getDownloadKey(content: DownloadableContent): DownloadKey {
       return `words:${content.scope}:${content.surahId}`;
     case 'word-translation':
       return `word-translation:${content.languageCode}`;
+    case 'word-study-pack':
+      return `word-study-pack:${content.packId}:${content.version}`;
     case 'word-reference-pack':
       return `word-reference-pack:${content.packId}:${content.version}`;
+    case 'word-grammar-pack':
+      return `word-grammar-pack:${content.packId}:${content.version}`;
     case 'mushaf-pack':
       return `mushaf-pack:${content.packId}:${content.version}`;
     default: {
@@ -143,6 +154,16 @@ export function isDownloadableContent(value: unknown): value is DownloadableCont
     );
   }
 
+  if (candidate.kind === 'word-study-pack') {
+    const pack = candidate as Partial<Extract<DownloadableContent, { kind: 'word-study-pack' }>>;
+    return (
+      typeof pack.packId === 'string' &&
+      pack.packId.trim().length > 0 &&
+      typeof pack.version === 'string' &&
+      pack.version.trim().length > 0
+    );
+  }
+
   if (candidate.kind === 'word-reference-pack') {
     const pack = candidate as Partial<
       Extract<DownloadableContent, { kind: 'word-reference-pack' }>
@@ -156,6 +177,20 @@ export function isDownloadableContent(value: unknown): value is DownloadableCont
       pack.sourceId.trim().length > 0 &&
       typeof pack.languageCode === 'string' &&
       pack.languageCode.trim().length > 0
+    );
+  }
+
+  if (candidate.kind === 'word-grammar-pack') {
+    const pack = candidate as Partial<
+      Extract<DownloadableContent, { kind: 'word-grammar-pack' }>
+    >;
+    return (
+      typeof pack.packId === 'string' &&
+      pack.packId.trim().length > 0 &&
+      typeof pack.version === 'string' &&
+      pack.version.trim().length > 0 &&
+      typeof pack.sourceId === 'string' &&
+      pack.sourceId.trim().length > 0
     );
   }
 

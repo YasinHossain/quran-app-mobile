@@ -1,10 +1,8 @@
-import { Asset } from 'expo-asset';
 import * as Crypto from 'expo-crypto';
 import { File } from 'expo-file-system';
 import * as FileSystem from 'expo-file-system/legacy';
 import { openDatabaseAsync } from 'expo-sqlite';
 
-import { BUNDLED_WORD_STUDY_PACK } from './bundledWordStudyPack';
 import type {
   ValidatedInstalledWordStudyPack,
   WordStudyPackLifecycleBackend,
@@ -31,14 +29,6 @@ function bytesToHex(value: ArrayBuffer): string {
 async function sha256FileAsync(uri: string): Promise<string> {
   const bytes = await new File(uri).bytes();
   return bytesToHex(await Crypto.digest(Crypto.CryptoDigestAlgorithm.SHA256, bytes));
-}
-
-async function copyAssetAsync(assetModule: number, destinationUri: string): Promise<void> {
-  const asset = Asset.fromModule(assetModule);
-  await asset.downloadAsync();
-  const sourceUri = asset.localUri ?? asset.uri;
-  if (!sourceUri) throw new Error('Bundled word-study database asset is unavailable');
-  await FileSystem.copyAsync({ from: sourceUri, to: destinationUri });
 }
 
 function assertCatalogMatchesManifest(
@@ -70,6 +60,14 @@ export class ExpoWordStudyPackBackend implements WordStudyPackLifecycleBackend {
     return this.fileStore.writeActivationStateAsync(state);
   }
 
+  clearActivationStateAsync(): Promise<void> {
+    return this.fileStore.clearActivationStateAsync();
+  }
+
+  deleteInstalledPackAsync(ref: WordStudyInstalledPackRef): Promise<void> {
+    return this.fileStore.deleteVersionAsync(ref.packId, ref.version);
+  }
+
   async validateInstalledPackAsync(
     ref: WordStudyInstalledPackRef
   ): Promise<ValidatedInstalledWordStudyPack> {
@@ -93,45 +91,10 @@ export class ExpoWordStudyPackBackend implements WordStudyPackLifecycleBackend {
     );
   }
 
-  async installBundledPackAsync(): Promise<ValidatedInstalledWordStudyPack> {
-    const bundled = BUNDLED_WORD_STUDY_PACK;
-    const staging = await this.fileStore.prepareStagingDirectoryAsync(
-      bundled.packId,
-      bundled.version
-    );
-    try {
-      await this.fileStore.writeManifestAsync(staging, bundled.manifest);
-      await copyAssetAsync(
-        bundled.databaseAssetModule,
-        `${staging}${bundled.manifest.databaseFile}`
-      );
-      await this.validateDirectoryAsync(
-        bundled.packId,
-        bundled.version,
-        staging,
-        bundled.manifest,
-        true
-      );
-      const destination = await this.fileStore.promoteStagingDirectoryAsync(
-        staging,
-        bundled.packId,
-        bundled.version
-      );
-      return this.validateDirectoryAsync(
-        bundled.packId,
-        bundled.version,
-        destination,
-        bundled.manifest,
-        false
-      );
-    } finally {
-      await this.fileStore.deleteStagingDirectoryAsync(staging);
-    }
-  }
-
   async installHostedPackAsync(
     entry: WordStudyPackCatalogEntry,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    onProgress?: (percent: number) => void
   ): Promise<ValidatedInstalledWordStudyPack> {
     if (signal?.aborted) throw new Error('Word-study pack update was cancelled');
     const staging = await this.fileStore.prepareStagingDirectoryAsync(entry.packId, entry.version);
@@ -149,12 +112,28 @@ export class ExpoWordStudyPackBackend implements WordStudyPackLifecycleBackend {
       assertCatalogMatchesManifest(entry, manifest);
       await this.fileStore.writeManifestAsync(staging, manifest);
       if (signal?.aborted) throw new Error('Word-study pack update was cancelled');
-      const result = await FileSystem.downloadAsync(
+      const download = FileSystem.createDownloadResumable(
         entry.databaseUrl,
-        `${staging}${manifest.databaseFile}`
+        `${staging}${manifest.databaseFile}`,
+        {},
+        (progress) => {
+          const expected = progress.totalBytesExpectedToWrite;
+          if (expected > 0) {
+            onProgress?.(
+              Math.max(0, Math.min(99, Math.round((progress.totalBytesWritten / expected) * 100)))
+            );
+          }
+        }
       );
-      if (result.status < 200 || result.status >= 300) {
-        throw new Error(`Word-study database download failed (${result.status})`);
+      const cancel = (): void => {
+        void download.cancelAsync().catch(() => undefined);
+      };
+      signal?.addEventListener('abort', cancel, { once: true });
+      try {
+        const result = await download.downloadAsync();
+        if (!result?.uri) throw new Error('Word Study Essentials download was canceled');
+      } finally {
+        signal?.removeEventListener('abort', cancel);
       }
       if (signal?.aborted) throw new Error('Word-study pack update was cancelled');
       await this.validateDirectoryAsync(entry.packId, entry.version, staging, manifest, true);

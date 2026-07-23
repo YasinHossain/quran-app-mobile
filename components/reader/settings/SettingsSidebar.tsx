@@ -23,6 +23,7 @@ export function SettingsSidebar({
   activeTab,
   onTabChange,
   initialPanel,
+  onMushafInstalled,
 }: {
   isOpen: boolean;
   onClose: () => void;
@@ -32,6 +33,7 @@ export function SettingsSidebar({
   activeTab?: SettingsTab;
   onTabChange?: (tab: SettingsTab) => void;
   initialPanel?: PanelType;
+  onMushafInstalled?: (packId: import('@/types').MushafPackId) => void;
 }): React.JSX.Element {
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -89,6 +91,7 @@ export function SettingsSidebar({
                   onTabChange={onTabChange}
                   containerWidth={sheetWidth}
                   initialPanel={initialPanel}
+                  onMushafInstalled={onMushafInstalled}
                 />
               )}
             </View>

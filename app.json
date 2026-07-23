@@ -56,8 +56,9 @@
       "wordTranslationPackCatalogUrl": "https://yasinhossain.github.io/quran-app-mobile/word-translation-packs/catalog.json?v=2026-07-04",
       "tafsirPackCatalogUrl": "https://yasinhossain.github.io/quran-app-mobile/tafsir-packs/catalog.json",
       "mushafPackCatalogUrl": "https://yasinhossain.github.io/quran-app-mobile/mushaf-packs/catalog.json",
-      "wordStudyPackCatalogUrl": "https://yasinhossain.github.io/quran-app-mobile/word-study-packs/catalog.json",
-      "wordReferencePackCatalogUrl": "https://yasinhossain.github.io/quran-app-mobile/word-reference-packs/catalog.json"
+      "wordStudyPackCatalogUrl": "https://raw.githubusercontent.com/YasinHossain/quran-app-mobile/gh-pages/word-study-packs/catalog.json",
+      "wordGrammarPackCatalogUrl": "https://raw.githubusercontent.com/YasinHossain/quran-app-mobile/gh-pages/word-grammar-packs/catalog.json",
+      "wordReferencePackCatalogUrl": "https://raw.githubusercontent.com/YasinHossain/quran-app-mobile/gh-pages/word-reference-packs/catalog.json"
     },
     "experiments": {
       "typedRoutes": true

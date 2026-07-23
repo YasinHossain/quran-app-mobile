@@ -31,6 +31,7 @@
     "test:word-study-quick-sheet": "npm run build:test-word-study-quick-sheet && node --test .artifacts/word-study-quick-sheet-tests/tests/word-study-quick-sheet/*.test.cjs",
     "build:test-word-study-screen": "tsc -p tests/word-study-screen/tsconfig.json",
     "test:word-study-screen": "npm run build:test-word-study-screen && node --test .artifacts/word-study-screen-tests/tests/word-study-screen/*.test.cjs",
+    "test:welcome-resource-setup": "node --test tests/welcome-resource-setup/*.test.cjs",
     "debug:android": "node scripts/android-debug.js",
     "debug:android:devices": "node scripts/android-debug.js devices",
     "debug:android:logs": "node scripts/android-debug.js logs",
@@ -38,7 +39,7 @@
     "debug:android:ui": "node scripts/android-debug.js ui",
     "type-check": "tsc --noEmit",
     "check:core": "node scripts/check-core-purity.js",
-    "verify": "npm run type-check && npm run check:core && npm run test:word-study-pack && npm run test:word-study-repository && npm run test:word-study-quick-sheet && npm run test:word-study-screen"
+    "verify": "npm run type-check && npm run check:core && npm run test:welcome-resource-setup && npm run test:word-study-pack && npm run test:word-study-repository && npm run test:word-study-quick-sheet && npm run test:word-study-screen"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",

@@ -16,7 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useModalTransition, verticalSheetTransform } from '@/components/motion/modalTransition';
 import Colors from '@/constants/Colors';
 import { useAppTheme } from '@/providers/ThemeContext';
-import { BUNDLED_WORD_GRAMMAR_PACK } from '@/src/core/infrastructure/word-grammar';
+import { WORD_GRAMMAR_PACK_METADATA } from '@/src/core/infrastructure/word-grammar';
 
 export function GrammarGuideSheet({
   isOpen,
@@ -32,7 +32,7 @@ export function GrammarGuideSheet({
     openDuration: 240,
     closeDuration: 170,
   });
-  const source = BUNDLED_WORD_GRAMMAR_PACK.manifest.source;
+  const source = WORD_GRAMMAR_PACK_METADATA.manifest.source;
   const maxSheetHeight = Math.max(0, Math.round(windowHeight * 0.9));
   const sheetHeight = Math.min(maxSheetHeight, Math.max(360, Math.round(windowHeight * 0.58)));
 

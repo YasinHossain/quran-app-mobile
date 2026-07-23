@@ -235,8 +235,7 @@ export function MushafPackOptionCard({
   const palette = Colors[resolvedTheme];
 
   const isSelectable = primaryAction && !primaryAction.disabled && !isSelected;
-  const isBundledUnicodePack = packId === 'unicode-uthmani-v1';
-  const trailingAction = secondaryAction ?? (isBundledUnicodePack ? undefined : primaryAction);
+  const trailingAction = secondaryAction ?? primaryAction;
   const hasTrailingAction = Boolean(trailingAction);
   const requestedFontFamily = getFontForPack(packId || '');
   const [loadedPreviewFontFamily, setLoadedPreviewFontFamily] =

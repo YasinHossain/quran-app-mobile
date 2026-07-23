@@ -15,7 +15,7 @@ The selected Word Study analysis supplies the normalized root, lemma when availa
 
 ## Pack and compiler
 
-The immutable bundled pack uses `quran-verb-reference-sqlite-v1`, schema 1. Rebuild it from a SQLite source containing a `verbs` table with `Root`, `Type`, `Past`, `Present`, `Order`, `Subject`, `Object`, and `Masdar` columns:
+The immutable candidate pack uses `quran-verb-reference-sqlite-v1`, schema 1. Public builds do not import its database asset. Rebuild it from a SQLite source containing a `verbs` table with `Root`, `Type`, `Past`, `Present`, `Order`, `Subject`, `Object`, and `Masdar` columns:
 
 ```sh
 VERB_REFERENCE_SOURCE=/absolute/path/to/source.db npm run compile:verb-reference-pack
@@ -25,4 +25,4 @@ The compiler trims source whitespace, preserves Arabic field text, maps source p
 
 ## Release boundary
 
-The current implementation follows the product owner's instruction to build before permission is finalized. The manifest deliberately records `Permission pending`; the pack must not be publicly distributed until the exact artifact has documented redistribution permission and its records have qualified Quranic Arabic review. Replacing the source later requires recompiling the pack, not changing the domain, repository, or UI.
+The current implementation follows the product owner's instruction to build before permission is finalized. The manifest deliberately records `Permission pending`; the pack is excluded from the Metro asset graph and its UI is not mounted in public builds. It must not be offered as a download until the exact artifact has documented redistribution permission and its records have qualified Quranic Arabic review. Replacing the source later requires recompiling the pack, not changing the domain or repository contract.

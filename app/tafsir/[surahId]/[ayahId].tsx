@@ -880,10 +880,25 @@ function TafsirPage({
               )}
             </View>
           ) : (
-            <View className="mt-4">
-              <Text className="text-sm text-muted dark:text-muted-dark">
-                Please select a tafsir from the settings panel to view commentary.
+            <View className="mt-5 items-center rounded-3xl border border-border bg-surface px-6 py-8 dark:bg-surface-dark">
+              <Text className="text-center text-lg font-bold text-foreground dark:text-foreground-dark">
+                Add a Tafsir to begin
               </Text>
+              <Text className="mt-2 max-w-xs text-center text-sm leading-5 text-muted dark:text-muted-dark">
+                Download a commentary once, then read it here offline.
+              </Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Add Tafsir"
+                onPress={() => {
+                  setSettingsInitialPanel('tafsir');
+                  setIsSettingsOpen(true);
+                }}
+                className="mt-5 min-h-12 items-center justify-center rounded-2xl bg-accent px-6 dark:bg-accent-dark"
+                style={({ pressed }) => ({ opacity: pressed ? 0.86 : 1 })}
+              >
+                <Text className="text-sm font-bold text-white">Add Tafsir</Text>
+              </Pressable>
             </View>
           )}
         </View>

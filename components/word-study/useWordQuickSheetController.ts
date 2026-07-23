@@ -2,6 +2,7 @@ import React from 'react';
 
 import { container } from '@/src/core/infrastructure/di/container';
 import { logger } from '@/src/core/infrastructure/monitoring/logger';
+import { WordStudyPackNotInstalledError } from '@/src/core/infrastructure/word-study';
 
 import {
   getWordStudyLocationKey,
@@ -66,6 +67,9 @@ export function useWordQuickSheetController(): WordQuickSheetController {
             });
           })
           .catch((error: unknown) => {
+            const needsDownload =
+              error instanceof WordStudyPackNotInstalledError ||
+              (error instanceof Error && error.name === 'WordStudyPackNotInstalledError');
             setSession((current) => {
               if (!current || current.requestId !== requestId) return current;
               logger.error(
@@ -77,7 +81,10 @@ export function useWordQuickSheetController(): WordQuickSheetController {
                 ...current,
                 loadState: {
                   status: 'error',
-                  message: 'Word analysis could not be loaded from the offline study pack.',
+                  message: needsDownload
+                    ? 'Download Word Study Essentials once to use morphology, meanings, and occurrences fully offline.'
+                    : 'Word analysis could not be loaded from the offline study pack.',
+                  needsDownload,
                 },
               };
             });

@@ -21,8 +21,9 @@ import { LruCache } from './LruCache';
 import type { WordStudyDatabase, WordStudyDatabaseProvider } from './WordStudyDatabase';
 
 type WordRow = {
-  location: string;
-  verse_key: string;
+  id: number;
+  surah: number;
+  ayah: number;
   word_position: number;
   surface_uthmani: string;
   normalized_surface: string;
@@ -39,19 +40,15 @@ type WordRow = {
   grammatical_case: MorphologyFeatures['grammaticalCase'] | null;
   grammatical_state: MorphologyFeatures['grammaticalState'] | null;
   derivation: string | null;
-  source_id: string;
-  source_version: string;
 };
 
 type MorphemeRow = {
-  location: string;
+  word_id: number;
   segment_index: number;
   arabic: string;
   segment_type: Morpheme['segmentType'];
   pos_code: string;
   features_json: string;
-  source_id: string;
-  source_version: string;
 };
 
 type LemmaRow = {
@@ -60,8 +57,6 @@ type LemmaRow = {
   normalized: string;
   pos_code: string | null;
   occurrence_count: number;
-  source_id: string;
-  source_version: string;
 };
 
 type RootRow = {
@@ -70,32 +65,23 @@ type RootRow = {
   normalized: string;
   occurrence_count: number;
   lemma_count: number;
-  source_id: string;
-  source_version: string;
 };
 
 type GlossRow = {
-  location: string;
+  word_id: number;
   language_code: string;
   text: string;
+};
+
+type SourceRoleRow = {
+  source_role: 'morphology' | 'surface' | 'contextual-gloss';
   source_id: string;
   source_version: string;
 };
 
-type AnalysisSourceRow = {
-  location: string;
-  source_id: string;
-  source_version: string;
-  source_role: string;
-};
-
+type SourceRoles = Record<SourceRoleRow['source_role'], Omit<WordStudySourceReference, 'layer'>>;
 type CountRow = { count: number };
-
-type VerseSurfaceRow = {
-  verse_key: string;
-  word_position: number;
-  surface_uthmani: string;
-};
+type VerseCoordinate = { surah: number; ayah: number };
 
 export interface WordStudyQueryOptions {
   readonly signal?: AbortSignal;
@@ -138,19 +124,11 @@ async function cancellable<T>(promise: Promise<T>, signal?: AbortSignal): Promis
   });
 }
 
-function source(sourceId: string, sourceVersion: string, layer: WordStudySourceLayer) {
-  return { sourceId, sourceVersion, layer } satisfies WordStudySourceReference;
-}
-
-function mapSourceRole(role: string): WordStudySourceLayer {
-  switch (role) {
-    case 'surface':
-      return 'surface';
-    case 'contextual-gloss':
-      return 'contextual-gloss';
-    default:
-      return 'morphology';
-  }
+function source(
+  value: Omit<WordStudySourceReference, 'layer'>,
+  layer: WordStudySourceLayer
+): WordStudySourceReference {
+  return { ...value, layer };
 }
 
 function uniqueSources(sources: readonly WordStudySourceReference[]): WordStudySourceReference[] {
@@ -161,6 +139,14 @@ function uniqueSources(sources: readonly WordStudySourceReference[]): WordStudyS
     seen.add(key);
     return true;
   });
+}
+
+function locationKey(row: Pick<WordRow, 'surah' | 'ayah' | 'word_position'>): string {
+  return `${row.surah}:${row.ayah}:${row.word_position}`;
+}
+
+function verseKey(row: Pick<WordRow, 'surah' | 'ayah'>): string {
+  return `${row.surah}:${row.ayah}`;
 }
 
 function compactFeatures(row: WordRow): MorphologyFeatures {
@@ -186,30 +172,34 @@ function parseMorphemeFeatures(raw: string, posCode: string): MorphologyFeatures
   try {
     const value = JSON.parse(raw) as unknown;
     const features = value && typeof value === 'object' ? (value as MorphologyFeatures) : {};
-    return posCode === 'V' && !features.verbForm
-      ? { ...features, verbForm: 'I' }
-      : features;
+    return posCode === 'V' && !features.verbForm ? { ...features, verbForm: 'I' } : features;
   } catch {
     return posCode === 'V' ? { verbForm: 'I' } : {};
   }
 }
 
-function mapGloss(row: GlossRow): WordGloss {
+function mapGloss(
+  row: GlossRow,
+  sourceRef: Omit<WordStudySourceReference, 'layer'>
+): WordGloss {
   return {
     languageCode: row.language_code,
     text: row.text,
-    source: source(row.source_id, row.source_version, 'contextual-gloss'),
+    source: source(sourceRef, 'contextual-gloss'),
   };
 }
 
-function mapLemma(row: LemmaRow): Lemma {
+function mapLemma(
+  row: LemmaRow,
+  sourceRef: Omit<WordStudySourceReference, 'layer'>
+): Lemma {
   return {
     id: String(row.id),
     arabic: row.arabic,
     normalized: row.normalized,
     ...(row.pos_code ? { posCode: row.pos_code } : {}),
     occurrenceCount: row.occurrence_count,
-    source: source(row.source_id, row.source_version, 'lemma'),
+    source: source(sourceRef, 'lemma'),
   };
 }
 
@@ -258,6 +248,7 @@ export class SQLiteWordStudyRepository implements IWordStudyRepository {
   private readonly wordCache: LruCache<string, Promise<WordStudyLookupResult>>;
   private readonly lemmaCache: LruCache<number, Promise<Lemma | null>>;
   private readonly rootCache: LruCache<number, Promise<Root | null>>;
+  private sourceRolesPromise: Promise<SourceRoles> | null = null;
 
   constructor(
     private readonly databaseProvider: WordStudyDatabaseProvider,
@@ -268,48 +259,43 @@ export class SQLiteWordStudyRepository implements IWordStudyRepository {
     this.rootCache = new LruCache(options.rootCacheCapacity ?? 64);
   }
 
-  findByLocation(locationKey: string): Promise<WordStudyLookupResult>;
-  findByLocation(
-    locationKey: string,
-    options: WordStudyQueryOptions
-  ): Promise<WordStudyLookupResult>;
+  findByLocation(location: string): Promise<WordStudyLookupResult>;
+  findByLocation(location: string, options: WordStudyQueryOptions): Promise<WordStudyLookupResult>;
   async findByLocation(
-    locationKey: string,
+    location: string,
     options: WordStudyQueryOptions = {}
   ): Promise<WordStudyLookupResult> {
-    const canonicalLocation = parseWordStudyLocation(locationKey);
-    let pending = this.wordCache.get(canonicalLocation.locationKey);
+    const canonical = parseWordStudyLocation(location);
+    let pending = this.wordCache.get(canonical.locationKey);
     if (!pending) {
-      pending = this.loadWordAsync(canonicalLocation.locationKey).catch((error) => {
-        this.wordCache.delete(canonicalLocation.locationKey);
+      pending = this.loadWordAsync(canonical.locationKey).catch((error) => {
+        this.wordCache.delete(canonical.locationKey);
         throw error;
       });
-      this.wordCache.set(canonicalLocation.locationKey, pending);
+      this.wordCache.set(canonical.locationKey, pending);
     }
     return cancellable(pending, options.signal);
   }
 
-  findByVerse(verseKey: string): Promise<readonly WordAnalysis[]>;
-  findByVerse(
-    verseKey: string,
-    options: WordStudyQueryOptions
-  ): Promise<readonly WordAnalysis[]>;
+  findByVerse(key: string): Promise<readonly WordAnalysis[]>;
+  findByVerse(key: string, options: WordStudyQueryOptions): Promise<readonly WordAnalysis[]>;
   async findByVerse(
-    verseKey: string,
+    key: string,
     options: WordStudyQueryOptions = {}
   ): Promise<readonly WordAnalysis[]> {
-    const canonicalVerseKey = parseVerseKey(verseKey).verseKey;
+    const canonical = parseVerseKey(key);
     throwIfCancelled(options.signal);
     const db = await this.databaseProvider.getDatabaseAsync();
     const rows = await cancellable(
-      db.getAllAsync<Pick<WordRow, 'location'>>(
-        'SELECT location FROM word_analysis WHERE verse_key = ? ORDER BY word_position;',
-        [canonicalVerseKey]
+      db.getAllAsync<Pick<WordRow, 'surah' | 'ayah' | 'word_position'>>(
+        `SELECT surah, ayah, word_position FROM word_analysis
+         WHERE surah = ? AND ayah = ? ORDER BY word_position`,
+        [canonical.surah, canonical.ayah]
       ),
       options.signal
     );
     const results = await Promise.all(
-      rows.map((row) => this.findByLocation(row.location, options))
+      rows.map((row) => this.findByLocation(locationKey(row), options))
     );
     return results.filter(isWordAnalysis);
   }
@@ -329,72 +315,64 @@ export class SQLiteWordStudyRepository implements IWordStudyRepository {
     throwIfCancelled(options.signal);
     const db = await this.databaseProvider.getDatabaseAsync();
     const { where, parameter } = await this.resolveOccurrencePredicateAsync(db, query);
-    throwIfCancelled(options.signal);
     const offset = parseCursor(query.cursor);
-    const countRow = await cancellable(
-      db.getFirstAsync<CountRow>(`SELECT COUNT(*) AS count FROM word_analysis WHERE ${where};`, [
-        parameter,
-      ]),
-      options.signal
-    );
+    const [countRow, sources] = await Promise.all([
+      cancellable(
+        db.getFirstAsync<CountRow>(`SELECT COUNT(*) AS count FROM word_analysis WHERE ${where}`, [
+          parameter,
+        ]),
+        options.signal
+      ),
+      this.loadSourceRolesAsync(db),
+    ]);
     const totalCount = countRow?.count ?? 0;
     const rows = await cancellable(
       db.getAllAsync<WordRow>(
-        `
-        SELECT * FROM word_analysis
-        WHERE ${where}
-        ORDER BY
-          CAST(substr(verse_key, 1, instr(verse_key, ':') - 1) AS INTEGER),
-          CAST(substr(verse_key, instr(verse_key, ':') + 1) AS INTEGER),
-          word_position
-        LIMIT ? OFFSET ?;
-        `,
+        `SELECT * FROM word_analysis WHERE ${where}
+         ORDER BY surah, ayah, word_position LIMIT ? OFFSET ?`,
         [parameter, query.limit, offset]
       ),
       options.signal
     );
-    const locations = rows.map((row) => row.location);
-    const verseKeys = [...new Set(rows.map((row) => row.verse_key))];
-    const [glosses, sourceRows, verseSurfaceRows] = await Promise.all([
-      this.loadGlossesForLocationsAsync(db, locations),
-      this.loadSourcesForLocationsAsync(db, locations),
-      this.loadVerseSurfacesAsync(db, verseKeys),
+    const wordIds = rows.map((row) => row.id);
+    const verses = Array.from(
+      new Map(rows.map((row) => [verseKey(row), { surah: row.surah, ayah: row.ayah }])).values()
+    );
+    const [glosses, verseSurfaceRows] = await Promise.all([
+      this.loadGlossesForWordIdsAsync(db, wordIds),
+      this.loadVerseSurfacesAsync(db, verses),
     ]);
     throwIfCancelled(options.signal);
 
-    const glossesByLocation = new Map<string, GlossRow[]>();
+    const glossesByWordId = new Map<number, GlossRow[]>();
     for (const gloss of glosses) {
-      const current = glossesByLocation.get(gloss.location) ?? [];
+      const current = glossesByWordId.get(gloss.word_id) ?? [];
       current.push(gloss);
-      glossesByLocation.set(gloss.location, current);
-    }
-    const sourcesByLocation = new Map<string, AnalysisSourceRow[]>();
-    for (const sourceRow of sourceRows) {
-      const current = sourcesByLocation.get(sourceRow.location) ?? [];
-      current.push(sourceRow);
-      sourcesByLocation.set(sourceRow.location, current);
+      glossesByWordId.set(gloss.word_id, current);
     }
     const contextByVerse = new Map<string, string[]>();
     for (const verseWord of verseSurfaceRows) {
-      const current = contextByVerse.get(verseWord.verse_key) ?? [];
+      const key = verseKey(verseWord);
+      const current = contextByVerse.get(key) ?? [];
       current.push(verseWord.surface_uthmani);
-      contextByVerse.set(verseWord.verse_key, current);
+      contextByVerse.set(key, current);
     }
-    const items: WordOccurrence[] = rows.map((row) => ({
-      location: parseWordStudyLocation(row.location),
-      surfaceUthmani: row.surface_uthmani,
-      normalizedSurface: row.normalized_surface,
-      ayahContextUthmani: (contextByVerse.get(row.verse_key) ?? []).join(' '),
-      contextualGlosses: (glossesByLocation.get(row.location) ?? []).map(mapGloss),
-      sourceReferences: uniqueSources(
-        [
-          ...(sourcesByLocation.get(row.location) ?? []).map((item) =>
-            source(item.source_id, item.source_version, mapSourceRole(item.source_role))
-          ),
-          source(row.source_id, row.source_version, 'occurrence-index'),
-        ]
-      ),
-    }));
+
+    const items: WordOccurrence[] = rows.map((row) => {
+      const rowGlosses = glossesByWordId.get(row.id) ?? [];
+      return {
+        location: parseWordStudyLocation(locationKey(row)),
+        surfaceUthmani: row.surface_uthmani,
+        normalizedSurface: row.normalized_surface,
+        ayahContextUthmani: (contextByVerse.get(verseKey(row)) ?? []).join(' '),
+        contextualGlosses: rowGlosses.map((gloss) => mapGloss(gloss, sources['contextual-gloss'])),
+        sourceReferences: uniqueSources([
+          source(sources.surface, 'surface'),
+          ...(rowGlosses.length ? [source(sources['contextual-gloss'], 'contextual-gloss')] : []),
+          source(sources.morphology, 'occurrence-index'),
+        ]),
+      };
+    });
     const nextOffset = offset + items.length;
     const hasNextPage = nextOffset < totalCount;
     return {
@@ -421,27 +399,27 @@ export class SQLiteWordStudyRepository implements IWordStudyRepository {
     const databaseRootId = positiveDatabaseId(rootId, 'rootId');
     throwIfCancelled(options.signal);
     const db = await this.databaseProvider.getDatabaseAsync();
-    const rows = await cancellable(
-      db.getAllAsync<LemmaRow>(
-        `
-        SELECT l.*
-        FROM lemma l
-        JOIN word_analysis wa ON wa.lemma_id = l.id
-        WHERE wa.root_id = ?
-        GROUP BY l.id
-        ORDER BY l.occurrence_count DESC, l.id;
-        `,
-        [databaseRootId]
+    const [rows, sources] = await Promise.all([
+      cancellable(
+        db.getAllAsync<LemmaRow>(
+          `SELECT l.* FROM lemma l
+           JOIN word_analysis wa ON wa.lemma_id = l.id
+           WHERE wa.root_id = ?
+           GROUP BY l.id ORDER BY l.occurrence_count DESC, l.id`,
+          [databaseRootId]
+        ),
+        options.signal
       ),
-      options.signal
-    );
-    return rows.map(mapLemma);
+      this.loadSourceRolesAsync(db),
+    ]);
+    return rows.map((row) => mapLemma(row, sources.morphology));
   }
 
   clearCache(): void {
     this.wordCache.clear();
     this.lemmaCache.clear();
     this.rootCache.clear();
+    this.sourceRolesPromise = null;
   }
 
   getCacheStats(): { words: number; lemmas: number; roots: number } {
@@ -452,55 +430,53 @@ export class SQLiteWordStudyRepository implements IWordStudyRepository {
     };
   }
 
-  private async loadWordAsync(locationKey: string): Promise<WordStudyLookupResult> {
+  private async loadWordAsync(key: string): Promise<WordStudyLookupResult> {
+    const canonical = parseWordStudyLocation(key);
     const db = await this.databaseProvider.getDatabaseAsync();
     const row = await db.getFirstAsync<WordRow>(
-      'SELECT * FROM word_analysis WHERE location = ? LIMIT 1;',
-      [locationKey]
+      `SELECT * FROM word_analysis
+       WHERE surah = ? AND ayah = ? AND word_position = ? LIMIT 1`,
+      [canonical.surah, canonical.ayah, canonical.wordPosition]
     );
     if (!row) {
       return {
-        location: parseWordStudyLocation(locationKey),
+        location: canonical,
         status: 'missing',
         reason: 'source-row-missing',
         sourceReferences: [],
       };
     }
 
-    const [morphemeRows, glossRows, sourceRows, lemma, root] = await Promise.all([
+    const sources = await this.loadSourceRolesAsync(db);
+    const [morphemeRows, glossRows, lemma, root] = await Promise.all([
       db.getAllAsync<MorphemeRow>(
-        'SELECT * FROM morpheme WHERE location = ? ORDER BY segment_index;',
-        [locationKey]
+        'SELECT * FROM morpheme WHERE word_id = ? ORDER BY segment_index',
+        [row.id]
       ),
       db.getAllAsync<GlossRow>(
-        'SELECT * FROM word_gloss WHERE location = ? ORDER BY language_code, source_id;',
-        [locationKey]
+        'SELECT * FROM word_gloss WHERE word_id = ? ORDER BY language_code',
+        [row.id]
       ),
-      db.getAllAsync<AnalysisSourceRow>(
-        `
-        SELECT was.location, was.source_id, sm.version AS source_version, was.source_role
-        FROM word_analysis_source was
-        JOIN source_metadata sm ON sm.source_id = was.source_id
-        WHERE was.location = ?
-        ORDER BY was.source_role, was.source_id;
-        `,
-        [locationKey]
-      ),
-      row.lemma_id === null ? Promise.resolve(null) : this.loadLemmaAsync(db, row.lemma_id),
-      row.root_id === null ? Promise.resolve(null) : this.loadRootAsync(db, row.root_id),
+      row.lemma_id === null
+        ? Promise.resolve(null)
+        : this.loadLemmaAsync(db, row.lemma_id, sources.morphology),
+      row.root_id === null
+        ? Promise.resolve(null)
+        : this.loadRootAsync(db, row.root_id, sources.morphology),
     ]);
-    const morphologySource = source(row.source_id, row.source_version, 'morphology');
+    const morphologySource = source(sources.morphology, 'morphology');
+    const segmentationSource = source(sources.morphology, 'segmentation');
     const morphemes: Morpheme[] = morphemeRows.map((item) => ({
-      locationKey: item.location,
+      locationKey: canonical.locationKey,
       segmentIndex: item.segment_index,
       arabic: item.arabic,
       segmentType: item.segment_type,
       posCode: item.pos_code,
       features: parseMorphemeFeatures(item.features_json, item.pos_code),
-      source: source(item.source_id, item.source_version, 'segmentation'),
+      source: segmentationSource,
     }));
     const analysis: WordAnalysis = {
-      location: parseWordStudyLocation(row.location),
+      location: canonical,
       surfaceUthmani: row.surface_uthmani,
       normalizedSurface: row.normalized_surface,
       primaryPos: row.primary_pos
@@ -513,7 +489,7 @@ export class SQLiteWordStudyRepository implements IWordStudyRepository {
       },
       morphemes:
         morphemes.length > 0
-          ? { status: 'available', value: morphemes, source: source(row.source_id, row.source_version, 'segmentation') }
+          ? { status: 'available', value: morphemes, source: segmentationSource }
           : { status: 'missing', reason: 'segmentation-not-provided', source: morphologySource },
       lemma: lemma
         ? { status: 'available', value: lemma, source: lemma.source }
@@ -521,11 +497,11 @@ export class SQLiteWordStudyRepository implements IWordStudyRepository {
       root: root
         ? { status: 'available', value: root, source: root.source }
         : { status: 'unsupported', reason: rootMissingReason(row.primary_pos), source: morphologySource },
-      contextualGlosses: glossRows.map(mapGloss),
+      contextualGlosses: glossRows.map((gloss) => mapGloss(gloss, sources['contextual-gloss'])),
       sourceReferences: uniqueSources([
-        ...sourceRows.map((item) =>
-          source(item.source_id, item.source_version, mapSourceRole(item.source_role))
-        ),
+        morphologySource,
+        source(sources.surface, 'surface'),
+        ...(glossRows.length ? [source(sources['contextual-gloss'], 'contextual-gloss')] : []),
         ...(lemma ? [lemma.source] : []),
         ...(root ? [root.source] : []),
       ]),
@@ -533,12 +509,16 @@ export class SQLiteWordStudyRepository implements IWordStudyRepository {
     return analysis;
   }
 
-  private loadLemmaAsync(db: WordStudyDatabase, id: number): Promise<Lemma | null> {
+  private loadLemmaAsync(
+    db: WordStudyDatabase,
+    id: number,
+    sourceRef: Omit<WordStudySourceReference, 'layer'>
+  ): Promise<Lemma | null> {
     let pending = this.lemmaCache.get(id);
     if (!pending) {
       pending = db
-        .getFirstAsync<LemmaRow>('SELECT * FROM lemma WHERE id = ? LIMIT 1;', [id])
-        .then((row) => (row ? mapLemma(row) : null))
+        .getFirstAsync<LemmaRow>('SELECT * FROM lemma WHERE id = ? LIMIT 1', [id])
+        .then((row) => (row ? mapLemma(row, sourceRef) : null))
         .catch((error) => {
           this.lemmaCache.delete(id);
           throw error;
@@ -548,11 +528,15 @@ export class SQLiteWordStudyRepository implements IWordStudyRepository {
     return pending;
   }
 
-  private loadRootAsync(db: WordStudyDatabase, id: number): Promise<Root | null> {
+  private loadRootAsync(
+    db: WordStudyDatabase,
+    id: number,
+    sourceRef: Omit<WordStudySourceReference, 'layer'>
+  ): Promise<Root | null> {
     let pending = this.rootCache.get(id);
     if (!pending) {
       pending = db
-        .getFirstAsync<RootRow>('SELECT * FROM root WHERE id = ? LIMIT 1;', [id])
+        .getFirstAsync<RootRow>('SELECT * FROM root WHERE id = ? LIMIT 1', [id])
         .then((row) =>
           row
             ? {
@@ -561,7 +545,7 @@ export class SQLiteWordStudyRepository implements IWordStudyRepository {
                 normalized: row.normalized,
                 occurrenceCount: row.occurrence_count,
                 lemmaCount: row.lemma_count,
-                source: source(row.source_id, row.source_version, 'root'),
+                source: source(sourceRef, 'root'),
               }
             : null
         )
@@ -572,6 +556,33 @@ export class SQLiteWordStudyRepository implements IWordStudyRepository {
       this.rootCache.set(id, pending);
     }
     return pending;
+  }
+
+  private async loadSourceRolesAsync(db: WordStudyDatabase): Promise<SourceRoles> {
+    if (!this.sourceRolesPromise) {
+      this.sourceRolesPromise = db
+        .getAllAsync<SourceRoleRow>(
+          `SELECT sr.source_role, sr.source_id, sm.version AS source_version
+           FROM source_role sr JOIN source_metadata sm ON sm.source_id = sr.source_id`
+        )
+        .then((rows) => {
+          const values = Object.fromEntries(
+            rows.map((row) => [
+              row.source_role,
+              { sourceId: row.source_id, sourceVersion: row.source_version },
+            ])
+          ) as Partial<SourceRoles>;
+          if (!values.morphology || !values.surface || !values['contextual-gloss']) {
+            throw new Error('Word-study source-role metadata is incomplete');
+          }
+          return values as SourceRoles;
+        })
+        .catch((error) => {
+          this.sourceRolesPromise = null;
+          throw error;
+        });
+    }
+    return this.sourceRolesPromise;
   }
 
   private async resolveOccurrencePredicateAsync(
@@ -588,10 +599,11 @@ export class SQLiteWordStudyRepository implements IWordStudyRepository {
     }
     let normalizedSurface = query.normalizedSurface?.trim();
     if (!normalizedSurface && query.locationKey) {
-      const location = parseWordStudyLocation(query.locationKey).locationKey;
+      const location = parseWordStudyLocation(query.locationKey);
       const row = await db.getFirstAsync<{ normalized_surface: string }>(
-        'SELECT normalized_surface FROM word_analysis WHERE location = ? LIMIT 1;',
-        [location]
+        `SELECT normalized_surface FROM word_analysis
+         WHERE surah = ? AND ayah = ? AND word_position = ? LIMIT 1`,
+        [location.surah, location.ayah, location.wordPosition]
       );
       normalizedSurface = row?.normalized_surface;
     }
@@ -601,50 +613,29 @@ export class SQLiteWordStudyRepository implements IWordStudyRepository {
     return { where: 'normalized_surface = ?', parameter: normalizedSurface };
   }
 
-  private loadGlossesForLocationsAsync(
+  private loadGlossesForWordIdsAsync(
     db: WordStudyDatabase,
-    locations: readonly string[]
+    wordIds: readonly number[]
   ): Promise<GlossRow[]> {
-    if (locations.length === 0) return Promise.resolve([]);
-    const placeholders = locations.map(() => '?').join(',');
+    if (wordIds.length === 0) return Promise.resolve([]);
+    const placeholders = wordIds.map(() => '?').join(',');
     return db.getAllAsync<GlossRow>(
-      `SELECT * FROM word_gloss WHERE location IN (${placeholders}) ORDER BY location, language_code, source_id;`,
-      locations
-    );
-  }
-
-  private loadSourcesForLocationsAsync(
-    db: WordStudyDatabase,
-    locations: readonly string[]
-  ): Promise<AnalysisSourceRow[]> {
-    if (locations.length === 0) return Promise.resolve([]);
-    const placeholders = locations.map(() => '?').join(',');
-    return db.getAllAsync<AnalysisSourceRow>(
-      `
-      SELECT was.location, was.source_id, sm.version AS source_version, was.source_role
-      FROM word_analysis_source was
-      JOIN source_metadata sm ON sm.source_id = was.source_id
-      WHERE was.location IN (${placeholders})
-      ORDER BY was.location, was.source_role, was.source_id;
-      `,
-      locations
+      `SELECT * FROM word_gloss WHERE word_id IN (${placeholders}) ORDER BY word_id, language_code`,
+      wordIds
     );
   }
 
   private loadVerseSurfacesAsync(
     db: WordStudyDatabase,
-    verseKeys: readonly string[]
-  ): Promise<VerseSurfaceRow[]> {
-    if (verseKeys.length === 0) return Promise.resolve([]);
-    const placeholders = verseKeys.map(() => '?').join(',');
-    return db.getAllAsync<VerseSurfaceRow>(
-      `
-      SELECT verse_key, word_position, surface_uthmani
-      FROM word_analysis
-      WHERE verse_key IN (${placeholders})
-      ORDER BY verse_key, word_position;
-      `,
-      verseKeys
+    verses: readonly VerseCoordinate[]
+  ): Promise<WordRow[]> {
+    if (verses.length === 0) return Promise.resolve([]);
+    const conditions = verses.map(() => '(surah = ? AND ayah = ?)').join(' OR ');
+    const parameters = verses.flatMap((item) => [item.surah, item.ayah]);
+    return db.getAllAsync<WordRow>(
+      `SELECT surah, ayah, word_position, surface_uthmani FROM word_analysis
+       WHERE ${conditions} ORDER BY surah, ayah, word_position`,
+      parameters
     );
   }
 }

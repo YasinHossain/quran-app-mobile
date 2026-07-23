@@ -11,7 +11,7 @@ export type WordQuickSheetLoadState =
   | { status: 'loading' }
   | { status: 'ready'; analysis: WordAnalysis }
   | { status: 'missing'; result: Exclude<WordStudyLookupResult, WordAnalysis> }
-  | { status: 'error'; message: string };
+  | { status: 'error'; message: string; needsDownload?: boolean };
 
 const POS_LABELS: Readonly<Record<string, string>> = {
   V: 'Verb',

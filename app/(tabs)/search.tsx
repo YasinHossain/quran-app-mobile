@@ -22,7 +22,7 @@ import { VerseActionsSheet } from '@/components/surah/VerseActionsSheet';
 import { BookmarkModal } from '@/components/bookmarks/BookmarkModal';
 import { AddToPlannerModal, type VerseSummaryDetails } from '@/components/verse-planner-modal';
 import Colors from '@/constants/Colors';
-import { DEFAULT_MUSHAF_ID, findMushafOption } from '@/data/mushaf/options';
+import { findMushafOption } from '@/data/mushaf/options';
 import { usePaginatedSearch } from '@/hooks/usePaginatedSearch';
 import { useChapters } from '@/hooks/useChapters';
 import { analyzeQuery } from '@/lib/api/search';
@@ -286,7 +286,19 @@ export default function SearchScreen(): React.JSX.Element {
           ? Math.trunc(verse)
           : undefined;
       void (async () => {
-        const packId = settings.mushafId ?? DEFAULT_MUSHAF_ID;
+        const packId = settings.mushafId;
+        if (!packId) {
+          router.push({
+            pathname: '/surah/[surahId]',
+            params: {
+              surahId: String(surahId),
+              view: 'translations',
+              manageMushaf: '1',
+              ...(normalizedVerse ? { startVerse: String(normalizedVerse) } : {}),
+            },
+          });
+          return;
+        }
         const target = normalizedVerse
           ? await prepareMushafVerseTarget({
               awaitPageLoad: false,

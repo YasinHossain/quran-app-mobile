@@ -26,6 +26,8 @@ Optional compiler arguments use `--name=value` syntax: `--morphology`, `--canoni
 
 Rows and IDs are sorted canonically, source checksums are fixed inputs, no timestamps are written, SQLite uses fixed page/schema settings, and the final database is vacuumed. The test suite requires two builds using identical inputs to be byte-identical. The manifest also records a logical SHA-256 over sorted compiler data so content can be compared across SQLite versions.
 
+Schema 2 is the compact Essentials layout. It stores numeric word IDs and Quran coordinates, normalizes source provenance into three pack-level roles, and retains the surface/lemma/root occurrence indexes. This preserves the complete user-facing feature set while avoiding repeated location and source strings on every word and morpheme row.
+
 The compiler requires 6,236 ayahs and 77,429 word locations. It compares every `${surah}:${ayah}:${wordPosition}` key, checks normalized surface alignment, derives lemma/root counts from aligned rows, checks foreign keys and database integrity, and writes:
 
 - `quran-word-study.db`

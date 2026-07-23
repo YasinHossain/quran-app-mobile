@@ -5,9 +5,9 @@ import { primeVerseDetailsCache } from '@/lib/verse/verseDetailsCache';
 import { getBundledVerseWords } from '@/lib/verse/bundledVerseWords';
 import { apiFetch } from '@/src/core/infrastructure/api/apiFetch';
 import { container } from '@/src/core/infrastructure/di/container';
-import { getBundledMushafPack } from '@/src/core/infrastructure/mushaf/bundledPacks';
 import { getAppDbSync } from '@/src/core/infrastructure/db';
 import type { OfflineVerseWithTranslations } from '@/src/core/domain/repositories/ITranslationOfflineStore';
+import { getQuranPageVerseRange } from '../src/data/quranPageVerseRanges';
 
 import type { VerseWord } from '@/types';
 
@@ -101,45 +101,25 @@ export function getPageVerseKeys(
   pageNumber: number,
   chapters: Array<{ id: number; verses_count: number }>
 ): string[] {
-  const pack = getBundledMushafPack('unicode-uthmani-v1');
-  const lookup = pack?.payload.lookup[String(pageNumber)];
-  if (!lookup) return [];
-
-  const startVerseKey = lookup.firstVerseKey || lookup.from;
-  const endVerseKey = lookup.lastVerseKey || lookup.to;
-
+  // Verse ranges are address metadata only; no page-layout Mushaf content is bundled.
+  const range = getQuranPageVerseRange(pageNumber);
+  if (!range) return [];
+  const [startVerseKey, endVerseKey] = range;
   const startParsed = parseVerseKeyNumbers(startVerseKey);
   const endParsed = parseVerseKeyNumbers(endVerseKey);
   if (!startParsed || !endParsed) return [];
 
   const keys: string[] = [];
-  if (startParsed.surahId === endParsed.surahId) {
-    for (let ayah = startParsed.verseNumber; ayah <= endParsed.verseNumber; ayah += 1) {
-      keys.push(`${startParsed.surahId}:${ayah}`);
-    }
-    return keys;
-  }
-
-  const startSurah = chapters.find((c) => c.id === startParsed.surahId);
-  if (startSurah) {
-    for (let ayah = startParsed.verseNumber; ayah <= startSurah.verses_count; ayah += 1) {
-      keys.push(`${startParsed.surahId}:${ayah}`);
+  for (let surahId = startParsed.surahId; surahId <= endParsed.surahId; surahId += 1) {
+    const chapter = chapters.find((item) => item.id === surahId);
+    if (!chapter) continue;
+    const firstAyah = surahId === startParsed.surahId ? startParsed.verseNumber : 1;
+    const lastAyah =
+      surahId === endParsed.surahId ? endParsed.verseNumber : chapter.verses_count;
+    for (let ayah = firstAyah; ayah <= lastAyah; ayah += 1) {
+      keys.push(`${surahId}:${ayah}`);
     }
   }
-
-  for (let id = startParsed.surahId + 1; id < endParsed.surahId; id += 1) {
-    const ch = chapters.find((c) => c.id === id);
-    if (ch) {
-      for (let ayah = 1; ayah <= ch.verses_count; ayah += 1) {
-        keys.push(`${id}:${ayah}`);
-      }
-    }
-  }
-
-  for (let ayah = 1; ayah <= endParsed.verseNumber; ayah += 1) {
-    keys.push(`${endParsed.surahId}:${ayah}`);
-  }
-
   return keys;
 }
 
@@ -395,10 +375,16 @@ export function usePageVerses({
 
   const translationsKey = resolvedTranslationIds.join(',');
 
-  const verseKeys = React.useMemo(() => {
+  const layoutVerseKeys = React.useMemo(() => {
     if (!enabled || chapters.length === 0) return [];
     return getPageVerseKeys(pageNumber, chapters);
   }, [pageNumber, chapters, enabled]);
+  const [networkVerseKeys, setNetworkVerseKeys] = React.useState<string[]>([]);
+  const verseKeys = layoutVerseKeys.length > 0 ? layoutVerseKeys : networkVerseKeys;
+
+  React.useEffect(() => {
+    setNetworkVerseKeys([]);
+  }, [pageNumber]);
 
   const initialVersesByKey = React.useMemo(() => {
     return getOfflinePageVersesSnapshot({
@@ -454,7 +440,7 @@ export function usePageVerses({
   );
 
   const load = React.useCallback(async () => {
-    if (!enabled || verseKeys.length === 0) return;
+    if (!enabled) return;
 
     const token = ++requestTokenRef.current;
     
@@ -480,7 +466,7 @@ export function usePageVerses({
 
       if (token !== requestTokenRef.current) return;
 
-      const isCompleteOffline = offlineResults.every((verse) => {
+      const isCompleteOffline = verseKeys.length > 0 && offlineResults.every((verse) => {
         if (!verse) return false;
         if (resolvedTranslationIds.length === 0) return true;
         const availableTranslationIds = new Set(verse.translations.map((t) => t.translationId));
@@ -568,6 +554,7 @@ export function usePageVerses({
         };
       });
 
+      setNetworkVerseKeys((response.verses ?? []).map((verse) => verse.verse_key));
       setVersesByKey(mapped);
       setIsLoading(false);
     } catch (error) {

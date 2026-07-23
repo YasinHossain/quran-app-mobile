@@ -2,12 +2,12 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const { loadLifecycleModule } = require('./helpers.cjs');
 
-const { WordStudyPackLifecycle } = loadLifecycleModule();
+const { WordStudyPackLifecycle, WordStudyPackNotInstalledError } = loadLifecycleModule();
 
 const manifest = {
   format: 'quran-word-study-sqlite-v1',
   compilerVersion: 'test',
-  schemaVersion: 1,
+  schemaVersion: 2,
   databaseFile: 'pack.db',
   databaseSizeBytes: 1,
   databaseChecksumSha256: 'a'.repeat(64),
@@ -30,7 +30,7 @@ class FakeBackend {
     this.state = state;
     this.valid = new Map();
     this.writes = [];
-    this.bundledInstalls = 0;
+    this.deleted = [];
     this.hostedError = null;
     this.hostedInstalls = 0;
   }
@@ -46,11 +46,12 @@ class FakeBackend {
     if (!value) throw new Error(`invalid ${ref.version}`);
     return value;
   }
-  async installBundledPackAsync() {
-    this.bundledInstalls += 1;
-    const value = pack('bundled');
-    this.valid.set('bundled', value);
-    return value;
+  async clearActivationStateAsync() {
+    this.state = null;
+  }
+  async deleteInstalledPackAsync(ref) {
+    this.deleted.push(ref.version);
+    this.valid.delete(ref.version);
   }
   async installHostedPackAsync(entry) {
     this.hostedInstalls += 1;
@@ -65,13 +66,13 @@ function ref(version) {
   return { packId: 'core', version, manifest };
 }
 
-test('missing activation installs the trusted bundled pack', async () => {
+test('missing activation requires the user-managed Essentials download', async () => {
   const backend = new FakeBackend();
-  const ready = await new WordStudyPackLifecycle(backend).ensureReadyAsync();
-  assert.equal(ready.version, 'bundled');
-  assert.equal(ready.recovery, 'bundled-install');
-  assert.equal(backend.bundledInstalls, 1);
-  assert.equal(backend.state.active.version, 'bundled');
+  await assert.rejects(
+    new WordStudyPackLifecycle(backend).ensureReadyAsync(),
+    WordStudyPackNotInstalledError
+  );
+  assert.equal(backend.state, null);
 });
 
 test('corrupt active pack rolls back to the retained valid generation', async () => {
@@ -85,19 +86,31 @@ test('corrupt active pack rolls back to the retained valid generation', async ()
   assert.equal(ready.version, 'previous');
   assert.equal(ready.recovery, 'rollback');
   assert.equal(backend.state.active.version, 'previous');
-  assert.equal(backend.bundledInstalls, 0);
 });
 
-test('missing/incompatible active and previous packs recover from bundled content', async () => {
+test('invalid active and previous downloads never install hidden bundled content', async () => {
   const backend = new FakeBackend({
     format: 'quran-word-study-activation-v1',
     active: ref('incompatible'),
     previous: ref('corrupt'),
   });
-  const ready = await new WordStudyPackLifecycle(backend).ensureReadyAsync();
-  assert.equal(ready.recovery, 'bundled-reinstall');
-  assert.equal(backend.state.active.version, 'bundled');
-  assert.equal(backend.bundledInstalls, 1);
+  await assert.rejects(
+    new WordStudyPackLifecycle(backend).ensureReadyAsync(),
+    /invalid incompatible/
+  );
+  assert.equal(backend.state.active.version, 'incompatible');
+});
+
+test('uninstall removes active and rollback generations', async () => {
+  const backend = new FakeBackend({
+    format: 'quran-word-study-activation-v1',
+    active: ref('current'),
+    previous: ref('previous'),
+  });
+  const lifecycle = new WordStudyPackLifecycle(backend);
+  await lifecycle.uninstallAsync();
+  assert.equal(backend.state, null);
+  assert.deepEqual(backend.deleted, ['current', 'previous']);
 });
 
 test('interrupted update never changes the active generation', async () => {
@@ -116,7 +129,7 @@ test('interrupted update never changes the active generation', async () => {
       databaseUrl: 'https://example.test/pack.db',
       databaseSizeBytes: 1,
       databaseChecksumSha256: 'a'.repeat(64),
-      schemaVersion: 1,
+      schemaVersion: 2,
     }),
     /interrupted download/
   );
@@ -137,7 +150,7 @@ test('validated update activation retains the previous generation for rollback',
     databaseUrl: 'https://example.test/pack.db',
     databaseSizeBytes: 1,
     databaseChecksumSha256: 'a'.repeat(64),
-    schemaVersion: 1,
+    schemaVersion: 2,
   });
   assert.equal(ready.version, 'next');
   assert.equal(backend.state.active.version, 'next');
@@ -158,7 +171,7 @@ test('pack versions are immutable and an already-active version is not replaced'
     databaseUrl: 'https://example.test/pack.db',
     databaseSizeBytes: 1,
     databaseChecksumSha256: manifest.databaseChecksumSha256,
-    schemaVersion: 1,
+    schemaVersion: 2,
   };
   const ready = await lifecycle.installUpdateAsync(entry);
   assert.equal(ready.version, 'stable');

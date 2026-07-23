@@ -32,7 +32,8 @@ async function main() {
     const repository = new SQLiteWordStudyRepository(provider);
     const db = await provider.getDatabaseAsync();
     const locations = (await db.getAllAsync(
-      'SELECT location FROM word_analysis ORDER BY location LIMIT 250;'
+      `SELECT surah || ':' || ayah || ':' || word_position AS location
+       FROM word_analysis ORDER BY surah, ayah, word_position LIMIT 250;`
     )).map((row) => row.location);
 
     const lookup = await measure(200, async (index) => {

@@ -6,21 +6,27 @@ import {
   type WordStudyPackCatalogEntry,
 } from './WordStudyPack.types';
 
+const RAW_CATALOG_URL =
+  'https://raw.githubusercontent.com/YasinHossain/quran-app-mobile/gh-pages/word-study-packs/catalog.json';
+
 function catalogUrl(): string {
   const value = Constants.expoConfig?.extra?.wordStudyPackCatalogUrl;
-  if (typeof value !== 'string' || !value.trim()) {
-    throw new Error('Word-study pack catalog URL is not configured');
-  }
-  return value.trim();
+  return typeof value === 'string' && value.trim()
+    ? value.trim()
+    : RAW_CATALOG_URL;
 }
 
 export class WordStudyPackCatalogClient {
   async listCompatiblePacksAsync(signal?: AbortSignal): Promise<WordStudyPackCatalogEntry[]> {
-    const url = catalogUrl();
-    const response = await fetch(url, {
+    let url = catalogUrl();
+    let response = await fetch(url, {
       headers: { Accept: 'application/json' },
       signal,
     });
+    if (response.status === 404 && url !== RAW_CATALOG_URL) {
+      url = RAW_CATALOG_URL;
+      response = await fetch(url, { headers: { Accept: 'application/json' }, signal });
+    }
     if (!response.ok) throw new Error(`Word-study pack catalog request failed (${response.status})`);
     const catalog = (await response.json()) as WordStudyPackCatalog;
     if (catalog.format !== 'quran-word-study-catalog-v1' || !Array.isArray(catalog.packs)) {

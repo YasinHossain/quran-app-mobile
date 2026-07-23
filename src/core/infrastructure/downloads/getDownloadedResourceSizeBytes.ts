@@ -5,6 +5,8 @@ import { AudioFileStore } from '@/src/core/infrastructure/audio/AudioFileStore';
 import { getAppDbAsync } from '@/src/core/infrastructure/db';
 import { MushafPackFileStore } from '@/src/core/infrastructure/mushaf/MushafPackFileStore';
 import { WordReferencePackFileStore } from '@/src/core/infrastructure/word-reference/WordReferencePackFileStore';
+import { WordGrammarPackFileStore } from '@/src/core/infrastructure/word-grammar/WordGrammarPackFileStore';
+import { WordStudyPackFileStore } from '@/src/core/infrastructure/word-study/WordStudyPackFileStore';
 
 type SizeRow = { bytes: number | null };
 
@@ -70,6 +72,26 @@ async function getWordReferencePackSizeBytes(item: DownloadIndexItemWithKey): Pr
   );
 }
 
+async function getWordGrammarPackSizeBytes(item: DownloadIndexItemWithKey): Promise<number> {
+  if (item.content.kind !== 'word-grammar-pack') return 0;
+  return getDirectorySizeBytes(
+    new WordGrammarPackFileStore().getVersionDirectoryUri(
+      item.content.packId,
+      item.content.version
+    )
+  );
+}
+
+async function getWordStudyPackSizeBytes(item: DownloadIndexItemWithKey): Promise<number> {
+  if (item.content.kind !== 'word-study-pack') return 0;
+  return getDirectorySizeBytes(
+    new WordStudyPackFileStore().getVersionDirectoryUri(
+      item.content.packId,
+      item.content.version
+    )
+  );
+}
+
 async function getIndividualDownloadedResourceSizeBytes(
   item: DownloadIndexItemWithKey
 ): Promise<number> {
@@ -115,6 +137,10 @@ async function getIndividualDownloadedResourceSizeBytes(
       return getMushafPackSizeBytes(item);
     case 'word-reference-pack':
       return getWordReferencePackSizeBytes(item);
+    case 'word-grammar-pack':
+      return getWordGrammarPackSizeBytes(item);
+    case 'word-study-pack':
+      return getWordStudyPackSizeBytes(item);
     default:
       return 0;
   }
@@ -243,6 +269,14 @@ export async function getDownloadedResourceSizeBytes(
 
     if (item.content.kind === 'word-reference-pack') {
       return [getWordReferencePackSizeBytes(item)];
+    }
+
+    if (item.content.kind === 'word-grammar-pack') {
+      return [getWordGrammarPackSizeBytes(item)];
+    }
+
+    if (item.content.kind === 'word-study-pack') {
+      return [getWordStudyPackSizeBytes(item)];
     }
 
     return [];

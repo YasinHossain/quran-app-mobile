@@ -17,8 +17,8 @@ import { HeaderActionButton } from '@/components/search/HeaderSearchBar';
 import Colors from '@/constants/Colors';
 import { useAppTheme } from '@/providers/ThemeContext';
 import { container } from '@/src/core/infrastructure/di/container';
-import { BUNDLED_WORD_GRAMMAR_PACK } from '@/src/core/infrastructure/word-grammar';
-import { BUNDLED_VERB_REFERENCE_PACK } from '@/src/core/infrastructure/verb-reference';
+import type { ReadyWordGrammarPack } from '@/src/core/infrastructure/word-grammar';
+import { VERB_REFERENCE_PACK_METADATA } from '@/src/core/infrastructure/verb-reference';
 import type { ReadyWordReferencePack } from '@/src/core/infrastructure/word-reference';
 import type { ReadyWordStudyPack, WordStudyPackSourceMetadata } from '@/src/core/infrastructure/word-study';
 
@@ -26,7 +26,8 @@ type SourcesLoadState =
   | { status: 'loading' }
   | {
       status: 'ready';
-      corePack: ReadyWordStudyPack;
+      corePack: ReadyWordStudyPack | null;
+      grammarPack: ReadyWordGrammarPack | null;
       dictionaries: readonly ReadyWordReferencePack[];
     }
   | { status: 'error' };
@@ -35,9 +36,9 @@ const METHODOLOGY_BOUNDARIES = [
   'Morphology, segmentation, part-of-speech labels, lemma, and root records reproduce the installed source annotations. The app does not generate or correct those annotations.',
   'The offline word pack is authoritative for displayed Uthmani word forms and bundled English contextual glosses. The morphology source remains authoritative for structured analysis.',
   'Occurrence indexes group normalized surface forms, lemmas, or roots. A shared index key does not imply that every occurrence has the same contextual meaning.',
-  'Arabic i‘rab is source-provided prose stored in a separate bundled pack. Selected-word matching changes presentation order only and never rewrites the source text.',
+  'Arabic i‘rab is source-provided prose stored in a separate optional pack. Selected-word matching changes presentation order only and never rewrites the source text.',
   'Dictionaries are optional local downloads. Their definitions remain attributed to their individual source and are not merged into the morphology analysis.',
-  'Verb principal parts come from a separate form-specific reference pack. The app looks up only the encountered root and derived form and does not generate a paradigm.',
+  'Verb principal parts remain disabled in public builds until the separate form-specific reference has redistribution permission and qualified review.',
 ] as const;
 
 function formatBytes(bytes: number): string {
@@ -65,11 +66,12 @@ export default function WordStudySourcesScreen(): React.JSX.Element {
       let cancelled = false;
       setLoadState({ status: 'loading' });
       void Promise.all([
-        container.getWordStudyPackLifecycle().ensureReadyAsync(),
+        container.getWordStudyPackInstaller().getInstalledAsync(),
+        container.getWordGrammarPackInstaller().getInstalledAsync(),
         container.getWordReferencePackInstaller().listInstalledAsync(),
       ])
-        .then(([corePack, dictionaries]) => {
-          if (!cancelled) setLoadState({ status: 'ready', corePack, dictionaries });
+        .then(([corePack, grammarPack, dictionaries]) => {
+          if (!cancelled) setLoadState({ status: 'ready', corePack, grammarPack, dictionaries });
         })
         .catch(() => {
           if (!cancelled) setLoadState({ status: 'error' });
@@ -123,38 +125,55 @@ export default function WordStudySourcesScreen(): React.JSX.Element {
           </View>
 
           <SectionTitle title="Core analysis pack" palette={palette} />
-          <PackCard
-            title={loadState.corePack.packId}
-            version={loadState.corePack.version}
-            rows={[
-              ['Format', loadState.corePack.manifest.format],
-              ['Schema', String(loadState.corePack.manifest.schemaVersion)],
-              ['Compiler', loadState.corePack.manifest.compilerVersion],
-              ['Database size', formatBytes(loadState.corePack.manifest.databaseSizeBytes)],
-              ['Database SHA-256', loadState.corePack.manifest.databaseChecksumSha256],
-            ]}
-            palette={palette}
-          />
-          <View style={styles.cardList}>
-            {loadState.corePack.manifest.sources.map((source) => (
-              <ManifestSourceCard key={source.sourceId} source={source} palette={palette} />
-            ))}
-          </View>
+          {loadState.corePack ? (
+            <>
+              <PackCard
+                title={loadState.corePack.packId}
+                version={loadState.corePack.version}
+                rows={[
+                  ['Format', loadState.corePack.manifest.format],
+                  ['Schema', String(loadState.corePack.manifest.schemaVersion)],
+                  ['Compiler', loadState.corePack.manifest.compilerVersion],
+                  ['Database size', formatBytes(loadState.corePack.manifest.databaseSizeBytes)],
+                  ['Database SHA-256', loadState.corePack.manifest.databaseChecksumSha256],
+                ]}
+                palette={palette}
+              />
+              <View style={styles.cardList}>
+                {loadState.corePack.manifest.sources.map((source) => (
+                  <ManifestSourceCard key={source.sourceId} source={source} palette={palette} />
+                ))}
+              </View>
+            </>
+          ) : (
+            <View style={[styles.notice, { borderColor: palette.border, backgroundColor: palette.surface }]}>
+              <PackageCheck color={palette.tint} size={20} strokeWidth={2.2} />
+              <Text style={[styles.noticeText, { color: palette.muted }]}>Word Study Essentials is not downloaded. Install it from Manage Word Study to see its source and checksum details.</Text>
+            </View>
+          )}
 
           <SectionTitle title="Arabic grammar pack" palette={palette} />
-          <PackCard
-            title={BUNDLED_WORD_GRAMMAR_PACK.manifest.source.title}
-            version={BUNDLED_WORD_GRAMMAR_PACK.manifest.source.version}
-            rows={[
-              ['Pack', BUNDLED_WORD_GRAMMAR_PACK.packId],
-              ['Schema', String(BUNDLED_WORD_GRAMMAR_PACK.manifest.schemaVersion)],
-              ['Compiler', BUNDLED_WORD_GRAMMAR_PACK.manifest.compilerVersion],
-              ['Coverage', `${BUNDLED_WORD_GRAMMAR_PACK.manifest.verseCount.toLocaleString()} ayahs · ${BUNDLED_WORD_GRAMMAR_PACK.manifest.passageCount.toLocaleString()} passages`],
-              ['Source SHA-256', BUNDLED_WORD_GRAMMAR_PACK.manifest.source.checksumSha256],
-            ]}
-            externalUrl={BUNDLED_WORD_GRAMMAR_PACK.manifest.source.url}
-            palette={palette}
-          />
+          {loadState.grammarPack ? (
+            <PackCard
+              title={loadState.grammarPack.manifest.source.title}
+              version={loadState.grammarPack.manifest.source.version}
+              rows={[
+                ['Pack', loadState.grammarPack.packId],
+                ['Schema', String(loadState.grammarPack.manifest.schemaVersion)],
+                ['Compiler', loadState.grammarPack.manifest.compilerVersion],
+                ['Coverage', `${loadState.grammarPack.manifest.verseCount.toLocaleString()} ayahs · ${loadState.grammarPack.manifest.passageCount.toLocaleString()} passages`],
+                ['Database size', formatBytes(loadState.grammarPack.manifest.databaseSizeBytes)],
+                ['Source SHA-256', loadState.grammarPack.manifest.source.checksumSha256],
+              ]}
+              externalUrl={loadState.grammarPack.manifest.source.url}
+              palette={palette}
+            />
+          ) : (
+            <View style={[styles.notice, { borderColor: palette.border, backgroundColor: palette.surface }]}>
+              <PackageCheck color={palette.tint} size={20} strokeWidth={2.2} />
+              <Text style={[styles.noticeText, { color: palette.muted }]}>Arabic grammar is not installed. It can be downloaded directly from the Grammar tab.</Text>
+            </View>
+          )}
 
           <SectionTitle title="Optional dictionary packs" palette={palette} />
           {loadState.dictionaries.length ? (
@@ -183,21 +202,10 @@ export default function WordStudySourcesScreen(): React.JSX.Element {
           )}
 
           <SectionTitle title="Verb reference pack" palette={palette} />
-          <PackCard
-            title={BUNDLED_VERB_REFERENCE_PACK.manifest.source.title}
-            version={BUNDLED_VERB_REFERENCE_PACK.manifest.source.version}
-            rows={[
-              ['Pack', BUNDLED_VERB_REFERENCE_PACK.packId],
-              ['Schema', String(BUNDLED_VERB_REFERENCE_PACK.manifest.schemaVersion)],
-              ['Compiler', BUNDLED_VERB_REFERENCE_PACK.manifest.compilerVersion],
-              ['Coverage', `${BUNDLED_VERB_REFERENCE_PACK.manifest.rowCount.toLocaleString()} form-specific verb records`],
-              ['License', BUNDLED_VERB_REFERENCE_PACK.manifest.source.license],
-              ['Attribution', BUNDLED_VERB_REFERENCE_PACK.manifest.source.attribution],
-              ['Source SHA-256', BUNDLED_VERB_REFERENCE_PACK.manifest.source.checksumSha256],
-            ]}
-            externalUrl={BUNDLED_VERB_REFERENCE_PACK.manifest.source.url}
-            palette={palette}
-          />
+          <View style={[styles.notice, { borderColor: palette.border, backgroundColor: palette.surface }]}>
+            <PackageCheck color={palette.tint} size={20} strokeWidth={2.2} />
+            <Text style={[styles.noticeText, { color: palette.muted }]}>Not distributed. {VERB_REFERENCE_PACK_METADATA.manifest.source.title} remains disabled while its license is “{VERB_REFERENCE_PACK_METADATA.manifest.source.license}” and qualified review is pending.</Text>
+          </View>
 
           <SectionTitle title="Methodology boundaries" palette={palette} />
           <View style={[styles.boundariesCard, { borderColor: palette.border, backgroundColor: palette.surface }]}>

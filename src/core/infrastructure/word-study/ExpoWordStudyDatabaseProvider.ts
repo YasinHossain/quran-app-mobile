@@ -49,10 +49,11 @@ export class ExpoWordStudyDatabaseProvider implements WordStudyDatabaseProvider 
 
   async installUpdateAsync(
     entry: WordStudyPackCatalogEntry,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    onProgress?: (percent: number) => void
   ): Promise<ReadyWordStudyPack> {
     await this.closeAsync();
-    return this.lifecycle.installUpdateAsync(entry, signal);
+    return this.lifecycle.installUpdateAsync(entry, signal, onProgress);
   }
 
   private async openAsync(): Promise<SQLiteDatabase> {

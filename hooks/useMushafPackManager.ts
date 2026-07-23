@@ -63,10 +63,6 @@ function getStatusLabel(args: {
 }): string {
   const { option, isSelected, isInstalled, downloadItem, definition } = args;
 
-  if (option.isBundledDefault) {
-    return isSelected ? 'Bundled default' : 'Bundled';
-  }
-
   switch (downloadItem?.status) {
     case 'queued':
       return 'Queued';
@@ -96,7 +92,7 @@ function getStatusLabel(args: {
 export function useMushafPackManager({
   selectedPackId,
 }: {
-  selectedPackId: MushafPackId;
+  selectedPackId?: MushafPackId;
 }): {
   entries: MushafPackManagerEntry[];
   isLoading: boolean;
@@ -187,7 +183,7 @@ export function useMushafPackManager({
         })
       );
       const busyKey = buildInstallKey(option.packId, option.version);
-      const isInstalled = option.channel === 'bundled' || install !== null;
+      const isInstalled = install !== null;
 
       return {
         option,
@@ -196,7 +192,7 @@ export function useMushafPackManager({
         downloadItem,
         isSelected: selectedPackId === option.packId,
         isInstalled,
-        isBundled: option.channel === 'bundled',
+        isBundled: false,
         isBusy:
           busyInstallKeys.has(busyKey) ||
           downloadItem?.status === 'queued' ||

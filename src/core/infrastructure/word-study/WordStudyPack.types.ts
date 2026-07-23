@@ -1,5 +1,5 @@
 export const WORD_STUDY_PACK_FORMAT = 'quran-word-study-sqlite-v1';
-export const WORD_STUDY_PACK_SCHEMA_VERSION = 1;
+export const WORD_STUDY_PACK_SCHEMA_VERSION = 2;
 export const WORD_STUDY_PACK_APPLICATION_ID = 1465078867;
 
 export interface WordStudyPackSourceMetadata {
@@ -53,7 +53,7 @@ export interface WordStudyPackActivationState {
 export interface ReadyWordStudyPack extends WordStudyInstalledPackRef {
   readonly databaseDirectoryUri: string;
   readonly databaseUri: string;
-  readonly recovery: 'none' | 'bundled-install' | 'rollback' | 'bundled-reinstall';
+  readonly recovery: 'none' | 'rollback';
 }
 
 export function assertCompatibleWordStudyManifest(

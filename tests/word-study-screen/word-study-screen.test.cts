@@ -493,7 +493,9 @@ test('full screen uses Morphology-first information architecture without repeate
   assert.match(source, /accessibilityLiveRegion="polite"/);
   assert.match(source, /label="Lemma"/);
   assert.match(source, /label="Root"/);
-  assert.match(source, /<VerbReferenceSection analysis=\{analysis\} palette=\{palette\}/);
+  assert.doesNotMatch(source, /<VerbReferenceSection/);
+  assert.match(source, /<GrammarPackDownloadPanel/);
+  assert.match(source, /tab !== 'grammar'/);
   assert.match(source, /onRequestScrollToFilters=\{handleScrollToOccurrenceFilters\}/);
   assert.match(source, /occurrenceSectionYRef\.current \+ offsetY/);
   assert.match(source, /How this word is built/);
@@ -552,7 +554,7 @@ test('full screen uses Morphology-first information architecture without repeate
     'utf8'
   );
   assert.match(grammarGuideSource, /Arabic i‘rab \(إعراب\)/);
-  assert.match(grammarGuideSource, /BUNDLED_WORD_GRAMMAR_PACK\.manifest\.source/);
+  assert.match(grammarGuideSource, /WORD_GRAMMAR_PACK_METADATA\.manifest\.source/);
   assert.doesNotMatch(grammarGuideSource, /View full source details/);
   assert.doesNotMatch(grammarGuideSource, /Close this information to continue reading the grammar/);
   assert.doesNotMatch(source, /label="Overview"|tab === 'overview'|'overview' \|/);
@@ -625,8 +627,8 @@ test('Word Study Sources is manifest-backed and reachable from settings', () => 
   const layout = readFileSync(join(process.cwd(), 'app/_layout.tsx'), 'utf8');
 
   assert.match(screen, /corePack\.manifest\.sources\.map/);
-  assert.match(screen, /BUNDLED_WORD_GRAMMAR_PACK\.manifest/);
-  assert.match(screen, /BUNDLED_VERB_REFERENCE_PACK\.manifest/);
+  assert.match(screen, /getWordGrammarPackInstaller\(\)\.getInstalledAsync\(\)/);
+  assert.match(screen, /VERB_REFERENCE_PACK_METADATA\.manifest/);
   assert.match(screen, /listInstalledAsync\(\)/);
   assert.match(screen, /Methodology boundaries/);
   assert.match(screen, /source\.license/);
@@ -850,4 +852,51 @@ test('occurrence explorer cancels stale queries, keeps page size bounded, and av
   assert.match(source, /Open in reader/);
   assert.doesNotMatch(source, />Reset</);
   assert.doesNotMatch(source, /this word occurs/i);
+});
+
+test('Downloads always exposes a dedicated download-only Word Study manager', () => {
+  const downloads = readFileSync(join(process.cwd(), 'app/downloads.tsx'), 'utf8');
+  const manager = readFileSync(join(process.cwd(), 'app/manage-word-study.tsx'), 'utf8');
+  const quickSheet = readFileSync(
+    join(process.cwd(), 'components/word-study/WordQuickSheet.tsx'),
+    'utf8'
+  );
+  const fullStudy = readFileSync(
+    join(process.cwd(), 'app/study/word/[surah]/[ayah]/[position].tsx'),
+    'utf8'
+  );
+  assert.match(downloads, /Manage Word Study/);
+  assert.match(downloads, /router\.push\('\/manage-word-study'\)/);
+  assert.match(manager, /Downloaded only when you choose/);
+  assert.match(manager, /Word Study Essentials/);
+  assert.match(manager, /Arabic Grammar \(I‘rab\)/);
+  assert.match(manager, /Dictionaries/);
+  assert.match(manager, /getWordStudyPackInstaller\(\)\.installAsync/);
+  assert.match(manager, /getWordStudyPackInstaller\(\)\.deleteAsync/);
+  assert.match(quickSheet, /CoreStudyPackDownloadPanel/);
+  assert.match(fullStudy, /function UnavailableStudyTab/);
+  assert.match(fullStudy, /GrammarPackDownloadPanel/);
+  assert.match(fullStudy, /DictionaryPackDownloadPanel/);
+  assert.match(fullStudy, /Occurrences index/);
+});
+
+test('lemma and root facts open their selectable occurrence scopes', () => {
+  const fullStudy = readFileSync(
+    join(process.cwd(), 'app/study/word/[surah]/[ayah]/[position].tsx'),
+    'utf8'
+  );
+  const explorer = readFileSync(
+    join(process.cwd(), 'components/word-study/full-study/OccurrenceExplorer.tsx'),
+    'utf8'
+  );
+  const explorerModel = readFileSync(
+    join(process.cwd(), 'components/word-study/full-study/occurrenceExplorerModel.ts'),
+    'utf8'
+  );
+  assert.match(fullStudy, /onSelectOccurrenceScope\('lemma'\)/);
+  assert.match(fullStudy, /onSelectOccurrenceScope\('root'\)/);
+  assert.match(fullStudy, /selectTab\('occurrences'\)/);
+  assert.match(explorer, /requestedScope\.scope/);
+  assert.match(explorer, /unavailableScopeMessage/);
+  assert.match(explorerModel, /A root does not apply or is not available for this word/);
 });

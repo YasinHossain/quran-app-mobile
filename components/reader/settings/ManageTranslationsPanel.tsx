@@ -33,6 +33,7 @@ import { ResourceConfirmModal } from './resource-panel/ResourceConfirmModal';
 import { ResourceDownloadAction } from './resource-panel/ResourceDownloadAction';
 import { ResourceItem } from './resource-panel/ResourceItem';
 import { ResourceTabs } from './resource-panel/ResourceTabs';
+import { TranslationAvailabilitySheet } from './TranslationAvailabilitySheet';
 import { buildLanguages, filterResources, groupResources, type ResourceRecord } from './resource-panel/resourcePanel.utils';
 
 export const MAX_TRANSLATION_SELECTIONS = 5;
@@ -351,6 +352,7 @@ export function ManageTranslationsPanel({
   const [busyTranslationIds, setBusyTranslationIds] = React.useState<Set<number>>(() => new Set());
   const [downloadTarget, setDownloadTarget] = React.useState<ResourceRecord | null>(null);
   const [deleteTarget, setDeleteTarget] = React.useState<ResourceRecord | null>(null);
+  const [selectionTarget, setSelectionTarget] = React.useState<ResourceRecord | null>(null);
   const [downloadSizeInfoById, setDownloadSizeInfoById] = React.useState<
     Record<number, DownloadSizeInfo | null | undefined>
   >({});
@@ -460,8 +462,8 @@ export function ManageTranslationsPanel({
   }, []);
 
   const downloadTranslation = React.useCallback(
-    async (translationId: number): Promise<void> => {
-      if (busyTranslationIds.has(translationId)) return;
+    async (translationId: number): Promise<boolean> => {
+      if (busyTranslationIds.has(translationId)) return false;
       setBusy(translationId, true);
 
       try {
@@ -474,10 +476,12 @@ export function ManageTranslationsPanel({
         );
 
         await useCase.execute(translationId, settings.wordLang);
+        return true;
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         Alert.alert('Download failed', message);
         logger.warn('Download translation failed', { translationId, message }, error as Error);
+        return false;
       } finally {
         setBusy(translationId, false);
         refreshIndex();
@@ -643,13 +647,47 @@ export function ManageTranslationsPanel({
 
       if (current.length >= MAX_TRANSLATION_SELECTIONS) return false;
 
+      const downloadItem = itemsByKey.get(getDownloadKey({ kind: 'translation', translationId: id }));
+      if (downloadItem?.status !== 'installed') {
+        const translation = translations.find((item) => item.id === id);
+        if (translation) setSelectionTarget(translation);
+        return false;
+      }
+
       const next = [...current, id];
       setLocalOrderedSelection(next);
       scheduleSelectionCommit(next);
       return true;
     },
-    [scheduleSelectionCommit]
+    [itemsByKey, scheduleSelectionCommit, translations]
   );
+
+  const commitOnlineSelection = React.useCallback(() => {
+    if (!selectionTarget) return;
+    const current = latestSelectionRef.current ?? [];
+    if (current.length >= MAX_TRANSLATION_SELECTIONS || current.includes(selectionTarget.id)) {
+      setSelectionTarget(null);
+      return;
+    }
+    const next = [...current, selectionTarget.id];
+    setLocalOrderedSelection(next);
+    scheduleSelectionCommit(next);
+    setSelectionTarget(null);
+  }, [scheduleSelectionCommit, selectionTarget]);
+
+  const downloadAndSelect = React.useCallback(() => {
+    if (!selectionTarget) return;
+    const translationId = selectionTarget.id;
+    setSelectionTarget(null);
+    void downloadTranslation(translationId).then((installed) => {
+      if (!installed) return;
+      const current = latestSelectionRef.current ?? [];
+      if (current.includes(translationId) || current.length >= MAX_TRANSLATION_SELECTIONS) return;
+      const next = [...current, translationId];
+      setLocalOrderedSelection(next);
+      scheduleSelectionCommit(next);
+    });
+  }, [downloadTranslation, scheduleSelectionCommit, selectionTarget]);
 
   const handleReset = React.useCallback(() => {
     const sahihId = findSaheehId(translations);
@@ -890,6 +928,14 @@ export function ManageTranslationsPanel({
         tintColor={palette.tint}
         onConfirm={handleConfirmDelete}
         onClose={() => setDeleteTarget(null)}
+      />
+
+      <TranslationAvailabilitySheet
+        visible={selectionTarget !== null}
+        translationName={selectionTarget?.name ?? null}
+        onClose={() => setSelectionTarget(null)}
+        onDownload={downloadAndSelect}
+        onContinueOnline={commitOnlineSelection}
       />
     </View>
   );

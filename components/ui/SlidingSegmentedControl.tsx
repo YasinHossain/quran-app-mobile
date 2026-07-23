@@ -22,12 +22,14 @@ export function SlidingSegmentedControl<T extends string>({
   width,
   labelFontSize = 13,
   onSelect,
+  onDisabledSelect,
 }: {
   items: readonly SlidingSegment<T>[];
   selectedKey: T;
   width?: number;
   labelFontSize?: number;
   onSelect: (key: T) => void;
+  onDisabledSelect?: (key: T) => void;
 }): React.JSX.Element {
   const [measuredWidth, setMeasuredWidth] = React.useState(0);
   const { resolvedTheme } = useAppTheme();
@@ -106,8 +108,11 @@ export function SlidingSegmentedControl<T extends string>({
             accessibilityRole="tab"
             accessibilityLabel={item.accessibilityLabel}
             accessibilityState={{ selected }}
-            disabled={isDisabled}
-            onPress={() => onSelect(item.key)}
+            disabled={isDisabled && !onDisabledSelect}
+            onPress={() => {
+              if (isDisabled) onDisabledSelect?.(item.key);
+              else onSelect(item.key);
+            }}
             style={[
               styles.segment,
               segmentWidth === undefined ? styles.segmentFlexible : { width: segmentWidth },

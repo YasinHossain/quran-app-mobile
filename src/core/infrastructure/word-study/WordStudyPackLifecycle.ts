@@ -13,11 +13,20 @@ export interface WordStudyPackLifecycleBackend {
   validateInstalledPackAsync(
     ref: WordStudyInstalledPackRef
   ): Promise<ValidatedInstalledWordStudyPack>;
-  installBundledPackAsync(): Promise<ValidatedInstalledWordStudyPack>;
   installHostedPackAsync(
     entry: WordStudyPackCatalogEntry,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    onProgress?: (percent: number) => void
   ): Promise<ValidatedInstalledWordStudyPack>;
+  clearActivationStateAsync(): Promise<void>;
+  deleteInstalledPackAsync(ref: WordStudyInstalledPackRef): Promise<void>;
+}
+
+export class WordStudyPackNotInstalledError extends Error {
+  constructor(message = 'Word Study Essentials is not downloaded') {
+    super(message);
+    this.name = 'WordStudyPackNotInstalledError';
+  }
 }
 
 export class WordStudyPackLifecycle {
@@ -37,7 +46,8 @@ export class WordStudyPackLifecycle {
 
   async installUpdateAsync(
     entry: WordStudyPackCatalogEntry,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    onProgress?: (percent: number) => void
   ): Promise<ReadyWordStudyPack> {
     const currentBeforeInstall = await this.backend.readActivationStateAsync();
     if (
@@ -55,7 +65,7 @@ export class WordStudyPackLifecycle {
       this.readyPromise = Promise.resolve(ready);
       return ready;
     }
-    const installed = await this.backend.installHostedPackAsync(entry, signal);
+    const installed = await this.backend.installHostedPackAsync(entry, signal, onProgress);
     if (signal?.aborted) throw new Error('Word-study pack update was cancelled');
     const current = await this.backend.readActivationStateAsync();
     const nextState: WordStudyPackActivationState = {
@@ -73,6 +83,21 @@ export class WordStudyPackLifecycle {
     this.readyPromise = null;
   }
 
+  async getInstalledAsync(): Promise<ReadyWordStudyPack | null> {
+    const state = await this.backend.readActivationStateAsync();
+    if (!state) return null;
+    return this.ensureReadyAsync();
+  }
+
+  async uninstallAsync(): Promise<void> {
+    this.readyPromise = null;
+    const state = await this.backend.readActivationStateAsync();
+    await this.backend.clearActivationStateAsync();
+    if (!state) return;
+    await this.backend.deleteInstalledPackAsync(state.active);
+    if (state.previous) await this.backend.deleteInstalledPackAsync(state.previous);
+  }
+
   private async recoverOrInstallAsync(): Promise<ReadyWordStudyPack> {
     const state = await this.backend.readActivationStateAsync();
     if (state) {
@@ -88,24 +113,13 @@ export class WordStudyPackLifecycle {
             });
             return { ...previous, recovery: 'rollback' };
           } catch {
-            // Both installed generations are unusable; reinstall the trusted bundled generation.
+            // Both downloaded generations are unusable.
           }
         }
-        const bundled = await this.backend.installBundledPackAsync();
-        await this.backend.writeActivationStateAsync({
-          format: 'quran-word-study-activation-v1',
-          active: this.toRef(bundled),
-        });
-        return { ...bundled, recovery: 'bundled-reinstall' };
+        throw activeError;
       }
     }
-
-    const bundled = await this.backend.installBundledPackAsync();
-    await this.backend.writeActivationStateAsync({
-      format: 'quran-word-study-activation-v1',
-      active: this.toRef(bundled),
-    });
-    return { ...bundled, recovery: 'bundled-install' };
+    throw new WordStudyPackNotInstalledError();
   }
 
   private toRef(pack: ValidatedInstalledWordStudyPack): WordStudyInstalledPackRef {

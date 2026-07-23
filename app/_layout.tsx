@@ -2,7 +2,7 @@ import '../global.css';
 
 import { DarkTheme, DefaultTheme, ThemeProvider } from "expo-router/react-navigation";
 import { useFonts } from 'expo-font';
-import { Stack } from 'expo-router';
+import { Stack, usePathname, useRouter } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useState } from 'react';
 import 'react-native-reanimated';
@@ -24,8 +24,9 @@ import { getItem } from '@/lib/storage/appStorage';
 import { initializeAudioModeAsync } from '@/src/core/infrastructure/audio/audioMode';
 import { initializeAppDbAsync } from '@/src/core/infrastructure/db';
 import { STARTUP_FONT_ASSETS } from '@/src/core/infrastructure/fonts/arabicFonts';
-import { bootstrapBundledMushafPacksAsync } from '@/src/core/infrastructure/mushaf/bootstrapBundledPacks';
-import { bootstrapWordStudyPackAsync } from '@/src/core/infrastructure/word-study/bootstrapWordStudyPack';
+import { bootstrapBundledSaheehInternationalAsync } from '@/src/core/infrastructure/translations/bundledSaheehInternational';
+import { hasCompletedWelcomeAsync } from '@/lib/onboarding/initialSetup';
+import { WelcomeProvider, useWelcome } from '@/providers/WelcomeContext';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -45,23 +46,25 @@ export default function RootLayout() {
   const [isBootstrapped, setIsBootstrapped] = useState(false);
   const [initialThemePreference, setInitialThemePreference] = useState<ThemePreference>('system');
   const [isThemeLoaded, setIsThemeLoaded] = useState(false);
+  const [hasCompletedWelcome, setHasCompletedWelcome] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
 
     async function bootstrapAsync(): Promise<void> {
       try {
-        const [,,,, stored] = await Promise.all([
+        const [,,, stored, completedWelcome] = await Promise.all([
           initializeAudioModeAsync(),
           initializeAppDbAsync(),
-          bootstrapBundledMushafPacksAsync(),
-          bootstrapWordStudyPackAsync(),
+          bootstrapBundledSaheehInternationalAsync(),
           getItem(THEME_STORAGE_KEY),
+          hasCompletedWelcomeAsync(),
         ]);
         if (!cancelled) {
           if (stored === 'light' || stored === 'dark' || stored === 'system') {
             setInitialThemePreference(stored);
           }
+          setHasCompletedWelcome(completedWelcome);
           setIsThemeLoaded(true);
         }
       } catch (err) {
@@ -100,20 +103,22 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider initialMetrics={initialWindowMetrics}>
       <AppThemeProvider initialPreference={initialThemePreference}>
-        <SettingsProvider>
-          <UiLanguageProvider>
-            <StartupResourcePrefetch />
-            <ChaptersProvider>
-              <BookmarkProvider>
-                <AudioPlayerProvider>
-                  <LayoutMetricsProvider>
-                    <RootLayoutNav />
-                  </LayoutMetricsProvider>
-                </AudioPlayerProvider>
-              </BookmarkProvider>
-            </ChaptersProvider>
-          </UiLanguageProvider>
-        </SettingsProvider>
+        <WelcomeProvider initialCompleted={hasCompletedWelcome}>
+          <SettingsProvider>
+            <UiLanguageProvider>
+              <StartupResourcePrefetch />
+              <ChaptersProvider>
+                <BookmarkProvider>
+                  <AudioPlayerProvider>
+                    <LayoutMetricsProvider>
+                      <RootLayoutNav />
+                    </LayoutMetricsProvider>
+                  </AudioPlayerProvider>
+                </BookmarkProvider>
+              </ChaptersProvider>
+            </UiLanguageProvider>
+          </SettingsProvider>
+        </WelcomeProvider>
       </AppThemeProvider>
     </SafeAreaProvider>
   );
@@ -136,6 +141,17 @@ function RootLayoutNav() {
       notification: palette.tint,
     },
   } as const;
+  const router = useRouter();
+  const pathname = usePathname();
+  const { hasCompletedWelcome } = useWelcome();
+
+  useEffect(() => {
+    if (!hasCompletedWelcome && pathname !== '/welcome') {
+      router.replace('/welcome');
+    } else if (hasCompletedWelcome && pathname === '/welcome') {
+      router.replace('/');
+    }
+  }, [hasCompletedWelcome, pathname, router]);
 
   useEffect(() => {
     NativeStatusBar.setBackgroundColor(palette.background, true);
@@ -147,13 +163,15 @@ function RootLayoutNav() {
       <View className={isDark ? 'flex-1 dark' : 'flex-1'} style={{ backgroundColor: palette.background }}>
         <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: palette.background } }}>
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen name="welcome" options={{ headerShown: false, animation: 'fade' }} />
           <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
           <Stack.Screen name="downloads" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="manage-word-study" options={{ presentation: 'modal' }} />
           <Stack.Screen name="privacy" options={{ presentation: 'modal' }} />
           <Stack.Screen name="settings" options={{ presentation: 'modal' }} />
           <Stack.Screen name="word-study-sources" options={{ presentation: 'modal' }} />
         </Stack>
-        <AudioPlayerBar />
+        {hasCompletedWelcome ? <AudioPlayerBar /> : null}
       </View>
     </ThemeProvider>
   );

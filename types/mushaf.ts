@@ -1,5 +1,4 @@
 export type MushafPackId =
-  | 'unicode-uthmani-v1'
   | 'qcf-madani-v1'
   | 'qcf-madani-v2'
   | 'qpc-uthmani-hafs'
@@ -207,6 +206,5 @@ export interface MushafOption {
   description: string;
   script: MushafScript;
   lines: number;
-  isBundledDefault?: boolean;
   requiresDownload?: boolean;
 }

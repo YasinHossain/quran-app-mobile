@@ -4,8 +4,8 @@ const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
 
-const COMPILER_VERSION = '1.0.0';
-const SCHEMA_VERSION = 1;
+const COMPILER_VERSION = '2.0.0';
+const SCHEMA_VERSION = 2;
 const EXPECTED_AYAH_COUNT = 6236;
 const EXPECTED_WORD_COUNT = 77429;
 
@@ -460,44 +460,43 @@ function insertSql(table, columns, rows) {
 
 function createSql(data, logicalChecksum) {
   assertReferentialIntegrity(data);
-  const wordRows = data.wordAnalyses.map((word) => ({
-    location: word.location,
-    verse_key: word.verseKey,
-    word_position: word.wordPosition,
-    surface_uthmani: word.surfaceUthmani,
-    normalized_surface: word.normalizedSurface,
-    lemma_id: word.lemmaId,
-    root_id: word.rootId,
-    primary_pos: word.primaryPos,
-    verb_form: word.verbForm,
-    aspect: word.aspect,
-    mood: word.mood,
-    voice: word.voice,
-    person: word.person,
-    gender: word.gender,
-    number: word.number,
-    grammatical_case: word.grammaticalCase,
-    grammatical_state: word.grammaticalState,
-    derivation: word.derivation,
-    source_id: data.sources[0].sourceId,
-    source_version: word.sourceVersion,
-  }));
+  const wordIds = new Map(data.wordAnalyses.map((word, index) => [word.location, index + 1]));
+  const wordRows = data.wordAnalyses.map((word) => {
+    const [surah, ayah] = word.verseKey.split(':').map(Number);
+    return {
+      id: wordIds.get(word.location),
+      surah,
+      ayah,
+      word_position: word.wordPosition,
+      surface_uthmani: word.surfaceUthmani,
+      normalized_surface: word.normalizedSurface,
+      lemma_id: word.lemmaId,
+      root_id: word.rootId,
+      primary_pos: word.primaryPos,
+      verb_form: word.verbForm,
+      aspect: word.aspect,
+      mood: word.mood,
+      voice: word.voice,
+      person: word.person,
+      gender: word.gender,
+      number: word.number,
+      grammatical_case: word.grammaticalCase,
+      grammatical_state: word.grammaticalState,
+      derivation: word.derivation,
+    };
+  });
   const morphemeRows = data.wordAnalyses.flatMap((word) => word.segments.map((segment) => ({
-    location: segment.location,
+    word_id: wordIds.get(segment.location),
     segment_index: segment.segmentIndex,
     arabic: segment.arabic,
     segment_type: segment.segmentType,
     pos_code: segment.posCode,
     features_json: stableStringify(segment.features),
-    source_id: data.sources[0].sourceId,
-    source_version: data.sources[0].version,
   })));
   const glossRows = data.wordAnalyses.filter((word) => word.gloss).map((word) => ({
-    location: word.location,
+    word_id: wordIds.get(word.location),
     language_code: 'en',
     text: word.gloss,
-    source_id: data.sources[1].sourceId,
-    source_version: data.sources[1].version,
   }));
   const sourceRows = data.sources.map((source) => ({
     source_id: source.sourceId,
@@ -508,11 +507,11 @@ function createSql(data, logicalChecksum) {
     checksum_sha256: source.checksumSha256,
     attribution: source.attribution,
   }));
-  const analysisSourceRows = data.wordAnalyses.flatMap((word) => [
-    { location: word.location, source_id: data.sources[0].sourceId, source_role: 'morphology' },
-    { location: word.location, source_id: data.sources[1].sourceId, source_role: 'surface' },
-    ...(word.gloss ? [{ location: word.location, source_id: data.sources[1].sourceId, source_role: 'contextual-gloss' }] : []),
-  ]);
+  const sourceRoleRows = [
+    { source_role: 'morphology', source_id: data.sources[0].sourceId },
+    { source_role: 'surface', source_id: data.sources[1].sourceId },
+    { source_role: 'contextual-gloss', source_id: data.sources[1].sourceId },
+  ];
 
   return `PRAGMA page_size=4096;
 PRAGMA encoding='UTF-8';
@@ -525,32 +524,31 @@ PRAGMA user_version=${SCHEMA_VERSION};
 BEGIN IMMEDIATE;
 CREATE TABLE compiler_metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL) WITHOUT ROWID;
 CREATE TABLE source_metadata (source_id TEXT PRIMARY KEY, title TEXT NOT NULL, version TEXT NOT NULL, license TEXT NOT NULL, url TEXT NOT NULL, checksum_sha256 TEXT NOT NULL, attribution TEXT NOT NULL) WITHOUT ROWID;
+CREATE TABLE source_role (source_role TEXT PRIMARY KEY, source_id TEXT NOT NULL, FOREIGN KEY(source_id) REFERENCES source_metadata(source_id)) WITHOUT ROWID;
 CREATE TABLE change_notice (id TEXT PRIMARY KEY, description TEXT NOT NULL) WITHOUT ROWID;
-CREATE TABLE lemma (id INTEGER PRIMARY KEY, arabic TEXT NOT NULL, normalized TEXT NOT NULL, pos_code TEXT, occurrence_count INTEGER NOT NULL, source_id TEXT NOT NULL, source_version TEXT NOT NULL, FOREIGN KEY(source_id) REFERENCES source_metadata(source_id));
-CREATE TABLE root (id INTEGER PRIMARY KEY, arabic TEXT NOT NULL, normalized TEXT NOT NULL, occurrence_count INTEGER NOT NULL, lemma_count INTEGER NOT NULL, source_id TEXT NOT NULL, source_version TEXT NOT NULL, FOREIGN KEY(source_id) REFERENCES source_metadata(source_id));
-CREATE TABLE word_analysis (location TEXT PRIMARY KEY, verse_key TEXT NOT NULL, word_position INTEGER NOT NULL, surface_uthmani TEXT NOT NULL, normalized_surface TEXT NOT NULL, lemma_id INTEGER, root_id INTEGER, primary_pos TEXT, verb_form TEXT, aspect TEXT, mood TEXT, voice TEXT, person TEXT, gender TEXT, number TEXT, grammatical_case TEXT, grammatical_state TEXT, derivation TEXT, source_id TEXT NOT NULL, source_version TEXT NOT NULL, FOREIGN KEY(lemma_id) REFERENCES lemma(id), FOREIGN KEY(root_id) REFERENCES root(id), FOREIGN KEY(source_id) REFERENCES source_metadata(source_id)) WITHOUT ROWID;
-CREATE TABLE morpheme (location TEXT NOT NULL, segment_index INTEGER NOT NULL, arabic TEXT NOT NULL, segment_type TEXT NOT NULL, pos_code TEXT NOT NULL, features_json TEXT NOT NULL, source_id TEXT NOT NULL, source_version TEXT NOT NULL, PRIMARY KEY(location, segment_index), FOREIGN KEY(location) REFERENCES word_analysis(location), FOREIGN KEY(source_id) REFERENCES source_metadata(source_id)) WITHOUT ROWID;
-CREATE TABLE word_gloss (location TEXT NOT NULL, language_code TEXT NOT NULL, text TEXT NOT NULL, source_id TEXT NOT NULL, source_version TEXT NOT NULL, PRIMARY KEY(location, language_code, source_id), FOREIGN KEY(location) REFERENCES word_analysis(location), FOREIGN KEY(source_id) REFERENCES source_metadata(source_id)) WITHOUT ROWID;
-CREATE TABLE word_analysis_source (location TEXT NOT NULL, source_id TEXT NOT NULL, source_role TEXT NOT NULL, PRIMARY KEY(location, source_id, source_role), FOREIGN KEY(location) REFERENCES word_analysis(location), FOREIGN KEY(source_id) REFERENCES source_metadata(source_id)) WITHOUT ROWID;
-CREATE INDEX idx_word_analysis_verse_position ON word_analysis(verse_key, word_position);
-CREATE INDEX idx_word_analysis_normalized_surface ON word_analysis(normalized_surface, location);
-CREATE INDEX idx_word_analysis_lemma ON word_analysis(lemma_id, location);
-CREATE INDEX idx_word_analysis_root ON word_analysis(root_id, location);
-CREATE INDEX idx_word_analysis_root_lemma ON word_analysis(root_id, lemma_id, location);
-CREATE INDEX idx_word_gloss_language_location ON word_gloss(language_code, location);
+CREATE TABLE lemma (id INTEGER PRIMARY KEY, arabic TEXT NOT NULL, normalized TEXT NOT NULL, pos_code TEXT, occurrence_count INTEGER NOT NULL);
+CREATE TABLE root (id INTEGER PRIMARY KEY, arabic TEXT NOT NULL, normalized TEXT NOT NULL, occurrence_count INTEGER NOT NULL, lemma_count INTEGER NOT NULL);
+CREATE TABLE word_analysis (id INTEGER PRIMARY KEY, surah INTEGER NOT NULL, ayah INTEGER NOT NULL, word_position INTEGER NOT NULL, surface_uthmani TEXT NOT NULL, normalized_surface TEXT NOT NULL, lemma_id INTEGER, root_id INTEGER, primary_pos TEXT, verb_form TEXT, aspect TEXT, mood TEXT, voice TEXT, person TEXT, gender TEXT, number TEXT, grammatical_case TEXT, grammatical_state TEXT, derivation TEXT, FOREIGN KEY(lemma_id) REFERENCES lemma(id), FOREIGN KEY(root_id) REFERENCES root(id));
+CREATE TABLE morpheme (word_id INTEGER NOT NULL, segment_index INTEGER NOT NULL, arabic TEXT NOT NULL, segment_type TEXT NOT NULL, pos_code TEXT NOT NULL, features_json TEXT NOT NULL, PRIMARY KEY(word_id, segment_index), FOREIGN KEY(word_id) REFERENCES word_analysis(id)) WITHOUT ROWID;
+CREATE TABLE word_gloss (word_id INTEGER NOT NULL, language_code TEXT NOT NULL, text TEXT NOT NULL, PRIMARY KEY(word_id, language_code), FOREIGN KEY(word_id) REFERENCES word_analysis(id)) WITHOUT ROWID;
+CREATE UNIQUE INDEX idx_word_analysis_verse_position ON word_analysis(surah, ayah, word_position);
+CREATE INDEX idx_word_analysis_normalized_surface ON word_analysis(normalized_surface, id);
+CREATE INDEX idx_word_analysis_lemma ON word_analysis(lemma_id, id);
+CREATE INDEX idx_word_analysis_root ON word_analysis(root_id, id);
+CREATE INDEX idx_word_analysis_root_lemma ON word_analysis(root_id, lemma_id, id);
 ${insertSql('compiler_metadata', ['key', 'value'], [
     { key: 'compiler_version', value: COMPILER_VERSION },
     { key: 'schema_version', value: String(SCHEMA_VERSION) },
     { key: 'logical_checksum_sha256', value: logicalChecksum },
   ])}
 ${insertSql('source_metadata', ['source_id', 'title', 'version', 'license', 'url', 'checksum_sha256', 'attribution'], sourceRows)}
+${insertSql('source_role', ['source_role', 'source_id'], sourceRoleRows)}
 ${insertSql('change_notice', ['id', 'description'], data.changeNotices)}
-${insertSql('lemma', ['id', 'arabic', 'normalized', 'pos_code', 'occurrence_count', 'source_id', 'source_version'], data.lemmas.map((lemma) => ({ ...lemma, pos_code: lemma.posCode, occurrence_count: lemma.occurrenceCount, source_id: data.sources[0].sourceId, source_version: data.sources[0].version })))}
-${insertSql('root', ['id', 'arabic', 'normalized', 'occurrence_count', 'lemma_count', 'source_id', 'source_version'], data.roots.map((root) => ({ ...root, occurrence_count: root.occurrenceCount, lemma_count: root.lemmaCount, source_id: data.sources[0].sourceId, source_version: data.sources[0].version })))}
-${insertSql('word_analysis', ['location', 'verse_key', 'word_position', 'surface_uthmani', 'normalized_surface', 'lemma_id', 'root_id', 'primary_pos', 'verb_form', 'aspect', 'mood', 'voice', 'person', 'gender', 'number', 'grammatical_case', 'grammatical_state', 'derivation', 'source_id', 'source_version'], wordRows)}
-${insertSql('morpheme', ['location', 'segment_index', 'arabic', 'segment_type', 'pos_code', 'features_json', 'source_id', 'source_version'], morphemeRows)}
-${insertSql('word_gloss', ['location', 'language_code', 'text', 'source_id', 'source_version'], glossRows)}
-${insertSql('word_analysis_source', ['location', 'source_id', 'source_role'], analysisSourceRows)}
+${insertSql('lemma', ['id', 'arabic', 'normalized', 'pos_code', 'occurrence_count'], data.lemmas.map((lemma) => ({ ...lemma, pos_code: lemma.posCode, occurrence_count: lemma.occurrenceCount })))}
+${insertSql('root', ['id', 'arabic', 'normalized', 'occurrence_count', 'lemma_count'], data.roots.map((root) => ({ ...root, occurrence_count: root.occurrenceCount, lemma_count: root.lemmaCount })))}
+${insertSql('word_analysis', ['id', 'surah', 'ayah', 'word_position', 'surface_uthmani', 'normalized_surface', 'lemma_id', 'root_id', 'primary_pos', 'verb_form', 'aspect', 'mood', 'voice', 'person', 'gender', 'number', 'grammatical_case', 'grammatical_state', 'derivation'], wordRows)}
+${insertSql('morpheme', ['word_id', 'segment_index', 'arabic', 'segment_type', 'pos_code', 'features_json'], morphemeRows)}
+${insertSql('word_gloss', ['word_id', 'language_code', 'text'], glossRows)}
 COMMIT;
 PRAGMA foreign_keys=ON;
 VACUUM;

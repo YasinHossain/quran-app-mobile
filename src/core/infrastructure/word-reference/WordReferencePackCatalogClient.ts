@@ -6,18 +6,24 @@ import {
   type WordReferencePackCatalogEntry,
 } from './WordReferencePack.types';
 
+const RAW_CATALOG_URL =
+  'https://raw.githubusercontent.com/YasinHossain/quran-app-mobile/gh-pages/word-reference-packs/catalog.json';
+
 function catalogUrl(): string {
   const configured = Constants.expoConfig?.extra?.wordReferencePackCatalogUrl;
-  if (typeof configured !== 'string' || !configured.trim()) {
-    throw new Error('Word-reference catalog URL is not configured');
-  }
-  return configured.trim();
+  return typeof configured === 'string' && configured.trim()
+    ? configured.trim()
+    : RAW_CATALOG_URL;
 }
 
 export class WordReferencePackCatalogClient {
   async listCompatiblePacksAsync(signal?: AbortSignal): Promise<WordReferencePackCatalogEntry[]> {
-    const url = catalogUrl();
-    const response = await fetch(url, { headers: { Accept: 'application/json' }, signal });
+    let url = catalogUrl();
+    let response = await fetch(url, { headers: { Accept: 'application/json' }, signal });
+    if (response.status === 404 && url !== RAW_CATALOG_URL) {
+      url = RAW_CATALOG_URL;
+      response = await fetch(url, { headers: { Accept: 'application/json' }, signal });
+    }
     if (!response.ok) throw new Error(`Dictionary catalog request failed (${response.status})`);
     const catalog = (await response.json()) as WordReferencePackCatalog;
     if (catalog.format !== 'quran-word-reference-catalog-v1' || !Array.isArray(catalog.packs)) {

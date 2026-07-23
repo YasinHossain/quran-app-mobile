@@ -1,4 +1,4 @@
-import { DEFAULT_MUSHAF_ID, isMushafPackId } from '@/data/mushaf/options';
+import { isMushafPackId } from '@/data/mushaf/options';
 import { getItem, parseJson, setItem } from '@/lib/storage/appStorage';
 import { DEFAULT_ARABIC_FONT_VALUE } from '@/src/core/infrastructure/fonts/arabicFonts';
 
@@ -42,7 +42,6 @@ export const defaultSettings: Settings = {
   wordTranslationId: 85,
   showByWords: false,
   tajweed: false,
-  mushafId: DEFAULT_MUSHAF_ID,
   mushafScaleStep: DEFAULT_MUSHAF_SCALE_STEP,
   readingMode: 'translations',
   contentLanguage: 'en',
@@ -92,9 +91,10 @@ function normalizeSettings(raw: RawSettings, defaults: Settings): Settings {
     ? normalizeIdList(mutable.tafsirIds)
     : defaults.tafsirIds;
 
-  const mushafId: MushafPackId = typeof mutable.mushafId === 'string' && isMushafPackId(mutable.mushafId)
-    ? mutable.mushafId
-    : defaults.mushafId ?? DEFAULT_MUSHAF_ID;
+  const mushafId: MushafPackId | undefined =
+    typeof mutable.mushafId === 'string' && isMushafPackId(mutable.mushafId)
+      ? mutable.mushafId
+      : defaults.mushafId;
 
   const mushafScaleStep = typeof mutable.mushafScaleStep === 'number' && Number.isFinite(mutable.mushafScaleStep)
     ? clampMushafScaleStep(mutable.mushafScaleStep)

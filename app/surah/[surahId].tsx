@@ -30,7 +30,9 @@ import { AppSearchHeader, ReaderOverlayHeader } from '@/components/navigation/Ap
 import { useCollapsibleReaderHeader } from '@/components/navigation/useCollapsibleReaderHeader';
 import { useHeaderSearch } from '@/components/navigation/useHeaderSearch';
 import { IndexScrubber, type IndexScrubberHandle } from '@/components/reader/IndexScrubber';
+import { ReaderBottomMessage } from '@/components/reader/ReaderBottomMessage';
 import { SettingsSidebar } from '@/components/reader/settings/SettingsSidebar';
+import type { PanelType } from '@/components/reader/settings/SettingsSidebarContent';
 import type { SettingsTab } from '@/components/reader/settings/SettingsTabToggle';
 import { ComprehensiveSearchDropdown } from '@/components/search/ComprehensiveSearchDropdown';
 import { HeaderActionButton } from '@/components/search/HeaderSearchBar';
@@ -58,7 +60,7 @@ import { ReaderWordStudySheet } from '@/components/word-study/ReaderWordStudyShe
 import { normalizeWordStudyPressEvent } from '@/components/word-study/WordStudyPressEvent';
 import { useWordQuickSheetController } from '@/components/word-study/useWordQuickSheetController';
 import Colors from '@/constants/Colors';
-import { DEFAULT_MUSHAF_ID, findMushafOption } from '@/data/mushaf/options';
+import { SUGGESTED_MUSHAF_ID, findMushafOption } from '@/data/mushaf/options';
 import { useChapters } from '@/hooks/useChapters';
 import { useMushafPageData } from '@/hooks/useMushafPageData';
 import { useSurahVerses, type SurahVerse } from '@/hooks/useSurahVerses';
@@ -298,6 +300,7 @@ export default function SurahScreen(): React.JSX.Element {
     startVerse?: string | string[];
     startPage?: string | string[];
     view?: string | string[];
+    manageMushaf?: string | string[];
     studyWordPosition?: string | string[];
   }>();
   const router = useRouter();
@@ -307,10 +310,14 @@ export default function SurahScreen(): React.JSX.Element {
   const startVerseParam = Array.isArray(params.startVerse) ? params.startVerse[0] : params.startVerse;
   const startPageParam = Array.isArray(params.startPage) ? params.startPage[0] : params.startPage;
   const viewParam = Array.isArray(params.view) ? params.view[0] : params.view;
+  const manageMushafParam = Array.isArray(params.manageMushaf)
+    ? params.manageMushaf[0]
+    : params.manageMushaf;
   const studyWordPositionParam = Array.isArray(params.studyWordPosition)
     ? params.studyWordPosition[0]
     : params.studyWordPosition;
-  const isMushafView = viewParam ? viewParam === 'mushaf' : settings.readingMode === 'mushaf';
+  const requestedMushafView = viewParam ? viewParam === 'mushaf' : settings.readingMode === 'mushaf';
+  const isMushafView = requestedMushafView && Boolean(settings.mushafId);
   const startVerse = startVerseParam ? Number(startVerseParam) : NaN;
   const normalizedStartVerse = Number.isFinite(startVerse) && startVerse > 0 ? Math.floor(startVerse) : undefined;
   const parsedStudyWordPosition = studyWordPositionParam ? Number(studyWordPositionParam) : NaN;
@@ -336,6 +343,34 @@ export default function SurahScreen(): React.JSX.Element {
   }, [studyTargetWord]);
   const startPage = startPageParam ? Number(startPageParam) : NaN;
   const [isSettingsOpen, setIsSettingsOpen] = React.useState(false);
+  const [settingsInitialPanel, setSettingsInitialPanel] = React.useState<PanelType | undefined>();
+  const [showMushafRequiredMessage, setShowMushafRequiredMessage] = React.useState(false);
+  const hasHandledMissingMushafRef = React.useRef(false);
+
+  React.useEffect(() => {
+    if (!isHydrated) return;
+    const shouldManageMushaf = requestedMushafView || manageMushafParam === '1';
+    if (!shouldManageMushaf || settings.mushafId || hasHandledMissingMushafRef.current) return;
+
+    hasHandledMissingMushafRef.current = true;
+    setReadingMode('translations');
+    setSettingsInitialPanel('mushaf');
+    setIsSettingsOpen(true);
+    setShowMushafRequiredMessage(true);
+    if (viewParam === 'mushaf' || manageMushafParam === '1') {
+      router.setParams({ view: 'translations', manageMushaf: undefined });
+    }
+    const timeout = setTimeout(() => setShowMushafRequiredMessage(false), 3600);
+    return () => clearTimeout(timeout);
+  }, [
+    isHydrated,
+    manageMushafParam,
+    requestedMushafView,
+    router,
+    setReadingMode,
+    settings.mushafId,
+    viewParam,
+  ]);
   const [pendingTranslationVerseKey, setPendingTranslationVerseKey] =
     React.useState<string | null>(null);
   const [translationHighlightVerseKey, setTranslationHighlightVerseKey] =
@@ -421,7 +456,7 @@ export default function SurahScreen(): React.JSX.Element {
       verseAudioWordSync.seekToWord,
     ]
   );
-  const selectedMushafId = settings.mushafId ?? DEFAULT_MUSHAF_ID;
+  const selectedMushafId = settings.mushafId ?? SUGGESTED_MUSHAF_ID;
   const selectedMushafOption = findMushafOption(selectedMushafId);
   const selectedMushafVersion = selectedMushafOption?.version ?? 'unknown';
   const translationIds = React.useMemo(() => {
@@ -645,12 +680,20 @@ export default function SurahScreen(): React.JSX.Element {
   }, []);
 
   const openTranslationSettings = React.useCallback(() => {
+    setSettingsInitialPanel(undefined);
     setIsSettingsOpen(true);
   }, []);
 
   const closeSettingsSidebar = React.useCallback(() => {
     setIsSettingsOpen(false);
   }, []);
+
+  const handleMushafInstalled = React.useCallback(() => {
+    hasHandledMissingMushafRef.current = false;
+    setSettingsInitialPanel(undefined);
+    setIsSettingsOpen(false);
+    router.setParams({ view: 'mushaf', manageMushaf: undefined });
+  }, [router]);
 
   const blockReaderInteractionsDuringTransition = React.useCallback(() => {
     if (interactionBlockTimeoutRef.current) {
@@ -674,6 +717,12 @@ export default function SurahScreen(): React.JSX.Element {
 
   const handleSettingsTabChange = React.useCallback(
     (nextTab: SettingsTab) => {
+      if (nextTab === 'mushaf' && !settings.mushafId) {
+        setSettingsInitialPanel('mushaf');
+        setShowMushafRequiredMessage(true);
+        setTimeout(() => setShowMushafRequiredMessage(false), 3600);
+        return;
+      }
       blockReaderInteractionsDuringTransition();
       if (nextTab === 'translations') {
         const currentChapterNumber =
@@ -2616,6 +2665,12 @@ export default function SurahScreen(): React.JSX.Element {
         onClose={closeSettingsSidebar}
         activeTab={isMushafView ? 'mushaf' : 'translations'}
         onTabChange={handleSettingsTabChange}
+        initialPanel={settingsInitialPanel}
+        onMushafInstalled={handleMushafInstalled}
+      />
+      <ReaderBottomMessage
+        visible={showMushafRequiredMessage}
+        message="Download a Mushaf to use page reading."
       />
     </View>
   );

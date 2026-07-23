@@ -70,7 +70,7 @@ const CATEGORY_ICONS: Record<
   'Word-by-Word': Languages,
   Audio: Volume2,
   'Mushaf Packs': Book,
-  'Word Study References': LibraryBig,
+  'Word Study': LibraryBig,
   Other: Download,
 };
 
@@ -79,7 +79,7 @@ interface DisplayDownloadItem {
   item: DownloadIndexItemWithKey;
   title: string;
   subtitle: string;
-  category: 'Translations' | 'Tafsirs' | 'Word-by-Word' | 'Audio' | 'Mushaf Packs' | 'Word Study References' | 'Other';
+  category: 'Translations' | 'Tafsirs' | 'Word-by-Word' | 'Audio' | 'Mushaf Packs' | 'Word Study' | 'Other';
   sizeBytes?: number;
   sizeLabel?: string;
 }
@@ -205,13 +205,25 @@ export default function DownloadsScreen(): React.JSX.Element {
           break;
         }
         case 'word-reference-pack': {
-          category = 'Word Study References';
+          category = 'Word Study';
           title = item.content.sourceId === 'lane-lexicon'
             ? "Lane's Arabic-English Lexicon"
             : item.content.sourceId === 'hans-wehr'
               ? 'Hans Wehr Dictionary'
               : item.content.sourceId;
           subtitle = `${item.content.languageCode.toUpperCase()} · ${item.content.version}`;
+          break;
+        }
+        case 'word-study-pack': {
+          category = 'Word Study';
+          title = 'Word Study Essentials';
+          subtitle = `Morphology, meanings, and occurrences · ${item.content.version}`;
+          break;
+        }
+        case 'word-grammar-pack': {
+          category = 'Word Study';
+          title = 'Arabic Grammar (I‘rab)';
+          subtitle = `${item.content.sourceId} · ${item.content.version}`;
           break;
         }
         default:
@@ -249,7 +261,7 @@ export default function DownloadsScreen(): React.JSX.Element {
       'Word-by-Word': [],
       Audio: [],
       'Mushaf Packs': [],
-      'Word Study References': [],
+      'Word Study': [],
       Other: [],
     };
 
@@ -323,6 +335,23 @@ export default function DownloadsScreen(): React.JSX.Element {
             .deleteAsync(item.content.packId, item.content.version);
           break;
         }
+        case 'word-study-pack': {
+          await container
+            .getWordStudyPackInstaller()
+            .deleteAsync(item.content.packId, item.content.version);
+          break;
+        }
+        case 'word-grammar-pack': {
+          await container.getGrammarStudyDatabaseProvider().closeAsync();
+          await container
+            .getWordGrammarPackInstaller()
+            .deleteAsync(
+              item.content.packId,
+              item.content.version,
+              item.content.sourceId
+            );
+          break;
+        }
         default: {
           await container.getDownloadIndexRepository().remove(item.content);
           break;
@@ -369,6 +398,14 @@ export default function DownloadsScreen(): React.JSX.Element {
         container
           .getWordReferencePackInstaller()
           .cancel(item.content.packId, item.content.version);
+      } else if (item.content.kind === 'word-study-pack') {
+        container
+          .getWordStudyPackInstaller()
+          .cancel(item.content.packId, item.content.version);
+      } else if (item.content.kind === 'word-grammar-pack') {
+        container
+          .getWordGrammarPackInstaller()
+          .cancel(item.content.packId, item.content.version);
       } else {
         void container.getDownloadIndexRepository().remove(item.content);
       }
@@ -390,8 +427,8 @@ export default function DownloadsScreen(): React.JSX.Element {
         return t('downloads_category_audio', { fallback: 'Audio' });
       case 'Mushaf Packs':
         return t('downloads_category_mushaf_packs', { fallback: 'Mushaf Packs' });
-      case 'Word Study References':
-        return t('downloads_category_word_study_references', { fallback: 'Word Study References' });
+      case 'Word Study':
+        return t('downloads_category_word_study', { fallback: 'Word Study' });
       case 'Other':
         return t('downloads_category_other', { fallback: 'Other' });
       default:
@@ -567,6 +604,27 @@ export default function DownloadsScreen(): React.JSX.Element {
           </HeaderActionButton>
         }
       />
+
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Manage Word Study downloads"
+        onPress={() => router.push('/manage-word-study')}
+        className="mx-4 mt-4 flex-row items-center rounded-2xl border border-border bg-surface p-4 dark:border-border-dark dark:bg-surface-dark"
+        style={({ pressed }) => ({ opacity: pressed ? 0.78 : 1 })}
+      >
+        <View className="h-11 w-11 items-center justify-center rounded-2xl bg-interactive dark:bg-interactive-dark">
+          <LibraryBig size={22} color={palette.tint} strokeWidth={2.2} />
+        </View>
+        <View className="ml-3 flex-1">
+          <Text className="text-base font-bold text-foreground dark:text-foreground-dark">
+            Manage Word Study
+          </Text>
+          <Text className="mt-0.5 text-xs leading-5 text-muted dark:text-muted-dark">
+            Essentials, grammar, and dictionaries
+          </Text>
+        </View>
+        <ChevronRight size={20} color={palette.muted} strokeWidth={2.2} />
+      </Pressable>
 
       {isIndexLoading || isLoadingMetadata ? (
         <View className="flex-1 items-center justify-center">

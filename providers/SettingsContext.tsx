@@ -49,7 +49,8 @@ const createSetters = (
   setTafsirFontSize: (size: number): void =>
     dispatch({ type: 'SET_TAFSIR_FONT_SIZE', value: size }),
   setArabicFontFace: (font: string): void => dispatch({ type: 'SET_ARABIC_FONT_FACE', value: font }),
-  setMushafId: (mushafId: MushafPackId): void => dispatch({ type: 'SET_MUSHAF_ID', value: mushafId }),
+  setMushafId: (mushafId: MushafPackId | undefined): void =>
+    dispatch({ type: 'SET_MUSHAF_ID', value: mushafId }),
   setMushafScaleStep: (step: MushafScaleStep): void =>
     dispatch({ type: 'SET_MUSHAF_SCALE_STEP', value: step }),
   setContentLanguage: (language: string): void =>
@@ -76,7 +77,7 @@ interface SettingsContextType {
   setTranslationFontSize: (size: number) => void;
   setTafsirFontSize: (size: number) => void;
   setArabicFontFace: (font: string) => void;
-  setMushafId: (mushafId: MushafPackId) => void;
+  setMushafId: (mushafId: MushafPackId | undefined) => void;
   setMushafScaleStep: (step: MushafScaleStep) => void;
   setContentLanguage: (language: string) => void;
   setUiLanguage: (language: string) => void;

@@ -71,6 +71,7 @@ export function OccurrenceExplorer({
   palette,
   onOpenReader,
   onRequestScrollToFilters,
+  requestedScope,
   isGuideOpen,
   onCloseGuide,
 }: {
@@ -78,6 +79,7 @@ export function OccurrenceExplorer({
   palette: Palette;
   onOpenReader: (occurrence: WordOccurrence) => void;
   onRequestScrollToFilters?: (offsetY: number, animated: boolean) => void;
+  requestedScope?: { scope: WordOccurrenceScope; requestId: number } | null;
   isGuideOpen: boolean;
   onCloseGuide: () => void;
 }): React.JSX.Element {
@@ -86,6 +88,7 @@ export function OccurrenceExplorer({
   const [cursor, setCursor] = React.useState<string | undefined>();
   const [cursorHistory, setCursorHistory] = React.useState<Array<string | undefined>>([]);
   const [surfaceCount, setSurfaceCount] = React.useState<number | undefined>();
+  const [unavailableScopeMessage, setUnavailableScopeMessage] = React.useState<string | null>(null);
   const [rootFamilyExpanded, setRootFamilyExpanded] = React.useState(true);
   const [rootFamilyState, setRootFamilyState] = React.useState<RootFamilyState>({ status: 'loading' });
   const [rootFamilyRetryNonce, setRootFamilyRetryNonce] = React.useState(0);
@@ -113,6 +116,22 @@ export function OccurrenceExplorer({
     setLemmaOverride(null);
     setResultsHeightFloor(0);
   }, [analysis.location.locationKey]);
+
+  React.useEffect(() => {
+    if (!requestedScope) return;
+    const filter = filters.find((candidate) => candidate.scope === requestedScope.scope);
+    if (!filter?.enabled) {
+      setUnavailableScopeMessage(
+        filter?.unavailableExplanation ?? 'This occurrence scope is unavailable for the selected word.'
+      );
+      return;
+    }
+    setUnavailableScopeMessage(null);
+    setLemmaOverride(null);
+    setScope(requestedScope.scope);
+    setCursor(undefined);
+    setCursorHistory([]);
+  }, [filters, requestedScope]);
 
   React.useEffect(() => {
     if (!root) {
@@ -204,6 +223,7 @@ export function OccurrenceExplorer({
   }, [onRequestScrollToFilters, reduceMotion]);
 
   const selectScope = React.useCallback((nextScope: WordOccurrenceScope) => {
+    setUnavailableScopeMessage(null);
     setLemmaOverride(null);
     setScope(nextScope);
     setCursor(undefined);
@@ -326,8 +346,20 @@ export function OccurrenceExplorer({
           }))}
           selectedKey={effectiveScope}
           onSelect={selectScope}
+          onDisabledSelect={(disabledScope) => {
+            const filter = filters.find((candidate) => candidate.scope === disabledScope);
+            setUnavailableScopeMessage(
+              filter?.unavailableExplanation ?? 'This occurrence scope is unavailable for the selected word.'
+            );
+          }}
         />
       </View>
+
+      {unavailableScopeMessage ? (
+        <View accessibilityLiveRegion="polite" style={[styles.scopeNotice, { backgroundColor: palette.surfaceNavigation }]}>
+          <Text style={[styles.scopeNoticeText, { color: palette.muted }]}>{unavailableScopeMessage}</Text>
+        </View>
+      ) : null}
 
       {lemmaOverride ? (
         <View
@@ -729,6 +761,8 @@ const styles = StyleSheet.create({
   activeLemmaArabic: { fontFamily: 'UthmanicHafs1Ver18', fontSize: 21, lineHeight: 31, writingDirection: 'rtl' },
   activeLemmaCount: { fontSize: 14, lineHeight: 21, fontWeight: '600' },
   clearLemma: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  scopeNotice: { borderRadius: 14, paddingHorizontal: 14, paddingVertical: 11 },
+  scopeNoticeText: { fontSize: 12, lineHeight: 18 },
   state: { minHeight: 120, alignItems: 'center', justifyContent: 'center', gap: 10 },
   stateCard: { minHeight: 100, borderWidth: 1, borderRadius: 16, alignItems: 'center', justifyContent: 'center', padding: 18, gap: 8 },
   stateText: { fontSize: 13, lineHeight: 20, textAlign: 'center' },

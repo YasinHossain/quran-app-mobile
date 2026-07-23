@@ -28,7 +28,7 @@ import {
 import type { OfflineVerseWithTranslations } from '@/src/core/domain/repositories/ITranslationOfflineStore';
 import { apiFetch } from '@/src/core/infrastructure/api/apiFetch';
 import { container } from '@/src/core/infrastructure/di/container';
-import { getBundledMushafPack } from '@/src/core/infrastructure/mushaf/bundledPacks';
+import { getBundledSaheehVerses } from '@/src/core/infrastructure/translations/bundledSaheehInternational';
 import {
   getExactPackPageFontFamily,
   getExactPackPageFontRelativePath,
@@ -96,29 +96,23 @@ function getBundledSurahVersesByChapter(): Map<number, OfflineVerseWithTranslati
   if (bundledSurahVersesByChapter) return bundledSurahVersesByChapter;
 
   const map = new Map<number, OfflineVerseWithTranslations[]>();
-  const pack = getBundledMushafPack('unicode-uthmani-v1');
-  const pages = pack?.payload.pages ?? {};
+  for (const verse of getBundledSaheehVerses()) {
+    const chapterNumber = parseChapterNumberFromVerseKey(verse.verseKey);
+    if (chapterNumber <= 0) continue;
 
-  for (const pageVerses of Object.values(pages)) {
-    for (const verse of pageVerses) {
-      const chapterNumber = parseChapterNumberFromVerseKey(verse.verseKey);
-      if (chapterNumber <= 0) continue;
+    const row: OfflineVerseWithTranslations = {
+      verseKey: verse.verseKey,
+      surahId: chapterNumber,
+      ayahNumber: verse.ayahNumber,
+      arabicUthmani: verse.arabicUthmani,
+      translations: [{ translationId: 20, text: verse.text }],
+    };
 
-      const row: OfflineVerseWithTranslations = {
-        verseKey: verse.verseKey,
-        surahId: chapterNumber,
-        ayahNumber: Number.parseInt(verse.verseKey.split(':')[1] ?? '', 10) || 0,
-        arabicUthmani: verse.textUthmani ?? '',
-        wordsJson: JSON.stringify(mushafWordsToVerseWords(verse.words)),
-        translations: [],
-      };
-
-      const existing = map.get(chapterNumber);
-      if (existing) {
-        existing.push(row);
-      } else {
-        map.set(chapterNumber, [row]);
-      }
+    const existing = map.get(chapterNumber);
+    if (existing) {
+      existing.push(row);
+    } else {
+      map.set(chapterNumber, [row]);
     }
   }
 

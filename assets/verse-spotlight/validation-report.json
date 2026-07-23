@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "generatedFromSourceVersion": "2026-04-23",
+  "results": {
+    "surahCount": 114,
+    "canonicalVerseCount": 6236,
+    "uniqueCanonicalKeys": 6236,
+    "curatedAnchorCount": 525,
+    "uniqueCuratedKeys": 525,
+    "bundledFallbackVerseCount": 6236,
+    "firstVerseKey": "1:1",
+    "finalVerseKey": "114:6",
+    "surahBoundariesValidated": 114,
+    "fallbackKeysMatchCanonical": true
+  },
+  "assetChecksums": {
+    "canonicalVerseIndexSha256": "cd899b677302be7b5aa2966b4eff9946e582daa363af453f4e0047ef1c4f0838",
+    "curatedAnchorPoolSha256": "d619c42618096644e70d43a52105ae9bfd96a6ddb6e76e667cc05b5e1e17aa7e",
+    "bundledSahihMetadataSha256": "1970233184d94167b2ac70718c2aab3ca6c2086817404900e9fd7cefe0ad3186"
+  }
+}

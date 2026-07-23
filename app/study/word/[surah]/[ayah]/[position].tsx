@@ -32,9 +32,11 @@ import {
 } from '@/components/word-study/full-study/AyahContextSelector';
 import { OccurrenceExplorer } from '@/components/word-study/full-study/OccurrenceExplorer';
 import { DictionarySection } from '@/components/word-study/full-study/DictionarySection';
-import { VerbReferenceSection } from '@/components/word-study/full-study/VerbReferenceSection';
 import { MorphologyGuideSheet } from '@/components/word-study/full-study/MorphologyGuideSheet';
 import { GrammarGuideSheet } from '@/components/word-study/full-study/GrammarGuideSheet';
+import { GrammarPackDownloadPanel } from '@/components/word-study/full-study/GrammarPackDownloadPanel';
+import { CoreStudyPackDownloadPanel } from '@/components/word-study/full-study/CoreStudyPackDownloadPanel';
+import { DictionaryPackDownloadPanel } from '@/components/word-study/full-study/DictionaryPackDownloadPanel';
 import { OccurrenceGuideSheet } from '@/components/word-study/full-study/OccurrenceGuideSheet';
 import { DictionaryGuideSheet } from '@/components/word-study/full-study/DictionaryGuideSheet';
 import {
@@ -67,10 +69,12 @@ import {
   type Morpheme,
   type WordAnalysis,
   type WordOccurrence,
+  type WordOccurrenceScope,
   type WordStudyLocation,
 } from '@/src/core/domain/word-study';
 import { container } from '@/src/core/infrastructure/di/container';
 import { resolveQuranTextFontFamily } from '@/src/core/infrastructure/fonts/resolveQuranTextFont';
+import { WordStudyPackNotInstalledError } from '@/src/core/infrastructure/word-study';
 
 type Palette = (typeof Colors)['light'];
 type StudyTab = 'morphology' | 'grammar' | 'occurrences' | 'dictionary';
@@ -83,7 +87,7 @@ const WORD_STUDY_TABS: readonly SlidingSegment<StudyTab>[] = [
 type LoadState =
   | { status: 'loading' }
   | { status: 'ready'; words: readonly WordAnalysis[] }
-  | { status: 'error'; message: string };
+  | { status: 'error'; message: string; needsDownload?: boolean };
 type GrammarLoadState =
   | { status: 'idle' }
   | { status: 'loading' }
@@ -142,6 +146,12 @@ export default function WordStudyScreen(): React.JSX.Element {
   const [grammarLoadState, setGrammarLoadState] = React.useState<GrammarLoadState>({
     status: 'idle',
   });
+  const [grammarRetryNonce, setGrammarRetryNonce] = React.useState(0);
+  const [requestedOccurrenceScope, setRequestedOccurrenceScope] = React.useState<{
+    scope: WordOccurrenceScope;
+    requestId: number;
+  } | null>(null);
+  const occurrenceRequestIdRef = React.useRef(0);
   const scrollRef = React.useRef<ScrollView>(null);
   const scrollOffsetRef = React.useRef(0);
   const occurrenceSectionYRef = React.useRef(0);
@@ -168,11 +178,17 @@ export default function WordStudyScreen(): React.JSX.Element {
             : { status: 'error', message: 'This ayah is not available in the installed study pack.' }
         );
       })
-      .catch(() => {
+      .catch((error: unknown) => {
         if (!cancelled) {
+          const needsDownload =
+            error instanceof WordStudyPackNotInstalledError ||
+            (error instanceof Error && error.name === 'WordStudyPackNotInstalledError');
           setLoadState({
             status: 'error',
-            message: 'Word analysis could not be loaded from the offline study pack.',
+            message: needsDownload
+              ? 'Download Word Study Essentials once to use this feature fully offline.'
+              : 'Word analysis could not be loaded from the offline study pack.',
+            needsDownload,
           });
         }
       });
@@ -182,7 +198,7 @@ export default function WordStudyScreen(): React.JSX.Element {
   }, [location?.verseKey, retryNonce]);
 
   React.useEffect(() => {
-    if (!location || !mountedTabs.has('grammar')) return;
+    if (!location || tab !== 'grammar') return;
     let cancelled = false;
     setGrammarLoadState({ status: 'loading' });
     void container
@@ -197,7 +213,7 @@ export default function WordStudyScreen(): React.JSX.Element {
     return () => {
       cancelled = true;
     };
-  }, [location?.verseKey, mountedTabs]);
+  }, [grammarRetryNonce, location?.verseKey, tab]);
 
   const words = loadState.status === 'ready' ? loadState.words : [];
   const immediateContextWords = React.useMemo<readonly AyahContextWord[]>(() => {
@@ -246,6 +262,11 @@ export default function WordStudyScreen(): React.JSX.Element {
     });
     setTab(nextTab);
   }, []);
+  const openOccurrenceScope = React.useCallback((scope: WordOccurrenceScope) => {
+    occurrenceRequestIdRef.current += 1;
+    setRequestedOccurrenceScope({ scope, requestId: occurrenceRequestIdRef.current });
+    selectTab('occurrences');
+  }, [selectTab]);
 
   const handleShare = React.useCallback(() => {
     if (!selected) return;
@@ -346,13 +367,13 @@ export default function WordStudyScreen(): React.JSX.Element {
 
       {loadState.status === 'loading' && contextWords.length === 0 ? (
         <CenteredState palette={palette} loading title="Loading this ayah" message="Reading the installed Word Study pack…" />
-      ) : loadState.status === 'error' && contextWords.length === 0 ? (
+      ) : loadState.status === 'error' && contextWords.length === 0 && !loadState.needsDownload ? (
         <CenteredState
           palette={palette}
           title="Couldn’t open Word Study"
           message={loadState.message}
-          actionLabel={location ? 'Retry' : undefined}
-          onAction={location ? () => setRetryNonce((value) => value + 1) : undefined}
+          actionLabel={loadState.needsDownload ? 'Manage Word Study' : location ? 'Retry' : undefined}
+          onAction={loadState.needsDownload ? () => router.push('/manage-word-study') : location ? () => setRetryNonce((value) => value + 1) : undefined}
         />
       ) : loadState.status === 'ready' && !selected ? (
         <CenteredState
@@ -371,11 +392,13 @@ export default function WordStudyScreen(): React.JSX.Element {
             scrollOffsetRef.current = event.nativeEvent.contentOffset.y;
           }}
         >
-          <AyahContextSelector
-            words={contextWords}
-            selectedPosition={selectedWordPosition}
-            onSelect={selectPosition}
-          />
+          {contextWords.length ? (
+            <AyahContextSelector
+              words={contextWords}
+              selectedPosition={selectedWordPosition}
+              onSelect={selectPosition}
+            />
+          ) : null}
           <SlidingSegmentedControl
             items={WORD_STUDY_TABS}
             selectedKey={tab}
@@ -383,7 +406,14 @@ export default function WordStudyScreen(): React.JSX.Element {
             labelFontSize={11}
             onSelect={selectTab}
           />
-          {!selected ? (
+          {!selected && loadState.status === 'error' && loadState.needsDownload ? (
+            <UnavailableStudyTab
+              tab={tab}
+              palette={palette}
+              onEssentialsInstalled={() => setRetryNonce((value) => value + 1)}
+              onGrammarInstalled={() => setGrammarRetryNonce((value) => value + 1)}
+            />
+          ) : !selected ? (
             <InlineAnalysisState
               loading={loadState.status === 'loading'}
               message={
@@ -405,6 +435,7 @@ export default function WordStudyScreen(): React.JSX.Element {
                   analysis={selected}
                   contextualMeaning={contextualMeaning}
                   palette={palette}
+                  onSelectOccurrenceScope={openOccurrenceScope}
                 />
               </PersistentTabPanel>
               {mountedTabs.has('grammar') ? (
@@ -414,6 +445,7 @@ export default function WordStudyScreen(): React.JSX.Element {
                     verseWords={contextWords}
                     grammarLoadState={grammarLoadState}
                     palette={palette}
+                    onGrammarInstalled={() => setGrammarRetryNonce((value) => value + 1)}
                   />
                 </PersistentTabPanel>
               ) : null}
@@ -429,6 +461,7 @@ export default function WordStudyScreen(): React.JSX.Element {
                       palette={palette}
                       onOpenReader={handleOpenOccurrenceInReader}
                       onRequestScrollToFilters={handleScrollToOccurrenceFilters}
+                      requestedScope={requestedOccurrenceScope}
                       isGuideOpen={isOccurrenceGuideOpen}
                       onCloseGuide={() => setIsOccurrenceGuideOpen(false)}
                     />
@@ -462,6 +495,37 @@ export default function WordStudyScreen(): React.JSX.Element {
   );
 }
 
+function UnavailableStudyTab({
+  tab,
+  palette,
+  onEssentialsInstalled,
+  onGrammarInstalled,
+}: {
+  tab: StudyTab;
+  palette: Palette;
+  onEssentialsInstalled: () => void;
+  onGrammarInstalled: () => void;
+}): React.JSX.Element {
+  if (tab === 'grammar') {
+    return <GrammarPackDownloadPanel palette={palette} onInstalled={onGrammarInstalled} />;
+  }
+  if (tab === 'dictionary') {
+    return <DictionaryPackDownloadPanel palette={palette} />;
+  }
+  return (
+    <CoreStudyPackDownloadPanel
+      palette={palette}
+      title={tab === 'occurrences' ? 'Occurrences index' : 'Morphology & meanings'}
+      description={
+        tab === 'occurrences'
+          ? 'Download the Essentials pack to search Quran occurrences by surface form, lemma, root, and root family fully offline.'
+          : 'Download the Essentials pack to study morphology, word meanings, roots, lemmas, and segments fully offline.'
+      }
+      onInstalled={onEssentialsInstalled}
+    />
+  );
+}
+
 function PersistentTabPanel({
   active,
   children,
@@ -481,10 +545,11 @@ function PersistentTabPanel({
   );
 }
 
-function MorphologySection({ analysis, contextualMeaning, palette }: {
+function MorphologySection({ analysis, contextualMeaning, palette, onSelectOccurrenceScope }: {
   analysis: WordAnalysis;
   contextualMeaning: ContextualMeaningLoadState;
   palette: Palette;
+  onSelectOccurrenceScope: (scope: WordOccurrenceScope) => void;
 }): React.JSX.Element {
   const segments = analysis.morphemes.status === 'available' ? analysis.morphemes.value : [];
   const segmentGroups = groupMorphologySegments(segments);
@@ -510,6 +575,7 @@ function MorphologySection({ analysis, contextualMeaning, palette }: {
           arabicTerm="الصيغة المعجمية"
           value={getLemmaText(analysis)}
           available={analysis.lemma.status === 'available'}
+          onPress={analysis.lemma.status === 'available' ? () => onSelectOccurrenceScope('lemma') : undefined}
           palette={palette}
           fullWidth={useSingleColumn}
         />
@@ -518,11 +584,11 @@ function MorphologySection({ analysis, contextualMeaning, palette }: {
           arabicTerm="الجذر"
           value={getRootText(analysis)}
           available={analysis.root.status === 'available'}
+          onPress={analysis.root.status === 'available' ? () => onSelectOccurrenceScope('root') : undefined}
           palette={palette}
           fullWidth={useSingleColumn}
         />
       </View>
-      <VerbReferenceSection analysis={analysis} palette={palette} />
       <SectionHeading
         title="How this word is built"
         palette={palette}
@@ -581,11 +647,13 @@ function GrammarSection({
   verseWords,
   grammarLoadState,
   palette,
+  onGrammarInstalled,
 }: {
   analysis: WordAnalysis;
   verseWords: readonly AyahContextWord[];
   grammarLoadState: GrammarLoadState;
   palette: Palette;
+  onGrammarInstalled: () => void;
 }): React.JSX.Element {
   const [showFullAyah, setShowFullAyah] = React.useState(false);
   const [expandedPassages, setExpandedPassages] = React.useState<ReadonlySet<number>>(new Set());
@@ -617,6 +685,12 @@ function GrammarSection({
     );
   }
   if (!isVerseGrammarAnalysis(grammarLoadState.result)) {
+    if (
+      grammarLoadState.result.status === 'unavailable' &&
+      grammarLoadState.result.reason === 'grammar-pack-unavailable'
+    ) {
+      return <GrammarPackDownloadPanel palette={palette} onInstalled={onGrammarInstalled} />;
+    }
     return (
       <View style={styles.section}>
         <SectionHeading
@@ -906,25 +980,17 @@ function MorphologyFact({ detail, palette, fullWidth }: {
   );
 }
 
-function CompactStudyFact({ label, arabicTerm, value, available, palette, fullWidth }: {
+function CompactStudyFact({ label, arabicTerm, value, available, palette, fullWidth, onPress }: {
   label: string;
   arabicTerm: string;
   value: string;
   available: boolean;
   palette: Palette;
   fullWidth: boolean;
+  onPress?: () => void;
 }): React.JSX.Element {
-  return (
-    <View
-      accessible
-      accessibilityRole="text"
-      accessibilityLabel={`${label}: ${value}`}
-      style={[
-        styles.lexicalFact,
-        fullWidth && styles.factTileFullWidth,
-        { backgroundColor: palette.surfaceNavigation, borderColor: palette.border, borderWidth: StyleSheet.hairlineWidth },
-      ]}
-    >
+  const content = (
+    <>
       <Text style={[styles.factLabel, { color: palette.muted }]}>{label} · {arabicTerm}</Text>
       <Text
         style={[
@@ -935,6 +1001,26 @@ function CompactStudyFact({ label, arabicTerm, value, available, palette, fullWi
       >
         {available ? value : '—'}
       </Text>
+    </>
+  );
+  const style = [
+    styles.lexicalFact,
+    fullWidth && styles.factTileFullWidth,
+    { backgroundColor: palette.surfaceNavigation, borderColor: palette.border, borderWidth: StyleSheet.hairlineWidth },
+  ];
+  return onPress ? (
+    <Pressable
+      accessible
+      accessibilityRole="button"
+      accessibilityLabel={`${label}: ${value}. Show ${label.toLowerCase()} occurrences`}
+      onPress={onPress}
+      style={({ pressed }) => [...style, { opacity: pressed ? 0.72 : 1 }]}
+    >
+      {content}
+    </Pressable>
+  ) : (
+    <View accessible accessibilityRole="text" accessibilityLabel={`${label}: ${value}`} style={style}>
+      {content}
     </View>
   );
 }

@@ -2,7 +2,7 @@ import { useLocalSearchParams, usePathname, useRouter } from 'expo-router';
 import React from 'react';
 import { Keyboard, TextInput } from 'react-native';
 
-import { DEFAULT_MUSHAF_ID, findMushafOption } from '@/data/mushaf/options';
+import { findMushafOption } from '@/data/mushaf/options';
 import { prepareMushafVerseTarget } from '@/lib/mushaf/prepareMushafVerseTarget';
 import { warmSurahReaderBeforeNavigation } from '@/lib/surah/surahReaderWarmup';
 import { useSettings } from '@/providers/SettingsContext';
@@ -103,7 +103,21 @@ export function useHeaderSearch({
           : undefined;
 
       void (async () => {
-        const packId = settings.mushafId ?? DEFAULT_MUSHAF_ID;
+        const packId = settings.mushafId;
+        if (!packId) {
+          const route = {
+            pathname: '/surah/[surahId]',
+            params: {
+              surahId: String(normalizedSurahId),
+              view: 'translations',
+              manageMushaf: '1',
+              ...(normalizedVerse ? { startVerse: String(normalizedVerse) } : {}),
+            },
+          } as const;
+          if (replace) router.replace(route);
+          else router.push(route);
+          return;
+        }
         const fallbackVersion = findMushafOption(packId)?.version ?? 'unknown';
         const target = normalizedVerse
           ? await prepareMushafVerseTarget({

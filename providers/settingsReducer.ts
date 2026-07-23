@@ -16,7 +16,7 @@ export type SettingsAction =
   | { type: 'SET_TRANSLATION_FONT_SIZE'; value: number }
   | { type: 'SET_TAFSIR_FONT_SIZE'; value: number }
   | { type: 'SET_ARABIC_FONT_FACE'; value: string }
-  | { type: 'SET_MUSHAF_ID'; value: MushafPackId }
+  | { type: 'SET_MUSHAF_ID'; value: MushafPackId | undefined }
   | { type: 'SET_MUSHAF_SCALE_STEP'; value: MushafScaleStep }
   | { type: 'SET_CONTENT_LANGUAGE'; value: string }
   | { type: 'SET_UI_LANGUAGE'; value: string }
@@ -102,8 +102,14 @@ const actionHandlers = {
     state.tafsirFontSize === action.value ? state : { ...state, tafsirFontSize: action.value },
   SET_ARABIC_FONT_FACE: (state, action) =>
     state.arabicFontFace === action.value ? state : { ...state, arabicFontFace: action.value },
-  SET_MUSHAF_ID: (state, action) =>
-    state.mushafId === action.value ? state : { ...state, mushafId: action.value },
+  SET_MUSHAF_ID: (state, action) => {
+    if (state.mushafId === action.value) return state;
+    if (action.value === undefined) {
+      const { mushafId: _removed, ...withoutMushaf } = state;
+      return { ...withoutMushaf, tajweed: false, readingMode: 'translations' };
+    }
+    return { ...state, mushafId: action.value };
+  },
   SET_MUSHAF_SCALE_STEP: (state, action) => {
     const clamped = clampMushafScaleStep(action.value);
     return state.mushafScaleStep === clamped ? state : { ...state, mushafScaleStep: clamped };

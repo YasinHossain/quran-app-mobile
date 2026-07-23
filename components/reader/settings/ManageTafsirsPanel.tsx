@@ -360,6 +360,13 @@ export function ManageTafsirsPanel({
         );
 
         await useCase.execute(tafsirId);
+        const currentSelection = orderedSelection ?? [];
+        if (
+          !currentSelection.includes(tafsirId) &&
+          currentSelection.length < MAX_TAFSIR_SELECTIONS
+        ) {
+          onChangeSelection([...currentSelection, tafsirId]);
+        }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         Alert.alert('Download failed', message);
@@ -369,7 +376,7 @@ export function ManageTafsirsPanel({
         refreshIndex();
       }
     },
-    [busyTafsirIds, refreshIndex, setBusy]
+    [busyTafsirIds, onChangeSelection, orderedSelection, refreshIndex, setBusy]
   );
 
   const deleteTafsir = React.useCallback(

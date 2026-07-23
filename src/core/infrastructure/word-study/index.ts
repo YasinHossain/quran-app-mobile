@@ -6,5 +6,5 @@ export * from './WordStudyDatabase';
 export * from './WordStudyPackCatalogClient';
 export * from './WordStudyPackFileStore';
 export * from './WordStudyPackLifecycle';
+export * from './WordStudyPackInstaller';
 export * from './WordStudyPack.types';
-export * from './bundledWordStudyPack';

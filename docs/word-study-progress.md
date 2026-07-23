@@ -20,7 +20,7 @@ This file tracks execution of `docs/word-study-feature-plan.md`. It is the produ
 | Phase 8 - iOS and cross-platform parity | Deferred | Intentionally skipped for the Android-first release. Resume only when active iOS development/release begins; this checkout currently has no `ios/` project. |
 | Phase 9A - Android MVP release hardening | Blocked, automated checks passed | Documentation, source/checksum, privacy records, manual Android checklist, `npm run verify`, repository benchmark, Android unit tests, release Kotlin compile, and local release APK assemble passed on 2026-07-17. Android MVP approval still requires reviewer sign-off and the physical-device matrix on a production-signed artifact. |
 | Phase 9B - iOS release hardening | Deferred | Run only after deferred Phase 8 and before an iOS public release. It does not block Android release or Android post-MVP work. |
-| Phase 10 - Licensed deep grammar pack | Implemented, release permission/review pending | Separate bundled SQLite grammar pack, shared contracts, repository, professional Arabic Grammar tab, selected-word passage matching, full-ayah disclosure, missing states, compiler checksums, and tests completed on 2026-07-17. Distribution permission and qualified review remain release blockers. |
+| Phase 10 - Licensed deep grammar pack | Optional lifecycle implemented; public catalog blocked | Separate downloadable SQLite grammar pack, shared contracts, verified installer, Manage Downloads integration, professional Arabic Grammar tab, selected-word passage matching, full-ayah disclosure, missing states, compiler checksums, and tests are complete. Distribution permission and qualified review remain release blockers. |
 | Phase 11A - Downloadable dictionary packs | Implemented | Optional Lane/Hans Wehr English packs, deterministic Quran-focused compiler, multi-pack lifecycle, Downloads integration, shared contracts, and Dictionary tab completed on 2026-07-18. |
 | Phase 11B - Verb reference packs | Deferred | Waiting for a structured reviewed principal-parts source; no paradigms are inferred from dictionary prose. |
 | Phase 12 - Saved words and review | Future | Post-MVP only. |
@@ -98,7 +98,7 @@ Sources checked on 2026-07-16:
 | Morphology features | Same as segmentation | Same as segmentation | Same as segmentation | Same as segmentation | Same as segmentation | Same as segmentation | Approved for Phase 2. |
 | Lemma | Same as segmentation | Same as segmentation | Same as segmentation | Same as segmentation | Same as segmentation | Same as segmentation | Approved for Phase 2. |
 | Root | Same as segmentation | Same as segmentation | Same as segmentation | Same as segmentation | Same as segmentation | Same as segmentation | Approved for Phase 2. |
-| Occurrence indexes/counts | Derived by compiler from approved surface/lemma/root records | Generated SQLite pack | App-owned deterministic derivation over approved fields | Compiler-owned derivation; no source annotation corrections | Ships with approved input fields | Logical SHA-256 `9c730ace19a57a724b3198fd80f3ed75f2e388c203525aaaaf2ee99af6ebc32d` | Approved and generated. |
+| Occurrence indexes/counts | Derived by compiler from approved surface/lemma/root records | Generated SQLite pack | App-owned deterministic derivation over approved fields | Compiler-owned derivation; no source annotation corrections | Ships with approved input fields | Logical SHA-256 `5ffae99e2e62d10c89efc98bb7d18cf1e8d89a59f5211b73cc26d571fbcacccd` | Approved and generated. |
 | Contextual gloss | Existing app offline English word pack | `dist/word-translation-packs/languages/en/2026-07-04/payload.json` | Offline distribution rights confirmed by product owner | Gloss text retained verbatim | Confirmed by product owner | `38975bff99637665869e8231d1d5824b1bc4db4c6cd3b6358b8231d4e882b6f3` | Approved for Phase 2. |
 | Audio | Quran Foundation/CDN or existing app audio infrastructure | QF terms and audio docs | Display/playback within app may be allowed under QF terms | No content modification | Long-term caching beyond one week requires permission | N/A | Exclude from core offline pack; runtime/ephemeral use only until permission is recorded. |
 | Prose i'rab | None for MVP | N/A | N/A | N/A | N/A | N/A | Excluded. Future licensed deep grammar pack only. |
@@ -370,7 +370,7 @@ Phase 2 is a standalone build tool and does not mirror a web UI feature. No `../
 | Machine- and human-readable reports | Done | `validation-report.json` and `validation-report.md` are generated beside the pack. |
 | Tests for golden fixtures, normalization, duplicates, foreign keys, counts, determinism | Done | Six Node tests pass and are included in `npm run verify`. |
 | Byte-identical output or deterministic logical checksum | Done | Two complete builds were byte-identical and the manifest carries both database and logical SHA-256 checksums. |
-| Every row traces to source ID/version | Done | Word, morpheme, lemma, root, gloss, and `word_analysis_source` records reference `source_metadata`. |
+| Every row traces to source ID/version | Done | Compact schema 2 maps morphology, surface, and contextual-gloss layers through normalized `source_role` records and `source_metadata`, avoiding per-row provenance duplication. |
 | No GreenTech APK/database or unlicensed scraping | Done | Compiler accepts only local, checksummed QAC and canonical pack files; it contains no network client. |
 | Phase 3 or later work excluded | Done | No mobile repository, lifecycle, download, UI, route, audio, or native reader code was added. |
 
@@ -379,7 +379,7 @@ Implementation decisions:
 - The app's offline word pack is authoritative for displayed Uthmani surface and contextual English gloss. QAC remains authoritative for segmentation and structured morphology.
 - Original QAC Buckwalter values are converted mechanically to Arabic for storage; annotations are not corrected. Transformations and derived-count behavior are recorded as change notices.
 - IDs are assigned after canonical sorting; builds write no timestamps. SQLite page/schema settings are fixed, and a logical checksum supports cross-SQLite-version comparison.
-- The generated database is 58,961,920 bytes with SHA-256 `f866c0e0502e0a6e668260cdcd7783994773c5119d17ae35157c7e41a87fbdff`.
+- The compact schema-2 database is 29,233,152 bytes with SHA-256 `b6fc4770fc68c43c7b41d2596a01cffa94ad1c6f5bd76ee6f820a4af37c65715`.
 
 Manual checks still required:
 
@@ -399,13 +399,13 @@ Phase 3 is mobile-only infrastructure. It consumes the shared contracts previous
 | Requirement | Status | Record |
 |---|---|---|
 | Mobile SQLite repository in `src/core/infrastructure` | Done | `SQLiteWordStudyRepository` maps the real schema to shared word, morpheme, morphology, lemma, root, gloss, source, and occurrence contracts. |
-| Bundle/install initial pack with existing pack patterns | Done | The Phase 2 database/manifest are Metro assets; app startup installs/verifies them behind the splash screen, while the first repository query retains a safe lazy fallback. |
+| Bundle/install initial pack with existing pack patterns | Done | The compact Essentials database/manifest are Metro assets and install/verify lazily on first Word Study use; general app startup no longer copies or checksums the pack behind the splash screen. |
 | Catalog metadata and hosted updates | Done | `dist/word-study-packs/catalog.json`, app catalog configuration, `WordStudyPackCatalogClient`, and staged hosted installation are implemented. Relative catalog URLs resolve against the catalog URL. |
 | Schema/version/checksum compatibility | Done | Pack format/schema, file size, SHA-256, SQLite application ID/user version, logical checksum, and `quick_check` are verified before activation. The app adds SDK-compatible `expo-crypto` because the existing filesystem API exposes only MD5. |
 | Atomic replacement, rollback, corruption recovery | Done | Version directories are staged outside the active path, directory promotion and activation records use rollback files, interrupted promotions restore the prior generation, and invalid active packs roll back or reinstall bundled content. |
 | Small cancellable LRU cache | Done | Word cache capacity is 128; lemma/root capacities are 64 each. Cache misses share in-flight promises, rejected entries are evicted, and concrete repository calls accept `AbortSignal` without changing the shared interface. |
 | Lookup and paginated occurrence use cases | Done | Existing Phase 1 use cases are wired to the repository in the container; surface/lemma/root predicates are parameterized, results are Quran-ordered, limits are bounded to 100, and offset cursors are deterministic. |
-| Repository integration tests and benchmark harness | Done | Twelve tests use the actual 58,961,920-byte SQLite pack via Node 24 `node:sqlite`; lifecycle failure modes use an injected backend. `scripts/benchmark-word-study-repository.cjs` enforces the Phase 3 p95 gates. |
+| Repository integration tests and benchmark harness | Done | Tests use the actual 29,233,152-byte schema-2 SQLite pack via Node `node:sqlite`; lifecycle failure modes use an injected backend. `scripts/benchmark-word-study-repository.cjs` enforces the Phase 3 p95 gates. |
 | Offline cold lookup | Done in CI-equivalent profile | Tests open the local pack read-only with no network path. The repository never fetches content; network access exists only in the explicit hosted-update method. |
 | Golden counts and pagination through real repository | Done | `3:3:9` resolves lemma `أَنزَلَ` with 183 occurrences and root `نزل` with 293 occurrences across 12 lemmas; root pagination returns 293 items from `2:4:4` through `97:4:1`. |
 | Performance gate | Done in CI-equivalent profile | Node 24 / `node:sqlite`, warm OS file cache and repository LRU cold per lookup: lookup p95 0.111 ms; first 50 lemma p95 0.514 ms; first 50 root p95 0.572 ms. Gates are 50/100 ms. |
@@ -604,8 +604,8 @@ Release source versions/checksums:
 
 | Artifact | Version | Checksum / size |
 |---|---|---|
-| Word Study SQLite format | `quran-word-study-sqlite-v1`, schema 1 | database SHA-256 `f866c0e0502e0a6e668260cdcd7783994773c5119d17ae35157c7e41a87fbdff`; 58,961,920 bytes |
-| Word Study logical pack | compiler 1.0.0, schema 1 | logical SHA-256 `9c730ace19a57a724b3198fd80f3ed75f2e388c203525aaaaf2ee99af6ebc32d` |
+| Word Study SQLite format | `quran-word-study-sqlite-v1`, schema 2 | database SHA-256 `b6fc4770fc68c43c7b41d2596a01cffa94ad1c6f5bd76ee6f820a4af37c65715`; 29,233,152 bytes |
+| Word Study logical pack | compiler 2.0.0, schema 2 | logical SHA-256 `5ffae99e2e62d10c89efc98bb7d18cf1e8d89a59f5211b73cc26d571fbcacccd` |
 | Quranic Arabic Corpus morphology | v0.4 | source SHA-256 `a1d12923815341face765083805d2148ed2d9f5cc3f7d6665219d887675d8c46` |
 | Quran App offline English word pack | 2026-07-04 | source SHA-256 `38975bff99637665869e8231d1d5824b1bc4db4c6cd3b6358b8231d4e882b6f3` |
 
@@ -635,7 +635,7 @@ Implementation status: **repository implementation complete; public distribution
 | Shared platform-neutral contract | Done | Added verse grammar, ordered passage, review-status, unavailable-state, repository, and use-case contracts in `../quran-app` first, then synced mobile core. |
 | Separate offline pack | Done | `quran-word-grammar-sqlite-v1`, schema 1, 5,785 covered ayahs and 29,881 ordered Arabic passages. |
 | Deterministic compiler | Done | `npm run compile:word-grammar-pack` parses the pinned StarDict source, removes presentation markup, maps canonical verse keys, preserves prose/order, and emits SQLite plus a manifest. |
-| Mobile repository | Done | The read-only Expo SQLite provider opens lazily; the repository queries only by canonical `surah:ayah` and returns structured missing/unavailable states. |
+| Mobile repository and optional lifecycle | Done | The read-only Expo SQLite provider opens only an installed pack; catalog download from the Grammar tab, progress/cancel, checksum/schema validation, persistent registry, Manage Downloads visibility, and deletion are implemented. The development catalog publishes the immutable pack; permission and qualified review remain release gates. |
 | Professional Grammar view | Done | Four-tab Word Study layout, concise Arabic hero, selected-word/segment passage priority, collapsed long prose, and expandable complete-ayah analysis. Grammar pack provenance is available from the dedicated Word Study Sources destination. |
 | No generated canonical prose | Done | Runtime matching changes presentation only. Source Arabic is stored and rendered without LLM generation or editorial rewriting. |
 | Source permission | Blocked | Product owner directed implementation before permission. Permission must be recorded before public distribution. |
@@ -664,7 +664,7 @@ Implementation status: **complete; optional artifacts are not bundled with the a
 | Multi-pack lifecycle | Done | Independent install/update/delete, staging, storage preflight, progress/cancel, SHA-256/schema/integrity validation, atomic activation, previous-generation rollback, and immutable versions are implemented. |
 | Repository | Done | Installed-source listing, cancellable lemma/root lookup, root-family fallback, lazy entry loading, and database closing before deletion are implemented. |
 | Dictionary UI | Done | The fourth tab shows install/offline/error states, a Home-style Lane/Hans source switcher, an automatically opened best lemma or root fallback, collapsed root exploration and related dictionary headwords, lazy borderless entry surfaces, and a full information sheet containing source/version attribution. |
-| Downloads integration | Done | `word-reference-pack` resources appear under Word Study References with measured file sizes, cancellation, deletion, and reinstall support. |
+| Downloads integration | Done | `word-reference-pack` resources appear under Word Study with measured file sizes, cancellation, deletion, and reinstall support. |
 | Phase 11B separation | Done | No principal parts are extracted or generated from dictionary prose. |
 
 Generated artifacts:
@@ -682,10 +682,10 @@ Implementation status: **complete; public distribution blocked by source permiss
 |---|---|---|
 | Exact encountered form | Done | Lookup is keyed by normalized root plus the Quranic Roman-numeral verb form and uses the normalized lemma/perfect for disambiguation. It never returns sibling forms from the root family. |
 | Six principal parts | Done | Perfect, imperfect, imperative, active participle, passive participle, and verbal noun are stored as independent nullable source fields and rendered in a responsive six-card section. |
-| Separate immutable pack | Done | `quran-verb-reference-sqlite-v1`, schema 1, contains 2,075 de-duplicated form-specific records in a 475,136-byte bundled SQLite asset. |
+| Separate immutable candidate | Done | `quran-verb-reference-sqlite-v1`, schema 1, contains 2,075 de-duplicated form-specific records in a 475,136-byte candidate database that is not referenced by the public Metro asset graph. |
 | Safe ambiguity handling | Done | Conflicting Form-I or variant candidates return `ambiguous-reference`; the app does not select or generate a paradigm. Missing individual fields render as unavailable rather than being synthesized. |
 | Shared contract | Done | Verb reference query/result/principal-part, repository, and use-case contracts were added in `../quran-app` first and synced to mobile. |
-| Mobile repository and UI | Done | The read-only Expo SQLite provider opens lazily; selection changes cancel stale lookups; non-verbs omit the section; source failures and uncovered rows have explicit states. |
+| Mobile repository and UI | Deferred for release | Repository and six-card UI code remain available for a future approved pack, but public builds do not mount the section and the Expo provider returns unavailable. |
 | Provenance | Done in code | The installed manifest, checksum, source version, attribution, and current rights state appear under Word Study Sources. |
 | Source permission | Blocked | The product owner directed implementation before permission. Written permission must replace `Permission pending` before public distribution. |
 | Qualified Arabic review | Blocked | Principal parts, variant choices, missing fields, and terminology require reviewer sign-off before public distribution. |
@@ -701,7 +701,7 @@ Implementation status on 2026-07-18: **code and automated verification complete;
 | Full ayah selector | Done | The unboxed wrapping ayah selector replaces the ribbon and visible adjacent navigation while keeping route-driven selection, reduced-motion behavior, and selected-word visibility in collapsed long ayahs. |
 | Morphology-first structure | Done | Overview is removed. Contextual meaning and compact lemma/root facts lead the default Morphology tab, followed by segment-specific POS and unique sourced features. |
 | Morphology terminology guide | Done | `MorphologyGuideSheet` is a scrollable, accessible bottom sheet with numeric height constraints, back/overlay/close dismissal, segment definitions, feature definitions, Arabic terms, and compact examples. |
-| Source relocation | Done | The in-flow About card is removed. Settings links to `Word Study Sources`, which reads active core and installed dictionary manifests plus the bundled grammar manifest for source/version/rights/checksum/link presentation and records methodology boundaries. |
+| Source relocation | Done | The in-flow About card is removed. Settings links to `Word Study Sources`, which reads active core plus installed grammar/dictionary manifests for source/version/rights/checksum/link presentation and records methodology boundaries. |
 | Attribution retention | Done | Dictionary source/version attribution remains available in the Dictionary information sheet, and Word Study sharing retains source titles and versions. |
 | Selected-language meaning | Done | The full screen reads only the selected language's exact `offline_word_translations` verse row and canonical word position. English uses the bundled Word Study gloss; unavailable or unreadable selected-language values show a visible `English fallback · Bundled offline` label and reason. No network lookup is added. |
 | RTL and font scaling | Done in code/automated audit | The ayah selector remains independently RTL with selected accessibility state and font-scale-aware collapsed height. Urdu/Persian meaning text renders RTL; other supported meanings and English fallback render LTR. Content cards and the guide remain content-driven or scrollable. |

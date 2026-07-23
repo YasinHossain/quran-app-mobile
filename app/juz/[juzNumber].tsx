@@ -29,7 +29,9 @@ import {
   type MushafSingleDocumentVersePress,
 } from '@/components/mushaf/MushafSingleDocumentReader';
 import type { MushafSelectionPayload } from '@/components/mushaf/mushafWordPayload';
+import { ReaderBottomMessage } from '@/components/reader/ReaderBottomMessage';
 import { SettingsSidebar } from '@/components/reader/settings/SettingsSidebar';
+import type { PanelType } from '@/components/reader/settings/SettingsSidebarContent';
 import type { SettingsTab } from '@/components/reader/settings/SettingsTabToggle';
 import { BookmarkModal } from '@/components/bookmarks/BookmarkModal';
 import { VerseActionsSheet } from '@/components/surah/VerseActionsSheet';
@@ -42,7 +44,7 @@ import { normalizeWordStudyPressEvent } from '@/components/word-study/WordStudyP
 import { useWordQuickSheetController } from '@/components/word-study/useWordQuickSheetController';
 import { AddToPlannerModal, type VerseSummaryDetails } from '@/components/verse-planner-modal';
 import Colors from '@/constants/Colors';
-import { DEFAULT_MUSHAF_ID, findMushafOption } from '@/data/mushaf/options';
+import { SUGGESTED_MUSHAF_ID, findMushafOption } from '@/data/mushaf/options';
 import { useChapters } from '@/hooks/useChapters';
 import { useMushafPageData } from '@/hooks/useMushafPageData';
 import { useJuzVerses, getJuzVerseKeys } from '@/hooks/useJuzVerses';
@@ -232,6 +234,7 @@ export default function JuzScreen(): React.JSX.Element {
     startVerse?: string | string[];
     startPage?: string | string[];
     view?: string | string[];
+    manageMushaf?: string | string[];
   }>();
   const router = useRouter();
   const { settings, isHydrated, setReadingMode } = useSettings();
@@ -239,13 +242,45 @@ export default function JuzScreen(): React.JSX.Element {
   const startVerseParam = Array.isArray(params.startVerse) ? params.startVerse[0] : params.startVerse;
   const startPageParam = Array.isArray(params.startPage) ? params.startPage[0] : params.startPage;
   const viewParam = Array.isArray(params.view) ? params.view[0] : params.view;
+  const manageMushafParam = Array.isArray(params.manageMushaf)
+    ? params.manageMushaf[0]
+    : params.manageMushaf;
 
   const juzNumber = juzNumberParam ? Number(juzNumberParam) : 1;
-  const isMushafView = viewParam ? viewParam === 'mushaf' : settings.readingMode === 'mushaf';
+  const requestedMushafView = viewParam ? viewParam === 'mushaf' : settings.readingMode === 'mushaf';
+  const isMushafView = requestedMushafView && Boolean(settings.mushafId);
   const startVerse = startVerseParam ? Number(startVerseParam) : NaN;
   const startPage = startPageParam ? Number(startPageParam) : NaN;
 
   const [isSettingsOpen, setIsSettingsOpen] = React.useState(false);
+  const [settingsInitialPanel, setSettingsInitialPanel] = React.useState<PanelType | undefined>();
+  const [showMushafRequiredMessage, setShowMushafRequiredMessage] = React.useState(false);
+  const hasHandledMissingMushafRef = React.useRef(false);
+
+  React.useEffect(() => {
+    if (!isHydrated) return;
+    const shouldManageMushaf = requestedMushafView || manageMushafParam === '1';
+    if (!shouldManageMushaf || settings.mushafId || hasHandledMissingMushafRef.current) return;
+
+    hasHandledMissingMushafRef.current = true;
+    setReadingMode('translations');
+    setSettingsInitialPanel('mushaf');
+    setIsSettingsOpen(true);
+    setShowMushafRequiredMessage(true);
+    if (viewParam === 'mushaf' || manageMushafParam === '1') {
+      router.setParams({ view: 'translations', manageMushaf: undefined });
+    }
+    const timeout = setTimeout(() => setShowMushafRequiredMessage(false), 3600);
+    return () => clearTimeout(timeout);
+  }, [
+    isHydrated,
+    manageMushafParam,
+    requestedMushafView,
+    router,
+    setReadingMode,
+    settings.mushafId,
+    viewParam,
+  ]);
   const [pendingTranslationVerseKey, setPendingTranslationVerseKey] =
     React.useState<string | null>(null);
   const [translationHighlightVerseKey, setTranslationHighlightVerseKey] =
@@ -320,7 +355,7 @@ export default function JuzScreen(): React.JSX.Element {
   const verseAudioWordSync = useVerseAudioWordSync(activeChapterNumber);
   const wordQuickSheet = useWordQuickSheetController();
 
-  const selectedMushafId = settings.mushafId ?? DEFAULT_MUSHAF_ID;
+  const selectedMushafId = settings.mushafId ?? SUGGESTED_MUSHAF_ID;
   const selectedMushafOption = findMushafOption(selectedMushafId);
   const selectedMushafVersion = selectedMushafOption?.version ?? 'unknown';
 
@@ -544,12 +579,20 @@ export default function JuzScreen(): React.JSX.Element {
   );
 
   const openTranslationSettings = React.useCallback(() => {
+    setSettingsInitialPanel(undefined);
     setIsSettingsOpen(true);
   }, []);
 
   const closeSettingsSidebar = React.useCallback(() => {
     setIsSettingsOpen(false);
   }, []);
+
+  const handleMushafInstalled = React.useCallback(() => {
+    hasHandledMissingMushafRef.current = false;
+    setSettingsInitialPanel(undefined);
+    setIsSettingsOpen(false);
+    router.setParams({ view: 'mushaf', manageMushaf: undefined });
+  }, [router]);
 
   const blockReaderInteractionsDuringTransition = React.useCallback(() => {
     if (interactionBlockTimeoutRef.current) {
@@ -573,6 +616,12 @@ export default function JuzScreen(): React.JSX.Element {
 
   const handleSettingsTabChange = React.useCallback(
     (nextTab: SettingsTab) => {
+      if (nextTab === 'mushaf' && !settings.mushafId) {
+        setSettingsInitialPanel('mushaf');
+        setShowMushafRequiredMessage(true);
+        setTimeout(() => setShowMushafRequiredMessage(false), 3600);
+        return;
+      }
       blockReaderInteractionsDuringTransition();
       if (nextTab === 'translations') {
         const returnVerseKey =
@@ -1429,6 +1478,12 @@ export default function JuzScreen(): React.JSX.Element {
         onClose={closeSettingsSidebar}
         activeTab={isMushafView ? 'mushaf' : 'translations'}
         onTabChange={handleSettingsTabChange}
+        initialPanel={settingsInitialPanel}
+        onMushafInstalled={handleMushafInstalled}
+      />
+      <ReaderBottomMessage
+        visible={showMushafRequiredMessage}
+        message="Download a Mushaf to use page reading."
       />
 
       <VerseActionsSheet

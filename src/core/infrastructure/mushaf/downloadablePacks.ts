@@ -37,7 +37,6 @@ export const DOWNLOADABLE_MUSHAF_PACKS: Record<
   MushafPackId,
   DownloadableMushafPackDefinition | undefined
 > = {
-  'unicode-uthmani-v1': undefined,
   'qcf-madani-v1': QCF_MADANI_V1_PACK,
   'qcf-madani-v2': {
     packId: 'qcf-madani-v2',

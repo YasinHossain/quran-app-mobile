@@ -26,6 +26,7 @@ import Colors from '@/constants/Colors';
 import { useAppTheme } from '@/providers/ThemeContext';
 import type { WordAnalysis } from '@/src/core/domain/word-study';
 import { resolveQuranTextFontFamily } from '@/src/core/infrastructure/fonts/resolveQuranTextFont';
+import { CoreStudyPackDownloadPanel } from './full-study/CoreStudyPackDownloadPanel';
 
 import type { WordStudyPressEvent } from './WordStudyPressEvent';
 import { SegmentedWord, WordSegmentsLegend } from './WordSegmentsCard';
@@ -150,6 +151,12 @@ export function WordQuickSheet({
             >
               {loadState.status === 'loading' ? (
                 <WordQuickSheetSkeleton palette={palette} optimisticSurface={event?.surfaceText} />
+              ) : loadState.status === 'error' && loadState.needsDownload ? (
+                <CoreStudyPackDownloadPanel
+                  palette={palette}
+                  description="Download once to open Word Study from any Quran word and keep it fully offline."
+                  onInstalled={onRetry}
+                />
               ) : loadState.status === 'error' ? (
                 <MessageState
                   palette={palette}

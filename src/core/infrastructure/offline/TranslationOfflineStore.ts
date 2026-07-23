@@ -81,6 +81,59 @@ function mapJoinedRowsToOfflineVerses(
 }
 
 export class TranslationOfflineStore implements ITranslationOfflineStore {
+  async upsertBundledTranslationPack(params: {
+    translationId: number;
+    verses: Array<{
+      verseKey: string;
+      surahId: number;
+      ayahNumber: number;
+      arabicUthmani: string;
+      text: string;
+    }>;
+  }): Promise<void> {
+    const db = await getAppDbAsync();
+    const batchSize = 100;
+
+    await db.withExclusiveTransactionAsync(async (txn) => {
+      for (let start = 0; start < params.verses.length; start += batchSize) {
+        const batch = params.verses.slice(start, start + batchSize);
+        const versePlaceholders = batch.map(() => '(?, ?, ?, ?, NULL)').join(', ');
+        const verseValues = batch.flatMap((verse) => [
+          verse.verseKey,
+          verse.surahId,
+          verse.ayahNumber,
+          verse.arabicUthmani,
+        ]);
+        await txn.runAsync(
+          `
+          INSERT INTO offline_verses(verse_key, surah, ayah, arabic_uthmani, words_json)
+          VALUES ${versePlaceholders}
+          ON CONFLICT(verse_key) DO UPDATE SET
+            surah = excluded.surah,
+            ayah = excluded.ayah,
+            arabic_uthmani = excluded.arabic_uthmani;
+          `,
+          verseValues
+        );
+
+        const translationPlaceholders = batch.map(() => '(?, ?, ?)').join(', ');
+        const translationValues = batch.flatMap((verse) => [
+          params.translationId,
+          verse.verseKey,
+          verse.text,
+        ]);
+        await txn.runAsync(
+          `
+          INSERT INTO offline_translations(translation_id, verse_key, text)
+          VALUES ${translationPlaceholders}
+          ON CONFLICT(translation_id, verse_key) DO UPDATE SET text = excluded.text;
+          `,
+          translationValues
+        );
+      }
+    });
+  }
+
   async getWordTranslationWordsJson(
     verseKey: string,
     languageCode: string

@@ -60,6 +60,12 @@ export class WordStudyPackFileStore {
     await FileSystem.deleteAsync(uri, { idempotent: true });
   }
 
+  async deleteVersionAsync(packId: string, version: string): Promise<void> {
+    await FileSystem.deleteAsync(this.getVersionDirectoryUri(packId, version), {
+      idempotent: true,
+    });
+  }
+
   async writeManifestAsync(directoryUri: string, manifest: WordStudyPackManifest): Promise<void> {
     await FileSystem.writeAsStringAsync(`${directoryUri}manifest.json`, JSON.stringify(manifest));
   }
@@ -141,6 +147,15 @@ export class WordStudyPackFileStore {
       }
       throw error;
     }
+  }
+
+  async clearActivationStateAsync(): Promise<void> {
+    const base = this.getBaseDirectoryUri();
+    await Promise.all([
+      FileSystem.deleteAsync(this.getActivationStateUri(), { idempotent: true }),
+      FileSystem.deleteAsync(`${base}active.next.json`, { idempotent: true }),
+      FileSystem.deleteAsync(`${base}active.rollback.json`, { idempotent: true }),
+    ]);
   }
 
   private async recoverActivationStateAsync(): Promise<void> {

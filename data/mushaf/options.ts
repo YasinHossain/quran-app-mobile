@@ -1,22 +1,11 @@
 import type { MushafOption, MushafPackId } from '@/types';
 
-export const DEFAULT_MUSHAF_ID: MushafPackId = 'unicode-uthmani-v1';
+// Used only as a suggested pack when a concrete ID is required. A fresh install
+// deliberately has no selected mushaf until the user installs one.
+export const SUGGESTED_MUSHAF_ID: MushafPackId = 'qcf-madani-v2';
 export const TAJWEED_MUSHAF_ID: MushafPackId = 'qcf-tajweed-v4';
 
 export const MUSHAF_OPTIONS: MushafOption[] = [
-  {
-    id: 'unicode-uthmani-v1',
-    packId: 'unicode-uthmani-v1',
-    version: 'v1',
-    channel: 'bundled',
-    renderer: 'text',
-    name: 'Uthmani Unicode',
-    description: 'Bundled offline-safe base mushaf pack for the page reader.',
-    script: 'uthmani',
-    lines: 15,
-    isBundledDefault: true,
-    requiresDownload: false,
-  },
   {
     id: 'qcf-madani-v1',
     packId: 'qcf-madani-v1',
@@ -91,7 +80,8 @@ export const MUSHAF_OPTIONS: MushafOption[] = [
   },
 ];
 
-export const getDefaultMushafOption = (): MushafOption => MUSHAF_OPTIONS[0]!;
+export const getDefaultMushafOption = (): MushafOption =>
+  MUSHAF_OPTIONS.find((option) => option.id === SUGGESTED_MUSHAF_ID) ?? MUSHAF_OPTIONS[0]!;
 
 export const findMushafOption = (id?: string): MushafOption | undefined =>
   id ? MUSHAF_OPTIONS.find((option) => option.id === id) : undefined;

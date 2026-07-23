@@ -3,7 +3,7 @@ import React from 'react';
 import { router } from 'expo-router';
 import { Alert, Animated, Easing, FlatList, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
-import { DEFAULT_MUSHAF_ID, TAJWEED_MUSHAF_ID, findMushafOption } from '@/data/mushaf/options';
+import { TAJWEED_MUSHAF_ID, findMushafOption } from '@/data/mushaf/options';
 import Colors from '@/constants/Colors';
 import { MushafPackOptionCard } from '@/components/reader/settings/MushafPackOptionCard';
 import { clearOfflineSurahPageCache } from '@/lib/surah/offlineSurahPageCache';
@@ -276,6 +276,7 @@ export function SettingsSidebarContent({
   onTabChange,
   containerWidth,
   initialPanel,
+  onMushafInstalled,
 }: {
   onClose?: () => void;
   showTafsirSetting?: boolean;
@@ -284,6 +285,7 @@ export function SettingsSidebarContent({
   onTabChange?: (tab: SettingsTab) => void;
   containerWidth?: number;
   initialPanel?: PanelType;
+  onMushafInstalled?: (packId: MushafPackId) => void;
 }): React.JSX.Element {
   const { width: windowWidth } = useWindowDimensions();
   const {
@@ -300,6 +302,7 @@ export function SettingsSidebarContent({
     setTafsirIds,
     setUiLanguage,
     setMushafScaleStep,
+    setMushafId,
   } = useSettings();
   const { t } = useUiTranslation();
   const { resolvedTheme, setDarkModeEnabled, isDark } = useAppTheme();
@@ -333,12 +336,19 @@ export function SettingsSidebarContent({
 
 
   const previousMushafIdRef = React.useRef<MushafPackId | undefined>(
-    settings.mushafId === TAJWEED_MUSHAF_ID ? DEFAULT_MUSHAF_ID : settings.mushafId
+    settings.mushafId === TAJWEED_MUSHAF_ID ? undefined : settings.mushafId
   );
   const animationTokenRef = React.useRef(0);
   const openPanelRafRef = React.useRef<number | null>(null);
   const navProgress = React.useRef(new Animated.Value(initialPanel && initialPanel !== 'root' ? 1 : 0)).current;
   const panelWidth = containerWidth ?? Math.min(390, Math.round(windowWidth * 0.92));
+
+  React.useEffect(() => {
+    if (!initialPanel || initialPanel === 'root' || panel.type === initialPanel) return;
+    navProgress.stopAnimation();
+    navProgress.setValue(1);
+    setPanel({ type: initialPanel });
+  }, [initialPanel, navProgress, panel.type]);
 
   React.useEffect(() => {
     return () => {
@@ -605,7 +615,7 @@ export function SettingsSidebarContent({
     getFirstFontFamily(selectedArabicFont?.value ?? settings.arabicFontFace) ?? 'UthmanicHafs1Ver18';
   const selectedUiLanguageName = getUiLanguageLabel(settings.uiLanguage);
   const selectedMushafName =
-    findMushafOption(settings.mushafId)?.name ?? findMushafOption(DEFAULT_MUSHAF_ID)?.name ?? 'Uthmani Unicode';
+    findMushafOption(settings.mushafId)?.name ?? 'No mushaf installed';
   const {
     entries: mushafPackEntries,
     isLoading: isMushafPackManagerLoading,
@@ -615,7 +625,7 @@ export function SettingsSidebarContent({
     deletePack,
     refresh: refreshMushafPacks,
   } = useMushafPackManager({
-    selectedPackId: settings.mushafId ?? DEFAULT_MUSHAF_ID,
+    selectedPackId: settings.mushafId,
   });
   const mushafDownloadTarget = React.useMemo(
     () =>
@@ -773,7 +783,7 @@ export function SettingsSidebarContent({
         setEnableTajweedAfterDownload(false);
         setDisplayTajweed(false);
         React.startTransition(() =>
-          setTajweedMushaf(false, previousMushafIdRef.current ?? DEFAULT_MUSHAF_ID)
+          setTajweedMushaf(false, previousMushafIdRef.current ?? settings.mushafId ?? TAJWEED_MUSHAF_ID)
         );
       }
     },
@@ -817,11 +827,11 @@ export function SettingsSidebarContent({
     async (packId: MushafPackId) => {
       try {
         await installPack(packId);
-        if (packId === TAJWEED_MUSHAF_ID && enableTajweedAfterDownload) {
-          setDisplayTajweed(true);
-          React.startTransition(() => setTajweedMushaf(true, TAJWEED_MUSHAF_ID));
-          setEnableTajweedAfterDownload(false);
-        }
+        const enablesTajweed = packId === TAJWEED_MUSHAF_ID;
+        setDisplayTajweed(enablesTajweed);
+        setTajweedMushaf(enablesTajweed, packId);
+        setEnableTajweedAfterDownload(false);
+        onMushafInstalled?.(packId);
       } catch (error) {
         if (packId === TAJWEED_MUSHAF_ID) {
           setEnableTajweedAfterDownload(false);
@@ -831,7 +841,7 @@ export function SettingsSidebarContent({
         Alert.alert('Install failed', message);
       }
     },
-    [enableTajweedAfterDownload, installPack, setTajweedMushaf]
+    [installPack, onMushafInstalled, setTajweedMushaf]
   );
 
   const handleConfirmMushafPackDownload = React.useCallback(() => {
@@ -901,14 +911,14 @@ export function SettingsSidebarContent({
       try {
         await deletePack(packId);
         if (settings.mushafId === packId) {
-          applyMushafSelection(DEFAULT_MUSHAF_ID);
+          setMushafId(undefined);
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         Alert.alert('Delete failed', message);
       }
     },
-    [applyMushafSelection, deletePack, settings.mushafId]
+    [deletePack, setMushafId, settings.mushafId]
   );
 
   const handleConfirmMushafPackDelete = React.useCallback(() => {
@@ -1194,8 +1204,7 @@ export function SettingsSidebarContent({
               ListHeaderComponent={
                 <View className="px-1 pb-3">
                   <Text className="text-xs leading-5" style={{ color: palette.muted }}>
-                    Keep the bundled Unicode mushaf for instant offline reading. Exact packs download
-                    into local versioned storage and stay available offline once installed.
+                    Choose a page layout to download. Installed mushafs stay available offline.
                   </Text>
                   {isMushafPackManagerLoading ? (
                     <Text className="mt-3 text-xs" style={{ color: palette.muted }}>
