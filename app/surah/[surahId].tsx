@@ -2548,6 +2548,7 @@ export default function SurahScreen(): React.JSX.Element {
             ) : (
               <MushafSingleDocumentReader
                 ref={mushafReaderRef}
+                activeAudioWord={verseAudioWordSync.activeWord}
                 backgroundWarmEnabled={isMushafView}
                 backgroundPageNumbers={mushafInitialWindowPageNumbers}
                 chapterNamesById={chapterNamesById}
@@ -2566,6 +2567,7 @@ export default function SurahScreen(): React.JSX.Element {
                 onSelectionChange={handleMushafSelectionChange}
                 onSurahNavigation={handleMushafSurahNavigation}
                 onVersePress={handleMushafVersePress}
+                onWordSeek={verseAudioWordSync.seekToWord}
                 pageNumbers={
                   mushafSurahPageNumbers.length ? mushafSurahPageNumbers : [initialMushafPageNumber]
                 }
@@ -2573,6 +2575,7 @@ export default function SurahScreen(): React.JSX.Element {
                 surahIntro={mushafSurahIntro}
                 surahNavigation={mushafSurahNavigation}
                 totalPages={mushafTotalPages}
+                wordSeekEnabled={audio.isVisible}
               />
             )}
             {isHydrated &&

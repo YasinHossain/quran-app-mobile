@@ -920,8 +920,20 @@ test('occurrence explorer cancels stale queries, keeps page size bounded, and av
   assert.doesNotMatch(source, /this word occurs/i);
 });
 
-test('Downloads always exposes a dedicated download-only Word Study manager', () => {
+test('Manage Downloads groups Word Study and audio with other downloaded resources', () => {
   const downloads = readFileSync(join(process.cwd(), 'app/downloads.tsx'), 'utf8');
+  const audioModal = readFileSync(
+    join(process.cwd(), 'components/audio/AudioDownloadModal.tsx'),
+    'utf8'
+  );
+  const audioManager = readFileSync(
+    join(process.cwd(), 'src/core/infrastructure/audio/AudioDownloadManager.ts'),
+    'utf8'
+  );
+  const downloadEntity = readFileSync(
+    join(process.cwd(), 'src/core/domain/entities/DownloadIndexItem.ts'),
+    'utf8'
+  );
   const manager = readFileSync(join(process.cwd(), 'app/manage-word-study.tsx'), 'utf8');
   const quickSheet = readFileSync(
     join(process.cwd(), 'components/word-study/WordQuickSheet.tsx'),
@@ -931,8 +943,27 @@ test('Downloads always exposes a dedicated download-only Word Study manager', ()
     join(process.cwd(), 'app/study/word/[surah]/[ayah]/[position].tsx'),
     'utf8'
   );
-  assert.match(downloads, /Manage Word Study/);
-  assert.match(downloads, /router\.push\('\/manage-word-study'\)/);
+  assert.match(downloads, /'Word Study': \[\]/);
+  assert.match(downloads, /Audio: \[\]/);
+  assert.match(downloads, /case 'audio'/);
+  assert.match(downloads, /deleteSurahAudio/);
+  assert.match(downloads, /item\.content\.verseRanges/);
+  assert.match(downloads, /\.join\(', '\)/);
+  assert.match(downloads, /fallback: 'Verses'/);
+  assert.match(audioModal, /normalizedSelection/);
+  assert.match(audioModal, /startVerseNumber,\s*endVerseNumber,\s*audioUrl/);
+  assert.match(audioManager, /startVerseNumber: params\.startVerseNumber/);
+  assert.match(audioManager, /function normalizeVerseRanges/);
+  assert.match(audioManager, /previous\.endVerseNumber \+ 1/);
+  assert.match(downloadEntity, /verseRanges\?: AudioVerseRange\[\]/);
+  assert.match(
+    downloadEntity,
+    /return `audio:\$\{content\.reciterId\}:\$\{content\.scope\}:\$\{content\.surahId\}`/
+  );
+  assert.match(downloads, /case 'word-study-pack'/);
+  assert.match(downloads, /getWordStudyPackInstaller\(\)[\s\S]*?\.deleteAsync/);
+  assert.doesNotMatch(downloads, /router\.push\('\/manage-word-study'\)/);
+  assert.doesNotMatch(downloads, /\.installAsync/);
   assert.match(manager, /Downloaded only when you choose/);
   assert.match(manager, /Word Study Essentials/);
   assert.match(manager, /Arabic Grammar \(I‘rab\)/);

@@ -605,6 +605,19 @@ function buildShellDocumentHtml({
         border-radius: 0.15em;
       }
 
+      .word.active-audio-word,
+      .reflow-word.active-audio-word {
+        background:
+          linear-gradient(
+            to bottom,
+            transparent 8%,
+            var(--highlight) 8%,
+            var(--highlight) 92%,
+            transparent 92%
+          );
+        border-radius: 0.18em;
+      }
+
       .indopak-verse-marker {
         display: inline-block;
         flex: none;
@@ -742,6 +755,8 @@ function buildShellDocumentHtml({
         var initialPositionRafId = null;
         var isArrivalHighlightVisible = Boolean(HIGHLIGHT_VERSE_KEY);
         var arrivalHighlightTimeoutId = null;
+        var activeAudioVerseKey = '';
+        var activeAudioWordPosition = 0;
 
         function emit(message) {
           if (!window.ReactNativeWebView) {
@@ -1375,6 +1390,12 @@ function buildShellDocumentHtml({
             ) {
               wordNode.classList.add('arrival-highlight');
             }
+            if (
+              activeAudioVerseKey === verseKey &&
+              activeAudioWordPosition === Number(word.position)
+            ) {
+              wordNode.classList.add('active-audio-word');
+            }
           }
           wordNode.dataset.wordPosition = String(word.position);
 
@@ -1408,6 +1429,36 @@ function buildShellDocumentHtml({
             highlights[index].classList.remove('arrival-highlight');
           }
           arrivalHighlightTimeoutId = null;
+        }
+
+        function setActiveAudioWord(payload) {
+          var highlights = app.querySelectorAll('.active-audio-word');
+          for (var index = 0; index < highlights.length; index += 1) {
+            highlights[index].classList.remove('active-audio-word');
+          }
+
+          var verseKey =
+            payload && typeof payload.verseKey === 'string' ? payload.verseKey.trim() : '';
+          var wordPosition =
+            payload && Number.isFinite(Number(payload.wordPosition))
+              ? Math.trunc(Number(payload.wordPosition))
+              : 0;
+          activeAudioVerseKey = verseKey;
+          activeAudioWordPosition = wordPosition > 0 ? wordPosition : 0;
+          if (!activeAudioVerseKey || activeAudioWordPosition <= 0) {
+            return;
+          }
+
+          var words = app.querySelectorAll('[data-mushaf-word="true"]');
+          for (var wordIndex = 0; wordIndex < words.length; wordIndex += 1) {
+            var word = words[wordIndex];
+            if (
+              word.dataset.verseKey === activeAudioVerseKey &&
+              Number(word.dataset.wordPosition) === activeAudioWordPosition
+            ) {
+              word.classList.add('active-audio-word');
+            }
+          }
         }
 
         function scheduleArrivalHighlightClear() {
@@ -2014,6 +2065,7 @@ function buildShellDocumentHtml({
             });
           },
           scrollToPage: scrollToPage,
+          setActiveAudioWord: setActiveAudioWord,
           scrollToVerse: function (verseKey) {
             HIGHLIGHT_VERSE_KEY = typeof verseKey === 'string' ? verseKey.trim() : '';
             isArrivalHighlightVisible = Boolean(HIGHLIGHT_VERSE_KEY);

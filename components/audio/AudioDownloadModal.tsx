@@ -293,6 +293,7 @@ export function AudioDownloadModal({
     if (downloadBusy) return;
 
     let surahIds: number[] = [];
+    let normalizedSelection: NormalizedRange | null = null;
 
     if (downloadScope === 'range') {
       const validated = validateRange(localRange, chapterLookup);
@@ -300,6 +301,7 @@ export function AudioDownloadModal({
         setRangeWarning(validated.message);
         return;
       }
+      normalizedSelection = validated.normalized;
       surahIds = buildSurahIdRange(validated.normalized.startSurahId, validated.normalized.endSurahId);
       if (surahIds.length === 0) {
         setRangeWarning('Select a valid surah range to download.');
@@ -324,6 +326,12 @@ export function AudioDownloadModal({
         setRangeWarning('Selected verse is outside the surah verse count.');
         return;
       }
+      normalizedSelection = {
+        startSurahId: surahId,
+        startVerseNumber: verseNumber,
+        endSurahId: surahId,
+        endVerseNumber: verseNumber,
+      };
       surahIds = [surahId];
     }
 
@@ -338,6 +346,24 @@ export function AudioDownloadModal({
         const surahId = surahIds[index];
 
         try {
+          const chapter = chapterLookup[surahId];
+          const startVerseNumber = normalizedSelection
+            ? surahId === normalizedSelection.startSurahId
+              ? normalizedSelection.startVerseNumber
+              : 1
+            : undefined;
+          const endVerseNumber = normalizedSelection
+            ? surahId === normalizedSelection.endSurahId
+              ? normalizedSelection.endVerseNumber
+              : chapter?.verses_count
+            : undefined;
+          if (
+            normalizedSelection &&
+            (startVerseNumber === undefined || endVerseNumber === undefined)
+          ) {
+            throw new Error('Verse range metadata is unavailable for this surah.');
+          }
+
           const audioFile = await getQdcAudioFile({
             reciterId: localReciter.id,
             chapterId: surahId,
@@ -352,6 +378,8 @@ export function AudioDownloadModal({
           await container.getAudioDownloadManager().downloadSurahAudio({
             reciterId: localReciter.id,
             surahId,
+            startVerseNumber,
+            endVerseNumber,
             audioUrl,
             audioFile,
           });

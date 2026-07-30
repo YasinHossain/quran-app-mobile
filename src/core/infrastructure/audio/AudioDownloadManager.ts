@@ -1,10 +1,17 @@
-import type { DownloadProgress, DownloadableContent } from '@/src/core/domain/entities/DownloadIndexItem';
+import type {
+  AudioVerseRange,
+  DownloadProgress,
+  DownloadableContent,
+  DownloadIndexItemWithKey,
+} from '@/src/core/domain/entities/DownloadIndexItem';
 import { getDownloadKey } from '@/src/core/domain/entities/DownloadIndexItem';
 import type { IDownloadIndexRepository } from '@/src/core/domain/repositories/IDownloadIndexRepository';
 import { logger } from '@/src/core/infrastructure/monitoring/logger';
 
 import { AudioFileStore } from './AudioFileStore';
 import type { QdcAudioFile } from './qdcAudio';
+
+type AudioDownloadContent = Extract<DownloadableContent, { kind: 'audio' }>;
 
 function normalizeId(value: number): number {
   if (!Number.isFinite(value)) return 0;
@@ -21,13 +28,90 @@ function toPercentProgress(percent: number): DownloadProgress {
   return { kind: 'percent', percent: normalized };
 }
 
-function toAudioContent(params: { reciterId: number; surahId: number }): DownloadableContent {
+function toAudioContent(params: {
+  reciterId: number;
+  surahId: number;
+  startVerseNumber?: number;
+  endVerseNumber?: number;
+}): AudioDownloadContent {
+  const hasStart = params.startVerseNumber !== undefined;
+  const hasEnd = params.endVerseNumber !== undefined;
+  if (hasStart !== hasEnd) {
+    throw new Error('Audio verse range must include both a start and end verse');
+  }
+
+  const startVerseNumber = hasStart ? normalizeId(params.startVerseNumber!) : undefined;
+  const endVerseNumber = hasEnd ? normalizeId(params.endVerseNumber!) : undefined;
+  if (
+    startVerseNumber !== undefined &&
+    endVerseNumber !== undefined &&
+    (startVerseNumber <= 0 || endVerseNumber < startVerseNumber)
+  ) {
+    throw new Error('Audio verse range is invalid');
+  }
+
   return {
     kind: 'audio',
     reciterId: params.reciterId,
     scope: 'surah',
     surahId: params.surahId,
+    ...(startVerseNumber !== undefined && endVerseNumber !== undefined
+      ? { verseRanges: [{ startVerseNumber, endVerseNumber }] }
+      : {}),
   };
+}
+
+function normalizeVerseRanges(ranges: readonly AudioVerseRange[]): AudioVerseRange[] {
+  const sorted = ranges
+    .map((range) => ({
+      startVerseNumber: normalizeId(range.startVerseNumber),
+      endVerseNumber: normalizeId(range.endVerseNumber),
+    }))
+    .filter(
+      (range) =>
+        range.startVerseNumber > 0 && range.endVerseNumber >= range.startVerseNumber
+    )
+    .sort(
+      (left, right) =>
+        left.startVerseNumber - right.startVerseNumber ||
+        left.endVerseNumber - right.endVerseNumber
+    );
+
+  const merged: AudioVerseRange[] = [];
+  for (const range of sorted) {
+    const previous = merged[merged.length - 1];
+    if (!previous || range.startVerseNumber > previous.endVerseNumber + 1) {
+      merged.push({ ...range });
+      continue;
+    }
+    previous.endVerseNumber = Math.max(previous.endVerseNumber, range.endVerseNumber);
+  }
+  return merged;
+}
+
+function mergeAudioSelection(
+  existing: DownloadIndexItemWithKey | null,
+  requested: AudioDownloadContent
+): AudioDownloadContent {
+  if (!requested.verseRanges) return requested;
+  const existingRanges = (() => {
+    if (existing?.content.kind !== 'audio') return [];
+    if (existing.content.verseRanges) return existing.content.verseRanges;
+    if (
+      typeof existing.content.startVerseNumber === 'number' &&
+      typeof existing.content.endVerseNumber === 'number'
+    ) {
+      return [
+        {
+          startVerseNumber: existing.content.startVerseNumber,
+          endVerseNumber: existing.content.endVerseNumber,
+        },
+      ];
+    }
+    return [];
+  })();
+  const verseRanges = normalizeVerseRanges([...existingRanges, ...requested.verseRanges]);
+  return { ...requested, verseRanges };
 }
 
 const AUDIO_DOWNLOAD_CANCELED_ERROR_CODE = 'audio_download_canceled';
@@ -75,6 +159,8 @@ export class AudioDownloadManager {
   async downloadSurahAudio(params: {
     reciterId: number;
     surahId: number;
+    startVerseNumber?: number;
+    endVerseNumber?: number;
     audioUrl: string;
     audioFile?: QdcAudioFile | undefined;
   }): Promise<void> {
@@ -86,8 +172,13 @@ export class AudioDownloadManager {
     if (surahId <= 0) throw new Error('surahId must be a positive integer');
     if (!audioUrl) throw new Error('audioUrl is required');
 
-    const content = toAudioContent({ reciterId, surahId });
-    const key = getDownloadKey(content);
+    const requestedContent = toAudioContent({
+      reciterId,
+      surahId,
+      startVerseNumber: params.startVerseNumber,
+      endVerseNumber: params.endVerseNumber,
+    });
+    const key = getDownloadKey(requestedContent);
 
     const existingPromise = this.inFlightByKey.get(key);
     if (existingPromise) return existingPromise;
@@ -96,7 +187,8 @@ export class AudioDownloadManager {
     const work = (async (): Promise<void> => {
       const store = new AudioFileStore({ reciterId, surahId });
       const alreadyInstalled = await store.isDownloaded();
-      const existing = await this.downloadIndexRepository.get(content);
+      const existing = await this.downloadIndexRepository.get(requestedContent);
+      const content = mergeAudioSelection(existing, requestedContent);
 
       if (existing?.status === 'deleting') return;
 
@@ -104,7 +196,13 @@ export class AudioDownloadManager {
         if (params.audioFile) {
           await store.saveAudioFileMetadata(params.audioFile);
         }
-        if (existing?.status === 'installed') return;
+        if (
+          existing?.status === 'installed' &&
+          existing.content.kind === 'audio' &&
+          JSON.stringify(existing.content.verseRanges) === JSON.stringify(content.verseRanges)
+        ) {
+          return;
+        }
         await this.downloadIndexRepository.upsert(content, {
           status: 'installed',
           progress: null,

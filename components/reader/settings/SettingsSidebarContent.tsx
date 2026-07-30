@@ -1,7 +1,7 @@
 import { ArrowLeft, BookOpenText, ChevronRight, Database, Globe, Type, Wand2, X, Download } from 'lucide-react-native';
 import React from 'react';
 import { router } from 'expo-router';
-import { Alert, Animated, Easing, FlatList, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Alert, Animated, Easing, FlatList, Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
 import { TAJWEED_MUSHAF_ID, findMushafOption } from '@/data/mushaf/options';
 import Colors from '@/constants/Colors';
@@ -277,6 +277,9 @@ export function SettingsSidebarContent({
   containerWidth,
   initialPanel,
   onMushafInstalled,
+  onOpenMushafManager,
+  onSubPanelBack,
+  hideRootWhenSubPanel = false,
 }: {
   onClose?: () => void;
   showTafsirSetting?: boolean;
@@ -286,6 +289,9 @@ export function SettingsSidebarContent({
   containerWidth?: number;
   initialPanel?: PanelType;
   onMushafInstalled?: (packId: MushafPackId) => void;
+  onOpenMushafManager?: () => void;
+  onSubPanelBack?: () => void;
+  hideRootWhenSubPanel?: boolean;
 }): React.JSX.Element {
   const { width: windowWidth } = useWindowDimensions();
   const {
@@ -931,15 +937,29 @@ export function SettingsSidebarContent({
   }, [handleDeleteMushafPack, mushafDeleteTarget]);
 
   const goBack = React.useCallback(() => {
+    if (onSubPanelBack) {
+      onSubPanelBack();
+      return;
+    }
     closePanel();
-  }, [closePanel]);
+  }, [closePanel, onSubPanelBack]);
 
   const handleActiveTabChange = React.useCallback(
     (nextTab: SettingsTab) => {
+      if (nextTab === 'mushaf' && !settings.mushafId && panel.type === 'root') {
+        if (onOpenMushafManager) {
+          onOpenMushafManager();
+        }
+        animationTokenRef.current += 1;
+        navProgress.stopAnimation();
+        navProgress.setValue(1);
+        setPanel({ type: 'mushaf' });
+        if (onOpenMushafManager) return;
+      }
       setActiveTab(nextTab);
       onTabChange?.(nextTab);
     },
-    [onTabChange]
+    [navProgress, onOpenMushafManager, onTabChange, panel.type, settings.mushafId]
   );
 
   React.useEffect(() => {
@@ -1202,38 +1222,47 @@ export function SettingsSidebarContent({
               data={mushafPackEntries}
               keyExtractor={(item) => item.option.id}
               contentContainerStyle={{ padding: 12, gap: 10, paddingBottom: 24 }}
+              initialNumToRender={2}
+              maxToRenderPerBatch={2}
+              updateCellsBatchingPeriod={32}
+              windowSize={3}
+              removeClippedSubviews={Platform.OS === 'android'}
               ListHeaderComponent={
-                <View className="px-1 pb-3">
-                  <Text className="text-xs leading-5" style={{ color: palette.muted }}>
-                    Choose a page layout to download. Installed mushafs stay available offline.
-                  </Text>
-                  {isMushafPackManagerLoading ? (
-                    <Text className="mt-3 text-xs" style={{ color: palette.muted }}>
-                      Refreshing local mushaf pack status…
-                    </Text>
-                  ) : null}
-                  {mushafPackManagerError ? (
-                    <View className="mt-3 rounded-2xl border border-error/30 bg-error/10 px-4 py-3 dark:border-error-dark/30 dark:bg-error-dark/10">
-                      <Text className="text-xs leading-5 text-error dark:text-error-dark">
-                        {mushafPackManagerError}
+                isMushafPackManagerLoading || mushafPackManagerError ? (
+                  <View className="px-1 pb-3">
+                    {isMushafPackManagerLoading ? (
+                      <Text className="text-xs" style={{ color: palette.muted }}>
+                        Refreshing local mushaf pack status…
                       </Text>
-                      <View className="mt-3 flex-row">
-                        <Pressable
-                          onPress={refreshMushafPacks}
-                          className="rounded-full px-4 py-2"
-                          style={({ pressed }) => ({
-                            backgroundColor: palette.interactive,
-                            opacity: pressed ? 0.88 : 1,
-                          })}
-                        >
-                          <Text className="text-xs font-semibold" style={{ color: palette.text }}>
-                            Retry
-                          </Text>
-                        </Pressable>
+                    ) : null}
+                    {mushafPackManagerError ? (
+                      <View
+                        className={[
+                          'rounded-2xl border border-error/30 bg-error/10 px-4 py-3 dark:border-error-dark/30 dark:bg-error-dark/10',
+                          isMushafPackManagerLoading ? 'mt-3' : '',
+                        ].join(' ')}
+                      >
+                        <Text className="text-xs leading-5 text-error dark:text-error-dark">
+                          {mushafPackManagerError}
+                        </Text>
+                        <View className="mt-3 flex-row">
+                          <Pressable
+                            onPress={refreshMushafPacks}
+                            className="rounded-full px-4 py-2"
+                            style={({ pressed }) => ({
+                              backgroundColor: palette.interactive,
+                              opacity: pressed ? 0.88 : 1,
+                            })}
+                          >
+                            <Text className="text-xs font-semibold" style={{ color: palette.text }}>
+                              Retry
+                            </Text>
+                          </Pressable>
+                        </View>
                       </View>
-                    </View>
-                  ) : null}
-                </View>
+                    ) : null}
+                  </View>
+                ) : null
               }
               renderItem={({ item }) => {
                 const hasActiveMushafJob = mushafPackEntries.some((entry) => entry.isBusy);
@@ -1323,11 +1352,14 @@ export function SettingsSidebarContent({
 
   return (
     <View className="flex-1" style={{ backgroundColor: palette.background }}>
-      <Animated.View
-        style={{ flex: 1, opacity: rootOpacity, transform: [{ translateX: rootTranslateX }] }}
-        pointerEvents={isSubPanel ? 'none' : 'auto'}
-      >
-        <View className="flex-1">
+      {!isSubPanel || !hideRootWhenSubPanel ? (
+        <Animated.View
+          accessibilityElementsHidden={isSubPanel}
+          importantForAccessibility={isSubPanel ? 'no-hide-descendants' : 'auto'}
+          style={{ flex: 1, opacity: rootOpacity, transform: [{ translateX: rootTranslateX }] }}
+          pointerEvents={isSubPanel ? 'none' : 'auto'}
+        >
+          <View className="flex-1">
           <View
             style={[styles.header, { borderBottomColor: `${palette.border}66` }]}
             className="border-b"
@@ -1539,8 +1571,9 @@ export function SettingsSidebarContent({
               </View>
             )}
           </View>
-        </View>
-      </Animated.View>
+          </View>
+        </Animated.View>
+      ) : null}
 
       {isSubPanel ? (
         <Animated.View

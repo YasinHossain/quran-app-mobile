@@ -10,11 +10,26 @@ export const DOWNLOAD_STATUSES = [
 
 export type DownloadStatus = (typeof DOWNLOAD_STATUSES)[number];
 
+export interface AudioVerseRange {
+  startVerseNumber: number;
+  endVerseNumber: number;
+}
+
 export type DownloadableContent =
   | { kind: 'translation'; translationId: number }
   | { kind: 'tafsir'; tafsirId: number }
   | { kind: 'tafsir'; scope: 'surah'; surahId: number; tafsirId: number }
-  | { kind: 'audio'; reciterId: number; scope: 'surah'; surahId: number }
+  | {
+      kind: 'audio';
+      reciterId: number;
+      scope: 'surah';
+      surahId: number;
+      verseRanges?: AudioVerseRange[];
+      /** @deprecated Migrated into verseRanges when this audio item is next updated. */
+      startVerseNumber?: number;
+      /** @deprecated Migrated into verseRanges when this audio item is next updated. */
+      endVerseNumber?: number;
+    }
   | { kind: 'words'; scope: 'surah'; surahId: number }
   | { kind: 'word-translation'; languageCode: string }
   | { kind: 'word-study-pack'; packId: string; version: string }
@@ -118,14 +133,41 @@ export function isDownloadableContent(value: unknown): value is DownloadableCont
 
   if (candidate.kind === 'audio') {
     const audio = candidate as Partial<Extract<DownloadableContent, { kind: 'audio' }>>;
-    return (
+    const hasValidBase =
       typeof audio.reciterId === 'number' &&
       Number.isFinite(audio.reciterId) &&
       audio.reciterId > 0 &&
       audio.scope === 'surah' &&
       typeof audio.surahId === 'number' &&
       Number.isFinite(audio.surahId) &&
-      audio.surahId > 0
+      audio.surahId > 0;
+    if (!hasValidBase) return false;
+
+    if (audio.verseRanges !== undefined) {
+      if (!Array.isArray(audio.verseRanges) || audio.verseRanges.length === 0) return false;
+      return audio.verseRanges.every(
+        (range) =>
+          range !== null &&
+          typeof range === 'object' &&
+          typeof range.startVerseNumber === 'number' &&
+          Number.isInteger(range.startVerseNumber) &&
+          range.startVerseNumber > 0 &&
+          typeof range.endVerseNumber === 'number' &&
+          Number.isInteger(range.endVerseNumber) &&
+          range.endVerseNumber >= range.startVerseNumber
+      );
+    }
+
+    const hasLegacyStart = audio.startVerseNumber !== undefined;
+    const hasLegacyEnd = audio.endVerseNumber !== undefined;
+    if (!hasLegacyStart && !hasLegacyEnd) return true;
+    return (
+      hasLegacyStart &&
+      hasLegacyEnd &&
+      Number.isInteger(audio.startVerseNumber) &&
+      audio.startVerseNumber! > 0 &&
+      Number.isInteger(audio.endVerseNumber) &&
+      audio.endVerseNumber! >= audio.startVerseNumber!
     );
   }
 

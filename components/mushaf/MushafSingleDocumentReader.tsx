@@ -32,11 +32,17 @@ export type MushafSingleDocumentVersePress = {
   verseWords?: readonly { wordPosition: number; surfaceText: string }[];
 };
 
+export type MushafAudioWord = {
+  verseKey: string;
+  wordPosition: number;
+};
+
 export type MushafSingleDocumentReaderHandle = {
   scrollToPage: (pageNumber: number) => void;
 };
 
 type MushafSingleDocumentReaderProps = {
+  activeAudioWord?: MushafAudioWord | null;
   backgroundWarmEnabled?: boolean;
   backgroundPageNumbers: number[];
   chapterNamesById: Map<number, string>;
@@ -55,11 +61,13 @@ type MushafSingleDocumentReaderProps = {
   onScrollActivity?: (scrollY?: number) => void;
   onSurahNavigation?: (direction: 'next' | 'previous') => void;
   onVersePress: (verse: MushafSingleDocumentVersePress) => void;
+  onWordSeek?: (word: MushafAudioWord) => void;
   pageNumbers?: number[];
   packId: MushafPackId;
   surahIntro?: MushafReaderSurahIntro;
   surahNavigation?: MushafReaderSurahNavigation;
   totalPages: number;
+  wordSeekEnabled?: boolean;
 };
 
 type ReaderMessage =
@@ -284,6 +292,7 @@ export const MushafSingleDocumentReader = React.forwardRef<
   MushafSingleDocumentReaderProps
 >(function MushafSingleDocumentReader(
   {
+    activeAudioWord,
     backgroundWarmEnabled = true,
     backgroundPageNumbers,
     chapterNamesById,
@@ -302,11 +311,13 @@ export const MushafSingleDocumentReader = React.forwardRef<
     onScrollActivity,
     onSurahNavigation,
     onVersePress,
+    onWordSeek,
     pageNumbers,
     packId,
     surahIntro,
     surahNavigation,
     totalPages,
+    wordSeekEnabled = false,
   },
   ref
 ): React.JSX.Element {
@@ -410,6 +421,40 @@ export const MushafSingleDocumentReader = React.forwardRef<
     },
     [focusTopInsetPx, highlightVerseKey, initialPageNumber, shellDocument.layout]
   );
+
+  const syncActiveAudioWord = React.useCallback(() => {
+    if (!isReaderReadyRef.current) {
+      return;
+    }
+
+    const normalizedVerseKey =
+      typeof activeAudioWord?.verseKey === 'string' ? activeAudioWord.verseKey.trim() : '';
+    const normalizedWordPosition =
+      typeof activeAudioWord?.wordPosition === 'number' &&
+      Number.isFinite(activeAudioWord.wordPosition)
+        ? Math.trunc(activeAudioWord.wordPosition)
+        : 0;
+    const payload =
+      normalizedVerseKey && normalizedWordPosition > 0
+        ? { verseKey: normalizedVerseKey, wordPosition: normalizedWordPosition }
+        : null;
+
+    webViewRef.current?.injectJavaScript(`
+      (function () {
+        if (
+          window.__MUSHAF_READER__ &&
+          typeof window.__MUSHAF_READER__.setActiveAudioWord === 'function'
+        ) {
+          window.__MUSHAF_READER__.setActiveAudioWord(${JSON.stringify(payload)});
+        }
+      })();
+      true;
+    `);
+  }, [activeAudioWord?.verseKey, activeAudioWord?.wordPosition]);
+
+  React.useEffect(() => {
+    syncActiveAudioWord();
+  }, [syncActiveAudioWord]);
 
   const scrollToPage = React.useCallback(
     (pageNumber: number) => {
@@ -729,6 +774,20 @@ export const MushafSingleDocumentReader = React.forwardRef<
       const verseKey = resolveMushafVerseKey(payload);
       if (!verseKey) return;
 
+      const wordPosition =
+        typeof payload.wordPosition === 'number' && Number.isFinite(payload.wordPosition)
+          ? Math.trunc(payload.wordPosition)
+          : 0;
+      if (
+        wordSeekEnabled &&
+        onWordSeek &&
+        payload.charType !== 'end' &&
+        wordPosition > 0
+      ) {
+        onWordSeek({ verseKey, wordPosition });
+        return;
+      }
+
       const pageNumber =
         typeof payload.pageNumber === 'number' && Number.isFinite(payload.pageNumber)
           ? Math.trunc(payload.pageNumber)
@@ -749,10 +808,7 @@ export const MushafSingleDocumentReader = React.forwardRef<
           : {}),
         arabicText: resolveMushafVerseText(verse),
         translationTexts: [],
-        wordPosition:
-          typeof payload.wordPosition === 'number' && Number.isFinite(payload.wordPosition)
-            ? Math.trunc(payload.wordPosition)
-            : 0,
+        wordPosition,
         ...(payload.text.trim() ? { surfaceText: payload.text.trim() } : {}),
         verseWords: verse.words
           .filter((word) => word.charType !== 'end')
@@ -763,7 +819,7 @@ export const MushafSingleDocumentReader = React.forwardRef<
           .filter((word) => word.wordPosition > 0 && word.surfaceText.length > 0),
       });
     },
-    [chapterNamesById, onVersePress]
+    [chapterNamesById, onVersePress, onWordSeek, wordSeekEnabled]
   );
 
   const handleMessage = React.useCallback(
@@ -783,6 +839,7 @@ export const MushafSingleDocumentReader = React.forwardRef<
       switch (parsed.type) {
         case 'renderer-ready': {
           isReaderReadyRef.current = true;
+          syncActiveAudioWord();
           const loadedPages = Array.from(pageDataByNumberRef.current.values());
           injectPages(loadedPages);
           loadPages([initialPageNumber], 'renderer-ready');
@@ -895,6 +952,7 @@ export const MushafSingleDocumentReader = React.forwardRef<
       onSurahNavigation,
       revealReader,
       startBackgroundWarm,
+      syncActiveAudioWord,
     ]
   );
 

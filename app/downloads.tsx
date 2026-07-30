@@ -194,7 +194,36 @@ export default function DownloadsScreen(): React.JSX.Element {
           const surahId = item.content.surahId;
           const surahName = t('surah_names.' + surahId, { fallback: surahNameById.get(surahId) ?? `${t('surah_tab', { fallback: 'Surah' })} ${surahId}` });
           title = rName;
-          subtitle = `${t('audio_recitation', { fallback: 'Audio recitation' })} • ${surahName}`;
+          const verseRanges =
+            item.content.verseRanges ??
+            (typeof item.content.startVerseNumber === 'number' &&
+            typeof item.content.endVerseNumber === 'number'
+              ? [
+                  {
+                    startVerseNumber: item.content.startVerseNumber,
+                    endVerseNumber: item.content.endVerseNumber,
+                  },
+                ]
+              : undefined);
+          const isSingleVerse =
+            verseRanges?.length === 1 &&
+            verseRanges[0]?.startVerseNumber === verseRanges[0]?.endVerseNumber;
+          const verseRangeLabel = verseRanges?.length
+            ? `${isSingleVerse ? t('verse', { fallback: 'Verse' }) : t('verses', { fallback: 'Verses' })} ${verseRanges
+                .map((range) =>
+                  range.startVerseNumber === range.endVerseNumber
+                    ? localizeDigits(String(range.startVerseNumber))
+                    : `${localizeDigits(String(range.startVerseNumber))}–${localizeDigits(String(range.endVerseNumber))}`
+                )
+                .join(', ')}`
+            : null;
+          subtitle = [
+            t('audio_recitation', { fallback: 'Audio recitation' }),
+            surahName,
+            verseRangeLabel,
+          ]
+            .filter(Boolean)
+            .join(' • ');
           break;
         }
         case 'mushaf-pack': {
@@ -249,6 +278,7 @@ export default function DownloadsScreen(): React.JSX.Element {
     reciterNameById,
     surahNameById,
     t,
+    localizeDigits,
     downloadSizeBytesByKey,
     downloadSizeLabelsByKey,
   ]);
@@ -486,7 +516,10 @@ export default function DownloadsScreen(): React.JSX.Element {
             ) : null}
           </View>
           {dItem.subtitle ? (
-            <Text className="text-xs text-muted dark:text-muted-dark mt-1" numberOfLines={1}>
+            <Text
+              className="text-xs text-muted dark:text-muted-dark mt-1"
+              numberOfLines={dItem.category === 'Audio' ? 2 : 1}
+            >
               {dItem.subtitle}
             </Text>
           ) : null}
@@ -604,27 +637,6 @@ export default function DownloadsScreen(): React.JSX.Element {
           </HeaderActionButton>
         }
       />
-
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Manage Word Study downloads"
-        onPress={() => router.push('/manage-word-study')}
-        className="mx-4 mt-4 flex-row items-center rounded-2xl border border-border bg-surface p-4 dark:border-border-dark dark:bg-surface-dark"
-        style={({ pressed }) => ({ opacity: pressed ? 0.78 : 1 })}
-      >
-        <View className="h-11 w-11 items-center justify-center rounded-2xl bg-interactive dark:bg-interactive-dark">
-          <LibraryBig size={22} color={palette.tint} strokeWidth={2.2} />
-        </View>
-        <View className="ml-3 flex-1">
-          <Text className="text-base font-bold text-foreground dark:text-foreground-dark">
-            Manage Word Study
-          </Text>
-          <Text className="mt-0.5 text-xs leading-5 text-muted dark:text-muted-dark">
-            Essentials, grammar, and dictionaries
-          </Text>
-        </View>
-        <ChevronRight size={20} color={palette.muted} strokeWidth={2.2} />
-      </Pressable>
 
       {isIndexLoading || isLoadingMetadata ? (
         <View className="flex-1 items-center justify-center">

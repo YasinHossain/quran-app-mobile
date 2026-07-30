@@ -822,6 +822,7 @@ export default function PageScreen(): React.JSX.Element {
               </View>
             ) : (
               <MushafSingleDocumentReader
+                activeAudioWord={verseAudioWordSync.activeWord}
                 backgroundPageNumbers={[pageNumber - 1, pageNumber, pageNumber + 1]}
                 chapterNamesById={chapterNamesById}
                 compactPageLines
@@ -833,9 +834,11 @@ export default function PageScreen(): React.JSX.Element {
                 onSelectionChange={handleMushafSelectionChange}
                 onScrollActivity={handleMushafScrollActivity}
                 onVersePress={handleMushafVersePress}
+                onWordSeek={verseAudioWordSync.seekToWord}
                 pageNumbers={[pageNumber]}
                 packId={selectedMushafId}
                 totalPages={mushafTotalPages}
+                wordSeekEnabled={audio.isVisible}
               />
             )}
           </View>

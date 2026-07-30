@@ -1443,6 +1443,7 @@ export default function JuzScreen(): React.JSX.Element {
             ) : (
               <MushafSingleDocumentReader
                 ref={mushafReaderRef}
+                activeAudioWord={verseAudioWordSync.activeWord}
                 backgroundPageNumbers={mushafInitialWindowPageNumbers}
                 chapterNamesById={chapterNamesById}
                 compactPageLines
@@ -1457,11 +1458,13 @@ export default function JuzScreen(): React.JSX.Element {
                 onSelectionChange={handleMushafSelectionChange}
                 onSurahNavigation={handleMushafJuzNavigation}
                 onVersePress={handleMushafVersePress}
+                onWordSeek={verseAudioWordSync.seekToWord}
                 pageNumbers={
                   mushafSurahPageNumbers.length ? mushafSurahPageNumbers : [initialMushafPageNumber]
                 }
                 packId={selectedMushafId}
                 totalPages={FALLBACK_MUSHAF_TOTAL_PAGES}
+                wordSeekEnabled={audio.isVisible}
               />
             )}
           </Animated.View>

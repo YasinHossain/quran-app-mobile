@@ -39,12 +39,18 @@ export function SettingsSidebar({
   const insets = useSafeAreaInsets();
   const { isDark, resolvedTheme } = useAppTheme();
   const palette = Colors[resolvedTheme];
-  const sheetWidth = Math.min(390, Math.round(width * 0.92));
+  const [isMushafManagerFullScreen, setIsMushafManagerFullScreen] = React.useState(false);
+  const sheetWidth = isMushafManagerFullScreen
+    ? width
+    : Math.min(390, Math.round(width * 0.92));
   const hiddenTranslateX = sheetWidth + 12;
   const { visible, progress, onModalShow } = useModalTransition(isOpen, {
     openDuration: modalMotion.quickOpenDuration,
     closeDuration: modalMotion.quickCloseDuration,
-    onAfterClose,
+    onAfterClose: () => {
+      setIsMushafManagerFullScreen(false);
+      onAfterClose?.();
+    },
   });
 
   return (
@@ -72,7 +78,7 @@ export function SettingsSidebar({
             },
             sideSheetTransform(progress, hiddenTranslateX),
           ]}
-          className="border-l"
+          className={isMushafManagerFullScreen ? '' : 'border-l'}
         >
           <View
             style={{
@@ -90,8 +96,11 @@ export function SettingsSidebar({
                   activeTabOverride={activeTab}
                   onTabChange={onTabChange}
                   containerWidth={sheetWidth}
-                  initialPanel={initialPanel}
+                  initialPanel={isMushafManagerFullScreen ? 'mushaf' : initialPanel}
                   onMushafInstalled={onMushafInstalled}
+                  onOpenMushafManager={() => setIsMushafManagerFullScreen(true)}
+                  onSubPanelBack={isMushafManagerFullScreen ? onClose : undefined}
+                  hideRootWhenSubPanel={isMushafManagerFullScreen}
                 />
               )}
             </View>

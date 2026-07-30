@@ -324,3 +324,40 @@ test('Android Surah, Juz, Page, Mushaf, and Tajweed readers share the React Nati
   assert.ok(!tajweedFactory.includes('WordQuickSheet'));
   assert.ok(!tajweedFactory.includes('WordStudyRepository'));
 });
+
+test('Mushaf readers bridge active audio words and seek taps without remounting the WebView', () => {
+  const surahScreen = readFileSync(join(process.cwd(), 'app/surah/[surahId].tsx'), 'utf8');
+  const juzScreen = readFileSync(join(process.cwd(), 'app/juz/[juzNumber].tsx'), 'utf8');
+  const pageScreen = readFileSync(join(process.cwd(), 'app/page/[pageNumber].tsx'), 'utf8');
+  const reader = readFileSync(
+    join(process.cwd(), 'components/mushaf/MushafSingleDocumentReader.tsx'),
+    'utf8'
+  );
+  const document = readFileSync(
+    join(
+      process.cwd(),
+      'components/mushaf/webview/buildMushafReaderWebViewDocument.ts'
+    ),
+    'utf8'
+  );
+
+  for (const screen of [surahScreen, juzScreen, pageScreen]) {
+    assert.match(screen, /activeAudioWord=\{verseAudioWordSync\.activeWord\}/);
+    assert.match(screen, /onWordSeek=\{verseAudioWordSync\.seekToWord\}/);
+    assert.match(screen, /wordSeekEnabled=\{audio\.isVisible\}/);
+  }
+
+  assert.match(reader, /window\.__MUSHAF_READER__\.setActiveAudioWord/);
+  assert.match(
+    reader,
+    /wordSeekEnabled[\s\S]*?payload\.charType !== 'end'[\s\S]*?onWordSeek\(\{ verseKey, wordPosition \}\)/
+  );
+  assert.doesNotMatch(
+    reader,
+    /key=\{`mushaf-reader:[^`]*activeAudioWord/
+  );
+  assert.match(document, /\.word\.active-audio-word/);
+  assert.match(document, /function setActiveAudioWord\(payload\)/);
+  assert.match(document, /wordNode\.classList\.add\('active-audio-word'\)/);
+  assert.match(document, /setActiveAudioWord: setActiveAudioWord/);
+});
