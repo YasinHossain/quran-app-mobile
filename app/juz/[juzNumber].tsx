@@ -1448,6 +1448,7 @@ export default function JuzScreen(): React.JSX.Element {
                 chapterNamesById={chapterNamesById}
                 compactPageLines
                 expectedVersion={activeMushafVersion}
+                focusBottomInsetPx={audioPlayerBarHeight}
                 focusTopInsetPx={readerHeader.headerHeight + 12}
                 initialPageData={availableInitialMushafPageData}
                 initialPageNumber={initialMushafPageNumber}

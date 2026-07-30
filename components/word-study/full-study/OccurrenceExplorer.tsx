@@ -100,6 +100,7 @@ export function OccurrenceExplorer({
   const [rootFamilyRetryNonce, setRootFamilyRetryNonce] = React.useState(0);
   const [lemmaOverride, setLemmaOverride] = React.useState<Lemma | null>(null);
   const [resultsHeightFloor, setResultsHeightFloor] = React.useState(0);
+  const [filterNavigationRequestId, setFilterNavigationRequestId] = React.useState(0);
   const [pageState, setPageState] = React.useState<PageState>({ status: 'loading' });
   const [retryNonce, setRetryNonce] = React.useState(0);
   const requestIdRef = React.useRef(0);
@@ -330,6 +331,11 @@ export function OccurrenceExplorer({
     });
   }, [onRequestScrollToFilters, reduceMotion]);
 
+  React.useEffect(() => {
+    if (filterNavigationRequestId === 0) return;
+    scrollToFilters();
+  }, [filterNavigationRequestId, scrollToFilters]);
+
   const selectScope = React.useCallback((nextScope: WordOccurrenceScope) => {
     setUnavailableScopeMessage(null);
     setLemmaOverride(null);
@@ -348,16 +354,16 @@ export function OccurrenceExplorer({
       return;
     }
     selectScope(counterKey);
-    scrollToFilters();
-  }, [onRequestScrollToFilters, reduceMotion, scrollToFilters, selectScope]);
+    setFilterNavigationRequestId((requestId) => requestId + 1);
+  }, [onRequestScrollToFilters, reduceMotion, selectScope]);
 
   const selectRootFamilyLemma = React.useCallback((lemma: Lemma) => {
     setLemmaOverride(lemma);
     setScope('lemma');
     setCursor(undefined);
     setCursorHistory([]);
-    scrollToFilters();
-  }, [scrollToFilters]);
+    setFilterNavigationRequestId((requestId) => requestId + 1);
+  }, []);
 
   const toggleRootFamily = React.useCallback(() => {
     setRootFamilyExpanded((value) => !value);
@@ -377,6 +383,9 @@ export function OccurrenceExplorer({
   }, []);
 
   const counters = getOccurrenceCounters(analysis, surfaceCount);
+  const counterRows = [counters.slice(0, 2), counters.slice(2, 4)].filter(
+    (row) => row.length > 0
+  );
   const immediateSurfaceQuery = buildOccurrenceQuery(analysis, 'surface');
   const immediateSurfacePage = selectionMatchesAnalysis
     ? undefined
@@ -416,26 +425,31 @@ export function OccurrenceExplorer({
         {counters.length > 2 ? (
           <View pointerEvents="none" style={[styles.counterHorizontalDivider, { backgroundColor: palette.border }]} />
         ) : null}
-        {counters.map((counter) => (
-          <View key={counter.key} style={styles.counterCell}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={`${counter.value === undefined ? 'Loading' : counter.value.toLocaleString()} ${counter.label}. ${counter.key === 'root-lemma-family' ? 'Show root-family forms' : `Show ${counter.label.toLowerCase()} occurrences`}`}
-              accessibilityState={counter.key === 'root-lemma-family'
-                ? { expanded: rootFamilyExpanded }
-                : { selected: effectiveScope === counter.key && !lemmaOverride }}
-              onPress={() => selectCounter(counter.key)}
-              style={({ pressed }) => [
-                StyleSheet.absoluteFill,
-                { backgroundColor: pressed ? palette.interactive : 'transparent' },
-              ]}
-            />
-            <View pointerEvents="none" style={styles.counterContent}>
-              <Text style={[styles.counterValue, { color: palette.tint }]}>
-                {counter.value === undefined ? '…' : counter.value.toLocaleString()}
-              </Text>
-              <Text style={[styles.counterLabel, { color: palette.text }]}>{counter.label}</Text>
-            </View>
+        {counterRows.map((row, rowIndex) => (
+          <View key={rowIndex} style={styles.counterRow}>
+            {row.map((counter) => (
+              <Pressable
+                key={counter.key}
+                accessibilityRole="button"
+                accessibilityLabel={`${counter.value === undefined ? 'Loading' : counter.value.toLocaleString()} ${counter.label}. ${counter.key === 'root-lemma-family' ? 'Show root-family forms' : `Show ${counter.label.toLowerCase()} occurrences`}`}
+                accessibilityState={counter.key === 'root-lemma-family'
+                  ? { expanded: rootFamilyExpanded }
+                  : { selected: effectiveScope === counter.key && !lemmaOverride }}
+                android_ripple={{ color: palette.interactive }}
+                onPress={() => selectCounter(counter.key)}
+                style={styles.counterCell}
+              >
+                <View pointerEvents="none" style={styles.counterContent}>
+                  <Text style={[styles.counterValue, { color: palette.tint }]}>
+                    {counter.value === undefined ? '…' : counter.value.toLocaleString()}
+                  </Text>
+                  <Text style={[styles.counterLabel, { color: palette.text }]}>{counter.label}</Text>
+                </View>
+              </Pressable>
+            ))}
+            {row.length === 1 && counters.length > 1 ? (
+              <View style={styles.counterSpacer} />
+            ) : null}
           </View>
         ))}
       </View>
@@ -858,8 +872,10 @@ const styles = StyleSheet.create({
   heading: { minHeight: 36, paddingHorizontal: 2, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   title: { fontSize: 18, lineHeight: 25, fontWeight: '700' },
   infoButton: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  counterGrid: { position: 'relative', flexDirection: 'row', flexWrap: 'wrap', borderRadius: 20, overflow: 'hidden', paddingVertical: 6 },
-  counterCell: { width: '50%', flexBasis: '50%', flexGrow: 0, flexShrink: 0, minHeight: 92, paddingHorizontal: 13, alignItems: 'center', justifyContent: 'center' },
+  counterGrid: { position: 'relative', borderRadius: 20, overflow: 'hidden', paddingVertical: 6 },
+  counterRow: { width: '100%', flexDirection: 'row' },
+  counterCell: { flex: 1, minWidth: 0, minHeight: 92, paddingHorizontal: 13, alignItems: 'center', justifyContent: 'center' },
+  counterSpacer: { flex: 1, minWidth: 0, minHeight: 92 },
   counterContent: { alignItems: 'center', justifyContent: 'center', gap: 2 },
   counterVerticalDivider: { position: 'absolute', width: StyleSheet.hairlineWidth, top: 17, bottom: 17, left: '50%' },
   counterHorizontalDivider: { position: 'absolute', height: StyleSheet.hairlineWidth, left: 17, right: 17, top: '50%' },

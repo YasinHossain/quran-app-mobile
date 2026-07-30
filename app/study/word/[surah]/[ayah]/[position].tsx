@@ -10,6 +10,7 @@ import {
 import React from 'react';
 import {
   ActivityIndicator,
+  type LayoutChangeEvent,
   Pressable,
   ScrollView,
   Share,
@@ -370,9 +371,7 @@ export default function WordStudyScreen(): React.JSX.Element {
     },
     []
   );
-  const handleOccurrenceLayout = React.useCallback((event: {
-    nativeEvent: { layout: { y: number } };
-  }) => {
+  const handleOccurrenceLayout = React.useCallback((event: LayoutChangeEvent) => {
     occurrenceSectionYRef.current = event.nativeEvent.layout.y;
   }, []);
   const handleCloseOccurrenceGuide = React.useCallback(() => {
@@ -561,22 +560,21 @@ export default function WordStudyScreen(): React.JSX.Element {
                 </PersistentTabPanel>
               ) : null}
               {mountedTabs.has('occurrences') ? (
-                <PersistentTabPanel active={contentTab === 'occurrences'}>
-                  <View
-                    onLayout={handleOccurrenceLayout}
-                  >
-                    <MemoizedOccurrenceExplorer
-                      analysis={selected}
-                      isActive={contentTab === 'occurrences'}
-                      prefetchAnalyses={words}
-                      palette={palette}
-                      onOpenReader={handleOpenOccurrenceInReader}
-                      onRequestScrollToFilters={handleScrollToOccurrenceFilters}
-                      requestedScope={requestedOccurrenceScope}
-                      isGuideOpen={isOccurrenceGuideOpen}
-                      onCloseGuide={handleCloseOccurrenceGuide}
-                    />
-                  </View>
+                <PersistentTabPanel
+                  active={contentTab === 'occurrences'}
+                  onLayout={handleOccurrenceLayout}
+                >
+                  <MemoizedOccurrenceExplorer
+                    analysis={selected}
+                    isActive={contentTab === 'occurrences'}
+                    prefetchAnalyses={words}
+                    palette={palette}
+                    onOpenReader={handleOpenOccurrenceInReader}
+                    onRequestScrollToFilters={handleScrollToOccurrenceFilters}
+                    requestedScope={requestedOccurrenceScope}
+                    isGuideOpen={isOccurrenceGuideOpen}
+                    onCloseGuide={handleCloseOccurrenceGuide}
+                  />
                 </PersistentTabPanel>
               ) : null}
               {mountedTabs.has('dictionary') ? (
@@ -731,14 +729,17 @@ function UnavailableStudyTabPanels({
 function PersistentTabPanel({
   active,
   children,
+  onLayout,
 }: {
   active: boolean;
   children: React.ReactNode;
+  onLayout?: (event: LayoutChangeEvent) => void;
 }): React.JSX.Element {
   return (
     <View
       accessibilityElementsHidden={!active}
       importantForAccessibility={active ? 'auto' : 'no-hide-descendants'}
+      onLayout={onLayout}
       pointerEvents={active ? 'auto' : 'none'}
       style={!active ? styles.hiddenTab : undefined}
     >

@@ -2555,6 +2555,7 @@ export default function SurahScreen(): React.JSX.Element {
                 compactPageLines
                 expectedVersion={activeMushafVersion}
                 filterChapterId={Math.trunc(chapterNumber)}
+                focusBottomInsetPx={audioPlayerBarHeight}
                 focusTopInsetPx={12}
                 highlightVerseKey={mushafHighlightVerseKey}
                 initialPageData={availableInitialMushafPageData}

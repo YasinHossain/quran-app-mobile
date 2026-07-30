@@ -530,6 +530,11 @@ test('full screen uses Morphology-first information architecture without repeate
   assert.match(source, /tab !== 'grammar'/);
   assert.match(source, /onRequestScrollToFilters=\{handleScrollToOccurrenceFilters\}/);
   assert.match(source, /occurrenceSectionYRef\.current \+ offsetY/);
+  assert.match(
+    source,
+    /<PersistentTabPanel[\s\S]*?active=\{contentTab === 'occurrences'\}[\s\S]*?onLayout=\{handleOccurrenceLayout\}/
+  );
+  assert.doesNotMatch(source, /<View\s+onLayout=\{handleOccurrenceLayout\}/);
   assert.match(source, /How this word is built/);
   assert.ok(source.indexOf('<ContextualMeaningBlock') < source.indexOf('How this word is built'));
   assert.ok(source.indexOf('label="Lemma"') < source.indexOf('How this word is built'));
@@ -893,6 +898,8 @@ test('occurrence explorer cancels stale queries, keeps page size bounded, and av
   assert.match(source, /OccurrenceGuideSheet/);
   assert.match(source, /counterVerticalDivider/);
   assert.match(source, /counterHorizontalDivider/);
+  assert.match(source, /<Pressable\s+key=\{counter\.key\}[\s\S]*?styles\.counterCell/);
+  assert.doesNotMatch(source, /StyleSheet\.absoluteFill/);
   assert.match(source, /findLemmasByRoot/);
   assert.match(source, /selected word lemma/);
   assert.match(source, /buildRootFamilyLemmaQuery/);
@@ -909,9 +916,12 @@ test('occurrence explorer cancels stale queries, keeps page size bounded, and av
   assert.match(source, /requestAnimationFrame/);
   assert.match(source, /onRequestScrollToFilters\?\./);
   assert.match(source, /const selectScope[\s\S]*?setCursorHistory\(\[\]\);\s*\}, \[\]\);/);
-  assert.match(source, /const selectCounter[\s\S]*?selectScope\(counterKey\);\s*scrollToFilters\(\);/);
+  assert.match(
+    source,
+    /filterNavigationRequestId[\s\S]*?scrollToFilters\(\);[\s\S]*?const selectCounter[\s\S]*?selectScope\(counterKey\);\s*setFilterNavigationRequestId/
+  );
   assert.match(source, /rootFamilyOffsetYRef[\s\S]*?setRootFamilyExpanded\(true\)/);
-  assert.match(source, /const selectRootFamilyLemma[\s\S]*?scrollToFilters\(\);/);
+  assert.match(source, /const selectRootFamilyLemma[\s\S]*?setFilterNavigationRequestId/);
   assert.match(source, /current\.status === 'ready'[\s\S]*?refreshing: true/);
   assert.match(source, /accessibilityState=\{\{ busy: isPageRefreshing \}\}/);
   assert.match(source, /ayahContextUthmani/);

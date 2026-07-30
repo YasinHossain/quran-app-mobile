@@ -827,6 +827,7 @@ export default function PageScreen(): React.JSX.Element {
                 chapterNamesById={chapterNamesById}
                 compactPageLines
                 expectedVersion={activeMushafVersion}
+                focusBottomInsetPx={audioPlayerBarHeight}
                 focusTopInsetPx={readerHeader.headerHeight + 12}
                 initialPageData={availableInitialMushafPageData}
                 initialPageNumber={pageNumber}

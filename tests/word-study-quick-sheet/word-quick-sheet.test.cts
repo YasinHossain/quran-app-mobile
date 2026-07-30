@@ -343,11 +343,14 @@ test('Mushaf readers bridge active audio words and seek taps without remounting 
 
   for (const screen of [surahScreen, juzScreen, pageScreen]) {
     assert.match(screen, /activeAudioWord=\{verseAudioWordSync\.activeWord\}/);
+    assert.match(screen, /focusBottomInsetPx=\{audioPlayerBarHeight\}/);
     assert.match(screen, /onWordSeek=\{verseAudioWordSync\.seekToWord\}/);
     assert.match(screen, /wordSeekEnabled=\{audio\.isVisible\}/);
   }
 
   assert.match(reader, /window\.__MUSHAF_READER__\.setActiveAudioWord/);
+  assert.match(reader, /\.findPageForVerse\(\{ packId, verseKey \}\)/);
+  assert.match(reader, /'active-audio-verse-window'/);
   assert.match(
     reader,
     /wordSeekEnabled[\s\S]*?payload\.charType !== 'end'[\s\S]*?onWordSeek\(\{ verseKey, wordPosition \}\)/
@@ -357,6 +360,9 @@ test('Mushaf readers bridge active audio words and seek taps without remounting 
     /key=\{`mushaf-reader:[^`]*activeAudioWord/
   );
   assert.match(document, /\.word\.active-audio-word/);
+  assert.match(document, /function scrollActiveAudioWordIntoView\(\)/);
+  assert.match(document, /window\.innerHeight - activeAudioBottomInsetPx/);
+  assert.match(document, /scheduleActiveAudioWordScroll\(\)/);
   assert.match(document, /function setActiveAudioWord\(payload\)/);
   assert.match(document, /wordNode\.classList\.add\('active-audio-word'\)/);
   assert.match(document, /setActiveAudioWord: setActiveAudioWord/);

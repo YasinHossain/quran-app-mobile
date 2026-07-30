@@ -49,6 +49,7 @@ type MushafSingleDocumentReaderProps = {
   compactPageLines?: boolean;
   expectedVersion: string;
   filterChapterId?: number;
+  focusBottomInsetPx?: number;
   focusTopInsetPx: number;
   highlightVerseKey?: string | null;
   initialPageData?: MushafPageData | null;
@@ -299,6 +300,7 @@ export const MushafSingleDocumentReader = React.forwardRef<
     compactPageLines = false,
     expectedVersion,
     filterChapterId,
+    focusBottomInsetPx = 0,
     focusTopInsetPx,
     highlightVerseKey,
     initialPageData,
@@ -340,6 +342,7 @@ export const MushafSingleDocumentReader = React.forwardRef<
   const loadingPageNumbersRef = React.useRef(new Set<number>());
   const pageLoadRetryCountsRef = React.useRef(new Map<number, number>());
   const loadPagesRef = React.useRef<((pageNumbers: number[], reason: string) => void) | null>(null);
+  const activeAudioVerseLoadRef = React.useRef<string | null>(null);
   const firstPackDirectoryUriRef = React.useRef<string | null>(
     initialPageData?.rendererAssets?.packDirectoryUri ?? null
   );
@@ -434,10 +437,11 @@ export const MushafSingleDocumentReader = React.forwardRef<
       Number.isFinite(activeAudioWord.wordPosition)
         ? Math.trunc(activeAudioWord.wordPosition)
         : 0;
-    const payload =
-      normalizedVerseKey && normalizedWordPosition > 0
-        ? { verseKey: normalizedVerseKey, wordPosition: normalizedWordPosition }
-        : null;
+    const payload = {
+      bottomInsetPx: Math.max(0, Math.round(focusBottomInsetPx)),
+      verseKey: normalizedVerseKey,
+      wordPosition: normalizedWordPosition > 0 ? normalizedWordPosition : 0,
+    };
 
     webViewRef.current?.injectJavaScript(`
       (function () {
@@ -450,7 +454,11 @@ export const MushafSingleDocumentReader = React.forwardRef<
       })();
       true;
     `);
-  }, [activeAudioWord?.verseKey, activeAudioWord?.wordPosition]);
+  }, [
+    activeAudioWord?.verseKey,
+    activeAudioWord?.wordPosition,
+    focusBottomInsetPx,
+  ]);
 
   React.useEffect(() => {
     syncActiveAudioWord();
@@ -561,6 +569,41 @@ export const MushafSingleDocumentReader = React.forwardRef<
     ]
   );
   loadPagesRef.current = loadPages;
+
+  React.useEffect(() => {
+    const verseKey =
+      typeof activeAudioWord?.verseKey === 'string' ? activeAudioWord.verseKey.trim() : '';
+    if (!verseKey || activeAudioVerseLoadRef.current === verseKey) {
+      return;
+    }
+
+    activeAudioVerseLoadRef.current = verseKey;
+    let cancelled = false;
+    const repository = container.getMushafPageRepository();
+
+    void repository
+      .findPageForVerse({ packId, verseKey })
+      .then((pageNumber) => {
+        if (
+          cancelled ||
+          activeAudioVerseLoadRef.current !== verseKey ||
+          pageNumber === null ||
+          (allowedPageNumbers !== null && !allowedPageNumbers.has(pageNumber))
+        ) {
+          return;
+        }
+
+        loadPages(
+          [pageNumber - 1, pageNumber, pageNumber + 1],
+          'active-audio-verse-window'
+        );
+      })
+      .catch(() => undefined);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeAudioWord?.verseKey, allowedPageNumbers, loadPages, packId]);
 
   const clearBackgroundWarmTimeout = React.useCallback(() => {
     if (backgroundWarmTimeoutRef.current !== null) {
@@ -692,6 +735,7 @@ export const MushafSingleDocumentReader = React.forwardRef<
     requestedPageNumbersRef.current = new Set();
     loadingPageNumbersRef.current = new Set();
     pageLoadRetryCountsRef.current = new Map();
+    activeAudioVerseLoadRef.current = null;
     firstPackDirectoryUriRef.current = initialPageData?.rendererAssets?.packDirectoryUri ?? null;
 
     if (

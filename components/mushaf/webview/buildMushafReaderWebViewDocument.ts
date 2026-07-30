@@ -757,6 +757,8 @@ function buildShellDocumentHtml({
         var arrivalHighlightTimeoutId = null;
         var activeAudioVerseKey = '';
         var activeAudioWordPosition = 0;
+        var activeAudioBottomInsetPx = 0;
+        var activeAudioScrollRafId = null;
 
         function emit(message) {
           if (!window.ReactNativeWebView) {
@@ -1431,6 +1433,56 @@ function buildShellDocumentHtml({
           arrivalHighlightTimeoutId = null;
         }
 
+        function scrollActiveAudioWordIntoView() {
+          activeAudioScrollRafId = null;
+          if (!activeAudioVerseKey || activeAudioWordPosition <= 0) {
+            return;
+          }
+
+          var candidates = app.querySelectorAll('.active-audio-word');
+          var target = null;
+          for (var index = 0; index < candidates.length; index += 1) {
+            var candidateRect = candidates[index].getBoundingClientRect();
+            if (candidateRect.width > 0 && candidateRect.height > 0) {
+              target = candidates[index];
+              break;
+            }
+          }
+          if (!target) {
+            return;
+          }
+
+          var rect = target.getBoundingClientRect();
+          var viewportTop = Math.max(8, FOCUS_TOP_INSET_PX + 12);
+          var viewportBottom = Math.max(
+            viewportTop + 48,
+            window.innerHeight - activeAudioBottomInsetPx - 16
+          );
+          if (rect.top >= viewportTop && rect.bottom <= viewportBottom) {
+            return;
+          }
+
+          var currentScrollY = window.scrollY || document.documentElement.scrollTop || 0;
+          var targetScrollY =
+            rect.top < viewportTop
+              ? currentScrollY + rect.top - viewportTop
+              : currentScrollY + rect.bottom - viewportBottom;
+          var reduceMotion =
+            window.matchMedia &&
+            window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+          window.scrollTo({
+            top: Math.max(0, targetScrollY),
+            behavior: reduceMotion ? 'auto' : 'smooth',
+          });
+        }
+
+        function scheduleActiveAudioWordScroll() {
+          if (activeAudioScrollRafId !== null) {
+            cancelAnimationFrame(activeAudioScrollRafId);
+          }
+          activeAudioScrollRafId = requestAnimationFrame(scrollActiveAudioWordIntoView);
+        }
+
         function setActiveAudioWord(payload) {
           var highlights = app.querySelectorAll('.active-audio-word');
           for (var index = 0; index < highlights.length; index += 1) {
@@ -1445,6 +1497,12 @@ function buildShellDocumentHtml({
               : 0;
           activeAudioVerseKey = verseKey;
           activeAudioWordPosition = wordPosition > 0 ? wordPosition : 0;
+          activeAudioBottomInsetPx =
+            payload && Number.isFinite(Number(payload.bottomInsetPx))
+              ? Math.max(0, Math.round(Number(payload.bottomInsetPx)))
+              : 0;
+          app.style.paddingBottom =
+            Math.max(24, activeAudioBottomInsetPx + 16) + 'px';
           if (!activeAudioVerseKey || activeAudioWordPosition <= 0) {
             return;
           }
@@ -1459,6 +1517,7 @@ function buildShellDocumentHtml({
               word.classList.add('active-audio-word');
             }
           }
+          scheduleActiveAudioWordScroll();
         }
 
         function scheduleArrivalHighlightClear() {
@@ -1750,6 +1809,7 @@ function buildShellDocumentHtml({
           loadedPageNumbers.add(pageNumber);
           emitPageRendered(state);
           scheduleActivePageReport();
+          scheduleActiveAudioWordScroll();
           scrollToHighlightedVerseIfReady(state);
           scheduleInitialPositioned(pageNumber);
           if (pageNumber === INITIAL_PAGE_NUMBER && HIGHLIGHT_VERSE_KEY) {
@@ -1760,6 +1820,7 @@ function buildShellDocumentHtml({
             ensureActiveLayoutRendered(state);
             emitPageRendered(state);
             scheduleActivePageReport();
+            scheduleActiveAudioWordScroll();
             scrollToHighlightedVerseIfReady(state);
             settleInitialPageWithoutHighlight(state);
             scheduleInitialPositioned(pageNumber);
