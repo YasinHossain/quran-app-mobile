@@ -399,6 +399,7 @@ export function SettingsSidebarContent({
       );
       await useCase.execute(code);
       clearOfflineSurahPageCache();
+      updateWordLang(code);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       Alert.alert('Download failed', message);
@@ -410,7 +411,7 @@ export function SettingsSidebarContent({
       });
       refreshIndex();
     }
-  }, [busyWordLangCodes, refreshIndex]);
+  }, [busyWordLangCodes, refreshIndex, updateWordLang]);
 
   const deleteWordLanguage = React.useCallback(async (code: string) => {
     if (busyWordLangCodes.has(code)) return;

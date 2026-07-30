@@ -1,8 +1,17 @@
 import React from 'react';
+import { useAudioPlayer as useExpoAudioPlayer } from 'expo-audio';
 
 import { useQdcAudioFile } from '@/hooks/audio/useQdcAudioFile';
 import { useAudioPlayer } from '@/providers/AudioPlayerContext';
 import type { QdcAudioSegment, QdcAudioVerseTiming } from '@/src/core/infrastructure/audio/qdcAudio';
+import { buildQuranWordAudioUrl } from '@/src/core/infrastructure/audio/wordAudio';
+import { logger } from '@/src/core/infrastructure/monitoring/logger';
+
+const WORD_AUDIO_LOAD_TIMEOUT_MS = 10_000;
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 function parseChapterIdFromVerseKey(verseKey: string | null): number | null {
   if (!verseKey) return null;
@@ -51,6 +60,7 @@ export type ActiveAudioWord = {
 
 export type VerseAudioWordSync = {
   activeWord: ActiveAudioWord | null;
+  isPlaying: boolean;
   isSeekEnabled: boolean;
   playWord: (params: { verseKey: string; wordPosition: number }) => void;
   playVerseFromWord: (params: { verseKey: string; wordPosition: number }) => void;
@@ -60,6 +70,24 @@ export type VerseAudioWordSync = {
 
 export function useVerseAudioWordSync(chapterId?: number | null): VerseAudioWordSync {
   const audio = useAudioPlayer();
+  const wordPlayer = useExpoAudioPlayer(null, {
+    updateInterval: 250,
+    downloadFirst: false,
+  });
+  const wordAudioSourceRef = React.useRef<string | null>(null);
+  const wordAudioRequestRef = React.useRef(0);
+
+  React.useEffect(
+    () => () => {
+      wordAudioRequestRef.current += 1;
+      try {
+        wordPlayer.pause();
+      } catch {
+        // The Expo hook may already have released the native player.
+      }
+    },
+    [wordPlayer]
+  );
 
   const activeChapterId = React.useMemo(
     () => chapterId ?? parseChapterIdFromVerseKey(audio.activeVerseKey),
@@ -89,12 +117,6 @@ export function useVerseAudioWordSync(chapterId?: number | null): VerseAudioWord
   const pendingSeekRef = React.useRef<{
     verseKey: string;
     wordPosition: number;
-    stopAfterWord: boolean;
-  } | null>(null);
-  const wordStopRef = React.useRef<{
-    verseKey: string;
-    relativeEndSec: number;
-    armedAfterMs: number;
   } | null>(null);
 
   const updateActiveWord = React.useCallback((nextActiveWord: ActiveAudioWord | null) => {
@@ -193,10 +215,7 @@ export function useVerseAudioWordSync(chapterId?: number | null): VerseAudioWord
   const isSeekEnabled = Boolean(audio.isVisible);
 
   const startFromWord = React.useCallback(
-    (
-      { verseKey, wordPosition }: { verseKey: string; wordPosition: number },
-      stopAfterWord: boolean
-    ) => {
+    ({ verseKey, wordPosition }: { verseKey: string; wordPosition: number }) => {
       const normalizedVerseKey = verseKey.trim();
       const normalizedWordPosition =
         typeof wordPosition === 'number' && Number.isFinite(wordPosition) ? Math.trunc(wordPosition) : 0;
@@ -215,14 +234,6 @@ export function useVerseAudioWordSync(chapterId?: number | null): VerseAudioWord
         Number.isFinite(relativeSec);
 
       if (canSeekImmediately) {
-        wordStopRef.current =
-          stopAfterWord && segment && timing
-            ? {
-                verseKey: normalizedVerseKey,
-                relativeEndSec: Math.max(0, (segment[2] - timing.timestampFrom) / 1000),
-                armedAfterMs: Date.now() + 150,
-              }
-            : null;
         audio.seekRelative(relativeSec);
         if (!audio.isPlaying) {
           audio.togglePlay();
@@ -230,11 +241,9 @@ export function useVerseAudioWordSync(chapterId?: number | null): VerseAudioWord
         return;
       }
 
-      wordStopRef.current = null;
       pendingSeekRef.current = {
         verseKey: normalizedVerseKey,
         wordPosition: normalizedWordPosition,
-        stopAfterWord,
       };
       audio.playVerse(normalizedVerseKey);
     },
@@ -252,19 +261,60 @@ export function useVerseAudioWordSync(chapterId?: number | null): VerseAudioWord
   const seekToWord = React.useCallback(
     (params: { verseKey: string; wordPosition: number }) => {
       if (!isSeekEnabled) return;
-      startFromWord(params, false);
+      startFromWord(params);
     },
     [isSeekEnabled, startFromWord]
   );
 
   const playVerseFromWord = React.useCallback(
-    (params: { verseKey: string; wordPosition: number }) => startFromWord(params, false),
+    (params: { verseKey: string; wordPosition: number }) => startFromWord(params),
     [startFromWord]
   );
 
   const playWord = React.useCallback(
-    (params: { verseKey: string; wordPosition: number }) => startFromWord(params, true),
-    [startFromWord]
+    (params: { verseKey: string; wordPosition: number }) => {
+      const source = buildQuranWordAudioUrl(params);
+      if (!source) return;
+
+      const requestId = wordAudioRequestRef.current + 1;
+      wordAudioRequestRef.current = requestId;
+
+      // A pronunciation preview must not overlap an active recitation.
+      if (audio.isPlaying) {
+        audio.togglePlay();
+      }
+
+      void (async () => {
+        try {
+          wordPlayer.pause();
+          if (wordAudioSourceRef.current !== source) {
+            wordAudioSourceRef.current = source;
+            wordPlayer.replace(source);
+          }
+
+          const startedAt = Date.now();
+          while (!wordPlayer.isLoaded) {
+            if (wordAudioRequestRef.current !== requestId) return;
+            if (Date.now() - startedAt > WORD_AUDIO_LOAD_TIMEOUT_MS) {
+              throw new Error('Timed out loading word pronunciation');
+            }
+            await delay(50);
+          }
+
+          if (wordAudioRequestRef.current !== requestId) return;
+          await wordPlayer.seekTo(0);
+          if (wordAudioRequestRef.current !== requestId) return;
+          wordPlayer.play();
+        } catch (error) {
+          logger.warn(
+            'Failed to play word pronunciation',
+            { verseKey: params.verseKey, wordPosition: params.wordPosition },
+            error as Error
+          );
+        }
+      })();
+    },
+    [audio.isPlaying, audio.togglePlay, wordPlayer]
   );
 
   React.useEffect(() => {
@@ -283,13 +333,6 @@ export function useVerseAudioWordSync(chapterId?: number | null): VerseAudioWord
     }
 
     const relativeSec = Math.max(0, (segment[1] - timing.timestampFrom) / 1000);
-    wordStopRef.current = pending.stopAfterWord
-      ? {
-          verseKey: pending.verseKey,
-          relativeEndSec: Math.max(0, (segment[2] - timing.timestampFrom) / 1000),
-          armedAfterMs: Date.now() + 150,
-        }
-      : null;
     audio.seekRelative(relativeSec);
     if (!audio.isPlaying) {
       audio.togglePlay();
@@ -306,23 +349,10 @@ export function useVerseAudioWordSync(chapterId?: number | null): VerseAudioWord
     verseTimingIndex,
   ]);
 
-  React.useEffect(() => {
-    const stop = wordStopRef.current;
-    if (!stop) return;
-    if (audio.activeVerseKey !== stop.verseKey) {
-      wordStopRef.current = null;
-      return;
-    }
-    if (!audio.isPlaying || Date.now() < stop.armedAfterMs) return;
-    if (audio.positionSec + 0.02 < stop.relativeEndSec) return;
-
-    wordStopRef.current = null;
-    audio.togglePlay();
-  }, [audio.activeVerseKey, audio.isPlaying, audio.positionSec, audio.togglePlay]);
-
   return React.useMemo(
     () => ({
       activeWord,
+      isPlaying: audio.isPlaying,
       isSeekEnabled,
       playWord,
       playVerseFromWord,
@@ -331,6 +361,7 @@ export function useVerseAudioWordSync(chapterId?: number | null): VerseAudioWord
     }),
     [
       activeWord,
+      audio.isPlaying,
       isSeekEnabled,
       playVerseFromWord,
       playWord,

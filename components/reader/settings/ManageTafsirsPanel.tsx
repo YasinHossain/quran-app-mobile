@@ -271,17 +271,7 @@ export function ManageTafsirsPanel({
   );
 
   const promptDownloadRequired = React.useCallback((tafsir: ResourceRecord) => {
-    Alert.alert(
-      'Download tafsir first',
-      `${tafsir.name} must be downloaded before it can be selected for reading.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Download',
-          onPress: () => setDownloadTarget(tafsir),
-        },
-      ]
-    );
+    setDownloadTarget(tafsir);
   }, []);
 
   React.useEffect(() => {

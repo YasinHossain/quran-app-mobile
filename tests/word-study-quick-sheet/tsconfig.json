@@ -13,6 +13,7 @@
     "../../components/word-study/WordStudyPressEvent.ts",
     "../../components/word-study/wordQuickSheetModel.ts",
     "../../src/core/domain/word-study/**/*.ts",
+    "../../src/core/infrastructure/audio/wordAudio.ts",
     "./*.cts"
   ]
 }

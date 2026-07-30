@@ -291,7 +291,10 @@ export default function PageScreen(): React.JSX.Element {
   }, [audio.activeVerseKey, pageNumber]);
 
   const verseAudioWordSync = useVerseAudioWordSync(activeChapterNumber);
-  const wordQuickSheet = useWordQuickSheetController();
+  const wordQuickSheet = useWordQuickSheetController({
+    isDisabled: audio.isVisible,
+    onDisabledOpen: verseAudioWordSync.seekToWord,
+  });
 
   const translationIds = React.useMemo(() => {
     const ids = Array.isArray(settings.translationIds)

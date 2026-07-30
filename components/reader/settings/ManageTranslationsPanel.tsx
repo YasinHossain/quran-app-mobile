@@ -474,6 +474,16 @@ export function ManageTranslationsPanel({
         );
 
         await useCase.execute(translationId, settings.wordLang);
+
+        const current = latestSelectionRef.current ?? [];
+        if (
+          !current.includes(translationId) &&
+          current.length < MAX_TRANSLATION_SELECTIONS
+        ) {
+          const next = [...current, translationId];
+          setLocalOrderedSelection(next);
+          scheduleSelectionCommit(next);
+        }
         return true;
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -485,7 +495,7 @@ export function ManageTranslationsPanel({
         refreshIndex();
       }
     },
-    [busyTranslationIds, refreshIndex, setBusy]
+    [busyTranslationIds, refreshIndex, scheduleSelectionCommit, setBusy, settings.wordLang]
   );
 
   const deleteTranslation = React.useCallback(
@@ -692,15 +702,8 @@ export function ManageTranslationsPanel({
     if (!selectionTarget) return;
     const translationId = selectionTarget.id;
     setSelectionTarget(null);
-    void downloadTranslation(translationId).then((installed) => {
-      if (!installed) return;
-      const current = latestSelectionRef.current ?? [];
-      if (current.includes(translationId) || current.length >= MAX_TRANSLATION_SELECTIONS) return;
-      const next = [...current, translationId];
-      setLocalOrderedSelection(next);
-      scheduleSelectionCommit(next);
-    });
-  }, [downloadTranslation, scheduleSelectionCommit, selectionTarget]);
+    void downloadTranslation(translationId);
+  }, [downloadTranslation, selectionTarget]);
 
   const handleReset = React.useCallback(() => {
     const sahihId = findSaheehId(translations);

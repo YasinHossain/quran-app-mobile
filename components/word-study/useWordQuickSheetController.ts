@@ -88,7 +88,15 @@ export type WordQuickSheetController = {
   reportPresented: () => void;
 };
 
-export function useWordQuickSheetController(): WordQuickSheetController {
+type WordQuickSheetControllerOptions = {
+  isDisabled?: boolean;
+  onDisabledOpen?: (event: WordStudyPressEvent) => void;
+};
+
+export function useWordQuickSheetController(
+  options: WordQuickSheetControllerOptions = {}
+): WordQuickSheetController {
+  const { isDisabled = false, onDisabledOpen } = options;
   const nextRequestIdRef = React.useRef(0);
   const cacheRef = React.useRef(new Map<string, WordQuickSheetLoadState>());
   const [isOpen, setIsOpen] = React.useState(false);
@@ -186,19 +194,30 @@ export function useWordQuickSheetController(): WordQuickSheetController {
 
   const open = React.useCallback(
     (event: WordStudyPressEvent) => {
+      if (isDisabled) {
+        onDisabledOpen?.(event);
+        return;
+      }
+
       const tapStartedAtMs = nowMs();
       setIsOpen(true);
       // Give the loading shell the first frame; the offline SQLite lookup begins immediately
       // afterward so opening the database cannot delay modal presentation.
       load(event, tapStartedAtMs, true);
     },
-    [load]
+    [isDisabled, load, onDisabledOpen]
   );
 
   const close = React.useCallback(() => {
     nextRequestIdRef.current += 1;
     setIsOpen(false);
   }, []);
+
+  React.useEffect(() => {
+    if (isDisabled) {
+      close();
+    }
+  }, [close, isDisabled]);
 
   const retry = React.useCallback(() => {
     if (!session) return;

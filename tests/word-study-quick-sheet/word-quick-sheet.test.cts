@@ -31,6 +31,20 @@ import {
   WORD_STUDY_RICH_CONTRACT_FIXTURES,
   parseWordStudyLocation,
 } from '../../src/core/domain/word-study';
+import { buildQuranWordAudioUrl } from '../../src/core/infrastructure/audio/wordAudio';
+
+test('resolves dedicated Quran Foundation word-pronunciation clips', () => {
+  assert.equal(
+    buildQuranWordAudioUrl({ verseKey: '1:1', wordPosition: 1 }),
+    'https://audio.qurancdn.com/wbw/001_001_001.mp3'
+  );
+  assert.equal(
+    buildQuranWordAudioUrl({ verseKey: '112:3', wordPosition: 4 }),
+    'https://audio.qurancdn.com/wbw/112_003_004.mp3'
+  );
+  assert.equal(buildQuranWordAudioUrl({ verseKey: '115:1', wordPosition: 1 }), null);
+  assert.equal(buildQuranWordAudioUrl({ verseKey: '2:1', wordPosition: 0 }), null);
+});
 
 test('normalizes the native word press into the canonical study event', () => {
   const event = normalizeWordStudyPressEvent({
@@ -256,6 +270,10 @@ test('Android Surah, Juz, Page, Mushaf, and Tajweed readers share the React Nati
   const juzScreen = readFileSync(join(process.cwd(), 'app/juz/[juzNumber].tsx'), 'utf8');
   const pageScreen = readFileSync(join(process.cwd(), 'app/page/[pageNumber].tsx'), 'utf8');
   const verseCard = readFileSync(join(process.cwd(), 'components/surah/VerseCard.tsx'), 'utf8');
+  const controller = readFileSync(
+    join(process.cwd(), 'components/word-study/useWordQuickSheetController.ts'),
+    'utf8'
+  );
   const tajweedFactory = readFileSync(
     join(
       process.cwd(),
@@ -275,10 +293,29 @@ test('Android Surah, Juz, Page, Mushaf, and Tajweed readers share the React Nati
     assert.match(screen, /ReaderWordStudySheet/);
     assert.match(screen, /source: 'mushaf'/);
     assert.match(screen, /wordQuickSheet\.open/);
+    assert.match(screen, /isDisabled: audio\.isVisible/);
+    assert.match(screen, /onDisabledOpen: verseAudioWordSync\.seekToWord/);
   }
   assert.match(juzScreen, /onWordStudyPress=\{Platform\.OS === 'android'/);
   assert.match(pageScreen, /onWordStudyPress=\{Platform\.OS === 'android'/);
   assert.match(verseCard, /pressBehavior=\{[\s\S]*?'study'/);
+  assert.match(
+    verseCard,
+    /shouldSeekOnWordPress\s*=\s*isSeekEnabled/
+  );
+  assert.match(
+    verseCard,
+    /handleSeekWordPress[\s\S]*?\}\) => \{\s*audioWordSync\?\.seekToWord/
+  );
+  assert.match(
+    verseCard,
+    /selectedWordPosition=\{isAudioPlaying \? undefined : selectedStudyWordPosition\}/
+  );
+  assert.match(
+    controller,
+    /if \(isDisabled\) \{\s*onDisabledOpen\?\.\(event\);\s*return;/
+  );
+  assert.match(controller, /if \(isDisabled\) \{\s*close\(\);/);
   assert.match(tajweedFactory, /NativeTajweedWordSpan/);
   assert.match(tajweedFactory, /buildNativeTajweedWordRanges/);
   assert.match(tajweedFactory, /if \(enabled\) onPress\(word\)/);

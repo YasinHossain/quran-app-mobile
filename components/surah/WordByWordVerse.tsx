@@ -8,6 +8,18 @@ import type { VerseWord } from '@/types';
 import type { RegisterWordHighlight } from './useVerseAudioWordSync';
 
 type WordPressBehavior = 'none' | 'study' | 'translation' | 'seek';
+type WordPressHandler = (params: {
+  word: VerseWord;
+  wordPosition: number;
+  measurement?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    pageX: number;
+    pageY: number;
+  };
+}) => void;
 
 const normalizeWordPosition = (word: VerseWord, fallback: number): number => {
   const raw = word.position;
@@ -18,6 +30,68 @@ const normalizeWordPosition = (word: VerseWord, fallback: number): number => {
   return fallback;
 };
 
+function InlineWordToken({
+  verseKey,
+  word,
+  fallbackPosition,
+  arabicFontFamily,
+  pressBehavior,
+  selectedWordPosition,
+  isLast,
+  textColor,
+  highlightColor,
+  onWordPress,
+  registerWordHighlight,
+}: {
+  verseKey: string | null;
+  word: VerseWord;
+  fallbackPosition: number;
+  arabicFontFamily: string;
+  pressBehavior: WordPressBehavior;
+  selectedWordPosition?: number;
+  isLast: boolean;
+  textColor: string;
+  highlightColor: string;
+  onWordPress?: WordPressHandler;
+  registerWordHighlight?: RegisterWordHighlight;
+}): React.JSX.Element {
+  const [isHighlighted, setHighlighted] = React.useState(false);
+  const wordPosition = React.useMemo(
+    () => normalizeWordPosition(word, fallbackPosition),
+    [fallbackPosition, word]
+  );
+
+  React.useEffect(() => {
+    if (!verseKey || !registerWordHighlight) return;
+    return registerWordHighlight({ verseKey, wordPosition, setHighlighted });
+  }, [registerWordHighlight, verseKey, wordPosition]);
+
+  const isPressable =
+    Boolean(onWordPress) && (pressBehavior === 'study' || pressBehavior === 'seek');
+
+  return (
+    <Text
+      accessibilityRole={isPressable ? 'button' : undefined}
+      accessibilityLabel={
+        pressBehavior === 'study'
+          ? `Open Word Study for ${word.uthmani}`
+          : pressBehavior === 'seek'
+            ? 'Seek audio to word'
+            : undefined
+      }
+      onPress={isPressable ? () => onWordPress?.({ word, wordPosition }) : undefined}
+      style={{
+        color:
+          isHighlighted || selectedWordPosition === wordPosition ? highlightColor : textColor,
+        fontFamily: arabicFontFamily,
+      }}
+    >
+      {word.uthmani}
+      {isLast ? '' : ' '}
+    </Text>
+  );
+}
+
 function WordToken({
   verseKey,
   word,
@@ -27,6 +101,9 @@ function WordToken({
   showTranslations,
   pressBehavior,
   selectedWordPosition,
+  textColor,
+  highlightColor,
+  mutedColor,
   onWordPress,
   registerWordHighlight,
 }: {
@@ -38,24 +115,12 @@ function WordToken({
   showTranslations: boolean;
   pressBehavior: WordPressBehavior;
   selectedWordPosition?: number;
-  onWordPress?:
-    | ((params: {
-        word: VerseWord;
-        wordPosition: number;
-        measurement?: {
-          x: number;
-          y: number;
-          width: number;
-          height: number;
-          pageX: number;
-          pageY: number;
-        };
-      }) => void)
-    | undefined;
+  textColor: string;
+  highlightColor: string;
+  mutedColor: string;
+  onWordPress?: WordPressHandler;
   registerWordHighlight?: RegisterWordHighlight | undefined;
 }): React.JSX.Element {
-  const { resolvedTheme } = useAppTheme();
-  const palette = Colors[resolvedTheme];
   const [isHighlighted, setHighlighted] = React.useState(false);
   const wordPosition = React.useMemo(
     () => normalizeWordPosition(word, fallbackPosition),
@@ -99,7 +164,7 @@ function WordToken({
       <Text
         style={{
           color:
-            isHighlighted || selectedWordPosition === wordPosition ? palette.tint : palette.text,
+            isHighlighted || selectedWordPosition === wordPosition ? highlightColor : textColor,
           fontSize: arabicFontSize,
           lineHeight: arabicLineHeight,
           fontFamily: arabicFontFamily,
@@ -114,7 +179,7 @@ function WordToken({
       {showTranslations && translationText ? (
         <Text
           style={{
-            color: palette.muted,
+            color: mutedColor,
             marginTop: 2,
             fontSize: translationFontSize,
             lineHeight: translationLineHeight,
@@ -202,6 +267,8 @@ export function WordByWordVerse({
     | undefined;
   registerWordHighlight?: RegisterWordHighlight | undefined;
 }): React.JSX.Element {
+  const { resolvedTheme } = useAppTheme();
+  const palette = Colors[resolvedTheme];
   const filteredWords = React.useMemo(
     () =>
       (words ?? [])
@@ -211,6 +278,41 @@ export function WordByWordVerse({
   );
 
   const resolvedVerseKey = typeof verseKey === 'string' ? verseKey.trim() : '';
+
+  if (!showTranslations) {
+    const arabicLineHeight = Math.max(arabicFontSize + 14, Math.round(arabicFontSize * 2.2));
+
+    return (
+      <Text
+        accessibilityLabel="Ayah words"
+        style={{
+          width: '100%',
+          fontSize: arabicFontSize,
+          lineHeight: arabicLineHeight,
+          fontFamily: arabicFontFamily,
+          writingDirection: 'rtl',
+          textAlign: 'right',
+        }}
+      >
+        {filteredWords.map((word, index) => (
+          <InlineWordToken
+            key={word.id}
+            verseKey={resolvedVerseKey || null}
+            word={word}
+            fallbackPosition={index + 1}
+            arabicFontFamily={arabicFontFamily}
+            pressBehavior={pressBehavior}
+            selectedWordPosition={selectedWordPosition}
+            isLast={index === filteredWords.length - 1}
+            textColor={palette.text}
+            highlightColor={palette.tint}
+            onWordPress={onWordPress}
+            registerWordHighlight={registerWordHighlight}
+          />
+        ))}
+      </Text>
+    );
+  }
 
   return (
     <View
@@ -234,6 +336,9 @@ export function WordByWordVerse({
           showTranslations={showTranslations}
           pressBehavior={pressBehavior}
           selectedWordPosition={selectedWordPosition}
+          textColor={palette.text}
+          highlightColor={palette.tint}
+          mutedColor={palette.muted}
           onWordPress={onWordPress}
           registerWordHighlight={registerWordHighlight}
         />

@@ -353,7 +353,10 @@ export default function JuzScreen(): React.JSX.Element {
     return currentJuzData?.startSurahId ?? 1;
   }, [audio.activeVerseKey, currentJuzData]);
   const verseAudioWordSync = useVerseAudioWordSync(activeChapterNumber);
-  const wordQuickSheet = useWordQuickSheetController();
+  const wordQuickSheet = useWordQuickSheetController({
+    isDisabled: audio.isVisible,
+    onDisabledOpen: verseAudioWordSync.seekToWord,
+  });
 
   const selectedMushafId = settings.mushafId ?? SUGGESTED_MUSHAF_ID;
   const selectedMushafOption = findMushafOption(selectedMushafId);

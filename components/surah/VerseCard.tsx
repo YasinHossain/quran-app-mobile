@@ -58,6 +58,7 @@ function VerseCardComponent({
   onWordStudyPress,
   selectedStudyWordPosition,
   onOpenActions,
+  actionsPosition = 'inline',
   onPress,
 }: {
   verseKey: string;
@@ -89,6 +90,7 @@ function VerseCardComponent({
   onWordStudyPress?: (event: WordStudyPressEvent) => void;
   selectedStudyWordPosition?: number;
   onOpenActions?: () => void;
+  actionsPosition?: 'inline' | 'right';
   onPress?: () => void;
 }): React.JSX.Element {
   const { resolvedTheme } = useAppTheme();
@@ -213,6 +215,15 @@ function VerseCardComponent({
   );
 
   const isSeekEnabled = Boolean(audioWordSync?.isSeekEnabled);
+  const isAudioPlaying = Boolean(audioWordSync?.isPlaying);
+  const shouldSeekOnWordPress = isSeekEnabled;
+
+  React.useEffect(() => {
+    if (isAudioPlaying) {
+      dismissTooltip();
+    }
+  }, [dismissTooltip, isAudioPlaying]);
+
   const shouldUseTajweedMode = Boolean(tajweed && !showByWords);
   const shouldRenderTajweedText =
     shouldUseTajweedMode && Boolean(tajweedGlyphRuns?.length);
@@ -226,9 +237,7 @@ function VerseCardComponent({
 
   const handleSeekWordPress = React.useCallback(
     ({
-      word,
       wordPosition,
-      measurement,
     }: {
       word: VerseWord;
       wordPosition: number;
@@ -241,12 +250,9 @@ function VerseCardComponent({
         pageY: number;
       };
     }) => {
-      if (word.translationText) {
-        showWordTranslation(word.translationText, measurement);
-      }
       audioWordSync?.seekToWord({ verseKey, wordPosition });
     },
-    [audioWordSync, showWordTranslation, verseKey]
+    [audioWordSync, verseKey]
   );
 
   const handleTranslationWordPress = React.useCallback(
@@ -322,18 +328,24 @@ function VerseCardComponent({
           arabicFontFamily={effectiveArabicFontFamily}
           showTranslations={Boolean(showByWords)}
           pressBehavior={
-            onWordStudyPress ? 'study' : isSeekEnabled ? 'seek' : showByWords ? 'none' : 'translation'
+            shouldSeekOnWordPress
+              ? 'seek'
+              : onWordStudyPress
+                ? 'study'
+                : showByWords
+                  ? 'none'
+                  : 'translation'
           }
           onWordPress={
-            onWordStudyPress
-              ? handleWordStudyPress
-              : isSeekEnabled
-                ? handleSeekWordPress
+            shouldSeekOnWordPress
+              ? handleSeekWordPress
+              : onWordStudyPress
+                ? handleWordStudyPress
                 : showByWords
                   ? undefined
                   : handleTranslationWordPress
           }
-          selectedWordPosition={selectedStudyWordPosition}
+          selectedWordPosition={isAudioPlaying ? undefined : selectedStudyWordPosition}
           registerWordHighlight={audioWordSync?.registerWordHighlight}
         />
       ) : (
@@ -401,7 +413,9 @@ function VerseCardComponent({
   const content = (
     <View className="gap-3">
         <View
-          className="flex-row items-center justify-start gap-2.5"
+          className={`flex-row items-center gap-2.5 ${
+            actionsPosition === 'right' ? 'justify-between' : 'justify-start'
+          }`}
         >
           <Text className="text-sm font-semibold" style={{ color: palette.tint }}>
             {localizeDigits(verseKey)}

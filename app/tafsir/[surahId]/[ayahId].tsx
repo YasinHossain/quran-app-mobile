@@ -790,6 +790,7 @@ function TafsirPage({
                 translationFontSize={settings.translationFontSize}
                 showByWords={settings.showByWords}
                 renderSignal={verseRenderSignal}
+                actionsPosition="right"
                 onOpenActions={() =>
                   openVerseActions({
                     title: pageTitle,

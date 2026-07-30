@@ -438,10 +438,14 @@ export default function SurahScreen(): React.JSX.Element {
   const { isPinned, setLastRead } = useBookmarks();
   const chapterNumber = surahId ? Number(surahId) : NaN;
   const verseAudioWordSync = useVerseAudioWordSync(chapterNumber);
-  const wordQuickSheet = useWordQuickSheetController();
+  const wordQuickSheet = useWordQuickSheetController({
+    isDisabled: audio.isVisible,
+    onDisabledOpen: verseAudioWordSync.seekToWord,
+  });
   const verseCardAudioWordSync = React.useMemo(
     () => ({
       activeWord: null,
+      isPlaying: verseAudioWordSync.isPlaying,
       isSeekEnabled: verseAudioWordSync.isSeekEnabled,
       playWord: verseAudioWordSync.playWord,
       playVerseFromWord: verseAudioWordSync.playVerseFromWord,
@@ -449,6 +453,7 @@ export default function SurahScreen(): React.JSX.Element {
       seekToWord: verseAudioWordSync.seekToWord,
     }),
     [
+      verseAudioWordSync.isPlaying,
       verseAudioWordSync.isSeekEnabled,
       verseAudioWordSync.playVerseFromWord,
       verseAudioWordSync.playWord,

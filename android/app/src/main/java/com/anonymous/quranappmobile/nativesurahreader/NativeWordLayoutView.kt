@@ -83,7 +83,8 @@ internal class NativeWordLayoutView(context: Context) : ViewGroup(context) {
     val childHeightSpec = MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED)
 
     var lineWidth = 0
-    var lineHeight = 0
+    var lineMaxBaseline = 0
+    var lineMaxBelowBaseline = 0
     var totalHeight = paddingTop + paddingBottom
     var maxLineWidth = 0
 
@@ -94,20 +95,23 @@ internal class NativeWordLayoutView(context: Context) : ViewGroup(context) {
       measureChild(child, childWidthSpec, childHeightSpec)
       val childWidth = child.measuredWidth
       val childHeight = child.measuredHeight
+      val childBaseline = tokenBaseline(child)
 
       if (lineWidth > 0 && lineWidth + childWidth > availableWidth) {
-        totalHeight += lineHeight
+        totalHeight += lineMaxBaseline + lineMaxBelowBaseline
         maxLineWidth = maxOf(maxLineWidth, lineWidth)
         lineWidth = 0
-        lineHeight = 0
+        lineMaxBaseline = 0
+        lineMaxBelowBaseline = 0
       }
 
       lineWidth += childWidth
-      lineHeight = maxOf(lineHeight, childHeight)
+      lineMaxBaseline = maxOf(lineMaxBaseline, childBaseline)
+      lineMaxBelowBaseline = maxOf(lineMaxBelowBaseline, childHeight - childBaseline)
     }
 
     if (childCount > 0) {
-      totalHeight += lineHeight
+      totalHeight += lineMaxBaseline + lineMaxBelowBaseline
       maxLineWidth = maxOf(maxLineWidth, lineWidth)
     }
 
@@ -125,7 +129,8 @@ internal class NativeWordLayoutView(context: Context) : ViewGroup(context) {
     var y = paddingTop
     val lineChildren = mutableListOf<View>()
     var lineWidth = 0
-    var lineHeight = 0
+    var lineMaxBaseline = 0
+    var lineMaxBelowBaseline = 0
 
     for (index in 0 until childCount) {
       val child = getChildAt(index)
@@ -133,34 +138,55 @@ internal class NativeWordLayoutView(context: Context) : ViewGroup(context) {
 
       val childWidth = child.measuredWidth.coerceAtMost(availableWidth)
       val childHeight = child.measuredHeight
+      val childBaseline = tokenBaseline(child)
 
       if (lineWidth > 0 && lineWidth + childWidth > availableWidth) {
-        layoutLine(lineChildren, contentRight, y, lineHeight)
-        y += lineHeight
+        layoutLine(lineChildren, contentRight, y, lineMaxBaseline)
+        y += lineMaxBaseline + lineMaxBelowBaseline
         lineChildren.clear()
         lineWidth = 0
-        lineHeight = 0
+        lineMaxBaseline = 0
+        lineMaxBelowBaseline = 0
       }
 
       lineChildren.add(child)
       lineWidth += childWidth
-      lineHeight = maxOf(lineHeight, childHeight)
+      lineMaxBaseline = maxOf(lineMaxBaseline, childBaseline)
+      lineMaxBelowBaseline = maxOf(lineMaxBelowBaseline, childHeight - childBaseline)
     }
 
     if (lineChildren.isNotEmpty()) {
-      layoutLine(lineChildren, contentRight, y, lineHeight)
+      layoutLine(lineChildren, contentRight, y, lineMaxBaseline)
     }
   }
 
-  private fun layoutLine(lineChildren: List<View>, contentRight: Int, lineTop: Int, lineHeight: Int) {
+  private fun layoutLine(
+      lineChildren: List<View>,
+      contentRight: Int,
+      lineTop: Int,
+      lineBaseline: Int,
+  ) {
     var x = contentRight
     lineChildren.forEach { child ->
       val childWidth = child.measuredWidth
       val childHeight = child.measuredHeight
-      val childTop = lineTop + (lineHeight - childHeight)
+      val childTop = lineTop + lineBaseline - tokenBaseline(child)
       child.layout(x - childWidth, childTop, x, childTop + childHeight)
       x -= childWidth
     }
+  }
+
+  /**
+   * Returns the Arabic TextView baseline in token-local coordinates. Aligning this value, instead
+   * of the bottoms of differently sized token containers, keeps every Quran word on one visual
+   * baseline even when a fallback font or a taller word translation changes a token's height.
+   */
+  private fun tokenBaseline(token: View): Int {
+    val tokenLayout = token as? LinearLayout ?: return token.measuredHeight
+    val arabicText = tokenLayout.getChildAt(0) as? TextView ?: return token.measuredHeight
+    val textBaseline = arabicText.baseline
+    if (textBaseline < 0) return token.measuredHeight
+    return (tokenLayout.paddingTop + textBaseline).coerceIn(0, token.measuredHeight)
   }
 
   private fun createTokenView(word: NativeWord): View {
