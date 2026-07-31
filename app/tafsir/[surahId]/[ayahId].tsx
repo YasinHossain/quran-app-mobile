@@ -782,6 +782,7 @@ function TafsirPage({
               <VerseCard
                 verseKey={displayVerseKey}
                 arabicText={displayArabicText}
+                words={linkedSurahVerse?.words}
                 translationTexts={translationTexts}
                 translationItems={translationItems}
                 showTranslationAttribution={showTranslationAttribution}
@@ -789,6 +790,8 @@ function TafsirPage({
                 arabicFontFace={settings.arabicFontFace}
                 translationFontSize={settings.translationFontSize}
                 showByWords={settings.showByWords}
+                tajweed={settings.tajweed}
+                tajweedGlyphRuns={linkedSurahVerse?.tajweedGlyphRuns}
                 renderSignal={verseRenderSignal}
                 actionsPosition="right"
                 onOpenActions={() =>
@@ -1141,6 +1144,12 @@ export default function TafsirScreen(): React.JSX.Element {
   } = useSurahVerses({
     chapterNumber: currentSurahId ?? Number.NaN,
     translationIds,
+    wordLang: settings.wordLang,
+    includeWords: Boolean(settings.showByWords || settings.tajweed),
+    includeWordTranslations: Boolean(settings.showByWords),
+    tajweed: Boolean(settings.tajweed),
+    tajweedTextColor: palette.text,
+    tajweedTheme: resolvedTheme,
     initialVerseNumber: currentSurahInitialVerseNumber,
     enabled: Boolean(currentSurahId),
   });

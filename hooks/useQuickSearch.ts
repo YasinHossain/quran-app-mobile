@@ -1,6 +1,7 @@
 import React from 'react';
 
 import { analyzeQuery, quickSearch, type SearchNavigationResult, type SearchVerseResult } from '@/lib/api/search';
+import { getSearchErrorMessage } from '@/lib/search/searchError';
 
 const MIN_TEXT_QUERY_LENGTH = 3;
 const DEFAULT_DEBOUNCE_MS = 300;
@@ -98,7 +99,7 @@ export function useQuickSearch({
           if ((error as { name?: string })?.name === 'AbortError') return;
           setNavigationResults([]);
           setVerseResults([]);
-          setErrorMessage((error as Error).message);
+          setErrorMessage(getSearchErrorMessage(error));
         } finally {
           if (requestIdRef.current !== requestId) return;
           setIsLoading(false);

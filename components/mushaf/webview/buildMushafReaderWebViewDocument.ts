@@ -523,7 +523,7 @@ function buildShellDocumentHtml({
         font-size: var(--font-size);
         max-width: 100%;
         text-align: center;
-        width: min(var(--exact-line-width), 100%);
+        width: min(var(--fitted-line-width, var(--exact-line-width)), 100%);
       }
 
       .line-shell + .line-shell {
@@ -914,6 +914,7 @@ function buildShellDocumentHtml({
             qcfFontRetryTimeoutId: null,
             renderedReflow: false,
             renderedStandard: false,
+            requiredLineWidth: 0,
             renderKey: null,
             reflowState: null,
             root: root,
@@ -1289,13 +1290,32 @@ function buildShellDocumentHtml({
           }, retryDelays[retryIndex]);
         }
 
+        function measureRequiredLineWidth(state) {
+          if (!state || !state.standardView) {
+            return 0;
+          }
+
+          var lineContents = Array.from(state.standardView.querySelectorAll('.line-content'));
+          var measuredWidth = lineContents.reduce(function (widest, lineContent) {
+            return Math.max(widest, lineContent.scrollWidth || 0);
+          }, 0);
+
+          if (measuredWidth > 0) {
+            state.requiredLineWidth = measuredWidth;
+          }
+
+          return state.requiredLineWidth || 0;
+        }
+
         function shouldUseReflow(state, layout) {
           if (!state || !state.content) {
             return false;
           }
 
           var containerWidth = state.content.clientWidth;
-          var lineWidthPx = parseCssLengthToPx(layout.lineWidthCss);
+          var presetLineWidthPx = parseCssLengthToPx(layout.lineWidthCss);
+          var measuredLineWidthPx = measureRequiredLineWidth(state);
+          var lineWidthPx = measuredLineWidthPx || presetLineWidthPx;
           var threshold = containerWidth * 0.95;
 
           if (state.reflowState !== null) {
@@ -1316,6 +1336,13 @@ function buildShellDocumentHtml({
           }
 
           state.lastContainerWidth = containerWidth;
+          var presetLineWidthPx = parseCssLengthToPx(layout.lineWidthCss);
+          var measuredLineWidthPx = measureRequiredLineWidth(state);
+          var fittedLineWidthPx = Math.min(
+            containerWidth,
+            Math.max(presetLineWidthPx, measuredLineWidthPx + 1)
+          );
+          state.root.style.setProperty('--fitted-line-width', fittedLineWidthPx + 'px');
           state.reflowState = shouldUseReflow(state, layout);
           state.root.classList.toggle('reflow', state.reflowState);
         }
@@ -1543,8 +1570,10 @@ function buildShellDocumentHtml({
           state.renderedReflow = false;
           state.renderedStandard = false;
           state.root.classList.remove('reflow');
+          state.root.style.removeProperty('--fitted-line-width');
           state.reflowState = null;
           state.lastContainerWidth = 0;
+          state.requiredLineWidth = 0;
         }
 
         function renderStandardLines(state, qcfFontFamily) {
@@ -1802,6 +1831,7 @@ function buildShellDocumentHtml({
           }
 
           state.qcfFontFamily = qcfFontFamily;
+          renderStandardLines(state, state.qcfFontFamily);
           applyLayoutMode(state, layout);
           ensureActiveLayoutRendered(state);
           updatePageFooter(state);

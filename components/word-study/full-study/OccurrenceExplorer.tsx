@@ -43,6 +43,7 @@ import {
   getOccurrenceCounters,
   getOccurrenceFilters,
   getOccurrenceGloss,
+  getOccurrenceAyahContextRuns,
   getOccurrencePageLabel,
   orderRootFamilyLemmas,
 } from './occurrenceExplorerModel';
@@ -793,12 +794,14 @@ function OccurrenceResult({
   palette: Palette;
   onOpenReader: (occurrence: WordOccurrence) => void;
 }): React.JSX.Element {
+  const contextRuns = getOccurrenceAyahContextRuns(occurrence);
+
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={`Open reader at ${occurrence.location.locationKey}, ${getOccurrenceGloss(occurrence)}`}
       onPress={() => onOpenReader(occurrence)}
-      style={[styles.resultCard, { borderColor: palette.border, backgroundColor: palette.surfaceNavigation }]}
+      style={[styles.resultCard, { backgroundColor: palette.surfaceNavigation }]}
     >
       <View style={styles.resultHeader}>
         <View style={styles.resultLocationBlock}>
@@ -827,7 +830,21 @@ function OccurrenceResult({
           },
         ]}
       >
-        {occurrence.ayahContextUthmani || 'Ayah context unavailable.'}
+        {contextRuns ? (
+          contextRuns.map((run, index) => (
+            <Text
+              key={index}
+              style={{
+                color: run.highlighted ? palette.tint : palette.text,
+                fontWeight: run.highlighted ? '800' : '400',
+              }}
+            >
+              {run.text}
+            </Text>
+          ))
+        ) : (
+          occurrence.ayahContextUthmani || 'Ayah context unavailable.'
+        )}
       </Text>
       <View style={styles.openRow}>
         <Text style={[styles.openText, { color: palette.tint }]}>Open in reader</Text>
@@ -918,7 +935,7 @@ const styles = StyleSheet.create({
   pageStatusRow: { minHeight: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   pageLabel: { fontSize: 12, lineHeight: 18, fontWeight: '700' },
   results: { gap: 10 },
-  resultCard: { borderWidth: 1, borderRadius: 18, padding: 15, gap: 10 },
+  resultCard: { borderRadius: 18, padding: 15, gap: 10 },
   resultHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 14 },
   resultLocationBlock: { flex: 1, gap: 3 },
   resultLocation: { fontSize: 12, lineHeight: 17, fontWeight: '800', letterSpacing: 0.25 },

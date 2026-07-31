@@ -1,6 +1,7 @@
 import { BookOpen, Hash } from 'lucide-react-native';
 import React from 'react';
 import {
+  Keyboard,
   Pressable,
   StyleSheet,
   Text,
@@ -12,7 +13,6 @@ import { useChapters } from '@/hooks/useChapters';
 import { useAppTheme } from '@/providers/ThemeContext';
 import { useUiTranslation } from '@/providers/UiLanguageContext';
 
-import { getGoToCardSelectorVisualOffset } from './selectorDropdownLayout';
 import { SurahVerseSelectorRow } from './SurahVerseSelectorRow';
 
 type SearchSuggestion =
@@ -53,7 +53,7 @@ export function GoToSurahVerseCard({
   onNavigateToTafsir,
   onNavigateToTranslation,
   onSearchSuggestion,
-  dropdownVisualOffset = getGoToCardSelectorVisualOffset(),
+  onSelectorOpenChange,
 }: {
   title?: string;
   subtitle?: string;
@@ -63,7 +63,7 @@ export function GoToSurahVerseCard({
   onNavigateToTafsir?: (surahId: number, verse?: number) => void;
   onNavigateToTranslation: (surahId: number, verse?: number) => void;
   onSearchSuggestion?: (query: string) => void;
-  dropdownVisualOffset?: number;
+  onSelectorOpenChange?: (isOpen: boolean) => void;
 }): React.JSX.Element {
   const { isDark, resolvedTheme } = useAppTheme();
   const { t, formatNumber } = useUiTranslation();
@@ -72,6 +72,21 @@ export function GoToSurahVerseCard({
 
   const [selectedSurah, setSelectedSurah] = React.useState<number | undefined>(undefined);
   const [selectedVerse, setSelectedVerse] = React.useState<number | undefined>(undefined);
+  const [isSelectorOpen, setIsSelectorOpen] = React.useState(false);
+  const [selectorDismissRequest, setSelectorDismissRequest] = React.useState(0);
+
+  const handleSelectorOpenChange = React.useCallback(
+    (isOpen: boolean) => {
+      setIsSelectorOpen(isOpen);
+      onSelectorOpenChange?.(isOpen);
+    },
+    [onSelectorOpenChange]
+  );
+
+  const dismissOpenSelector = React.useCallback(() => {
+    Keyboard.dismiss();
+    setSelectorDismissRequest((current) => current + 1);
+  }, []);
 
   const handleSelectSurah = React.useCallback(
     (surahId: number) => {
@@ -126,7 +141,15 @@ export function GoToSurahVerseCard({
             : ''
         }
       >
-        <View className={formPaddingClass}>
+        <View className={formPaddingClass} style={styles.formContent}>
+          {isSelectorOpen ? (
+            <Pressable
+              onPress={dismissOpenSelector}
+              accessibilityRole="button"
+              accessibilityLabel="Close selector list"
+              style={styles.selectorDismissLayer}
+            />
+          ) : null}
           {/* Header */}
           <View>
             <View className="min-w-0 flex-1">
@@ -200,8 +223,10 @@ export function GoToSurahVerseCard({
               selectedVerse={selectedVerse}
               onSelectSurah={handleSelectSurah}
               onSelectVerse={handleSelectVerse}
-              hideLabels
-              dropdownVisualOffset={dropdownVisualOffset}
+              autoAdvanceToVerse={false}
+              floatingDropdown
+              onOpenChange={handleSelectorOpenChange}
+              dismissRequest={selectorDismissRequest}
             />
           </View>
 
@@ -281,11 +306,23 @@ export function GoToSurahVerseCard({
 }
 
 const styles = StyleSheet.create({
+  formContent: {
+    position: 'relative',
+  },
+  selectorDismissLayer: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    zIndex: 1,
+  },
   destinationButtons: {
     marginTop: 12,
   },
   selectorRow: {
     marginTop: 16,
+    zIndex: 2,
   },
   titleText: {
     lineHeight: 20,

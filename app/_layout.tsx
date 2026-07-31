@@ -27,6 +27,7 @@ import { STARTUP_FONT_ASSETS } from '@/src/core/infrastructure/fonts/arabicFonts
 import { bootstrapBundledSaheehInternationalAsync } from '@/src/core/infrastructure/translations/bundledSaheehInternational';
 import { hasCompletedWelcomeAsync } from '@/lib/onboarding/initialSetup';
 import { WelcomeProvider, useWelcome } from '@/providers/WelcomeContext';
+import { OverlayPortalProvider } from '@/providers/OverlayPortalContext';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -160,19 +161,21 @@ function RootLayoutNav() {
   return (
     <ThemeProvider value={theme}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
-      <View className={isDark ? 'flex-1 dark' : 'flex-1'} style={{ backgroundColor: palette.background }}>
-        <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: palette.background } }}>
-          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          <Stack.Screen name="welcome" options={{ headerShown: false, animation: 'fade' }} />
-          <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
-          <Stack.Screen name="downloads" options={{ presentation: 'modal' }} />
-          <Stack.Screen name="manage-word-study" options={{ presentation: 'modal' }} />
-          <Stack.Screen name="privacy" options={{ presentation: 'modal' }} />
-          <Stack.Screen name="settings" options={{ presentation: 'modal' }} />
-          <Stack.Screen name="word-study-sources" options={{ presentation: 'modal' }} />
-        </Stack>
-        {hasCompletedWelcome ? <AudioPlayerBar /> : null}
-      </View>
+      <OverlayPortalProvider>
+        <View className={isDark ? 'flex-1 dark' : 'flex-1'} style={{ backgroundColor: palette.background }}>
+          <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: palette.background } }}>
+            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            <Stack.Screen name="welcome" options={{ headerShown: false, animation: 'fade' }} />
+            <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
+            <Stack.Screen name="downloads" options={{ presentation: 'modal' }} />
+            <Stack.Screen name="manage-word-study" options={{ presentation: 'modal' }} />
+            <Stack.Screen name="privacy" options={{ presentation: 'modal' }} />
+            <Stack.Screen name="settings" options={{ presentation: 'modal' }} />
+            <Stack.Screen name="word-study-sources" options={{ presentation: 'modal' }} />
+          </Stack>
+          {hasCompletedWelcome ? <AudioPlayerBar /> : null}
+        </View>
+      </OverlayPortalProvider>
     </ThemeProvider>
   );
 }

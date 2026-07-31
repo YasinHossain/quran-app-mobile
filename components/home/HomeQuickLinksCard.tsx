@@ -458,7 +458,6 @@ function AddQuickLinkModal({
                   selectedVerse={selectedVerse}
                   onSelectSurah={handleSelectSurah}
                   onSelectVerse={setSelectedVerse}
-                  dropdownVisualOffset={1}
                 />
               </View>
 

@@ -25,6 +25,7 @@ import { useQuickSearch } from '@/hooks/useQuickSearch';
 import { prepareMushafVerseTarget } from '@/lib/mushaf/prepareMushafVerseTarget';
 import { warmSurahReaderBeforeNavigation } from '@/lib/surah/surahReaderWarmup';
 import { highlightMissingQueryWords, isArabicQuery } from '@/lib/utils/searchHighlight';
+import { OverlayPortalProvider } from '@/providers/OverlayPortalContext';
 import { useSettings } from '@/providers/SettingsContext';
 import { useAppTheme } from '@/providers/ThemeContext';
 
@@ -390,7 +391,8 @@ export function ComprehensiveSearchModal({
       statusBarTranslucent
       {...(Platform.OS === 'ios' ? { presentationStyle: 'overFullScreen' as const } : {})}
     >
-      <View className={isDark ? 'dark' : ''} style={styles.root}>
+      <OverlayPortalProvider>
+        <View className={isDark ? 'dark' : ''} style={styles.root}>
         <Pressable style={StyleSheet.absoluteFill} onPress={handleOverlayPress}>
           <Animated.View style={[styles.overlay, { opacity: progress }]} />
         </Pressable>
@@ -440,11 +442,7 @@ export function ComprehensiveSearchModal({
                 </View>
 
                 {showGoTo ? (
-                  <ScrollView
-                    keyboardShouldPersistTaps="handled"
-                    contentContainerStyle={styles.goToContent}
-                    nestedScrollEnabled
-                  >
+                  <View style={styles.goToContent}>
                     <GoToSurahVerseCard
                       onNavigateToMushaf={navigateToMushaf}
                       onNavigateToTafsir={navigateToTafsir}
@@ -453,9 +451,8 @@ export function ComprehensiveSearchModal({
                       title="Go To"
                       buttonLabel="Go"
                       variant="card"
-                      dropdownVisualOffset={1}
                     />
-                  </ScrollView>
+                  </View>
                 ) : (
                   <View style={styles.resultsContainer}>
                     <ScrollView
@@ -548,7 +545,8 @@ export function ComprehensiveSearchModal({
             </KeyboardAvoidingView>
           </SafeAreaView>
         </Animated.View>
-      </View>
+        </View>
+      </OverlayPortalProvider>
     </Modal>
   );
 }

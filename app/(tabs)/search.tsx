@@ -26,6 +26,7 @@ import { findMushafOption } from '@/data/mushaf/options';
 import { usePaginatedSearch } from '@/hooks/usePaginatedSearch';
 import { useChapters } from '@/hooks/useChapters';
 import { analyzeQuery } from '@/lib/api/search';
+import { ONLINE_SEARCH_REQUIRED_MESSAGE } from '@/lib/search/searchError';
 import { prepareMushafVerseTarget } from '@/lib/mushaf/prepareMushafVerseTarget';
 import { warmSurahReaderBeforeNavigation } from '@/lib/surah/surahReaderWarmup';
 import { primeVerseDetailsCache } from '@/lib/verse/verseDetailsCache';
@@ -234,6 +235,7 @@ export default function SearchScreen(): React.JSX.Element {
 
   const [query, setQuery] = React.useState(paramQuery ?? '');
   const [isSearchFocused, setIsSearchFocused] = React.useState(false);
+  const [isGoToSelectorOpen, setIsGoToSelectorOpen] = React.useState(false);
   React.useEffect(() => {
     if (typeof paramQuery === 'string') setQuery(paramQuery);
   }, [paramQuery]);
@@ -370,7 +372,7 @@ export default function SearchScreen(): React.JSX.Element {
     // Show "Go To" when the user is actively engaging with the search box and
     // hasn't typed a query yet. This prevents it from getting "stuck" hidden:
     // re-focusing the input always re-renders the card.
-    const showGoTo = isSearchFocused && trimmed.length === 0;
+    const showGoTo = (isSearchFocused || isGoToSelectorOpen) && trimmed.length === 0;
     const showShortQueryHint = trimmed.length > 0 && !shouldSearch;
 
     return (
@@ -398,7 +400,15 @@ export default function SearchScreen(): React.JSX.Element {
         ) : null}
 
         {errorMessage ? (
-          <Text className="text-sm text-error dark:text-error-dark">{errorMessage}</Text>
+          <Text
+            className={
+              errorMessage === ONLINE_SEARCH_REQUIRED_MESSAGE
+                ? 'text-sm text-muted dark:text-muted-dark'
+                : 'text-sm text-error dark:text-error-dark'
+            }
+          >
+            {errorMessage}
+          </Text>
         ) : null}
 
         {showGoTo ? (
@@ -407,6 +417,7 @@ export default function SearchScreen(): React.JSX.Element {
             onNavigateToTafsir={handleNavigateToTafsir}
             onNavigateToTranslation={handleNavigateToSurahVerse}
             onSearchSuggestion={(suggestion) => setQuery(suggestion)}
+            onSelectorOpenChange={setIsGoToSelectorOpen}
             title="Go To"
             buttonLabel="Go"
           />
@@ -439,6 +450,7 @@ export default function SearchScreen(): React.JSX.Element {
     errorMessage,
     handleNavResultPress,
     handleNavigateToSurahVerse,
+    isGoToSelectorOpen,
     isSearchFocused,
     navigationResults,
     palette.muted,
@@ -489,6 +501,8 @@ export default function SearchScreen(): React.JSX.Element {
         data={verses}
         keyExtractor={(item) => item.verseKey}
         keyboardShouldPersistTaps="handled"
+        scrollEnabled={!isGoToSelectorOpen}
+        showsVerticalScrollIndicator={!isGoToSelectorOpen}
         removeClippedSubviews={false}
         renderItem={({ item }) => (
           <SearchVerseResultCard

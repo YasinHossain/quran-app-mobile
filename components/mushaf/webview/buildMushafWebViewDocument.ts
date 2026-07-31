@@ -135,7 +135,7 @@ function buildShellDocumentHtml({
         font-size: var(--font-size);
         max-width: 100%;
         text-align: center;
-        width: min(var(--exact-line-width), 100%);
+        width: min(var(--fitted-line-width, var(--exact-line-width)), 100%);
       }
 
       .line-shell + .line-shell {
@@ -267,6 +267,7 @@ function buildShellDocumentHtml({
         var selectionRafId = null;
         var lastContainerWidth = 0;
         var stableReflowState = null;
+        var requiredLineWidth = 0;
         var activeRenderToken = 0;
         var qcfFontLoadFamily = '';
         var qcfFontLoadPromise = null;
@@ -619,12 +620,27 @@ function buildShellDocumentHtml({
           };
         }
 
+        function measureRequiredLineWidth() {
+          var lineContents = Array.from(standardView.querySelectorAll('.line-content'));
+          var measuredWidth = lineContents.reduce(function (widest, lineContent) {
+            return Math.max(widest, lineContent.scrollWidth || 0);
+          }, 0);
+
+          if (measuredWidth > 0) {
+            requiredLineWidth = measuredWidth;
+          }
+
+          return requiredLineWidth;
+        }
+
         function shouldUseReflow(containerWidth) {
           if (!currentPayload || containerWidth <= 0) {
             return false;
           }
 
-          var lineWidthPx = parseCssLengthToPx(currentPayload.layout.lineWidthCss);
+          var presetLineWidthPx = parseCssLengthToPx(currentPayload.layout.lineWidthCss);
+          var measuredLineWidthPx = measureRequiredLineWidth();
+          var lineWidthPx = measuredLineWidthPx || presetLineWidthPx;
           var threshold = containerWidth * 0.95;
 
           if (stableReflowState !== null) {
@@ -649,6 +665,12 @@ function buildShellDocumentHtml({
 
           lastContainerWidth = containerWidth;
           var nextReflowState = shouldUseReflow(containerWidth);
+          var presetLineWidthPx = parseCssLengthToPx(currentPayload.layout.lineWidthCss);
+          var fittedLineWidthPx = Math.min(
+            containerWidth,
+            Math.max(presetLineWidthPx, requiredLineWidth + 1)
+          );
+          pageRoot.style.setProperty('--fitted-line-width', fittedLineWidthPx + 'px');
           stableReflowState = nextReflowState;
           pageRoot.classList.toggle('reflow', nextReflowState);
           scheduleHeightReport();
@@ -981,8 +1003,10 @@ function buildShellDocumentHtml({
           standardView.innerHTML = '';
           reflowView.innerHTML = '';
           pageRoot.classList.remove('reflow');
+          pageRoot.style.removeProperty('--fitted-line-width');
           stableReflowState = null;
           lastContainerWidth = 0;
+          requiredLineWidth = 0;
 
           try {
             var selection = window.getSelection();

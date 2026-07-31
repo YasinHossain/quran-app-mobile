@@ -334,7 +334,6 @@ export function CreatePlannerModal({
                           selectedVerse={formData.startVerse}
                           onSelectSurah={handleSelectStartSurah}
                           onSelectVerse={handleSelectStartVerse}
-                          dropdownVisualOffset={1}
                         />
 
                         <SurahVerseSelectorRow
@@ -346,7 +345,6 @@ export function CreatePlannerModal({
                           selectedVerse={formData.endVerse}
                           onSelectSurah={handleSelectEndSurah}
                           onSelectVerse={handleSelectEndVerse}
-                          dropdownVisualOffset={1}
                         />
                       </View>
 

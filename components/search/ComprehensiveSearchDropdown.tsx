@@ -2,6 +2,8 @@ import { BookOpen, Hash, Search as SearchIcon } from 'lucide-react-native';
 import React from 'react';
 import {
   ActivityIndicator,
+  Animated,
+  Easing,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -9,10 +11,12 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+import { useReducedMotion } from 'react-native-reanimated';
 
 import Colors from '@/constants/Colors';
 import { useQuickSearch } from '@/hooks/useQuickSearch';
 import { highlightMissingQueryWords, isArabicQuery } from '@/lib/utils/searchHighlight';
+import { ONLINE_SEARCH_REQUIRED_MESSAGE } from '@/lib/search/searchError';
 import { useSettings } from '@/providers/SettingsContext';
 import { useAppTheme } from '@/providers/ThemeContext';
 
@@ -198,6 +202,7 @@ export function ComprehensiveSearchDropdown({
   topInset?: number;
 }): React.JSX.Element | null {
   const { resolvedTheme, isDark } = useAppTheme();
+  const reduceMotion = Boolean(useReducedMotion());
   const palette = Colors[resolvedTheme];
   const { height: windowHeight } = useWindowDimensions();
   const [cardLayout, setCardLayout] = React.useState<{
@@ -207,6 +212,7 @@ export function ComprehensiveSearchDropdown({
     height: number;
   } | null>(null);
   const { settings } = useSettings();
+  const openingProgress = React.useRef(new Animated.Value(0)).current;
   const translationIds = React.useMemo(() => getTranslationIds(settings), [settings.translationId, settings.translationIds]);
 
   const { isLoading, errorMessage, navigationResults, verseResults } = useQuickSearch({
@@ -228,6 +234,48 @@ export function ComprehensiveSearchDropdown({
   const minHeight = showGoTo
     ? Math.min(maxHeight, goToMinHeight)
     : Math.min(maxHeight, Math.max(520, Math.round(windowHeight * 0.72)));
+
+  React.useEffect(() => {
+    openingProgress.stopAnimation();
+    if (!isOpen) {
+      openingProgress.setValue(0);
+      return;
+    }
+    if (reduceMotion) {
+      openingProgress.setValue(1);
+      return;
+    }
+    openingProgress.setValue(0);
+    Animated.timing(openingProgress, {
+      toValue: 1,
+      duration: 210,
+      easing: Easing.out(Easing.cubic),
+      isInteraction: false,
+      useNativeDriver: true,
+    }).start();
+    return () => openingProgress.stopAnimation();
+  }, [isOpen, openingProgress, reduceMotion]);
+
+  const openingCardStyle = React.useMemo(
+    () => ({
+      opacity: openingProgress,
+      transform: [
+        {
+          translateY: openingProgress.interpolate({
+            inputRange: [0, 1],
+            outputRange: [-8, 0],
+          }),
+        },
+        {
+          scale: openingProgress.interpolate({
+            inputRange: [0, 1],
+            outputRange: [0.985, 1],
+          }),
+        },
+      ],
+    }),
+    [openingProgress]
+  );
 
   const handleNavPress = React.useCallback(
     (result: SearchNavigationResult) => {
@@ -270,7 +318,11 @@ export function ComprehensiveSearchDropdown({
 
   return (
     <View style={[styles.root, { paddingTop: topInset + 8 }]} pointerEvents="box-none">
-      <View style={StyleSheet.absoluteFill} pointerEvents="none" className="bg-black/30" />
+      <Animated.View
+        style={[StyleSheet.absoluteFill, { opacity: openingProgress }]}
+        pointerEvents="none"
+        className="bg-black/30"
+      />
 
       {cardLayout ? (
         <>
@@ -328,20 +380,19 @@ export function ComprehensiveSearchDropdown({
         </>
       ) : null}
 
-      <View
+      <Animated.View
         onLayout={(event) => {
           setCardLayout(event.nativeEvent.layout);
         }}
-        style={[styles.card, { maxHeight, minHeight }]}
+        style={[styles.card, { maxHeight, minHeight }, openingCardStyle]}
         className="bg-surface-navigation dark:bg-surface-navigation-dark border border-border/30 dark:border-border-dark/20"
       >
-        <View className={isDark ? 'dark' : ''} style={styles.inner}>
+        <View
+          className={isDark ? 'dark' : ''}
+          style={showGoTo ? styles.goToInner : styles.inner}
+        >
           {showGoTo ? (
-            <ScrollView
-              keyboardShouldPersistTaps="handled"
-              contentContainerStyle={styles.goToContent}
-              nestedScrollEnabled
-            >
+            <View style={styles.goToContent}>
               <GoToSurahVerseCard
                 onNavigateToMushaf={onNavigateToMushaf}
                 onNavigateToTafsir={onNavigateToTafsir}
@@ -351,7 +402,7 @@ export function ComprehensiveSearchDropdown({
                 buttonLabel="Go"
                 variant="embedded"
               />
-            </ScrollView>
+            </View>
           ) : (
             <View style={styles.resultsContainer}>
               <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.resultsScrollContent}>
@@ -364,7 +415,15 @@ export function ComprehensiveSearchDropdown({
 
                 {errorMessage ? (
                   <View className="px-4 py-4">
-                    <Text className="text-sm text-error dark:text-error-dark">{errorMessage}</Text>
+                    <Text
+                      className={
+                        errorMessage === ONLINE_SEARCH_REQUIRED_MESSAGE
+                          ? 'text-sm text-muted dark:text-muted-dark'
+                          : 'text-sm text-error dark:text-error-dark'
+                      }
+                    >
+                      {errorMessage}
+                    </Text>
                   </View>
                 ) : null}
 
@@ -438,7 +497,7 @@ export function ComprehensiveSearchDropdown({
             </View>
           )}
         </View>
-      </View>
+      </Animated.View>
     </View>
   );
 }
@@ -466,6 +525,7 @@ const styles = StyleSheet.create({
     elevation: 12,
   },
   inner: { flex: 1 },
+  goToInner: { flexGrow: 0 },
   goToContent: { paddingTop: 6, paddingBottom: 4 },
   resultsContainer: { flex: 1 },
   resultsScrollContent: { paddingVertical: 4 },

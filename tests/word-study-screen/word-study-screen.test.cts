@@ -44,6 +44,7 @@ import {
   getOccurrenceCounters,
   getOccurrenceFilters,
   getOccurrenceGloss,
+  getOccurrenceAyahContextRuns,
   getOccurrencePageLabel,
   orderRootFamilyLemmas,
 } from '../../components/word-study/full-study/occurrenceExplorerModel';
@@ -475,6 +476,19 @@ test('occurrence queries remain fixed-size and reader navigation retains the exa
     pathname: '/surah/[surahId]',
     params: { surahId: '3', startVerse: '3', view: 'translation', studyWordPosition: '9' },
   });
+});
+
+test('occurrence ayah context gives every RTL word its own style run and trailing separator', () => {
+  const occurrence = WORD_STUDY_CONTRACT_OCCURRENCE_PAGE.items[0]!;
+  const runs = getOccurrenceAyahContextRuns(occurrence);
+  if (!runs) throw new Error('Expected occurrence context runs');
+  assert.equal(runs.length, 11);
+  assert.deepEqual(runs.filter((run) => run.highlighted), [
+    { text: 'وَأَنزَلَ ', highlighted: true },
+  ]);
+  assert.deepEqual(runs[7], { text: 'يَدَيْهِ ', highlighted: false });
+  assert.deepEqual(runs[9], { text: 'ٱلتَّوْرَىٰةَ ', highlighted: false });
+  assert.deepEqual(runs[10], { text: 'وَٱلْإِنجِيلَ', highlighted: false });
 });
 
 test('root-family forms pin the selected lemma and drill into its occurrence query', () => {

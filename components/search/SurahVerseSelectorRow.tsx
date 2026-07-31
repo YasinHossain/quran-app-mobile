@@ -30,7 +30,10 @@ export function SurahVerseSelectorRow({
   onSelectVerse,
   hideVerse = false,
   hideLabels = false,
-  dropdownVisualOffset,
+  autoAdvanceToVerse = true,
+  floatingDropdown = false,
+  onOpenChange,
+  dismissRequest = 0,
 }: {
   chapters: Chapter[];
   isLoading?: boolean;
@@ -42,7 +45,10 @@ export function SurahVerseSelectorRow({
   onSelectVerse?: (verseNumber: number) => void;
   hideVerse?: boolean;
   hideLabels?: boolean;
-  dropdownVisualOffset?: number;
+  autoAdvanceToVerse?: boolean;
+  floatingDropdown?: boolean;
+  onOpenChange?: (isOpen: boolean) => void;
+  dismissRequest?: number;
 }): React.JSX.Element {
   const { t, formatNumber } = useUiTranslation();
   const surahOptions = React.useMemo(() => {
@@ -79,7 +85,7 @@ export function SurahVerseSelectorRow({
 
   const scheduleVerseOpen = React.useCallback(() => {
     clearScheduledVerseOpen();
-    // Wait for the Surah selector modal to fully close and layout to settle before measuring
+    // Let the Surah selector close before moving focus to the Verse selector.
     openVerseTimeoutRef.current = setTimeout(() => {
       openVerseTimeoutRef.current = null;
       verseSelectorRef.current?.openDropdown();
@@ -88,22 +94,22 @@ export function SurahVerseSelectorRow({
 
   const handleSurahSelectionComplete = React.useCallback(
     (surahId: number) => {
-      if (hideVerse) return;
+      if (hideVerse || !autoAdvanceToVerse) return;
       shouldAdvanceToVerseRef.current = true;
       if (selectedSurah === surahId && verseOptions.length > 0 && !isLoading) {
         shouldAdvanceToVerseRef.current = false;
         scheduleVerseOpen();
       }
     },
-    [hideVerse, isLoading, scheduleVerseOpen, selectedSurah, verseOptions.length]
+    [autoAdvanceToVerse, hideVerse, isLoading, scheduleVerseOpen, selectedSurah, verseOptions.length]
   );
 
   React.useEffect(() => {
-    if (hideVerse || !shouldAdvanceToVerseRef.current) return;
+    if (hideVerse || !autoAdvanceToVerse || !shouldAdvanceToVerseRef.current) return;
     if (!selectedSurah || verseOptions.length === 0 || isLoading) return;
     shouldAdvanceToVerseRef.current = false;
     scheduleVerseOpen();
-  }, [hideVerse, isLoading, scheduleVerseOpen, selectedSurah, verseOptions.length]);
+  }, [autoAdvanceToVerse, hideVerse, isLoading, scheduleVerseOpen, selectedSurah, verseOptions.length]);
 
   React.useEffect(() => clearScheduledVerseOpen, [clearScheduledVerseOpen]);
 
@@ -111,7 +117,7 @@ export function SurahVerseSelectorRow({
     <View className="flex-row gap-3">
       <View style={{ flex: hideVerse ? 1 : 3 }}>
         {!hideLabels ? (
-          <Text className="mb-2 text-sm font-semibold text-foreground dark:text-foreground-dark">
+          <Text className="mb-2 text-base font-semibold text-foreground dark:text-foreground-dark">
             {surahLabel}
           </Text>
         ) : null}
@@ -120,16 +126,18 @@ export function SurahVerseSelectorRow({
           selectedValue={selectedSurah}
           onSelect={onSelectSurah}
           placeholder={surahPlaceholder}
-          dropdownVisualOffset={dropdownVisualOffset}
           onSelectionComplete={handleSurahSelectionComplete}
           returnKeyType={hideVerse ? 'done' : 'next'}
+          floatingDropdown={floatingDropdown}
+          onOpenChange={onOpenChange}
+          dismissRequest={dismissRequest}
         />
       </View>
 
       {!hideVerse ? (
         <View style={{ flex: 2 }}>
           {!hideLabels ? (
-            <Text className="mb-2 text-sm font-semibold text-foreground dark:text-foreground-dark">
+            <Text className="mb-2 text-base font-semibold text-foreground dark:text-foreground-dark">
               {verseLabel}
             </Text>
           ) : null}
@@ -141,8 +149,10 @@ export function SurahVerseSelectorRow({
             disabled={!selectedSurah || verseOptions.length === 0 || isLoading}
             placeholder={versePlaceholder}
             disabledPlaceholder={disabledVersePlaceholder}
-            dropdownVisualOffset={dropdownVisualOffset}
             returnKeyType="done"
+            floatingDropdown={floatingDropdown}
+            onOpenChange={onOpenChange}
+            dismissRequest={dismissRequest}
           />
         </View>
       ) : null}

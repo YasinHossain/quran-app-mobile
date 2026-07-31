@@ -1,6 +1,7 @@
 import React from 'react';
 
 import { advancedSearch, type SearchNavigationResult, type SearchVerseResult } from '@/lib/api/search';
+import { getSearchErrorMessage } from '@/lib/search/searchError';
 
 const DEFAULT_PAGE_SIZE = 10;
 
@@ -99,7 +100,7 @@ export function usePaginatedSearch({
           setVerses([]);
           setNavigationResults([]);
         }
-        setErrorMessage((error as Error).message);
+        setErrorMessage(getSearchErrorMessage(error));
       } finally {
         if (requestIdRef.current !== requestId) return;
         setIsLoading(false);
@@ -144,4 +145,3 @@ export function usePaginatedSearch({
     refresh,
   };
 }
-

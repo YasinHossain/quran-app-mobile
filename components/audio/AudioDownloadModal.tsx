@@ -29,8 +29,6 @@ import { getQdcAudioFile } from '@/src/core/infrastructure/audio/qdcAudio';
 import { container } from '@/src/core/infrastructure/di/container';
 import type { Chapter } from '@/types';
 
-const AUDIO_SELECTOR_DROPDOWN_OFFSET = 1;
-
 type DownloadRange = {
   startSurahId?: number;
   startVerseNumber?: number;
@@ -518,7 +516,6 @@ export function AudioDownloadModal({
                             selectedSurah={localRange.startSurahId}
                             selectedVerse={localRange.startVerseNumber}
                             isLoading={chaptersLoading}
-                            dropdownVisualOffset={AUDIO_SELECTOR_DROPDOWN_OFFSET}
                             onSelectSurah={(surahId) => {
                               setLocalRange((prev) => ({
                                 ...prev,
@@ -543,7 +540,6 @@ export function AudioDownloadModal({
                             selectedVerse={undefined}
                             isLoading={chaptersLoading}
                             hideVerse
-                            dropdownVisualOffset={AUDIO_SELECTOR_DROPDOWN_OFFSET}
                             onSelectSurah={(surahId) => {
                               setLocalRange((prev) => ({
                                 ...prev,
@@ -564,7 +560,6 @@ export function AudioDownloadModal({
                               selectedSurah={localRange.startSurahId}
                               selectedVerse={localRange.startVerseNumber}
                               isLoading={chaptersLoading}
-                              dropdownVisualOffset={AUDIO_SELECTOR_DROPDOWN_OFFSET}
                               onSelectSurah={(surahId) => {
                                 setLocalRange((prev) => ({
                                   ...prev,
@@ -597,7 +592,6 @@ export function AudioDownloadModal({
                               selectedSurah={localRange.endSurahId ?? localRange.startSurahId}
                               selectedVerse={localRange.endVerseNumber}
                               isLoading={chaptersLoading}
-                              dropdownVisualOffset={AUDIO_SELECTOR_DROPDOWN_OFFSET}
                               onSelectSurah={(surahId) => {
                                 setLocalRange((prev) => ({
                                   ...prev,

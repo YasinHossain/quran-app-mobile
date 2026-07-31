@@ -130,6 +130,24 @@ export function getOccurrenceGloss(occurrence: WordOccurrence): string {
   );
 }
 
+export type OccurrenceAyahContextRun = {
+  text: string;
+  highlighted: boolean;
+};
+
+export function getOccurrenceAyahContextRuns(
+  occurrence: WordOccurrence
+): readonly OccurrenceAyahContextRun[] | null {
+  const words = occurrence.ayahContextUthmani.trim().split(/\s+/).filter(Boolean);
+  const highlightedIndex = occurrence.location.wordPosition - 1;
+  if (highlightedIndex < 0 || highlightedIndex >= words.length) return null;
+
+  return words.map((word, index) => ({
+    text: index < words.length - 1 ? `${word} ` : word,
+    highlighted: index === highlightedIndex,
+  }));
+}
+
 export function getOccurrencePageLabel(
   cursor: string | undefined,
   itemCount: number,

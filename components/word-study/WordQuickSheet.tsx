@@ -196,7 +196,7 @@ export function WordQuickSheet({
                 />
                 <SecondaryAction
                   icon={<Play color={palette.tint} size={20} strokeWidth={2.2} />}
-                  label="Word-Verse"
+                  label="Continue"
                   accessibilityLabel="Play verse from this word"
                   onPress={onPlayVerseFromHere}
                   palette={palette}
