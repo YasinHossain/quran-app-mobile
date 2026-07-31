@@ -883,6 +883,26 @@ test('dictionary UI prioritizes the best match and moves guidance into an inform
   assert.match(guide, /height: sheetHeight/);
 });
 
+test('dictionary downloads stay hidden until installed dictionaries have been checked', () => {
+  const section = readFileSync(
+    join(process.cwd(), 'components/word-study/full-study/DictionarySection.tsx'),
+    'utf8'
+  );
+  const fallbackPanel = readFileSync(
+    join(process.cwd(), 'components/word-study/full-study/DictionaryPackDownloadPanel.tsx'),
+    'utf8'
+  );
+
+  assert.match(section, /installedSources\.status === 'loading'/);
+  assert.match(
+    section,
+    /installedSources\.status === 'ready' && downloadableEntries\.length > 0/
+  );
+  assert.match(fallbackPanel, /\.listInstalledSources\(\)/);
+  assert.match(fallbackPanel, /if \(installedSources\.length > 0\)/);
+  assert.match(fallbackPanel, /setState\(\{ status: 'installed' \}\)/);
+});
+
 test('occurrence explorer cancels stale queries, keeps page size bounded, and avoids ambiguous count copy', () => {
   const source = readFileSync(
     join(process.cwd(), 'components/word-study/full-study/OccurrenceExplorer.tsx'),

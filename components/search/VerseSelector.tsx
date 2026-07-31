@@ -17,6 +17,10 @@ import {
 } from 'react-native';
 
 import Colors from '@/constants/Colors';
+import {
+    normalizeNumeralsToAscii,
+    sanitizeNumeralInput,
+} from '@/lib/search/numerals';
 import { useAppTheme } from '@/providers/ThemeContext';
 import { useUiTranslation } from '@/providers/UiLanguageContext';
 
@@ -114,9 +118,9 @@ export const VerseSelector = React.forwardRef<VerseSelectorHandle, Props>(functi
 
     // Filtered options
     const filteredOptions = React.useMemo(() => {
-        const query = searchText.trim();
+        const query = normalizeNumeralsToAscii(searchText.trim());
         if (!query) return options;
-        return options.filter((option) => option.label.startsWith(query));
+        return options.filter((option) => String(option.value).startsWith(query));
     }, [searchText, options]);
 
     // Open dropdown
@@ -322,7 +326,7 @@ export const VerseSelector = React.forwardRef<VerseSelectorHandle, Props>(functi
                                     ref={searchInputRef}
                                     autoFocus
                                     value={searchText}
-                                    onChangeText={(text) => setSearchText(text.replace(/[^\d]/g, ''))}
+                                    onChangeText={(text) => setSearchText(sanitizeNumeralInput(text))}
                                     onSubmitEditing={handleSubmitSelection}
                                     placeholder={t('select_verse')}
                                     placeholderTextColor={palette.muted}

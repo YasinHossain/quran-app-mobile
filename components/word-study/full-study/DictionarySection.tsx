@@ -48,6 +48,10 @@ type CatalogState =
   | { status: 'loading' }
   | { status: 'ready'; entries: readonly WordReferencePackCatalogEntry[] }
   | { status: 'error'; message: string };
+type InstalledSourcesState =
+  | { status: 'loading' }
+  | { status: 'ready'; sources: readonly DictionarySource[] }
+  | { status: 'error'; message: string };
 type LookupState =
   | { status: 'idle' }
   | { status: 'loading' }
@@ -112,22 +116,31 @@ export function DictionarySection({
     pollWhileEnabled: isActive,
   });
   const [catalog, setCatalog] = React.useState<CatalogState>({ status: 'loading' });
-  const [sources, setSources] = React.useState<readonly DictionarySource[]>([]);
+  const [installedSources, setInstalledSources] = React.useState<InstalledSourcesState>({
+    status: 'loading',
+  });
   const [selectedPackId, setSelectedPackId] = React.useState<string | null>(null);
   const [refreshNonce, setRefreshNonce] = React.useState(0);
 
   const loadSources = React.useCallback(async () => {
-    const next = await repository.listInstalledSources();
-    setSources(next);
-    const remembered = await getItem(LAST_SOURCE_KEY);
-    setSelectedPackId((current) => {
-      const preferred = current ?? remembered;
-      return next.some((source) => source.packId === preferred)
-        ? preferred
-        : next.find((source) => source.sourceId === 'lane-lexicon')?.packId
-          ?? next[0]?.packId
-          ?? null;
-    });
+    try {
+      const next = await repository.listInstalledSources();
+      const remembered = await getItem(LAST_SOURCE_KEY);
+      setSelectedPackId((current) => {
+        const preferred = current ?? remembered;
+        return next.some((source) => source.packId === preferred)
+          ? preferred
+          : next.find((source) => source.sourceId === 'lane-lexicon')?.packId
+            ?? next[0]?.packId
+            ?? null;
+      });
+      setInstalledSources({ status: 'ready', sources: next });
+    } catch (error) {
+      setInstalledSources({
+        status: 'error',
+        message: error instanceof Error ? error.message : 'Installed dictionaries could not be checked.',
+      });
+    }
   }, [repository]);
 
   const loadCatalog = React.useCallback(() => {
@@ -162,6 +175,7 @@ export function DictionarySection({
     void setItem(LAST_SOURCE_KEY, packId);
   }, []);
 
+  const sources = installedSources.status === 'ready' ? installedSources.sources : [];
   const installedPackIds = React.useMemo(
     () => new Set(sources.map((source) => source.packId)),
     [sources]
@@ -194,7 +208,17 @@ export function DictionarySection({
         />
       ) : null}
 
-      {selectedPackId ? (
+      {installedSources.status === 'loading' ? (
+        <LoadingCard label="Loading installed dictionaries…" palette={palette} />
+      ) : installedSources.status === 'error' ? (
+        <StateCard
+          title="Dictionaries could not be opened"
+          message={installedSources.message}
+          palette={palette}
+          actionLabel="Retry"
+          onAction={() => void loadSources()}
+        />
+      ) : selectedPackId ? (
         <View>
           {sources.map((source) => (
             <DictionarySourcePanel
@@ -228,7 +252,7 @@ export function DictionarySection({
         />
       ) : null}
 
-      {downloadableEntries.length > 0 ? (
+      {installedSources.status === 'ready' && downloadableEntries.length > 0 ? (
         <View style={styles.downloadList}>
           {sources.length > 0 ? (
             <Text style={[styles.subheading, { color: palette.text }]}>Available downloads</Text>

@@ -6,6 +6,8 @@
  * - No Next.js proxy routes or server-only environment configuration.
  */
 
+import { normalizeNumeralsToAscii } from '@/lib/search/numerals';
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -253,35 +255,6 @@ interface ParsedQuery {
   value?: string | number;
   surah?: number;
   verse?: number;
-}
-
-function normalizeNumeralsToAscii(input: string): string {
-  return input.replace(/[\u0660-\u0669\u06F0-\u06F9\u09E6-\u09EF\u0966-\u096F]/g, (digit) => {
-    const codePoint = digit.codePointAt(0);
-    if (codePoint === undefined) return digit;
-
-    // Arabic-Indic digits
-    if (codePoint >= 0x0660 && codePoint <= 0x0669) {
-      return String(codePoint - 0x0660);
-    }
-
-    // Eastern Arabic-Indic digits
-    if (codePoint >= 0x06f0 && codePoint <= 0x06f9) {
-      return String(codePoint - 0x06f0);
-    }
-
-    // Bengali digits
-    if (codePoint >= 0x09e6 && codePoint <= 0x09ef) {
-      return String(codePoint - 0x09e6);
-    }
-
-    // Devanagari digits
-    if (codePoint >= 0x0966 && codePoint <= 0x096f) {
-      return String(codePoint - 0x0966);
-    }
-
-    return digit;
-  });
 }
 
 function parseQuery(query: string): ParsedQuery {

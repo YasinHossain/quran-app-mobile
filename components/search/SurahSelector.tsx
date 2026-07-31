@@ -17,6 +17,7 @@ import {
 } from 'react-native';
 
 import Colors from '@/constants/Colors';
+import { normalizeNumeralsToAscii } from '@/lib/search/numerals';
 import { useAppTheme } from '@/providers/ThemeContext';
 import { useUiTranslation } from '@/providers/UiLanguageContext';
 
@@ -114,9 +115,10 @@ export const SurahSelector = React.forwardRef<SurahSelectorHandle, Props>(functi
     const filteredOptions = React.useMemo(() => {
         const query = searchText.trim().toLowerCase();
         if (!query) return options;
+        const normalizedQuery = normalizeNumeralsToAscii(query);
         return options.filter((option) => {
-            const idMatch = String(option.value).startsWith(query);
-            const labelMatch = option.searchLabel.includes(query);
+            const idMatch = String(option.value).startsWith(normalizedQuery);
+            const labelMatch = normalizeNumeralsToAscii(option.searchLabel).includes(normalizedQuery);
             return idMatch || labelMatch;
         });
     }, [searchText, options]);

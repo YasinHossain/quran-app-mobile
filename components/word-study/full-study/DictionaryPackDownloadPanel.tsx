@@ -22,6 +22,7 @@ type Palette = {
 
 type State =
   | { status: 'loading' }
+  | { status: 'installed' }
   | { status: 'ready'; entries: readonly WordReferencePackCatalogEntry[] }
   | { status: 'error' };
 
@@ -39,9 +40,21 @@ export function DictionaryPackDownloadPanel({ palette }: { palette: Palette }): 
     const controller = new AbortController();
     setState({ status: 'loading' });
     void container
-      .getWordReferencePackCatalogClient()
-      .listCompatiblePacksAsync(controller.signal)
-      .then((entries) => setState({ status: 'ready', entries }))
+      .getDictionaryReferenceRepository()
+      .listInstalledSources()
+      .then((installedSources) => {
+        if (controller.signal.aborted) return;
+        if (installedSources.length > 0) {
+          setState({ status: 'installed' });
+          return;
+        }
+        return container
+          .getWordReferencePackCatalogClient()
+          .listCompatiblePacksAsync(controller.signal)
+          .then((entries) => {
+            if (!controller.signal.aborted) setState({ status: 'ready', entries });
+          });
+      })
       .catch(() => {
         if (!controller.signal.aborted) setState({ status: 'error' });
       });
@@ -50,8 +63,13 @@ export function DictionaryPackDownloadPanel({ palette }: { palette: Palette }): 
 
   return (
     <View style={styles.section}>
-      {state.status === 'loading' ? (
-        <View style={styles.loading}><ActivityIndicator color={palette.tint} /></View>
+      {state.status === 'loading' || state.status === 'installed' ? (
+        <View style={styles.loading}>
+          <ActivityIndicator color={palette.tint} />
+          {state.status === 'installed' ? (
+            <Text style={[styles.status, { color: palette.muted }]}>Loading this word…</Text>
+          ) : null}
+        </View>
       ) : state.status === 'error' ? (
         <View style={[styles.card, { backgroundColor: palette.surfaceNavigation }]}>
           <Text style={[styles.status, styles.copy, { color: palette.muted }]}>Connect to the internet to check dictionary downloads.</Text>
@@ -89,7 +107,7 @@ export function DictionaryPackDownloadPanel({ palette }: { palette: Palette }): 
 
 const styles = StyleSheet.create({
   section: { gap: 12, paddingTop: 4 },
-  loading: { minHeight: 92, alignItems: 'center', justifyContent: 'center' },
+  loading: { minHeight: 92, alignItems: 'center', justifyContent: 'center', gap: 10 },
   card: { minHeight: 92, borderRadius: 18, padding: 15, flexDirection: 'row', alignItems: 'center', gap: 12 },
   copy: { flex: 1 },
   status: { fontSize: 13, lineHeight: 20 },

@@ -33,6 +33,8 @@
     "build:test-word-study-screen": "tsc -p tests/word-study-screen/tsconfig.json",
     "test:word-study-screen": "npm run build:test-word-study-screen && node --test .artifacts/word-study-screen-tests/tests/word-study-screen/*.test.cjs",
     "test:welcome-resource-setup": "node --test tests/welcome-resource-setup/*.test.cjs",
+    "build:test-search-numerals": "tsc -p tests/search-numerals/tsconfig.json",
+    "test:search-numerals": "npm run build:test-search-numerals && node --test .artifacts/search-numeral-tests/tests/search-numerals/*.cjs",
     "build:test-verse-spotlight": "tsc -p tests/verse-spotlight/tsconfig.json",
     "test:verse-spotlight": "npm run build:test-verse-spotlight && node --test .artifacts/verse-spotlight-tests/tests/verse-spotlight/*.test.cjs",
     "test:verse-spotlight-widget-plugin": "node --test tests/verse-spotlight-widget/*.test.cjs",
@@ -44,7 +46,7 @@
     "debug:android:ui": "node scripts/android-debug.js ui",
     "type-check": "tsc --noEmit",
     "check:core": "node scripts/check-core-purity.js",
-    "verify": "npm run type-check && npm run check:core && npm run test:verse-spotlight && npm run test:verse-spotlight-widget-plugin && npm run test:welcome-resource-setup && npm run test:word-study-pack && npm run test:word-study-repository && npm run test:word-study-quick-sheet && npm run test:word-study-screen"
+    "verify": "npm run type-check && npm run check:core && npm run test:search-numerals && npm run test:verse-spotlight && npm run test:verse-spotlight-widget-plugin && npm run test:welcome-resource-setup && npm run test:word-study-pack && npm run test:word-study-repository && npm run test:word-study-quick-sheet && npm run test:word-study-screen"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
