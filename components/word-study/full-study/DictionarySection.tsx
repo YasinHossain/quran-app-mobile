@@ -322,6 +322,11 @@ const DictionarySourcePanel = React.memo(function DictionarySourcePanel({
   >({});
   const [shownRoots, setShownRoots] = React.useState<ReadonlySet<string>>(() => new Set());
   const [shownFamilies, setShownFamilies] = React.useState<ReadonlySet<string>>(() => new Set());
+  const expandedEntryIdsRef = React.useRef(expandedEntryIds);
+  const detailsByLookupKeyRef = React.useRef(detailsByLookupKey);
+  const lastReadyHeightRef = React.useRef(0);
+  expandedEntryIdsRef.current = expandedEntryIds;
+  detailsByLookupKeyRef.current = detailsByLookupKey;
 
   const cachedResult = lookupCacheRef.current.get(lookupKey);
   const lookup: LookupState = cachedResult
@@ -333,6 +338,17 @@ const DictionarySourcePanel = React.memo(function DictionarySourcePanel({
   const details = detailsByLookupKey[lookupKey] ?? {};
   const showRoot = shownRoots.has(lookupKey);
   const showFamily = shownFamilies.has(lookupKey);
+  const primaryEntry =
+    lookup.status === 'ready'
+      ? lookup.result.exactLemmaEntries[0] ?? lookup.result.rootEntries[0]
+      : undefined;
+  const isPrimaryEntryInitializing =
+    primaryEntry !== undefined &&
+    !Object.prototype.hasOwnProperty.call(expandedEntryIds, lookupKey);
+  const isContentLoading =
+    lookup.status === 'loading' ||
+    lookup.status === 'idle' ||
+    isPrimaryEntryInitializing;
 
   React.useEffect(() => {
     if (!enabled) return;
@@ -340,10 +356,15 @@ const DictionarySourcePanel = React.memo(function DictionarySourcePanel({
     const loadPrimaryEntry = (result: DictionaryLookupResult) => {
       const primaryEntry = result.exactLemmaEntries[0] ?? result.rootEntries[0];
       if (!primaryEntry) return;
-      setExpandedEntryIds((current) => Object.prototype.hasOwnProperty.call(current, lookupKey)
-        ? current
-        : { ...current, [lookupKey]: primaryEntry.entryId });
-      if (details[primaryEntry.entryId] !== undefined) return;
+      if (Object.prototype.hasOwnProperty.call(expandedEntryIdsRef.current, lookupKey)) return;
+      const currentDetails = detailsByLookupKeyRef.current[lookupKey] ?? {};
+      if (currentDetails[primaryEntry.entryId] !== undefined) {
+        setExpandedEntryIds((current) => ({
+          ...current,
+          [lookupKey]: primaryEntry.entryId,
+        }));
+        return;
+      }
       void repository
         .getEntry(packId, primaryEntry.entryId, primaryEntry.matchKind, {
           signal: controller.signal,
@@ -357,6 +378,10 @@ const DictionarySourcePanel = React.memo(function DictionarySourcePanel({
                 [primaryEntry.entryId]: detail,
               },
             }));
+            setExpandedEntryIds((current) => ({
+              ...current,
+              [lookupKey]: primaryEntry.entryId,
+            }));
           }
         })
         .catch(() => {
@@ -367,6 +392,10 @@ const DictionarySourcePanel = React.memo(function DictionarySourcePanel({
                 ...current[lookupKey],
                 [primaryEntry.entryId]: null,
               },
+            }));
+            setExpandedEntryIds((current) => ({
+              ...current,
+              [lookupKey]: primaryEntry.entryId,
             }));
           }
         });
@@ -407,7 +436,14 @@ const DictionarySourcePanel = React.memo(function DictionarySourcePanel({
         }
       });
     return () => controller.abort();
-  }, [analysis, enabled, lookupKey, packId, repository, selectedWord.surfaceUthmani]);
+  }, [
+    analysis,
+    enabled,
+    lookupKey,
+    packId,
+    repository,
+    selectedWord.surfaceUthmani,
+  ]);
 
   React.useEffect(() => {
     if (!enabled || !analysis || lookup.status !== 'ready') return;
@@ -487,10 +523,20 @@ const DictionarySourcePanel = React.memo(function DictionarySourcePanel({
     <View
       accessibilityElementsHidden={!active}
       importantForAccessibility={active ? 'auto' : 'no-hide-descendants'}
+      onLayout={(event) => {
+        if (!isContentLoading && lookup.status === 'ready') {
+          lastReadyHeightRef.current = event.nativeEvent.layout.height;
+        }
+      }}
       pointerEvents={active ? 'auto' : 'none'}
-      style={!active ? styles.hiddenSource : undefined}
+      style={[
+        !active ? styles.hiddenSource : undefined,
+        isContentLoading && lastReadyHeightRef.current > 0
+          ? { minHeight: lastReadyHeightRef.current }
+          : undefined,
+      ]}
     >
-      {lookup.status === 'loading' || lookup.status === 'idle' ? (
+      {isContentLoading ? (
         <LoadingCard label="Looking up this lemma and root…" palette={palette} />
       ) : lookup.status === 'error' ? (
         <StateCard title="Dictionary lookup failed" message={lookup.message} palette={palette} />

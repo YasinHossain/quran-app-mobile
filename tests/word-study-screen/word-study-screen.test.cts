@@ -903,6 +903,18 @@ test('dictionary downloads stay hidden until installed dictionaries have been ch
   assert.match(fallbackPanel, /setState\(\{ status: 'installed' \}\)/);
 });
 
+test('dictionary word changes wait for the default definition and preserve layout height', () => {
+  const source = readFileSync(
+    join(process.cwd(), 'components/word-study/full-study/DictionarySection.tsx'),
+    'utf8'
+  );
+
+  assert.match(source, /isPrimaryEntryInitializing/);
+  assert.match(source, /setDetailsByLookupKey[\s\S]*setExpandedEntryIds/);
+  assert.match(source, /lastReadyHeightRef/);
+  assert.match(source, /minHeight: lastReadyHeightRef\.current/);
+});
+
 test('occurrence explorer cancels stale queries, keeps page size bounded, and avoids ambiguous count copy', () => {
   const source = readFileSync(
     join(process.cwd(), 'components/word-study/full-study/OccurrenceExplorer.tsx'),
