@@ -46,7 +46,9 @@
     "debug:android:ui": "node scripts/android-debug.js ui",
     "type-check": "tsc --noEmit",
     "check:core": "node scripts/check-core-purity.js",
-    "verify": "npm run type-check && npm run check:core && npm run test:search-numerals && npm run test:verse-spotlight && npm run test:verse-spotlight-widget-plugin && npm run test:welcome-resource-setup && npm run test:word-study-pack && npm run test:word-study-repository && npm run test:word-study-quick-sheet && npm run test:word-study-screen"
+    "verify": "npm run type-check && npm run check:core && npm run test:search-numerals && npm run test:verse-spotlight && npm run test:verse-spotlight-widget-plugin && npm run test:welcome-resource-setup && npm run test:word-study-pack && npm run test:word-study-repository && npm run test:word-study-quick-sheet && npm run test:word-study-screen && npm run test:tafsir-pager",
+    "build:test-tafsir-pager": "tsc -p tests/tafsir-pager/tsconfig.json",
+    "test:tafsir-pager": "npm run build:test-tafsir-pager && node --test .artifacts/tafsir-pager-tests/tests/tafsir-pager/*.cjs"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",

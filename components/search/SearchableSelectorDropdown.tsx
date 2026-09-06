@@ -103,6 +103,7 @@ export function SearchableSelectorDropdown({
   onSearchTextChange,
   onSelect,
   onClose,
+  onBlurClose,
   onSubmitEditing,
   keyboardType = 'default',
   returnKeyType = 'done',
@@ -116,6 +117,7 @@ export function SearchableSelectorDropdown({
   onSearchTextChange: (value: string) => void;
   onSelect: (value: number) => void;
   onClose: () => void;
+  onBlurClose: () => void;
   onSubmitEditing: (
     event: NativeSyntheticEvent<TextInputSubmitEditingEventData>
   ) => void;
@@ -132,6 +134,7 @@ export function SearchableSelectorDropdown({
   const inputRef = React.useRef<TextInput>(null);
   const keepOpenOnBlurRef = React.useRef(false);
   const keepOpenTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const blurTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const [fieldLayout, setFieldLayout] = React.useState<FieldLayout | null>(null);
   const [keyboardTop, setKeyboardTop] = React.useState(
     () => Keyboard.metrics()?.screenY ?? windowHeight
@@ -216,6 +219,7 @@ export function SearchableSelectorDropdown({
   React.useEffect(() => {
     return () => {
       if (keepOpenTimeoutRef.current) clearTimeout(keepOpenTimeoutRef.current);
+      if (blurTimeoutRef.current) clearTimeout(blurTimeoutRef.current);
     };
   }, []);
 
@@ -358,8 +362,13 @@ export function SearchableSelectorDropdown({
           onChangeText={onSearchTextChange}
           onSubmitEditing={onSubmitEditing}
           onBlur={() => {
-            setTimeout(() => {
-              if (!keepOpenOnBlurRef.current) onClose();
+            if (blurTimeoutRef.current) clearTimeout(blurTimeoutRef.current);
+            blurTimeoutRef.current = setTimeout(() => {
+              blurTimeoutRef.current = null;
+              // A removed or refocused input must not close a newer selector.
+              if (inputRef.current && !inputRef.current.isFocused() && !keepOpenOnBlurRef.current) {
+                onBlurClose();
+              }
             }, 0);
           }}
           placeholder={searchPlaceholder}

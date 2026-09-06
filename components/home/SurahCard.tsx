@@ -1,4 +1,4 @@
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import React from 'react';
 import { Platform, Pressable, Text, View } from 'react-native';
 
@@ -23,6 +23,13 @@ const cardShadow =
 
 function SurahCardComponent({ surah }: { surah: Surah }): React.JSX.Element {
   const router = useRouter();
+  const navigationPending = React.useRef(false);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      navigationPending.current = false;
+    }, [])
+  );
   const { settings } = useSettings();
   const { isDark } = useAppTheme();
   const { t, formatNumber } = useUiTranslation();
@@ -40,9 +47,17 @@ function SurahCardComponent({ surah }: { surah: Surah }): React.JSX.Element {
   }, [settings, surah.id]);
 
   const handlePress = React.useCallback(() => {
+    if (navigationPending.current) return;
+    navigationPending.current = true;
+
     void (async () => {
-      await warmSurahReaderBeforeNavigation({ surahId: surah.id, settings });
-      router.push({ pathname: '/surah/[surahId]', params: { surahId: String(surah.id) } });
+      try {
+        await warmSurahReaderBeforeNavigation({ surahId: surah.id, settings });
+        router.push({ pathname: '/surah/[surahId]', params: { surahId: String(surah.id) } });
+      } catch (error) {
+        navigationPending.current = false;
+        console.error('Failed to open surah', error);
+      }
     })();
   }, [router, settings, surah.id]);
 

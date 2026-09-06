@@ -92,14 +92,14 @@ export const VerseSelector = React.forwardRef<VerseSelectorHandle, Props>(functi
     });
   }, [disabled, onOpenChange]);
 
-  const closeDropdown = React.useCallback(() => {
+  const closeDropdown = React.useCallback((dismissKeyboard = true) => {
     if (openFrameRef.current !== null) {
       cancelAnimationFrame(openFrameRef.current);
       openFrameRef.current = null;
     }
     setIsOpen(false);
     setSearchText('');
-    Keyboard.dismiss();
+    if (dismissKeyboard) Keyboard.dismiss();
     onOpenChange?.(false);
   }, [onOpenChange]);
 
@@ -115,11 +115,11 @@ export const VerseSelector = React.forwardRef<VerseSelectorHandle, Props>(functi
 
   const handleSelect = React.useCallback(
     (value: number) => {
+      Keyboard.dismiss();
       onSelect(value);
       setIsOpen(false);
       setSearchText('');
       onOpenChange?.(false);
-      Keyboard.dismiss();
       onSelectionComplete?.(value);
     },
     [onOpenChange, onSelect, onSelectionComplete]
@@ -166,6 +166,7 @@ export const VerseSelector = React.forwardRef<VerseSelectorHandle, Props>(functi
           onSearchTextChange={(value) => setSearchText(sanitizeNumeralInput(value))}
           onSelect={handleSelect}
           onClose={closeDropdown}
+          onBlurClose={() => closeDropdown(false)}
           onSubmitEditing={handleSubmitSelection}
           keyboardType="number-pad"
           returnKeyType={returnKeyType}

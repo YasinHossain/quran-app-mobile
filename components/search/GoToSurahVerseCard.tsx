@@ -223,7 +223,7 @@ export function GoToSurahVerseCard({
               selectedVerse={selectedVerse}
               onSelectSurah={handleSelectSurah}
               onSelectVerse={handleSelectVerse}
-              autoAdvanceToVerse={false}
+              autoAdvanceToVerse
               floatingDropdown
               onOpenChange={handleSelectorOpenChange}
               dismissRequest={selectorDismissRequest}

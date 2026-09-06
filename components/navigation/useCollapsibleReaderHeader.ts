@@ -218,7 +218,7 @@ export function useCollapsibleReaderHeader() {
     directionalScrollDistanceRef.current = 0;
   }, []);
 
-  return {
+  return React.useMemo(() => ({
     handleHeaderLayout,
     handleScroll,
     handleScrollOffset,
@@ -231,5 +231,18 @@ export function useCollapsibleReaderHeader() {
     showHeader,
     hiddenProgress,
     suppressScroll,
-  };
+  }), [
+    handleHeaderLayout,
+    handleScroll,
+    handleScrollOffset,
+    contentAnimatedStyle,
+    headerAnimatedStyle,
+    headerHeight,
+    headerPointerEvents,
+    isHidden,
+    resetHeader,
+    showHeader,
+    hiddenProgress,
+    suppressScroll,
+  ]);
 }

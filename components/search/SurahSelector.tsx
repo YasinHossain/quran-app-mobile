@@ -91,14 +91,14 @@ export const SurahSelector = React.forwardRef<SurahSelectorHandle, Props>(functi
     });
   }, [onOpenChange]);
 
-  const closeDropdown = React.useCallback(() => {
+  const closeDropdown = React.useCallback((dismissKeyboard = true) => {
     if (openFrameRef.current !== null) {
       cancelAnimationFrame(openFrameRef.current);
       openFrameRef.current = null;
     }
     setIsOpen(false);
     setSearchText('');
-    Keyboard.dismiss();
+    if (dismissKeyboard) Keyboard.dismiss();
     onOpenChange?.(false);
   }, [onOpenChange]);
 
@@ -109,12 +109,14 @@ export const SurahSelector = React.forwardRef<SurahSelectorHandle, Props>(functi
   }, [closeDropdown, dismissRequest]);
 
   const handleSelect = React.useCallback(
-    (value: number, { preserveKeyboard = false }: { preserveKeyboard?: boolean } = {}) => {
+    (value: number) => {
+      // Clear native focus before removing the input so Android does not
+      // transfer it to the header search field.
+      Keyboard.dismiss();
       onSelect(value);
       setIsOpen(false);
       setSearchText('');
       onOpenChange?.(false);
-      if (!preserveKeyboard) Keyboard.dismiss();
       onSelectionComplete?.(value);
     },
     [onOpenChange, onSelect, onSelectionComplete]
@@ -135,9 +137,9 @@ export const SurahSelector = React.forwardRef<SurahSelectorHandle, Props>(functi
         ? filteredOptions[0]
         : options.find((option) => option.value === selectedValue);
       if (!matchedOption) return;
-      handleSelect(matchedOption.value, { preserveKeyboard: Boolean(onSelectionComplete) });
+      handleSelect(matchedOption.value);
     },
-    [filteredOptions, handleSelect, onSelectionComplete, options, searchText, selectedValue]
+    [filteredOptions, handleSelect, options, searchText, selectedValue]
   );
 
   React.useImperativeHandle(
@@ -161,6 +163,7 @@ export const SurahSelector = React.forwardRef<SurahSelectorHandle, Props>(functi
           onSearchTextChange={setSearchText}
           onSelect={handleSelect}
           onClose={closeDropdown}
+          onBlurClose={() => closeDropdown(false)}
           onSubmitEditing={handleSubmitSelection}
           returnKeyType={returnKeyType}
           floating={floatingDropdown}

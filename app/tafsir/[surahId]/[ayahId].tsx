@@ -4,6 +4,7 @@ import React from 'react';
 import {
   Animated,
   FlatList,
+  Platform,
   Pressable,
   ScrollView,
   Share,
@@ -14,8 +15,13 @@ import {
   type NativeSyntheticEvent,
   type LayoutChangeEvent,
 } from 'react-native';
+import Reanimated, {
+  cancelAnimation, Easing, runOnJS, scrollTo, useAnimatedReaction,
+  useAnimatedRef, useAnimatedScrollHandler, useSharedValue, withTiming,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { getTafsirSnapIndex } from '@/lib/tafsir/paging';
 import { BookmarkModal } from '@/components/bookmarks/BookmarkModal';
 import { AppSearchHeader, ReaderOverlayHeader } from '@/components/navigation/AppHeader';
 import { useCollapsibleReaderHeader } from '@/components/navigation/useCollapsibleReaderHeader';
@@ -436,7 +442,7 @@ type TafsirPageProps = {
   viewportHeight: number;
   insets: ReturnType<typeof useSafeAreaInsets>;
   pageSignature: string;
-  pageStateByKey: Record<string, PageState>;
+  storedPageState: PageState | undefined;
   chapters: SurahHeaderChapter[];
   currentSurahId: number | undefined;
   showTranslationAttribution: boolean;
@@ -469,13 +475,13 @@ type TafsirPageProps = {
   isVerticalScrollEnabled: boolean;
 };
 
-function TafsirPage({
+const TafsirPage = React.memo(function TafsirPage({
   item,
   pageWidth,
   viewportHeight,
   insets,
   pageSignature,
-  pageStateByKey,
+  storedPageState,
   chapters,
   currentSurahId,
   showTranslationAttribution,
@@ -527,7 +533,6 @@ function TafsirPage({
   }, []);
 
   const verseKey = getVerseKey(item);
-  const storedPageState = pageStateByKey[verseKey];
   const pageState =
     storedPageState?.signature === pageSignature
       ? storedPageState
@@ -951,7 +956,7 @@ function TafsirPage({
       ) : null}
     </View>
   );
-}
+});
 
 export default function TafsirScreen(): React.JSX.Element {
   const params = useLocalSearchParams<{ surahId?: string | string[]; ayahId?: string | string[] }>();
@@ -1605,7 +1610,10 @@ export default function TafsirScreen(): React.JSX.Element {
     })();
   }, [chapters, loadPage, pageSignature, prefetchTargets, tafsirIds]);
 
-  const pagerRef = React.useRef<FlatList<VerseTarget> | null>(null);
+  const pagerRef = useAnimatedRef<FlatList<VerseTarget>>();
+  const pagerPosition = useSharedValue(0);
+  const pagerSettling = useSharedValue(false);
+  const pagerDragStart = useSharedValue(0);
   const visibleIndexRef = React.useRef(-1);
   const didInitialPagerSyncRef = React.useRef(false);
   const syncedPageWidthRef = React.useRef<number | null>(null);
@@ -1661,15 +1669,17 @@ export default function TafsirScreen(): React.JSX.Element {
 
     if (!needsSync) return;
 
+    cancelAnimation(pagerPosition);
+    pagerSettling.value = false;
     pagerRef.current.scrollToIndex({ index: currentTargetIndex, animated: false });
     visibleIndexRef.current = currentTargetIndex;
     didInitialPagerSyncRef.current = true;
   }, [currentTargetIndex, pageWidth]);
 
-  const handlePagerScrollEnd = React.useCallback(
-    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+  const handlePagerSettled = React.useCallback(
+    (offset: number) => {
       if (pagerTargets.length === 0) return;
-      const rawIndex = Math.round(event.nativeEvent.contentOffset.x / pageWidth);
+      const rawIndex = Math.round(offset / pageWidth);
       const index = Math.max(0, Math.min(pagerTargets.length - 1, rawIndex));
       visibleIndexRef.current = index;
 
@@ -1681,6 +1691,45 @@ export default function TafsirScreen(): React.JSX.Element {
     },
     [currentTarget, navigateToTarget, pageWidth, pagerTargets]
   );
+
+  // Drive settling on the UI thread, independently of HTML rendering and data loading.
+  useAnimatedReaction(
+    () => pagerSettling.value ? pagerPosition.value : null,
+    (position) => {
+      if (position !== null) scrollTo(pagerRef, position, 0, false);
+    }
+  );
+
+  const pagerPageCount = pagerTargets.length;
+  const pagerVelocitySign = Platform.OS === 'android' ? -1 : 1;
+  const resetPagerHeader = readerHeader.resetHeader;
+  const handlePagerScroll = useAnimatedScrollHandler({
+    onBeginDrag: (event) => {
+      cancelAnimation(pagerPosition);
+      pagerSettling.value = false;
+      pagerDragStart.value = event.contentOffset.x;
+      runOnJS(resetPagerHeader)();
+    },
+    onEndDrag: (event) => {
+      const offset = event.contentOffset.x;
+      const index = getTafsirSnapIndex(
+        pagerDragStart.value, offset, (event.velocity?.x ?? 0) * pagerVelocitySign, pageWidth, pagerPageCount
+      );
+      const target = index * pageWidth;
+      pagerPosition.value = offset;
+      pagerSettling.value = true;
+      pagerPosition.value = withTiming(target, {
+        duration: 420,
+        easing: Easing.out(Easing.cubic),
+      }, (finished) => {
+        if (finished) {
+          scrollTo(pagerRef, target, 0, false);
+          pagerSettling.value = false;
+          runOnJS(handlePagerSettled)(target);
+        }
+      });
+    },
+  });
 
   const getPagerItemLayout = React.useCallback(
     (_: ArrayLike<VerseTarget> | null | undefined, index: number) => ({
@@ -1707,7 +1756,7 @@ export default function TafsirScreen(): React.JSX.Element {
           viewportHeight={viewportHeight}
           insets={insets}
           pageSignature={pageSignature}
-          pageStateByKey={pageStateByKey}
+          storedPageState={pageStateByKey[getVerseKey(item)]}
           chapters={chapters}
           currentSurahId={currentSurahId}
           showTranslationAttribution={showTranslationAttribution}
@@ -1861,22 +1910,22 @@ export default function TafsirScreen(): React.JSX.Element {
           />
         </ReaderOverlayHeader>
 
-        <FlatList
+        <Reanimated.FlatList
           style={{ marginTop: insets.top, flex: 1 }}
           ref={pagerRef}
           data={pagerTargets}
           extraData={pagerExtraData}
           horizontal
-          pagingEnabled
+          // Release settling is animated above; native flings must not compete with it.
+          decelerationRate={0}
           bounces={false}
           directionalLockEnabled
           showsHorizontalScrollIndicator={false}
           keyExtractor={getVerseKey}
           renderItem={renderPagerItem}
           getItemLayout={getPagerItemLayout}
-          onMomentumScrollEnd={handlePagerScrollEnd}
+          onScroll={handlePagerScroll}
           onScrollToIndexFailed={handleScrollToIndexFailed}
-          onScrollBeginDrag={readerHeader.resetHeader}
           initialScrollIndex={currentTargetIndex >= 0 ? currentTargetIndex : undefined}
           initialNumToRender={3}
           maxToRenderPerBatch={3}
