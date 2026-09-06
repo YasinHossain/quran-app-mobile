@@ -1,6 +1,7 @@
 import React from 'react';
 
 import { getWordLanguageName, normalizeWordLanguageCode } from '@/lib/i18n/wordLanguages';
+import { useDownloadIndexItems } from '@/hooks/useDownloadIndexItems';
 import { useSettings } from '@/providers/SettingsContext';
 import type { WordAnalysis } from '@/src/core/domain/word-study';
 import { container } from '@/src/core/infrastructure/di/container';
@@ -27,8 +28,13 @@ export function useContextualMeaning(
   const { settings, isHydrated } = useSettings();
   const selectedLanguageCode = normalizeWordLanguageCode(settings.wordLang);
   const verseKey = analysis?.location.verseKey;
+  const { itemsByKey } = useDownloadIndexItems({
+    enabled: Boolean(verseKey) && isHydrated && selectedLanguageCode !== 'en',
+  });
+  const download = itemsByKey.get(`word-translation:${selectedLanguageCode}`);
+  const resourceRevision = `${download?.status ?? 'unknown'}:${download?.updatedAt ?? 0}`;
   const requestKey = verseKey
-    ? `${verseKey}:${selectedLanguageCode}`
+    ? `${verseKey}:${selectedLanguageCode}:${resourceRevision}`
     : '';
   const [resolved, setResolved] = React.useState<ResolvedState | null>(null);
 

@@ -772,7 +772,7 @@ function MorphologySection({ analysis, contextualMeaning, palette, onSelectOccur
   const segments = analysis.morphemes.status === 'available' ? analysis.morphemes.value : [];
   const segmentGroups = groupMorphologySegments(segments);
   const { fontScale, width } = useWindowDimensions();
-  const useSingleColumn = width < 340 || fontScale > 1.35;
+  const useSingleColumnDetails = width < 340 || fontScale > 1.35;
   return (
     <View style={styles.section}>
       <View style={[styles.morphologySummary, { backgroundColor: palette.surfaceNavigation }]}>
@@ -786,14 +786,13 @@ function MorphologySection({ analysis, contextualMeaning, palette, onSelectOccur
         </View>
         <WordSegmentsLegend analysis={analysis} layout="wrapped" />
       </View>
-      <View style={[styles.lexicalFactsRow, useSingleColumn && styles.lexicalFactsColumn]}>
+      <View style={styles.lexicalFactsRow}>
         <CompactStudyFact
           label="Lemma"
           value={getLemmaText(analysis)}
           available={analysis.lemma.status === 'available'}
           onPress={analysis.lemma.status === 'available' ? () => onSelectOccurrenceScope('lemma') : undefined}
           palette={palette}
-          fullWidth={useSingleColumn}
         />
         <CompactStudyFact
           label="Root"
@@ -801,7 +800,6 @@ function MorphologySection({ analysis, contextualMeaning, palette, onSelectOccur
           available={analysis.root.status === 'available'}
           onPress={analysis.root.status === 'available' ? () => onSelectOccurrenceScope('root') : undefined}
           palette={palette}
-          fullWidth={useSingleColumn}
         />
       </View>
       <SectionHeading
@@ -813,7 +811,7 @@ function MorphologySection({ analysis, contextualMeaning, palette, onSelectOccur
           key={`${group.segments[0]?.locationKey}:${group.segments[0]?.segmentIndex}-${group.segments[group.segments.length - 1]?.segmentIndex}`}
           segments={group.segments}
           palette={palette}
-          singleColumnFacts={useSingleColumn}
+          singleColumnFacts={useSingleColumnDetails}
         />
       )) : (
         <NoticeCard message={analysis.morphemes.status === 'available' ? 'No segments are recorded for this word.' : describeMissingReason(analysis.morphemes.reason)} palette={palette} />
@@ -830,23 +828,30 @@ function ContextualMeaningBlock({ state, palette }: {
     <View style={styles.glossBlock} accessibilityLiveRegion="polite">
       <Text accessibilityRole="header" style={[styles.eyebrow, { color: palette.muted }]}>Meaning in this ayah</Text>
       {state.status === 'ready' ? (
-        <Text
-          accessibilityLabel={[
-            `Meaning in this ayah: ${state.presentation.text}.`,
-            state.presentation.sourceLabel,
-            state.presentation.fallbackMessage,
-          ].filter(Boolean).join(' ')}
-          style={[
-            styles.gloss,
-            {
-              color: palette.text,
-              writingDirection: state.presentation.direction,
-              textAlign: state.presentation.direction === 'rtl' ? 'right' : 'left',
-            },
-          ]}
-        >
-          {state.presentation.text}
-        </Text>
+        <>
+          <Text
+            accessibilityLabel={[
+              `Meaning in this ayah: ${state.presentation.text}.`,
+              state.presentation.sourceLabel,
+              state.presentation.fallbackMessage,
+            ].filter(Boolean).join(' ')}
+            style={[
+              styles.gloss,
+              {
+                color: palette.text,
+                writingDirection: state.presentation.direction,
+                textAlign: state.presentation.direction === 'rtl' ? 'right' : 'left',
+              },
+            ]}
+          >
+            {state.presentation.text}
+          </Text>
+          {state.presentation.fallbackMessage ? (
+            <Text style={[styles.explanation, { color: palette.muted }]}>
+              {state.presentation.fallbackMessage}
+            </Text>
+          ) : null}
+        </>
       ) : (
         <View style={styles.meaningLoading}>
           <ActivityIndicator color={palette.tint} size="small" />
@@ -1197,12 +1202,11 @@ function MorphologyFact({ detail, palette, fullWidth }: {
   );
 }
 
-function CompactStudyFact({ label, value, available, palette, fullWidth, onPress }: {
+function CompactStudyFact({ label, value, available, palette, onPress }: {
   label: string;
   value: string;
   available: boolean;
   palette: Palette;
-  fullWidth: boolean;
   onPress?: () => void;
 }): React.JSX.Element {
   const content = (
@@ -1221,7 +1225,6 @@ function CompactStudyFact({ label, value, available, palette, fullWidth, onPress
   );
   const style = [
     styles.lexicalFact,
-    fullWidth && styles.factTileFullWidth,
     { backgroundColor: palette.surfaceNavigation, borderColor: palette.border },
   ];
   return onPress ? (
@@ -1328,7 +1331,6 @@ const styles = StyleSheet.create({
   meaningLoading: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 9 },
   explanation: { fontSize: 13, lineHeight: 20 },
   lexicalFactsRow: { width: '100%', flexDirection: 'row', gap: 10 },
-  lexicalFactsColumn: { flexDirection: 'column' },
   lexicalFact: { flex: 1, minWidth: 0, minHeight: 98, overflow: 'hidden', borderWidth: StyleSheet.hairlineWidth, borderRadius: 18, paddingHorizontal: 14, paddingVertical: 12, alignItems: 'center', justifyContent: 'center', gap: 5 },
   factTileFullWidth: { flex: 0, width: '100%' },
   factLabel: { fontSize: 12, lineHeight: 18, fontWeight: '700', textAlign: 'center' },

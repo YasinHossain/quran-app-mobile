@@ -123,11 +123,17 @@ export interface WordAnalysis {
 
 export type WordOccurrenceScope = 'surface' | 'lemma' | 'root';
 
+export interface WordOccurrenceContextWord {
+  readonly wordPosition: number;
+  readonly surfaceUthmani: string;
+}
+
 export interface WordOccurrence {
   readonly location: WordStudyLocation;
   readonly surfaceUthmani: string;
   readonly normalizedSurface: string;
   readonly ayahContextUthmani: string;
+  readonly ayahContextWords?: readonly WordOccurrenceContextWord[];
   readonly contextualGlosses: readonly WordGloss[];
   readonly sourceReferences: readonly WordStudySourceReference[];
 }

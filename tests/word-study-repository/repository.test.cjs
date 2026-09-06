@@ -190,6 +190,27 @@ test('surface pagination keeps normalized duplicates exact and includes concise 
   assert.equal(final.pageInfo.hasNextPage, false);
 });
 
+test('occurrences preserve canonical word boundaries around Quran pause marks', async (context) => {
+  const provider = new NodeWordStudyDatabaseProvider();
+  context.after(() => provider.closeAsync());
+  const repository = new SQLiteWordStudyRepository(provider);
+
+  const analysis = await repository.findByLocation('2:119:7');
+  assert.equal(analysis.lemma.status, 'available');
+  if (analysis.lemma.status !== 'available') return;
+  const page = await repository.findOccurrences({
+    scope: 'lemma',
+    lemmaId: analysis.lemma.value.id,
+    limit: 100,
+  });
+  const occurrence = page.items.find((item) => item.location.locationKey === '2:119:7');
+
+  assert.ok(occurrence);
+  assert.equal(occurrence.ayahContextWords.length, 10);
+  assert.equal(occurrence.ayahContextWords[4].surfaceUthmani, 'وَنَذِيرًۭا ۖ');
+  assert.equal(occurrence.ayahContextWords[6].surfaceUthmani, occurrence.surfaceUthmani);
+});
+
 test('a 500+ root returns fixed-size first and final pages', async (context) => {
   const provider = new NodeWordStudyDatabaseProvider();
   context.after(() => provider.closeAsync());

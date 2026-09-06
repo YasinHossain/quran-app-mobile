@@ -26,6 +26,7 @@ import Colors from '@/constants/Colors';
 import { useAppTheme } from '@/providers/ThemeContext';
 import type { WordAnalysis } from '@/src/core/domain/word-study';
 import { resolveQuranTextFontFamily } from '@/src/core/infrastructure/fonts/resolveQuranTextFont';
+import { useContextualMeaning } from './full-study/useContextualMeaning';
 import { CoreStudyPackDownloadPanel } from './full-study/CoreStudyPackDownloadPanel';
 
 import type { WordStudyPressEvent } from './WordStudyPressEvent';
@@ -33,7 +34,6 @@ import { SegmentedWord, WordSegmentsLegend } from './WordSegmentsCard';
 import {
   describeMissingReason,
   getCompactFieldPresentation,
-  getPrimaryGloss,
   type WordQuickSheetLoadState,
 } from './wordQuickSheetModel';
 
@@ -231,6 +231,7 @@ function AnalysisContent({
   analysis: WordAnalysis;
   palette: Palette;
 }): React.JSX.Element {
+  const meaning = useContextualMeaning(analysis);
   const lemma = getCompactFieldPresentation(
     analysis.lemma,
     (value: { arabic: string }) => value.arabic
@@ -246,9 +247,25 @@ function AnalysisContent({
         <View style={styles.summaryTopRow}>
           <View style={styles.summaryMeaningColumn}>
             <View style={styles.glossBlock}>
-              <Text style={[styles.gloss, { color: palette.text }]}>
-                {getPrimaryGloss(analysis)}
-              </Text>
+              {meaning.status === 'ready' ? (
+                <>
+                  <Text
+                    accessibilityLabel={`${meaning.presentation.text}. ${meaning.presentation.sourceLabel}`}
+                    style={[styles.gloss, {
+                      color: palette.text,
+                      writingDirection: meaning.presentation.direction,
+                      textAlign: meaning.presentation.direction === 'rtl' ? 'right' : 'left',
+                    }]}
+                  >
+                    {meaning.presentation.text}
+                  </Text>
+                  {meaning.presentation.fallbackMessage ? (
+                    <Text style={{ color: palette.muted }}>{meaning.presentation.fallbackMessage}</Text>
+                  ) : null}
+                </>
+              ) : (
+                <ActivityIndicator accessibilityLabel="Loading word meaning" color={palette.tint} />
+              )}
             </View>
           </View>
           <View style={styles.summaryArabicColumn}>

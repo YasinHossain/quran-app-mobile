@@ -491,6 +491,37 @@ test('occurrence ayah context gives every RTL word its own style run and trailin
   assert.deepEqual(runs[10], { text: 'وَٱلْإِنجِيلَ', highlighted: false });
 });
 
+test('occurrence ayah context uses canonical positions when Quran marks contain spaces', () => {
+  const occurrence = {
+    ...WORD_STUDY_CONTRACT_OCCURRENCE_PAGE.items[0]!,
+    location: toWordStudyLocation('2:119:7'),
+    surfaceUthmani: 'تُسْـَٔلُ',
+    ayahContextUthmani:
+      'إِنَّآ أَرْسَلْنَـٰكَ بِٱلْحَقِّ بَشِيرًۭا وَنَذِيرًۭا ۖ وَلَا تُسْـَٔلُ عَنْ أَصْحَـٰبِ ٱلْجَحِيمِ',
+    ayahContextWords: [
+      'إِنَّآ',
+      'أَرْسَلْنَـٰكَ',
+      'بِٱلْحَقِّ',
+      'بَشِيرًۭا',
+      'وَنَذِيرًۭا ۖ',
+      'وَلَا',
+      'تُسْـَٔلُ',
+      'عَنْ',
+      'أَصْحَـٰبِ',
+      'ٱلْجَحِيمِ',
+    ].map((surfaceUthmani, index) => ({ wordPosition: index + 1, surfaceUthmani })),
+  };
+
+  const runs = getOccurrenceAyahContextRuns(occurrence);
+  if (!runs) throw new Error('Expected occurrence context runs');
+  assert.equal(runs.length, 10);
+  assert.deepEqual(runs.filter((run) => run.highlighted), [
+    { text: 'تُسْـَٔلُ ', highlighted: true },
+  ]);
+  assert.deepEqual(runs[4], { text: 'وَنَذِيرًۭا ۖ ', highlighted: false });
+  assert.deepEqual(runs[5], { text: 'وَلَا ', highlighted: false });
+});
+
 test('root-family forms pin the selected lemma and drill into its occurrence query', () => {
   assert.equal(verb.lemma.status, 'available');
   if (verb.lemma.status !== 'available') return;

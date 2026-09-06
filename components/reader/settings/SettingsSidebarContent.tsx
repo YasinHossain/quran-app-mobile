@@ -317,7 +317,7 @@ export function SettingsSidebarContent({
     settings.showByWords,
     setShowByWords
   );
-  const [displayWordLang, updateWordLang] = useResponsiveSetting(settings.wordLang, setWordLang);
+  const displayWordLang = settings.wordLang;
   const [displayTajweed, setDisplayTajweed] = React.useState(settings.tajweed);
 
   React.useEffect(() => {
@@ -368,6 +368,8 @@ export function SettingsSidebarContent({
   }, [navProgress]);
 
   const [busyWordLangCodes, setBusyWordLangCodes] = React.useState<Set<string>>(() => new Set());
+  const requestedWordLanguageRef = React.useRef<string | null>(null);
+  const activeWordDownloadsRef = React.useRef(new Set<string>());
   const [wordDownloadTarget, setWordDownloadTarget] = React.useState<WordLanguageItem | null>(null);
   const [wordDeleteTarget, setWordDeleteTarget] = React.useState<WordLanguageItem | null>(null);
   const [wordDownloadSizeBytesByCode, setWordDownloadSizeBytesByCode] = React.useState<
@@ -390,7 +392,8 @@ export function SettingsSidebarContent({
   const { label: downloadedResourceSizeLabel } = useDownloadedResourceSize(items);
 
   const downloadWordLanguage = React.useCallback(async (code: string) => {
-    if (busyWordLangCodes.has(code)) return;
+    if (activeWordDownloadsRef.current.has(code)) return;
+    activeWordDownloadsRef.current.add(code);
     setBusyWordLangCodes((prev) => {
       const next = new Set(prev);
       next.add(code);
@@ -405,11 +408,18 @@ export function SettingsSidebarContent({
       );
       await useCase.execute(code);
       clearOfflineSurahPageCache();
-      updateWordLang(code);
+      // Cancellation resolves normally; only a completed installation may select a language.
+      const installed = await container.getDownloadIndexRepository().get({
+        kind: 'word-translation', languageCode: code,
+      });
+      if (installed?.status === 'installed' && requestedWordLanguageRef.current === code) {
+        setWordLang(code);
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       Alert.alert('Download failed', message);
     } finally {
+      activeWordDownloadsRef.current.delete(code);
       setBusyWordLangCodes((prev) => {
         const next = new Set(prev);
         next.delete(code);
@@ -417,7 +427,7 @@ export function SettingsSidebarContent({
       });
       refreshIndex();
     }
-  }, [busyWordLangCodes, refreshIndex, updateWordLang]);
+  }, [refreshIndex, setWordLang]);
 
   const deleteWordLanguage = React.useCallback(async (code: string) => {
     if (busyWordLangCodes.has(code)) return;
@@ -451,7 +461,10 @@ export function SettingsSidebarContent({
     (code: string) => {
       if (busyWordLangCodes.has(code)) return;
       const target = WORD_LANGUAGE_ITEMS.find((item) => item.code === code);
-      if (target) setWordDownloadTarget(target);
+      if (target) {
+        requestedWordLanguageRef.current = code;
+        setWordDownloadTarget(target);
+      }
     },
     [busyWordLangCodes]
   );
@@ -696,10 +709,21 @@ export function SettingsSidebarContent({
   const handleSelectWordLanguage = React.useCallback(
     (id: number) => {
       const selected = WORD_LANGUAGE_ITEMS.find((item) => item.id === id);
-      if (!selected) return;
-      updateWordLang(selected.code);
+      if (!selected || isDownloadIndexLoading) return;
+      requestedWordLanguageRef.current = selected.code;
+      const download = itemsByKey.get(getDownloadKey({
+        kind: 'word-translation', languageCode: selected.code,
+      }));
+      if (busyWordLangCodes.has(selected.code) ||
+          download?.status === 'queued' || download?.status === 'downloading' ||
+          download?.status === 'deleting') return;
+      if (download?.status === 'installed') {
+        setWordLang(selected.code);
+      } else {
+        setWordDownloadTarget(selected);
+      }
     },
-    [updateWordLang]
+    [busyWordLangCodes, isDownloadIndexLoading, itemsByKey, setWordLang]
   );
   const handleSelectArabicFont = React.useCallback(
     (id: number) => {
@@ -1129,6 +1153,11 @@ export function SettingsSidebarContent({
 
         {panel.type === 'word-language' ? (
           <FlatList
+            ListHeaderComponent={
+              <Text className="px-4 pb-3 text-sm text-muted dark:text-muted-dark">
+                Select a language for word-by-word translations and word study meanings. Download it once to use it offline. Arabic stays the same.
+              </Text>
+            }
             data={WORD_LANGUAGE_ITEMS}
             keyExtractor={(item) => item.code}
             contentContainerStyle={{ paddingVertical: 12, paddingBottom: 20 }}
@@ -1626,8 +1655,8 @@ export function SettingsSidebarContent({
         resourceName={wordDownloadTarget?.name ?? null}
         detailLabel={wordDownloadSizeLabel}
         isDetailLoading={isLoadingWordDownloadSize}
-        description="This downloads the word-by-word translation for offline reading."
-        confirmLabel="Download"
+        description="Download this language once for word-by-word reading and word study meanings. It will be selected when the download finishes. Arabic stays the same."
+        confirmLabel="Download and use"
         mutedColor={palette.muted}
         tintColor={palette.tint}
         onConfirm={handleConfirmDownloadWordLanguage}

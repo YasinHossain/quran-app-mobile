@@ -59,3 +59,9 @@ Word Study runs from the local SQLite pack. The app has no approved analytics pa
 - Dictionary definitions, verb paradigms, dependency graphs, saved words, lessons, quizzes, and AI study explanations remain excluded.
 - Word audio remains a runtime action and is not part of the downloaded offline Word Study pack.
 - Grammar prose is source-provided and stored separately; the app does not infer or generate canonical grammar prose.
+
+## Word meaning languages
+
+The reader's **Word-by-word language** setting also controls contextual meanings in the quick word-study sheet and full word study. Selecting a language without an installed pack opens a **Download and use** prompt with its download size. The current language remains active during download; successful installation selects the requested language unless the user has since chosen another one. Cancelled or failed downloads do not change the selection. Installed languages switch immediately and work offline.
+
+Arabic text, morphology, and source dictionary entries retain their original content. Bangla and the other supported word languages use the existing word-translation packs, matched by ayah and word position. A missing or unreadable word meaning shows bundled English with a visible fallback notice. Open word-study views refresh their meanings when the selected pack is installed or removed.

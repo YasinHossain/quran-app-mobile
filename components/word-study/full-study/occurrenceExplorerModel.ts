@@ -140,13 +140,24 @@ export type OccurrenceAyahContextRun = {
 export function getOccurrenceAyahContextRuns(
   occurrence: WordOccurrence
 ): readonly OccurrenceAyahContextRun[] | null {
-  const words = occurrence.ayahContextUthmani.trim().split(/\s+/).filter(Boolean);
-  const highlightedIndex = occurrence.location.wordPosition - 1;
-  if (highlightedIndex < 0 || highlightedIndex >= words.length) return null;
+  const contextWords = occurrence.ayahContextWords?.length
+    ? occurrence.ayahContextWords
+    : occurrence.ayahContextUthmani
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean)
+        .map((surfaceUthmani, index) => ({
+          wordPosition: index + 1,
+          surfaceUthmani,
+        }));
+  if (!contextWords.some((word) => word.wordPosition === occurrence.location.wordPosition)) {
+    return null;
+  }
 
-  return words.map((word, index) => ({
-    text: index < words.length - 1 ? `${word} ` : word,
-    highlighted: index === highlightedIndex,
+  return contextWords.map((word, index) => ({
+    text:
+      index < contextWords.length - 1 ? `${word.surfaceUthmani} ` : word.surfaceUthmani,
+    highlighted: word.wordPosition === occurrence.location.wordPosition,
   }));
 }
 

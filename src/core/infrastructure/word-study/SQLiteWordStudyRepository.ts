@@ -11,6 +11,7 @@ import {
   type WordAnalysis,
   type WordGloss,
   type WordOccurrence,
+  type WordOccurrenceContextWord,
   type WordOccurrenceQuery,
   type WordStudyLookupResult,
   type WordStudySourceLayer,
@@ -353,21 +354,26 @@ export class SQLiteWordStudyRepository implements IWordStudyRepository {
       current.push(gloss);
       glossesByWordId.set(gloss.word_id, current);
     }
-    const contextByVerse = new Map<string, string[]>();
+    const contextByVerse = new Map<string, WordOccurrenceContextWord[]>();
     for (const verseWord of verseSurfaceRows) {
       const key = verseKey(verseWord);
       const current = contextByVerse.get(key) ?? [];
-      current.push(verseWord.surface_uthmani);
+      current.push({
+        wordPosition: verseWord.word_position,
+        surfaceUthmani: verseWord.surface_uthmani,
+      });
       contextByVerse.set(key, current);
     }
 
     const items: WordOccurrence[] = rows.map((row) => {
       const rowGlosses = glossesByWordId.get(row.id) ?? [];
+      const contextWords = contextByVerse.get(verseKey(row)) ?? [];
       return {
         location: parseWordStudyLocation(locationKey(row)),
         surfaceUthmani: row.surface_uthmani,
         normalizedSurface: row.normalized_surface,
-        ayahContextUthmani: (contextByVerse.get(verseKey(row)) ?? []).join(' '),
+        ayahContextUthmani: contextWords.map((word) => word.surfaceUthmani).join(' '),
+        ayahContextWords: contextWords,
         contextualGlosses: rowGlosses.map((gloss) => mapGloss(gloss, sources['contextual-gloss'])),
         sourceReferences: uniqueSources([
           source(sources.surface, 'surface'),

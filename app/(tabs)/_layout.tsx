@@ -1,8 +1,8 @@
 import React from 'react';
 import { Bookmark, Home, Calendar, Search } from 'lucide-react-native';
 import { Tabs } from 'expo-router';
-import { Easing, View, type LayoutChangeEvent } from 'react-native';
-import { BottomTabBar, type BottomTabBarProps } from "expo-router/js-tabs";
+import { Easing, Platform, View, type LayoutChangeEvent } from 'react-native';
+import { BottomTabBar, type BottomTabBarProps } from 'expo-router/js-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import Colors from '@/constants/Colors';
@@ -10,6 +10,18 @@ import { useClientOnlyValue } from '@/components/useClientOnlyValue';
 import { useLayoutMetrics } from '@/providers/LayoutMetricsContext';
 import { useAppTheme } from '@/providers/ThemeContext';
 import { useUiTranslation } from '@/providers/UiLanguageContext';
+
+const MIN_TAB_BAR_BOTTOM_PADDING = 12;
+const MAX_ANDROID_TAB_BAR_BOTTOM_PADDING = 48;
+
+function getTabBarBottomPadding(bottomInset: number): number {
+  const safeBottomInset =
+    Platform.OS === 'android'
+      ? Math.min(bottomInset, MAX_ANDROID_TAB_BAR_BOTTOM_PADDING)
+      : bottomInset;
+
+  return Math.max(safeBottomInset, MIN_TAB_BAR_BOTTOM_PADDING);
+}
 
 function TabBarIcon({
   Icon,
@@ -27,18 +39,17 @@ function TabBarIcon({
   );
 }
 
-function ReportingTabBar(props: any): React.JSX.Element {
+function ReportingTabBar(props: BottomTabBarProps): React.JSX.Element {
   const { setBottomTabBarHeight } = useLayoutMetrics();
-  const insets = useSafeAreaInsets();
-  const bottomPadding = Math.max(insets.bottom, 12);
-  const height = 54 + bottomPadding;
-
-  React.useEffect(() => {
-    setBottomTabBarHeight(height);
-  }, [height, setBottomTabBarHeight]);
+  const handleLayout = React.useCallback(
+    (event: LayoutChangeEvent) => {
+      setBottomTabBarHeight(event.nativeEvent.layout.height);
+    },
+    [setBottomTabBarHeight]
+  );
 
   return (
-    <View style={{ height }}>
+    <View onLayout={handleLayout}>
       <BottomTabBar {...props} />
     </View>
   );
@@ -49,7 +60,7 @@ export default function TabLayout() {
   const { t } = useUiTranslation();
   const palette = Colors[resolvedTheme];
   const insets = useSafeAreaInsets();
-  const bottomPadding = Math.max(insets.bottom, 12);
+  const bottomPadding = getTabBarBottomPadding(insets.bottom);
 
   return (
     <View style={{ flex: 1, backgroundColor: palette.background }}>
