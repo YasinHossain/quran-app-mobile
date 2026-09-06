@@ -292,8 +292,10 @@ export default function WordStudyScreen(): React.JSX.Element {
     : offlineContextWords.length
       ? offlineContextWords
       : immediateContextWords;
+  const selectedWordPosition = optimisticWordPosition ?? location?.wordPosition ?? 0;
+  const contentWordPosition = React.useDeferredValue(selectedWordPosition);
   const selectedFromLoadedVerse = location
-    ? words.find((word) => word.location.wordPosition === location.wordPosition)
+    ? words.find((word) => word.location.wordPosition === contentWordPosition)
     : undefined;
   const handedOffAnalysis = navigationHandoff?.selectedAnalysis;
   const selectedFromHandoff =
@@ -301,9 +303,8 @@ export default function WordStudyScreen(): React.JSX.Element {
       ? handedOffAnalysis
       : undefined;
   const selected = selectedFromLoadedVerse ?? selectedFromHandoff;
-  const selectedWordPosition = optimisticWordPosition ?? location?.wordPosition ?? 0;
   const selectedContextWord = contextWords.find(
-    (word) => word.location.wordPosition === selectedWordPosition
+    (word) => word.location.wordPosition === contentWordPosition
   );
   const grammarSelectedWord: GrammarSelectedWord | undefined =
     selected ?? selectedContextWord;
@@ -381,8 +382,13 @@ export default function WordStudyScreen(): React.JSX.Element {
     setIsDictionaryGuideOpen(false);
   }, []);
   const handleGrammarInstalled = React.useCallback(() => {
+    if (location) {
+      grammarCacheRef.current.delete(location.verseKey);
+      activeGrammarVerseKeyRef.current = location.verseKey;
+    }
+    setGrammarLoadState({ status: 'loading' });
     setGrammarRetryNonce((value) => value + 1);
-  }, []);
+  }, [location?.verseKey]);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -521,7 +527,7 @@ export default function WordStudyScreen(): React.JSX.Element {
               isDictionaryGuideOpen={isDictionaryGuideOpen}
               onCloseDictionaryGuide={() => setIsDictionaryGuideOpen(false)}
               onEssentialsInstalled={() => setRetryNonce((value) => value + 1)}
-              onGrammarInstalled={() => setGrammarRetryNonce((value) => value + 1)}
+              onGrammarInstalled={handleGrammarInstalled}
             />
           ) : !selected ? (
             <InlineAnalysisState
@@ -743,10 +749,19 @@ function PersistentTabPanel({
       pointerEvents={active ? 'auto' : 'none'}
       style={!active ? styles.hiddenTab : undefined}
     >
-      {children}
+      <RetainedTabContent active={active}>{children}</RetainedTabContent>
     </View>
   );
 }
+
+// Deliver deactivation once so effects cancel their work, then retain the hidden
+// tree until it becomes visible again. Local tab state survives tab switches.
+const RetainedTabContent = React.memo(
+  function RetainedTabContent({ children }: { active: boolean; children: React.ReactNode }) {
+    return <>{children}</>;
+  },
+  (previous, next) => !previous.active && !next.active
+);
 
 function MorphologySection({ analysis, contextualMeaning, palette, onSelectOccurrenceScope }: {
   analysis: WordAnalysis;
@@ -758,11 +773,10 @@ function MorphologySection({ analysis, contextualMeaning, palette, onSelectOccur
   const segmentGroups = groupMorphologySegments(segments);
   const { fontScale, width } = useWindowDimensions();
   const useSingleColumn = width < 340 || fontScale > 1.35;
-  const stackSummary = width < 350 || fontScale > 1.25;
   return (
     <View style={styles.section}>
       <View style={[styles.morphologySummary, { backgroundColor: palette.surfaceNavigation }]}>
-        <View style={[styles.summaryTopRow, stackSummary && styles.summaryTopRowStacked]}>
+        <View style={styles.summaryTopRow}>
           <View style={styles.summaryMeaningColumn}>
             <ContextualMeaningBlock state={contextualMeaning} palette={palette} />
           </View>
@@ -836,7 +850,7 @@ function ContextualMeaningBlock({ state, palette }: {
       ) : (
         <View style={styles.meaningLoading}>
           <ActivityIndicator color={palette.tint} size="small" />
-          <Text style={[styles.explanation, { color: palette.muted }]}>Reading the installed {state.status === 'loading' ? state.languageName : 'word-language'} pack…</Text>
+          <Text style={[styles.explanation, { flex: 1, color: palette.muted }]}>Reading the installed {state.status === 'loading' ? state.languageName : 'word-language'} pack…</Text>
         </View>
       )}
     </View>
@@ -858,14 +872,12 @@ function GrammarSection({
 }): React.JSX.Element {
   const [showFullAyah, setShowFullAyah] = React.useState(false);
   const [expandedPassages, setExpandedPassages] = React.useState<ReadonlySet<number>>(new Set());
-  const previousLocationKeyRef = React.useRef(analysis.location.locationKey);
-
-  React.useEffect(() => {
-    if (previousLocationKeyRef.current === analysis.location.locationKey) return;
-    previousLocationKeyRef.current = analysis.location.locationKey;
+  const [selectionKey, setSelectionKey] = React.useState(analysis.location.locationKey);
+  if (selectionKey !== analysis.location.locationKey) {
+    setSelectionKey(analysis.location.locationKey);
     setShowFullAyah(false);
     setExpandedPassages(new Set());
-  }, [analysis.location.locationKey]);
+  }
 
   if (grammarLoadState.status === 'idle' || grammarLoadState.status === 'loading') {
     return (
@@ -1308,9 +1320,8 @@ const styles = StyleSheet.create({
   section: { gap: 16 },
   morphologySummary: { borderRadius: 20, padding: 16, gap: 16 },
   summaryTopRow: { direction: 'ltr', flexDirection: 'row', alignItems: 'center', gap: 14 },
-  summaryTopRowStacked: { flexDirection: 'column-reverse', alignItems: 'stretch' },
-  summaryMeaningColumn: { flex: 1, minWidth: 150 },
-  summaryArabicColumn: { minWidth: 120, alignItems: 'flex-end', justifyContent: 'center' },
+  summaryMeaningColumn: { flex: 1, minWidth: 0 },
+  summaryArabicColumn: { flex: 1, minWidth: 0, alignItems: 'flex-end', justifyContent: 'center' },
   glossBlock: { gap: 5, paddingHorizontal: 2 },
   eyebrow: { fontSize: 11, lineHeight: 16, fontWeight: '700', letterSpacing: 1 },
   gloss: { fontSize: 20, lineHeight: 29, fontWeight: '600' },

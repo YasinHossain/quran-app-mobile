@@ -102,11 +102,14 @@ export function GrammarPackDownloadPanel({
       installedPack?.packId === entry.packId &&
       installedPack.version === entry.version
   );
+
+  React.useEffect(() => {
+    if (entryIsInstalled) onInstalled();
+  }, [entryIsInstalled, onInstalled]);
+
   const displayStatus = itemIsActive
     ? item.status
-    : entryIsInstalled
-      ? 'installed'
-      : item?.status;
+    : item?.status;
 
   return (
     <View style={styles.section}>
@@ -129,6 +132,11 @@ export function GrammarPackDownloadPanel({
             <RefreshCw color={palette.tint} size={17} />
             <Text style={[styles.secondaryLabel, { color: palette.tint }]}>Retry</Text>
           </Pressable>
+        </View>
+      ) : entryIsInstalled || item?.status === 'installed' ? (
+        <View style={styles.statusRow} accessibilityLiveRegion="polite">
+          <ActivityIndicator color={palette.tint} size="small" />
+          <Text style={[styles.statusText, { color: palette.muted }]}>Opening Arabic grammar…</Text>
         </View>
       ) : !entry ? (
         <View style={[styles.card, { backgroundColor: palette.surfaceNavigation }]}>

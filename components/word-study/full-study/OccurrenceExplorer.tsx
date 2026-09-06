@@ -61,6 +61,7 @@ type RootFamilyState =
   | { status: 'error'; message: string };
 
 const MAX_EXPANDED_FAMILY_RESULTS_HEIGHT_FLOOR = 720;
+const MemoizedOccurrenceResult = React.memo(OccurrenceResult);
 
 function formatOccurrenceCount(count: number): string {
   return `${count.toLocaleString()} ${count === 1 ? 'occurrence' : 'occurrences'}`;
@@ -121,6 +122,10 @@ export function OccurrenceExplorer({
 
   React.useEffect(() => {
     setSelectionLocationKey(analysis.location.locationKey);
+    const cached = pageCacheRef.current.peek(JSON.stringify(buildOccurrenceQuery(analysis, 'surface')));
+    setPageState(cached
+      ? { status: 'ready', page: cached, refreshing: false }
+      : { status: 'loading' });
     setScope('surface');
     setCursor(undefined);
     setCursorHistory([]);
@@ -269,7 +274,7 @@ export function OccurrenceExplorer({
   ]);
 
   React.useEffect(() => {
-    if (!isActive || pageState.status !== 'ready') return;
+    if (!isActive || !selectionMatchesAnalysis || pageState.status !== 'ready' || pageState.refreshing) return;
     const controller = new AbortController();
     const timer = setTimeout(() => {
       const nearby = prefetchAnalyses
@@ -279,7 +284,7 @@ export function OccurrenceExplorer({
             Math.abs(left.location.wordPosition - analysis.location.wordPosition) -
             Math.abs(right.location.wordPosition - analysis.location.wordPosition)
         )
-        .slice(0, 4);
+        .slice(0, 2);
 
       void (async () => {
         for (const candidate of nearby) {
@@ -312,7 +317,7 @@ export function OccurrenceExplorer({
           await Promise.allSettled([pagePending, rootPending]);
         }
       })();
-    }, 80);
+    }, 300);
     return () => {
       clearTimeout(timer);
       controller.abort();
@@ -321,7 +326,8 @@ export function OccurrenceExplorer({
     analysis.location.locationKey,
     analysis.location.wordPosition,
     isActive,
-    pageState.status,
+    pageState,
+    selectionMatchesAnalysis,
     prefetchAnalyses,
   ]);
 
@@ -580,7 +586,7 @@ export function OccurrenceExplorer({
             ]}
           >
             {readyPage.items.map((occurrence) => (
-              <OccurrenceResult
+              <MemoizedOccurrenceResult
                 key={occurrence.location.locationKey}
                 occurrence={occurrence}
                 palette={palette}

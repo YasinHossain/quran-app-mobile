@@ -459,12 +459,12 @@ test('occurrence counters use brief surface, lemma, root, and root-family labels
 });
 
 test('occurrence queries remain fixed-size and reader navigation retains the exact word location', () => {
-  assert.equal(OCCURRENCE_PAGE_SIZE, 30);
+  assert.equal(OCCURRENCE_PAGE_SIZE, 10);
   assert.deepEqual(buildOccurrenceQuery(verb, 'surface'), {
     scope: 'surface',
     normalizedSurface: verb.normalizedSurface,
     locationKey: verb.location.locationKey,
-    limit: 30,
+    limit: 10,
   });
   assert.equal(buildOccurrenceQuery(verb, 'lemma', '30').cursor, '30');
   assert.equal(buildOccurrenceQuery(verb, 'root').rootId, 'root-nzl');
@@ -506,7 +506,7 @@ test('root-family forms pin the selected lemma and drill into its occurrence que
   assert.deepEqual(buildRootFamilyLemmaQuery(lessFrequentLemma, '30'), {
     scope: 'lemma',
     lemmaId: 'lemma-nzl-form-i',
-    limit: 30,
+    limit: 10,
     cursor: '30',
   });
 });
@@ -514,6 +514,10 @@ test('root-family forms pin the selected lemma and drill into its occurrence que
 test('full screen uses Morphology-first information architecture without repeated analysis', () => {
   const source = readFileSync(
     join(process.cwd(), 'app/study/word/[surah]/[ayah]/[position].tsx'),
+    'utf8'
+  );
+  const grammarDownloadPanel = readFileSync(
+    join(process.cwd(), 'components/word-study/full-study/GrammarPackDownloadPanel.tsx'),
     'utf8'
   );
   assert.match(source, /<AyahContextSelector/);
@@ -542,6 +546,12 @@ test('full screen uses Morphology-first information architecture without repeate
   assert.doesNotMatch(source, /<VerbReferenceSection/);
   assert.match(source, /<GrammarPackDownloadPanel/);
   assert.match(source, /tab !== 'grammar'/);
+  assert.match(source, /grammarCacheRef\.current\.delete\(location\.verseKey\)/);
+  assert.match(source, /setGrammarLoadState\(\{ status: 'loading' \}\)/);
+  assert.match(source, /onGrammarInstalled=\{handleGrammarInstalled\}/);
+  assert.match(grammarDownloadPanel, /if \(entryIsInstalled\) onInstalled\(\)/);
+  assert.match(grammarDownloadPanel, /Opening Arabic grammar…/);
+  assert.doesNotMatch(grammarDownloadPanel, /\? 'installed'/);
   assert.match(source, /onRequestScrollToFilters=\{handleScrollToOccurrenceFilters\}/);
   assert.match(source, /occurrenceSectionYRef\.current \+ offsetY/);
   assert.match(
@@ -936,7 +946,7 @@ test('occurrence explorer cancels stale queries, keeps page size bounded, and av
   );
   assert.match(source, /new AbortController\(\)/);
   assert.match(source, /new LruCache<string, PaginatedWordOccurrences>\(24\)/);
-  assert.match(source, /\.slice\(0, 4\)/);
+  assert.match(source, /\.slice\(0, 2\)/);
   assert.match(source, /requestId !== requestIdRef\.current/);
   assert.match(source, /controller\.abort\(\)/);
   assert.match(source, /counter\.label/);

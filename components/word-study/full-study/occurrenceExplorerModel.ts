@@ -6,7 +6,9 @@ import type {
   WordOccurrenceScope,
 } from '../../../src/core/domain/word-study';
 
-export const OCCURRENCE_PAGE_SIZE = 30;
+// Each result lays out a full Arabic ayah. Keep native text layout bounded
+// on budget devices; the existing pager exposes every remaining occurrence.
+export const OCCURRENCE_PAGE_SIZE = 10;
 
 export type OccurrenceCounter = {
   key: 'surface' | 'lemma' | 'root' | 'root-lemma-family';

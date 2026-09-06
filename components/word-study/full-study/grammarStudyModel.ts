@@ -51,19 +51,42 @@ export function areGrammarArabicWordsEquivalent(left: string, right: string): bo
   return alignedLeft.length >= 2 && alignedLeft === alignedRight;
 }
 
+type PreparedVerse = {
+  exactWords: readonly string[];
+  alignedWords: readonly string[];
+  passageRanges: WeakMap<GrammarPassage, readonly WordPositionRange[]>;
+};
+
+// Verse arrays and source passages are immutable. Weak keys let their prepared
+// Arabic text disappear with the screen rather than retaining a Quran-wide cache.
+const preparedVerses = new WeakMap<readonly GrammarVerseWord[], PreparedVerse>();
+
+function prepareVerse(words: readonly GrammarVerseWord[]): PreparedVerse {
+  let prepared = preparedVerses.get(words);
+  if (!prepared) {
+    const exactWords = words.map((word) => normalizeGrammarArabic(word.surfaceUthmani));
+    prepared = {
+      exactWords,
+      alignedWords: exactWords.map((word) => word.replace(/[اء]/gu, '')),
+      passageRanges: new WeakMap(),
+    };
+    preparedVerses.set(words, prepared);
+  }
+  return prepared;
+}
+
 function findPhraseRanges(
-  headingArabic: string,
+  target: string,
   verseWords: readonly GrammarVerseWord[],
-  normalize: (value: string) => string
+  normalizedWords: readonly string[]
 ): readonly WordPositionRange[] {
-  const target = normalize(headingArabic);
   if (!target) return [];
 
   const ranges: WordPositionRange[] = [];
   for (let startIndex = 0; startIndex < verseWords.length; startIndex += 1) {
     let candidate = '';
     for (let endIndex = startIndex; endIndex < verseWords.length; endIndex += 1) {
-      candidate += normalize(verseWords[endIndex].surfaceUthmani);
+      candidate += normalizedWords[endIndex];
       if (candidate === target) {
         ranges.push({
           start: verseWords[startIndex].location.wordPosition,
@@ -91,19 +114,17 @@ function passageCoversSelectedWord(
       && selectedPosition <= passage.endWordPosition;
   }
 
-  const exactRanges = findPhraseRanges(
-    passage.headingArabic,
-    verseWords,
-    normalizeGrammarArabic
-  );
-  if (exactRanges.length) return rangeContains(exactRanges, selectedPosition);
-
-  const orthographicRanges = findPhraseRanges(
-    passage.headingArabic,
-    verseWords,
-    normalizeGrammarArabicForAlignment
-  );
-  if (orthographicRanges.length) return rangeContains(orthographicRanges, selectedPosition);
+  const prepared = prepareVerse(verseWords);
+  let ranges = prepared.passageRanges.get(passage);
+  if (!ranges) {
+    const target = normalizeGrammarArabic(passage.headingArabic);
+    const exactRanges = findPhraseRanges(target, verseWords, prepared.exactWords);
+    ranges = exactRanges.length
+      ? exactRanges
+      : findPhraseRanges(target.replace(/[اء]/gu, ''), verseWords, prepared.alignedWords);
+    prepared.passageRanges.set(passage, ranges);
+  }
+  if (ranges.length) return rangeContains(ranges, selectedPosition);
 
   return passage.headingArabic
     .split(/[^\p{Script=Arabic}\p{M}\u0640]+/gu)

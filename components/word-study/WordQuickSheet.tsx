@@ -19,7 +19,7 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useModalTransition, verticalSheetTransform } from '@/components/motion/modalTransition';
 import Colors from '@/constants/Colors';
@@ -67,7 +67,9 @@ export function WordQuickSheet({
   const { resolvedTheme } = useAppTheme();
   const palette = Colors[resolvedTheme];
   const { height: windowHeight } = useWindowDimensions();
-  const sheetHeight = Math.max(280, Math.min(windowHeight - 12, 510));
+  const insets = useSafeAreaInsets();
+  // Keep a stable drawer while data loads, without exceeding short/landscape screens.
+  const sheetHeight = Math.max(0, Math.min(510, windowHeight * 0.85, windowHeight - insets.top - 12));
   const pendingActionRef = React.useRef<(() => void) | null>(null);
   const { visible, progress, dismissEnabledRef, onModalShow } = useModalTransition(isOpen, {
     openDuration: 220,
@@ -146,8 +148,12 @@ export function WordQuickSheet({
             </View>
 
             <ScrollView
+              key={locationLabel}
+              style={styles.scrollBody}
               contentContainerStyle={styles.scrollContent}
-              showsVerticalScrollIndicator={false}
+              showsVerticalScrollIndicator
+              bounces={false}
+              overScrollMode="never"
             >
               {loadState.status === 'loading' ? (
                 <WordQuickSheetSkeleton palette={palette} optimisticSurface={event?.surfaceText} />
@@ -225,9 +231,6 @@ function AnalysisContent({
   analysis: WordAnalysis;
   palette: Palette;
 }): React.JSX.Element {
-  const { width, fontScale } = useWindowDimensions();
-  const stackSummary = width < 350 || fontScale > 1.25;
-
   const lemma = getCompactFieldPresentation(
     analysis.lemma,
     (value: { arabic: string }) => value.arabic
@@ -240,7 +243,7 @@ function AnalysisContent({
   return (
     <View style={styles.analysisContent}>
       <View style={[styles.morphologySummary, { backgroundColor: palette.surfaceNavigation }]}>
-        <View style={[styles.summaryTopRow, stackSummary && styles.summaryTopRowStacked]}>
+        <View style={styles.summaryTopRow}>
           <View style={styles.summaryMeaningColumn}>
             <View style={styles.glossBlock}>
               <Text style={[styles.gloss, { color: palette.text }]}>
@@ -448,20 +451,20 @@ function SkeletonBar({
 const styles = StyleSheet.create({
   root: { flex: 1, justifyContent: 'flex-end' },
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)' },
-  sheet: { width: '100%', borderTopWidth: 1, borderTopLeftRadius: 28, borderTopRightRadius: 28, overflow: 'hidden' },
+  sheet: { width: '100%', maxWidth: 640, alignSelf: 'center', borderTopWidth: 1, borderTopLeftRadius: 28, borderTopRightRadius: 28, overflow: 'hidden' },
   safeArea: { flex: 1 },
   header: { minHeight: 68, paddingHorizontal: 20, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: 'row', alignItems: 'center', gap: 12 },
   headerCopy: { flex: 1, gap: 3 },
   title: { fontSize: 16, fontWeight: '700' },
   location: { fontSize: 13, fontWeight: '700', letterSpacing: 0.3 },
-  iconButton: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  iconButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  scrollBody: { flex: 1, minHeight: 0 },
   scrollContent: { padding: 20, paddingBottom: 10, gap: 18 },
   analysisContent: { gap: 18 },
   morphologySummary: { borderRadius: 20, padding: 16, gap: 16 },
   summaryTopRow: { direction: 'ltr', flexDirection: 'row', alignItems: 'center', gap: 14 },
-  summaryTopRowStacked: { flexDirection: 'column-reverse', alignItems: 'stretch' },
-  summaryMeaningColumn: { flex: 1, minWidth: 150 },
-  summaryArabicColumn: { minWidth: 120, alignItems: 'flex-end', justifyContent: 'center' },
+  summaryMeaningColumn: { flex: 1, minWidth: 0 },
+  summaryArabicColumn: { flex: 1, minWidth: 0, alignItems: 'flex-end', justifyContent: 'center' },
   arabicWithAudioRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   arabicWordCompact: {
     fontFamily: 'UthmanicHafs1Ver18',
@@ -472,7 +475,7 @@ const styles = StyleSheet.create({
   },
   glossBlock: { gap: 5 },
   eyebrow: { fontSize: 11, fontWeight: '700', letterSpacing: 1 },
-  gloss: { fontSize: 19, lineHeight: 27, fontWeight: '600' },
+  gloss: { fontSize: 19, lineHeight: 27, fontWeight: '600', textAlign: 'left', writingDirection: 'auto' },
   factsCard: {
     minHeight: 92,
     flexDirection: 'row',

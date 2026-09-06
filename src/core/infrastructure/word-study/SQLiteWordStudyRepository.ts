@@ -315,6 +315,7 @@ export class SQLiteWordStudyRepository implements IWordStudyRepository {
     throwIfCancelled(options.signal);
     const db = await this.databaseProvider.getDatabaseAsync();
     const { where, parameter } = await this.resolveOccurrencePredicateAsync(db, query);
+    throwIfCancelled(options.signal);
     const offset = parseCursor(query.cursor);
     const [countRow, sources] = await Promise.all([
       cancellable(
@@ -325,6 +326,7 @@ export class SQLiteWordStudyRepository implements IWordStudyRepository {
       ),
       this.loadSourceRolesAsync(db),
     ]);
+    throwIfCancelled(options.signal);
     const totalCount = countRow?.count ?? 0;
     const rows = await cancellable(
       db.getAllAsync<WordRow>(
@@ -334,6 +336,7 @@ export class SQLiteWordStudyRepository implements IWordStudyRepository {
       ),
       options.signal
     );
+    throwIfCancelled(options.signal);
     const wordIds = rows.map((row) => row.id);
     const verses = Array.from(
       new Map(rows.map((row) => [verseKey(row), { surah: row.surah, ayah: row.ayah }])).values()

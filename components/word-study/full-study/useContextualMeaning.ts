@@ -17,7 +17,8 @@ export type ContextualMeaningLoadState =
 
 type ResolvedState = {
   key: string;
-  state: Extract<ContextualMeaningLoadState, { status: 'ready' }>;
+  wordsJson?: string | null;
+  lookupFailed?: boolean;
 };
 
 export function useContextualMeaning(
@@ -25,49 +26,30 @@ export function useContextualMeaning(
 ): ContextualMeaningLoadState {
   const { settings, isHydrated } = useSettings();
   const selectedLanguageCode = normalizeWordLanguageCode(settings.wordLang);
-  const requestKey = analysis
-    ? `${analysis.location.locationKey}:${selectedLanguageCode}`
+  const verseKey = analysis?.location.verseKey;
+  const requestKey = verseKey
+    ? `${verseKey}:${selectedLanguageCode}`
     : '';
   const [resolved, setResolved] = React.useState<ResolvedState | null>(null);
 
   React.useEffect(() => {
-    if (!analysis || !isHydrated || selectedLanguageCode === 'en') return;
+    if (!verseKey || !isHydrated || selectedLanguageCode === 'en') return;
     let cancelled = false;
     void container
       .getTranslationOfflineStore()
-      .getWordTranslationWordsJson(analysis.location.verseKey, selectedLanguageCode)
+      .getWordTranslationWordsJson(verseKey, selectedLanguageCode)
       .then((wordsJson) => {
         if (cancelled) return;
-        setResolved({
-          key: requestKey,
-          state: {
-            status: 'ready',
-            presentation: resolveContextualMeaning({
-              analysis,
-              selectedLanguageCode,
-              selectedLanguageWordsJson: wordsJson,
-            }),
-          },
-        });
+        setResolved({ key: requestKey, wordsJson });
       })
       .catch(() => {
         if (cancelled) return;
-        setResolved({
-          key: requestKey,
-          state: {
-            status: 'ready',
-            presentation: resolveContextualMeaning({
-              analysis,
-              selectedLanguageCode,
-              lookupFailed: true,
-            }),
-          },
-        });
+        setResolved({ key: requestKey, lookupFailed: true });
       });
     return () => {
       cancelled = true;
     };
-  }, [analysis, isHydrated, requestKey, selectedLanguageCode]);
+  }, [verseKey, isHydrated, requestKey, selectedLanguageCode]);
 
   if (!analysis) return { status: 'idle' };
   if (!isHydrated) return { status: 'loading', languageName: 'selected language' };
@@ -77,7 +59,17 @@ export function useContextualMeaning(
       presentation: resolveContextualMeaning({ analysis, selectedLanguageCode }),
     };
   }
-  if (resolved?.key === requestKey) return resolved.state;
+  if (resolved?.key === requestKey) {
+    return {
+      status: 'ready',
+      presentation: resolveContextualMeaning({
+        analysis,
+        selectedLanguageCode,
+        selectedLanguageWordsJson: resolved.wordsJson,
+        lookupFailed: resolved.lookupFailed,
+      }),
+    };
+  }
   return {
     status: 'loading',
     languageName: getWordLanguageName(selectedLanguageCode),
