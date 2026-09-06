@@ -101,6 +101,8 @@ function buildShellDocumentHtml({
       body {
         margin: 0;
         padding: 0;
+        -webkit-text-size-adjust: none;
+        text-size-adjust: none;
         background: var(--background);
         color: var(--text);
         font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -135,7 +137,8 @@ function buildShellDocumentHtml({
         font-size: var(--font-size);
         max-width: 100%;
         text-align: center;
-        width: min(var(--fitted-line-width, var(--exact-line-width)), 100%);
+        /* Keep the web preset's font-to-width ratio; a wide line must not widen every row. */
+        width: min(var(--exact-line-width), 100%);
       }
 
       .line-shell + .line-shell {
@@ -147,10 +150,15 @@ function buildShellDocumentHtml({
         color: var(--text);
         direction: rtl;
         display: flex;
-        justify-content: center;
+        column-gap: 0;
+        justify-content: space-between;
         line-height: var(--line-height);
         min-height: var(--line-height);
         white-space: nowrap;
+      }
+
+      .line-shell.centered .line-content {
+        justify-content: center;
       }
 
       .line-shell.blank .line-content {
@@ -192,6 +200,7 @@ function buildShellDocumentHtml({
       }
 
       .word {
+        flex: none;
         padding-inline: 0.04em;
       }
 
@@ -623,7 +632,25 @@ function buildShellDocumentHtml({
         function measureRequiredLineWidth() {
           var lineContents = Array.from(standardView.querySelectorAll('.line-content'));
           var measuredWidth = lineContents.reduce(function (widest, lineContent) {
-            return Math.max(widest, lineContent.scrollWidth || 0);
+            if (lineContent.getClientRects().length === 0) {
+              return widest;
+            }
+            lineContent.style.removeProperty('font-size');
+            // Measure natural word widths, independent of justification and container clipping.
+            // scrollWidth on a centered RTL line can omit overflow past its starting edge.
+            var wordWidth = Array.from(lineContent.children).reduce(function (total, word) {
+              var style = window.getComputedStyle(word);
+              return total + word.getBoundingClientRect().width +
+                (parseFloat(style.marginLeft) || 0) + (parseFloat(style.marginRight) || 0);
+            }, 0);
+            // Fit an overflowing row at its own font size instead of adding width (and
+            // word spacing) to the entire page. Keep the natural width for reflow detection.
+            var availableWidth = lineContent.clientWidth;
+            if (availableWidth > 0 && wordWidth > availableWidth) {
+              var fontSize = parseFloat(window.getComputedStyle(lineContent).fontSize);
+              lineContent.style.fontSize = (fontSize * availableWidth / wordWidth) + 'px';
+            }
+            return Math.max(widest, wordWidth);
           }, 0);
 
           if (measuredWidth > 0) {
@@ -640,7 +667,7 @@ function buildShellDocumentHtml({
 
           var presetLineWidthPx = parseCssLengthToPx(currentPayload.layout.lineWidthCss);
           var measuredLineWidthPx = measureRequiredLineWidth();
-          var lineWidthPx = measuredLineWidthPx || presetLineWidthPx;
+          var lineWidthPx = Math.max(measuredLineWidthPx, presetLineWidthPx);
           var threshold = containerWidth * 0.95;
 
           if (stableReflowState !== null) {
@@ -665,14 +692,11 @@ function buildShellDocumentHtml({
 
           lastContainerWidth = containerWidth;
           var nextReflowState = shouldUseReflow(containerWidth);
-          var presetLineWidthPx = parseCssLengthToPx(currentPayload.layout.lineWidthCss);
-          var fittedLineWidthPx = Math.min(
-            containerWidth,
-            Math.max(presetLineWidthPx, requiredLineWidth + 1)
-          );
-          pageRoot.style.setProperty('--fitted-line-width', fittedLineWidthPx + 'px');
           stableReflowState = nextReflowState;
           pageRoot.classList.toggle('reflow', nextReflowState);
+          if (!nextReflowState) {
+            measureRequiredLineWidth();
+          }
           scheduleHeightReport();
         }
 
@@ -801,6 +825,10 @@ function buildShellDocumentHtml({
             var line = linesByNumber.get(lineNumber) || null;
             var lineShell = document.createElement('div');
             lineShell.className = 'line-shell';
+            // The two opening pages retain their intentionally centered composition.
+            if (currentPayload.data.pageNumber <= 2) {
+              lineShell.classList.add('centered');
+            }
             lineShell.setAttribute('dir', 'rtl');
 
             var lineContent = document.createElement('div');
@@ -1003,7 +1031,6 @@ function buildShellDocumentHtml({
           standardView.innerHTML = '';
           reflowView.innerHTML = '';
           pageRoot.classList.remove('reflow');
-          pageRoot.style.removeProperty('--fitted-line-width');
           stableReflowState = null;
           lastContainerWidth = 0;
           requiredLineWidth = 0;
