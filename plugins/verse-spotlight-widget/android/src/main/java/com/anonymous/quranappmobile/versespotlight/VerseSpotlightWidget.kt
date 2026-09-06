@@ -438,7 +438,9 @@ internal class WidgetContentCache(private val context: Context) {
   }
 }
 
-class VerseSpotlightWidgetProvider : AppWidgetProvider() {
+class VerseSpotlightCoverWidgetProvider : VerseSpotlightWidgetProvider()
+
+open class VerseSpotlightWidgetProvider : AppWidgetProvider() {
   override fun onUpdate(
       context: Context,
       appWidgetManager: AppWidgetManager,
@@ -451,7 +453,9 @@ class VerseSpotlightWidgetProvider : AppWidgetProvider() {
     when (intent.action) {
       ACTION_REFRESH -> {
         val manager = AppWidgetManager.getInstance(context)
-        val ids = manager.getAppWidgetIds(ComponentName(context, javaClass))
+        // The app bridge sends one refresh to this receiver for both widget hosts.
+        val ids = manager.getAppWidgetIds(ComponentName(context, VerseSpotlightWidgetProvider::class.java)) +
+            manager.getAppWidgetIds(ComponentName(context, VerseSpotlightCoverWidgetProvider::class.java))
         onUpdate(context, manager, ids)
       }
       ACTION_PREVIOUS, ACTION_SHUFFLE, ACTION_NEXT -> {

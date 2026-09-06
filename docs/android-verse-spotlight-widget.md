@@ -73,6 +73,42 @@ starts.
 
 ## Reproducible native integration
 
+### Samsung Galaxy Z Flip cover-screen discovery
+
+The home-screen receiver is supplemented by `VerseSpotlightCoverWidgetProvider`,
+which inherits the same native renderer and actions. Its separate provider XML
+uses Samsung's documented full-panel dimensions (352 × 339 dp), `keyguard`
+category, and horizontal/vertical resizing. Its receiver also declares
+`com.samsung.android.appwidget.provider`, pointing to a
+`samsung-appwidget-provider` resource with `display="sub_screen"`.
+The home widget keeps its existing 4 × 2 size and `home_screen` category.
+Widget IDs keep each instance's state separate, and app-triggered content refreshes
+update instances of both receivers. Button broadcasts share the home receiver,
+which handles either host's widget ID.
+
+References: [Samsung Flex Window guide](https://developer.samsung.com/galaxy-z/flex_window.html)
+and [Samsung widget codelab](https://developer.samsung.com/codelab/galaxy-z/widget-flex-window.html).
+These published developer examples target Flip5; they do not establish verified
+compatibility with every Flip6/7/8 firmware or One UI 8+ release. Validate discovery,
+scrolling, controls, camera clearance, and opening the reader on each target device.
+
+This is a native registration change: rebuild and install the Android app;
+a Metro reload or JavaScript OTA update cannot add the receiver. For Expo builds:
+
+```bash
+npx expo prebuild --platform android --no-install
+npm run android
+```
+
+On the phone, open Settings → Cover screen → Widgets and look for Verse Spotlight.
+If it is absent after installing the updated build, record the device model and
+One UI version and inspect `adb shell dumpsys appwidget` for both provider names
+and `adb shell dumpsys package com.anonymous.quranappmobile` for registration.
+Discovery on a Samsung cover host must be checked on Samsung hardware; an ordinary
+Android emulator cannot verify that picker.
+
+### Generated files
+
 `plugins/withVerseSpotlightWidget.js` registers the provider and its private
 `RemoteViewsService`, copies native source/resources/tests and offline assets,
 registers the minimal bridge, and adds the widget-process guard. The template under

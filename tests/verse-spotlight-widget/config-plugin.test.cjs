@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
+const { parseStringPromise } = require('xml2js');
 
 const plugin = require('../../plugins/withVerseSpotlightWidget');
 
@@ -65,7 +66,7 @@ test('Android manifest integration is idempotent and uses the isolated process',
   plugin.ensureWidgetService(manifest);
 
   const receivers = manifest.manifest.application[0].receiver;
-  assert.equal(receivers.length, 1);
+  assert.equal(receivers.length, 2);
   assert.equal(receivers[0].$['android:exported'], 'true');
   assert.equal(receivers[0].$['android:process'], ':verse_spotlight_widget');
   assert.equal(
@@ -81,4 +82,42 @@ test('Android manifest integration is idempotent and uses the isolated process',
     'android.permission.BIND_REMOTEVIEWS'
   );
   assert.equal(services[0].$['android:process'], ':verse_spotlight_widget');
+});
+
+test('cover picker registration resolves Samsung metadata and a separate keyguard provider', async () => {
+  // Start with the old home-only registration to exercise upgrades as well as idempotency.
+  const manifest = { manifest: { application: [{ $: { 'android:name': '.MainApplication' }, receiver: [{
+    $: { 'android:name': 'com.anonymous.quranappmobile.versespotlight.VerseSpotlightWidgetProvider' },
+  }] }] } };
+  plugin.ensureWidgetReceiver(manifest);
+  const once = JSON.stringify(manifest);
+  plugin.ensureWidgetReceiver(manifest);
+  assert.equal(JSON.stringify(manifest), once);
+  const receivers = manifest.manifest.application[0].receiver;
+  assert.equal(receivers.length, 2);
+  const cover = receivers.find((receiver) =>
+    receiver.$['android:name'].endsWith('.VerseSpotlightCoverWidgetProvider'));
+  assert.equal(cover.$['android:enabled'], 'true');
+  assert.equal(cover.$['android:exported'], 'true');
+  assert.equal(cover.$['android:process'], ':verse_spotlight_widget');
+  assert.equal(cover['intent-filter'][0].action[0].$['android:name'],
+    'android.appwidget.action.APPWIDGET_UPDATE');
+  async function readMetadata(receiver, name) {
+    const entries = receiver['meta-data'].filter((entry) => entry.$['android:name'] === name);
+    assert.equal(entries.length, 1);
+    const resource = entries[0].$['android:resource'];
+    assert.match(resource, /^@xml\/[a-z_]+$/);
+    return parseStringPromise(fs.readFileSync(path.join(projectRoot,
+      'plugins/verse-spotlight-widget/android/src/main/res', `${resource.slice(1)}.xml`), 'utf8'));
+  }
+  const samsung = await readMetadata(cover, 'com.samsung.android.appwidget.provider');
+  assert.equal(samsung['samsung-appwidget-provider'].$.display, 'sub_screen');
+  const info = (await readMetadata(cover, 'android.appwidget.provider'))['appwidget-provider'].$;
+  assert.equal(info['android:widgetCategory'], 'keyguard');
+  assert.equal(info['android:minWidth'], '352dp');
+  assert.equal(info['android:minHeight'], '339dp');
+  assert.equal(info['android:resizeMode'], 'horizontal|vertical');
+  const home = (await readMetadata(receivers[0], 'android.appwidget.provider'))['appwidget-provider'].$;
+  assert.equal(home['android:widgetCategory'], 'home_screen');
+  assert.equal(home['android:targetCellHeight'], '2');
 });

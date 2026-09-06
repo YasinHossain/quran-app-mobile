@@ -10,6 +10,7 @@ const path = require('path');
 
 const PACKAGE_NAME = 'com.anonymous.quranappmobile';
 const RECEIVER_NAME = `${PACKAGE_NAME}.versespotlight.VerseSpotlightWidgetProvider`;
+const COVER_RECEIVER_NAME = `${PACKAGE_NAME}.versespotlight.VerseSpotlightCoverWidgetProvider`;
 const SERVICE_NAME = `${PACKAGE_NAME}.versespotlight.VerseSpotlightTextService`;
 const MODULE_IMPORT = `import ${PACKAGE_NAME}.versespotlight.VerseSpotlightProcess`;
 const PACKAGE_IMPORT = `import ${PACKAGE_NAME}.versespotlight.VerseSpotlightWidgetPackage`;
@@ -72,21 +73,22 @@ function syncNativeFiles(projectRoot) {
   }
 }
 
-function ensureWidgetReceiver(androidManifest) {
+function ensureWidgetReceiver(androidManifest, coverScreen = false) {
+  const receiverName = coverScreen ? COVER_RECEIVER_NAME : RECEIVER_NAME;
   const application = AndroidConfig.Manifest.getMainApplicationOrThrow(androidManifest);
   application.receiver = application.receiver ?? [];
 
   let receiver = application.receiver.find(
-    (candidate) => candidate.$?.['android:name'] === RECEIVER_NAME
+    (candidate) => candidate.$?.['android:name'] === receiverName
   );
   if (!receiver) {
-    receiver = { $: { 'android:name': RECEIVER_NAME } };
+    receiver = { $: { 'android:name': receiverName } };
     application.receiver.push(receiver);
   }
 
   receiver.$ = {
     ...receiver.$,
-    'android:name': RECEIVER_NAME,
+    'android:name': receiverName,
     'android:enabled': 'true',
     'android:exported': 'true',
     'android:label': '@string/verse_spotlight_widget_name',
@@ -101,10 +103,22 @@ function ensureWidgetReceiver(androidManifest) {
     {
       $: {
         'android:name': 'android.appwidget.provider',
-        'android:resource': '@xml/verse_spotlight_widget_info',
+        'android:resource': coverScreen
+          ? '@xml/verse_spotlight_cover_widget_info'
+          : '@xml/verse_spotlight_widget_info',
       },
     },
   ];
+  if (coverScreen) {
+    receiver['meta-data'].push({
+      $: {
+        'android:name': 'com.samsung.android.appwidget.provider',
+        'android:resource': '@xml/verse_spotlight_samsung_widget_info',
+      },
+    });
+  } else {
+    ensureWidgetReceiver(androidManifest, true);
+  }
   return androidManifest;
 }
 
