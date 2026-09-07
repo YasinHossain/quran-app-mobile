@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="verse_spotlight_material_widget_name">Verse Spotlight · Material</string>
+    <string name="verse_spotlight_material_widget_description">A dynamic Material You card with offline verses, pill controls, and wallpaper-matched theming.</string>
+    <string name="verse_spotlight_serenity_widget_name">Verse Spotlight · Serenity</string>
+    <string name="verse_spotlight_serenity_widget_description">A calm reading card with offline verses, shuffle, previous, and next controls.</string>
     <string name="verse_spotlight_widget_name">Verse Spotlight</string>
     <string name="verse_spotlight_widget_description">An offline Quran verse with shuffle, previous, and next controls.</string>
     <string name="verse_spotlight_previous">Previous verse</string>

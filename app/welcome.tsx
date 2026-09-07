@@ -2,6 +2,7 @@ import React from 'react';
 import { Check, ChevronRight } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import {
+  ActivityIndicator,
   Image,
   Platform,
   Pressable,
@@ -35,6 +36,14 @@ const COPY: Record<
   hi: { action: 'पढ़ना शुरू करें' },
 };
 
+const OPTIMIZING_COPY: Record<UiLanguageCode, string> = {
+  en: 'Optimizing...',
+  bn: 'প্রস্তুত করা হচ্ছে...',
+  ar: 'جارٍ الإعداد...',
+  ur: 'تیار کیا جا رہا ہے...',
+  hi: 'तैयार किया जा रहा है...',
+};
+
 function AppIcon(): React.JSX.Element {
   return (
     <View style={styles.iconShell} accessibilityElementsHidden>
@@ -61,44 +70,75 @@ export default function WelcomeScreen(): React.JSX.Element {
     if (isStarting) return;
     setIsStarting(true);
 
-    const nextSettings = {
-      ...settings,
-      uiLanguage: language,
-      contentLanguage: language,
-      translationId: 20,
-      translationIds: [20],
-      mushafId: undefined,
-      tajweed: false,
-      readingMode: 'translations' as const,
-    };
+    try {
+      const preferredTranslationId = INITIAL_TRANSLATION_BY_UI_LANGUAGE[language];
+      let targetTranslationId = 20;
 
-    setSettings(nextSettings);
-    await Promise.all([saveSettings(nextSettings), markWelcomeCompletedAsync()]);
-    completeWelcome();
-    router.replace('/');
+      if (preferredTranslationId && preferredTranslationId !== 20) {
+        const installPromise = silentlyInstallInitialTranslationAsync({
+          language,
+          wordLanguage: settings.wordLang,
+        });
 
-    const preferredTranslationId = INITIAL_TRANSLATION_BY_UI_LANGUAGE[language];
-    if (preferredTranslationId && preferredTranslationId !== 20) {
-      void silentlyInstallInitialTranslationAsync({
-        language,
-        wordLanguage: settings.wordLang,
-      }).then(async (installed) => {
-        if (!installed) return;
-        const latest = await loadSettings();
-        const stillUsingInitialFallback =
-          latest.uiLanguage === language &&
-          latest.translationIds.length === 1 &&
-          latest.translationIds[0] === 20;
-        if (!stillUsingInitialFallback) return;
+        // If the download finishes after timeout, update from initial fallback in the background
+        void installPromise.then(async (installedLater) => {
+          if (!installedLater) return;
+          const latest = await loadSettings();
+          const stillUsingInitialFallback =
+            latest.uiLanguage === language &&
+            latest.translationIds.length === 1 &&
+            latest.translationIds[0] === 20;
+          if (!stillUsingInitialFallback) return;
 
-        const withPreferredTranslation = {
-          ...latest,
-          translationId: preferredTranslationId,
-          translationIds: [preferredTranslationId],
-        };
-        setSettings(withPreferredTranslation);
-        await saveSettings(withPreferredTranslation);
-      });
+          const withPreferredTranslation = {
+            ...latest,
+            translationId: preferredTranslationId,
+            translationIds: [preferredTranslationId],
+          };
+          setSettings(withPreferredTranslation);
+          await saveSettings(withPreferredTranslation);
+        });
+
+        const timeoutPromise = new Promise<boolean>((resolve) => {
+          setTimeout(() => resolve(false), 7000);
+        });
+
+        const installed = await Promise.race([installPromise, timeoutPromise]).catch(() => false);
+        if (installed) {
+          targetTranslationId = preferredTranslationId;
+        }
+      }
+
+      const nextSettings = {
+        ...settings,
+        uiLanguage: language,
+        contentLanguage: language,
+        translationId: targetTranslationId,
+        translationIds: [targetTranslationId],
+        mushafId: undefined,
+        tajweed: false,
+        readingMode: 'translations' as const,
+      };
+
+      setSettings(nextSettings);
+      await Promise.all([saveSettings(nextSettings), markWelcomeCompletedAsync()]);
+      completeWelcome();
+      router.replace('/');
+    } catch {
+      const fallbackSettings = {
+        ...settings,
+        uiLanguage: language,
+        contentLanguage: language,
+        translationId: 20,
+        translationIds: [20],
+        mushafId: undefined,
+        tajweed: false,
+        readingMode: 'translations' as const,
+      };
+      setSettings(fallbackSettings);
+      await Promise.all([saveSettings(fallbackSettings), markWelcomeCompletedAsync()]).catch(() => undefined);
+      completeWelcome();
+      router.replace('/');
     }
   }, [completeWelcome, isStarting, language, router, setSettings, settings]);
 
@@ -134,8 +174,9 @@ export default function WelcomeScreen(): React.JSX.Element {
                   accessibilityRole="radio"
                   accessibilityState={{ checked: selected }}
                   accessibilityLabel={`${item.label}, ${item.nativeLabel}`}
+                  disabled={isStarting}
                   onPress={() => setLanguage(item.code)}
-                  style={({ pressed }) => ({ opacity: pressed ? 0.84 : 1 })}
+                  style={({ pressed }) => ({ opacity: pressed || isStarting ? 0.84 : 1 })}
                 >
                   <View
                     style={[
@@ -168,14 +209,23 @@ export default function WelcomeScreen(): React.JSX.Element {
 
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={copy.action}
+          accessibilityLabel={isStarting ? OPTIMIZING_COPY[language] : copy.action}
           disabled={isStarting}
           onPress={() => void handleStart()}
           style={({ pressed }) => ({ opacity: pressed || isStarting ? 0.78 : 1 })}
         >
           <View style={styles.startButton}>
-            <Text style={styles.startButtonText}>{copy.action}</Text>
-            <ChevronRight color="#FFFFFF" size={21} strokeWidth={2.5} />
+            {isStarting ? (
+              <>
+                <ActivityIndicator color="#FFFFFF" size="small" />
+                <Text style={styles.startButtonText}>{OPTIMIZING_COPY[language]}</Text>
+              </>
+            ) : (
+              <>
+                <Text style={styles.startButtonText}>{copy.action}</Text>
+                <ChevronRight color="#FFFFFF" size={21} strokeWidth={2.5} />
+              </>
+            )}
           </View>
         </Pressable>
       </ScrollView>

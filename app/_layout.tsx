@@ -163,7 +163,10 @@ function RootLayoutNav() {
       <StatusBar style={isDark ? 'light' : 'dark'} />
       <OverlayPortalProvider>
         <View className={isDark ? 'flex-1 dark' : 'flex-1'} style={{ backgroundColor: palette.background }}>
-          <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: palette.background } }}>
+          <Stack
+            initialRouteName={hasCompletedWelcome ? '(tabs)' : 'welcome'}
+            screenOptions={{ headerShown: false, contentStyle: { backgroundColor: palette.background } }}
+          >
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
             <Stack.Screen name="welcome" options={{ headerShown: false, animation: 'fade' }} />
             <Stack.Screen name="modal" options={{ presentation: 'modal' }} />

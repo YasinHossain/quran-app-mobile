@@ -743,9 +743,10 @@ function RootFamilyBrowser({
             </View>
           ) : (
             <View style={styles.familyRows}>
-              {state.lemmas.map((lemma) => {
+              {state.lemmas.map((lemma, index) => {
                 const isSelectedWordLemma = lemma.id === selectedLemmaId;
                 const isActive = lemma.id === activeLemmaId;
+                const isLast = index === state.lemmas.length - 1;
                 const posLabel = lemma.posCode ? getPosLabel(lemma.posCode) : 'Part of speech unavailable';
                 return (
                   <Pressable
@@ -757,6 +758,7 @@ function RootFamilyBrowser({
                     style={[
                       styles.familyRow,
                       { borderTopColor: palette.border, backgroundColor: isActive ? palette.interactive : palette.surfaceNavigation },
+                      isLast ? styles.familyRowLast : null,
                     ]}
                   >
                     <View style={styles.familyRowMeta}>
@@ -904,17 +906,27 @@ const styles = StyleSheet.create({
   counterHorizontalDivider: { position: 'absolute', height: StyleSheet.hairlineWidth, left: 17, right: 17, top: '50%' },
   counterValue: { fontSize: 24, lineHeight: 31, fontWeight: '800', textAlign: 'center' },
   counterLabel: { fontSize: 14, lineHeight: 19, fontWeight: '700', textAlign: 'center' },
-  familyCard: { borderRadius: 20 },
+  familyCard: { borderRadius: 20, overflow: 'hidden' },
   familyHeader: { minHeight: 76, paddingHorizontal: 16, paddingVertical: 13, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 14 },
   familyHeaderCopy: { flex: 1, gap: 2 },
   familyEyebrow: { fontSize: 11, lineHeight: 15, fontWeight: '800', letterSpacing: 0.55 },
   familySummary: { fontSize: 12, lineHeight: 17, fontWeight: '600' },
-  familyBodyViewport: { overflow: 'hidden' },
+  familyBodyViewport: {
+    overflow: 'hidden',
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
+  },
   familyBodyCollapsed: { height: 0 },
-  familyBody: { borderTopWidth: 1 },
+  familyBody: {
+    borderTopWidth: 1,
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
+    overflow: 'hidden',
+  },
   familyState: { minHeight: 96, alignItems: 'center', justifyContent: 'center', gap: 8, padding: 16 },
-  familyRows: { paddingBottom: 2 },
+  familyRows: {},
   familyRow: { minHeight: 68, borderTopWidth: StyleSheet.hairlineWidth, paddingHorizontal: 16, paddingVertical: 9, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 14 },
+  familyRowLast: { borderBottomLeftRadius: 20, borderBottomRightRadius: 20 },
   familyRowMeta: { flex: 1, gap: 3 },
   familyPosRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 7 },
   familyPos: { fontSize: 12, lineHeight: 17, fontWeight: '600' },

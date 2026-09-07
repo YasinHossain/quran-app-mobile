@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Material You / Pixel design language fallback colors (pre-v31 night) -->
+<resources>
+    <color name="verse_spotlight_material_surface">#191C1B</color>
+    <color name="verse_spotlight_material_surface_stroke">#2E3532</color>
+    <color name="verse_spotlight_material_text">#E1E3DF</color>
+    <color name="verse_spotlight_material_chip_background">#2A3430</color>
+    <color name="verse_spotlight_material_chip_text">#A2ECD5</color>
+    <color name="verse_spotlight_material_chip_icon">#53DBC3</color>
+    <color name="verse_spotlight_material_control_background">#242B28</color>
+    <color name="verse_spotlight_material_control_background_pressed">#303935</color>
+    <color name="verse_spotlight_material_control_icon">#E1E3DF</color>
+    <color name="verse_spotlight_material_shuffle_background">#53DBC3</color>
+    <color name="verse_spotlight_material_shuffle_background_pressed">#40C4AC</color>
+    <color name="verse_spotlight_material_shuffle_icon">#003731</color>
+</resources>

@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/verse_spotlight_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/verse_spotlight_material_background"
+    android:clipToOutline="true"
+    android:orientation="vertical"
+    android:paddingStart="18dp"
+    android:paddingTop="14dp"
+    android:paddingEnd="18dp"
+    android:paddingBottom="12dp">
+
+    <!-- Header: Material 3 Reference Pill Chip -->
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="32dp"
+        android:background="@drawable/verse_spotlight_material_chip_background"
+        android:gravity="center_vertical"
+        android:layoutDirection="ltr"
+        android:orientation="horizontal"
+        android:paddingStart="10dp"
+        android:paddingEnd="14dp">
+
+        <ImageView
+            android:layout_width="15dp"
+            android:layout_height="15dp"
+            android:layout_marginEnd="6dp"
+            android:importantForAccessibility="no"
+            android:src="@drawable/verse_spotlight_ic_sparkle"
+            android:tint="@color/verse_spotlight_material_chip_icon" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:fontFamily="sans-serif-medium"
+            android:maxLines="1"
+            android:text="@string/verse_spotlight_preview_metadata"
+            android:textColor="@color/verse_spotlight_material_chip_text"
+            android:textDirection="firstStrong"
+            android:textSize="12sp" />
+    </LinearLayout>
+
+    <!-- Preview Static Translation Text -->
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_marginTop="10dp"
+        android:layout_marginBottom="10dp"
+        android:fontFamily="sans-serif"
+        android:gravity="start|top"
+        android:includeFontPadding="false"
+        android:lineSpacingExtra="5dp"
+        android:text="@string/verse_spotlight_preview_translation"
+        android:textColor="@color/verse_spotlight_material_text"
+        android:textDirection="firstStrong"
+        android:textSize="18sp" />
+
+    <!-- Action Bar: Pixel Material You Navigation Controls -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:gravity="center_vertical"
+        android:layoutDirection="ltr"
+        android:orientation="horizontal">
+
+        <ImageButton
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="@drawable/verse_spotlight_material_control_background"
+            android:contentDescription="@string/verse_spotlight_previous"
+            android:padding="14dp"
+            android:scaleType="centerInside"
+            android:src="@drawable/verse_spotlight_ic_previous"
+            android:tint="@color/verse_spotlight_material_control_icon" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:gravity="center">
+
+            <ImageButton
+                android:layout_width="72dp"
+                android:layout_height="48dp"
+                android:background="@drawable/verse_spotlight_material_shuffle_background"
+                android:contentDescription="@string/verse_spotlight_shuffle"
+                android:padding="13dp"
+                android:scaleType="centerInside"
+                android:src="@drawable/verse_spotlight_ic_shuffle"
+                android:tint="@color/verse_spotlight_material_shuffle_icon" />
+        </LinearLayout>
+
+        <ImageButton
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="@drawable/verse_spotlight_material_control_background"
+            android:contentDescription="@string/verse_spotlight_next"
+            android:padding="14dp"
+            android:scaleType="centerInside"
+            android:src="@drawable/verse_spotlight_ic_next"
+            android:tint="@color/verse_spotlight_material_control_icon" />
+    </LinearLayout>
+</LinearLayout>

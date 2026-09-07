@@ -11,6 +11,10 @@ const path = require('path');
 const PACKAGE_NAME = 'com.anonymous.quranappmobile';
 const RECEIVER_NAME = `${PACKAGE_NAME}.versespotlight.VerseSpotlightWidgetProvider`;
 const COVER_RECEIVER_NAME = `${PACKAGE_NAME}.versespotlight.VerseSpotlightCoverWidgetProvider`;
+const SERENITY_RECEIVER_NAME = `${PACKAGE_NAME}.versespotlight.VerseSpotlightSerenityWidgetProvider`;
+const SERENITY_COVER_RECEIVER_NAME = `${PACKAGE_NAME}.versespotlight.VerseSpotlightSerenityCoverWidgetProvider`;
+const MATERIAL_RECEIVER_NAME = `${PACKAGE_NAME}.versespotlight.VerseSpotlightMaterialWidgetProvider`;
+const MATERIAL_COVER_RECEIVER_NAME = `${PACKAGE_NAME}.versespotlight.VerseSpotlightMaterialCoverWidgetProvider`;
 const SERVICE_NAME = `${PACKAGE_NAME}.versespotlight.VerseSpotlightTextService`;
 const MODULE_IMPORT = `import ${PACKAGE_NAME}.versespotlight.VerseSpotlightProcess`;
 const PACKAGE_IMPORT = `import ${PACKAGE_NAME}.versespotlight.VerseSpotlightWidgetPackage`;
@@ -73,8 +77,7 @@ function syncNativeFiles(projectRoot) {
   }
 }
 
-function ensureWidgetReceiver(androidManifest, coverScreen = false) {
-  const receiverName = coverScreen ? COVER_RECEIVER_NAME : RECEIVER_NAME;
+function ensureSingleWidgetReceiver(androidManifest, receiverName, coverScreen, designType = 'classic') {
   const application = AndroidConfig.Manifest.getMainApplicationOrThrow(androidManifest);
   application.receiver = application.receiver ?? [];
 
@@ -86,12 +89,25 @@ function ensureWidgetReceiver(androidManifest, coverScreen = false) {
     application.receiver.push(receiver);
   }
 
+  const design =
+    typeof designType === 'string'
+      ? designType
+      : designType
+        ? 'serenity'
+        : 'classic';
+  const labelMap = {
+    classic: '@string/verse_spotlight_widget_name',
+    serenity: '@string/verse_spotlight_serenity_widget_name',
+    material: '@string/verse_spotlight_material_widget_name',
+  };
+  const prefix = design === 'classic' ? '' : `${design}_`;
+
   receiver.$ = {
     ...receiver.$,
     'android:name': receiverName,
     'android:enabled': 'true',
     'android:exported': 'true',
-    'android:label': '@string/verse_spotlight_widget_name',
+    'android:label': labelMap[design] || '@string/verse_spotlight_widget_name',
     'android:process': ':verse_spotlight_widget',
   };
   receiver['intent-filter'] = [
@@ -103,9 +119,7 @@ function ensureWidgetReceiver(androidManifest, coverScreen = false) {
     {
       $: {
         'android:name': 'android.appwidget.provider',
-        'android:resource': coverScreen
-          ? '@xml/verse_spotlight_cover_widget_info'
-          : '@xml/verse_spotlight_widget_info',
+        'android:resource': `@xml/verse_spotlight_${prefix}${coverScreen ? 'cover_' : ''}widget_info`,
       },
     },
   ];
@@ -116,9 +130,17 @@ function ensureWidgetReceiver(androidManifest, coverScreen = false) {
         'android:resource': '@xml/verse_spotlight_samsung_widget_info',
       },
     });
-  } else {
-    ensureWidgetReceiver(androidManifest, true);
   }
+  return androidManifest;
+}
+
+function ensureWidgetReceiver(androidManifest) {
+  ensureSingleWidgetReceiver(androidManifest, RECEIVER_NAME, false, 'classic');
+  ensureSingleWidgetReceiver(androidManifest, COVER_RECEIVER_NAME, true, 'classic');
+  ensureSingleWidgetReceiver(androidManifest, SERENITY_RECEIVER_NAME, false, 'serenity');
+  ensureSingleWidgetReceiver(androidManifest, SERENITY_COVER_RECEIVER_NAME, true, 'serenity');
+  ensureSingleWidgetReceiver(androidManifest, MATERIAL_RECEIVER_NAME, false, 'material');
+  ensureSingleWidgetReceiver(androidManifest, MATERIAL_COVER_RECEIVER_NAME, true, 'material');
   return androidManifest;
 }
 

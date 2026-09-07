@@ -22,6 +22,21 @@ private class MemoryStatePersistence : WidgetStatePersistence {
 }
 
 class VerseSpotlightWidgetEngineTest {
+  @Test
+  fun widgetDesignFollowsTheRegisteredProviderForBothHosts() {
+    val namespace = "com.anonymous.quranappmobile.versespotlight."
+    for (provider in listOf("VerseSpotlightMaterialWidgetProvider", "VerseSpotlightMaterialCoverWidgetProvider")) {
+      assertEquals(SpotlightWidgetDesign.MATERIAL, widgetDesignForProvider(namespace + provider))
+    }
+    for (provider in listOf("VerseSpotlightSerenityWidgetProvider", "VerseSpotlightSerenityCoverWidgetProvider")) {
+      assertEquals(SpotlightWidgetDesign.SERENITY, widgetDesignForProvider(namespace + provider))
+    }
+    for (provider in listOf("VerseSpotlightWidgetProvider", "VerseSpotlightCoverWidgetProvider")) {
+      assertEquals(SpotlightWidgetDesign.CLASSIC, widgetDesignForProvider(namespace + provider))
+    }
+    assertEquals(SpotlightWidgetDesign.CLASSIC, widgetDesignForProvider(null))
+  }
+
   private val index =
       SpotlightIndex(
           verseKeys = listOf("1:1", "1:7", "2:1", "2:2", "114:6"),

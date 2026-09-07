@@ -53,6 +53,39 @@ verse number on the left, with compact shuffle, previous, and next controls on
 the right. A separate static preview layout keeps
 the launcher picker representative before the collection service is bound.
 
+### Serenity design
+
+The Android picker also offers **Verse Spotlight · Serenity**, a separate 4 × 3
+home-screen widget with a matching Samsung cover-screen provider. It uses a flat
+surface, teal reference header, serif translation text, and a separate navigation
+row with 48 dp touch targets and a central shuffle pill. Long verses scroll in the
+same native collection. Arabic retains the existing RTL text layout.
+
+### Material design (Pixel / Material You)
+
+The third widget option is **Verse Spotlight · Material**, styled after the latest
+Google Pixel and Android 14+/15+ Material You (Material 3) design language:
+- **Tonal surface and M3 corner radii**: high squircle corner radius (28 dp, mapping
+  to `@android:dimen/system_app_widget_background_radius` on API 31+).
+- **Header reference chip**: stadium pill chip with an M3 sparkle emblem and Surah • Ayah
+  metadata in `sans-serif-medium`.
+- **Modern typography**: high-readability sans-serif font, generous 5 dp line spacing,
+  and crisp contrast.
+- **Fluid pill action dock**: circular 48 dp Previous and Next icon buttons flanking
+  a prominent 72 × 48 dp stadium pill Shuffle button.
+- **Dynamic Monet theming**: on Android 12+ (API 31+), colors are extracted directly from
+  the user's system wallpaper (`system_accent1`, `system_accent2`, `system_neutral1`,
+  `system_neutral2`), with a curated Google Pixel Sage / Mint palette for pre-v31 and dark mode.
+
+All three designs inherit the same provider base, content resolver, state manager, collection
+service, and actions. The renderer resolves the design from the widget ID's
+registered provider, including when an action arrives through the shared receiver.
+App content refreshes update all six providers; each placed instance still has
+independent verse state.
+
+Adding the new picker choices requires an Android prebuild and native rebuild;
+a Metro reload cannot register providers. Samsung discovery requires device QA.
+
 ## State and actions
 
 Widget state uses the Phase 1 schema with `surface = android-widget` and
@@ -83,7 +116,7 @@ category, and horizontal/vertical resizing. Its receiver also declares
 `samsung-appwidget-provider` resource with `display="sub_screen"`.
 The home widget keeps its existing 4 × 2 size and `home_screen` category.
 Widget IDs keep each instance's state separate, and app-triggered content refreshes
-update instances of both receivers. Button broadcasts share the home receiver,
+update instances of all six receivers. Button broadcasts share the home receiver,
 which handles either host's widget ID.
 
 References: [Samsung Flex Window guide](https://developer.samsung.com/galaxy-z/flex_window.html)
@@ -102,7 +135,7 @@ npm run android
 
 On the phone, open Settings → Cover screen → Widgets and look for Verse Spotlight.
 If it is absent after installing the updated build, record the device model and
-One UI version and inspect `adb shell dumpsys appwidget` for both provider names
+One UI version and inspect `adb shell dumpsys appwidget` for all six provider names
 and `adb shell dumpsys package com.anonymous.quranappmobile` for registration.
 Discovery on a Samsung cover host must be checked on Samsung hardware; an ordinary
 Android emulator cannot verify that picker.
