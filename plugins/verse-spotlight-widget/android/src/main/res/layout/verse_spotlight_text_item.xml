@@ -13,10 +13,10 @@
         android:id="@+id/verse_spotlight_text"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:fontFamily="sans"
-        android:includeFontPadding="false"
-        android:lineSpacingExtra="2dp"
-        android:textColor="@color/verse_spotlight_widget_text"
+        android:fontFamily="serif"
+        android:includeFontPadding="true"
+        android:lineSpacingExtra="4dp"
+        android:textColor="@color/verse_spotlight_serenity_text"
         android:textDirection="firstStrong"
-        android:textSize="17sp" />
+        android:textSize="19sp" />
 </LinearLayout>

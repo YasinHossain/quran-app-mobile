@@ -1251,9 +1251,8 @@ export function SettingsSidebarContent({
               data={mushafPackEntries}
               keyExtractor={(item) => item.option.id}
               contentContainerStyle={{ padding: 12, gap: 10, paddingBottom: 24 }}
-              initialNumToRender={2}
-              maxToRenderPerBatch={2}
-              updateCellsBatchingPeriod={32}
+              initialNumToRender={mushafPackEntries.length}
+              maxToRenderPerBatch={mushafPackEntries.length}
               windowSize={3}
               removeClippedSubviews={Platform.OS === 'android'}
               ListHeaderComponent={

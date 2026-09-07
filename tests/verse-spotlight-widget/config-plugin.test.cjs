@@ -66,7 +66,7 @@ test('Android manifest integration is idempotent and uses the isolated process',
   plugin.ensureWidgetService(manifest);
 
   const receivers = manifest.manifest.application[0].receiver;
-  assert.equal(receivers.length, 6);
+  assert.equal(receivers.length, 2);
   assert.equal(receivers[0].$['android:exported'], 'true');
   assert.equal(receivers[0].$['android:process'], ':verse_spotlight_widget');
   assert.equal(
@@ -94,7 +94,7 @@ test('cover picker registration resolves Samsung metadata and a separate keyguar
   plugin.ensureWidgetReceiver(manifest);
   assert.equal(JSON.stringify(manifest), once);
   const receivers = manifest.manifest.application[0].receiver;
-  assert.equal(receivers.length, 6);
+  assert.equal(receivers.length, 2);
   const cover = receivers.find((receiver) =>
     receiver.$['android:name'].endsWith('.VerseSpotlightCoverWidgetProvider'));
   assert.equal(cover.$['android:enabled'], 'true');
@@ -122,65 +122,43 @@ test('cover picker registration resolves Samsung metadata and a separate keyguar
   assert.equal(home['android:targetCellHeight'], '2');
 });
 
-
-test('Serenity is a separate picker choice on both hosts with its own layouts', async () => {
-  const manifest = { manifest: { application: [{ $: { 'android:name': '.MainApplication' } }] } };
+test('single canonical widget is registered and obsolete multi-design receivers are stripped', async () => {
+  const manifest = {
+    manifest: {
+      application: [
+        {
+          $: { 'android:name': '.MainApplication' },
+          receiver: [
+            { $: { 'android:name': 'com.anonymous.quranappmobile.versespotlight.VerseSpotlightSerenityWidgetProvider' } },
+            { $: { 'android:name': 'com.anonymous.quranappmobile.versespotlight.VerseSpotlightMaterialWidgetProvider' } },
+          ],
+        },
+      ],
+    },
+  };
   plugin.ensureWidgetReceiver(manifest);
-  const res = path.join(projectRoot, 'plugins/verse-spotlight-widget/android/src/main/res');
-  for (const suffix of ['SerenityWidgetProvider', 'SerenityCoverWidgetProvider']) {
-    const receiver = manifest.manifest.application[0].receiver.find((entry) =>
-      entry.$['android:name'].endsWith(suffix));
-    assert.equal(receiver.$['android:label'], '@string/verse_spotlight_serenity_widget_name');
-    assert.equal(receiver.$['android:process'], ':verse_spotlight_widget');
-    const metadata = receiver['meta-data'].find((entry) =>
-      entry.$['android:name'] === 'android.appwidget.provider');
-    const provider = (await parseStringPromise(fs.readFileSync(
-      path.join(res, `${metadata.$['android:resource'].slice(1)}.xml`), 'utf8'
-    )))['appwidget-provider'].$;
-    assert.equal(provider['android:initialLayout'], '@layout/verse_spotlight_serenity_widget');
-    assert.equal(provider['android:previewLayout'], '@layout/verse_spotlight_serenity_widget_preview');
-    assert.equal(provider['android:updatePeriodMillis'], '0');
-    assert.equal(provider['android:resizeMode'], 'horizontal|vertical');
-    assert.equal(provider['android:widgetCategory'], suffix.includes('Cover') ? 'keyguard' : 'home_screen');
-    if (suffix.includes('Cover')) {
-      assert.ok(receiver['meta-data'].some((entry) =>
-        entry.$['android:name'] === 'com.samsung.android.appwidget.provider'));
-    } else {
-      assert.equal(provider['android:targetCellHeight'], '3');
-    }
-    for (const attr of ['android:initialLayout', 'android:previewLayout']) {
-      await parseStringPromise(fs.readFileSync(path.join(res, `${provider[attr].slice(1)}.xml`), 'utf8'));
-    }
-  }
-});
+  const receivers = manifest.manifest.application[0].receiver;
+  assert.equal(receivers.length, 2);
+  const home = receivers.find((entry) => entry.$['android:name'].endsWith('.VerseSpotlightWidgetProvider'));
+  const cover = receivers.find((entry) => entry.$['android:name'].endsWith('.VerseSpotlightCoverWidgetProvider'));
+  assert.ok(home, 'Home widget provider must be registered');
+  assert.ok(cover, 'Cover widget provider must be registered');
+  assert.equal(home.$['android:label'], '@string/verse_spotlight_widget_name');
+  assert.equal(home.$['android:process'], ':verse_spotlight_widget');
+  assert.equal(cover.$['android:label'], '@string/verse_spotlight_widget_name');
+  assert.equal(cover.$['android:process'], ':verse_spotlight_widget');
 
-test('Material is a separate picker choice on both hosts with its own layouts', async () => {
-  const manifest = { manifest: { application: [{ $: { 'android:name': '.MainApplication' } }] } };
-  plugin.ensureWidgetReceiver(manifest);
   const res = path.join(projectRoot, 'plugins/verse-spotlight-widget/android/src/main/res');
-  for (const suffix of ['MaterialWidgetProvider', 'MaterialCoverWidgetProvider']) {
-    const receiver = manifest.manifest.application[0].receiver.find((entry) =>
-      entry.$['android:name'].endsWith(suffix));
-    assert.equal(receiver.$['android:label'], '@string/verse_spotlight_material_widget_name');
-    assert.equal(receiver.$['android:process'], ':verse_spotlight_widget');
-    const metadata = receiver['meta-data'].find((entry) =>
-      entry.$['android:name'] === 'android.appwidget.provider');
-    const provider = (await parseStringPromise(fs.readFileSync(
-      path.join(res, `${metadata.$['android:resource'].slice(1)}.xml`), 'utf8'
-    )))['appwidget-provider'].$;
-    assert.equal(provider['android:initialLayout'], '@layout/verse_spotlight_material_widget');
-    assert.equal(provider['android:previewLayout'], '@layout/verse_spotlight_material_widget_preview');
-    assert.equal(provider['android:updatePeriodMillis'], '0');
-    assert.equal(provider['android:resizeMode'], 'horizontal|vertical');
-    assert.equal(provider['android:widgetCategory'], suffix.includes('Cover') ? 'keyguard' : 'home_screen');
-    if (suffix.includes('Cover')) {
-      assert.ok(receiver['meta-data'].some((entry) =>
-        entry.$['android:name'] === 'com.samsung.android.appwidget.provider'));
-    } else {
-      assert.equal(provider['android:targetCellHeight'], '3');
-    }
-    for (const attr of ['android:initialLayout', 'android:previewLayout']) {
-      await parseStringPromise(fs.readFileSync(path.join(res, `${provider[attr].slice(1)}.xml`), 'utf8'));
-    }
+  const homeMetadata = home['meta-data'].find((entry) => entry.$['android:name'] === 'android.appwidget.provider');
+  const provider = (await parseStringPromise(fs.readFileSync(
+    path.join(res, `${homeMetadata.$['android:resource'].slice(1)}.xml`), 'utf8'
+  )))['appwidget-provider'].$;
+  assert.equal(provider['android:initialLayout'], '@layout/verse_spotlight_widget');
+  assert.equal(provider['android:previewLayout'], '@layout/verse_spotlight_widget_preview');
+  assert.equal(provider['android:resizeMode'], 'horizontal|vertical');
+  assert.equal(provider['android:targetCellHeight'], '2');
+
+  for (const attr of ['android:initialLayout', 'android:previewLayout']) {
+    await parseStringPromise(fs.readFileSync(path.join(res, `${provider[attr].slice(1)}.xml`), 'utf8'));
   }
 });

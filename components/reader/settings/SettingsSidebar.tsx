@@ -100,7 +100,7 @@ export function SettingsSidebar({
                   onMushafInstalled={onMushafInstalled}
                   onOpenMushafManager={() => setIsMushafManagerFullScreen(true)}
                   onSubPanelBack={isMushafManagerFullScreen ? onClose : undefined}
-                  hideRootWhenSubPanel={isMushafManagerFullScreen}
+                  hideRootWhenSubPanel={isMushafManagerFullScreen || initialPanel === 'mushaf'}
                 />
               )}
             </View>

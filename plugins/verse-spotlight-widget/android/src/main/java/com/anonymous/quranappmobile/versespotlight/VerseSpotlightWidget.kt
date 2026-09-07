@@ -448,22 +448,6 @@ class VerseSpotlightMaterialWidgetProvider : VerseSpotlightWidgetProvider()
 
 class VerseSpotlightMaterialCoverWidgetProvider : VerseSpotlightWidgetProvider()
 
-internal enum class SpotlightWidgetDesign { CLASSIC, SERENITY, MATERIAL }
-
-internal fun widgetDesignForProvider(providerClassName: String?): SpotlightWidgetDesign =
-    when (providerClassName) {
-      VerseSpotlightSerenityWidgetProvider::class.java.name,
-      VerseSpotlightSerenityCoverWidgetProvider::class.java.name -> SpotlightWidgetDesign.SERENITY
-      VerseSpotlightMaterialWidgetProvider::class.java.name,
-      VerseSpotlightMaterialCoverWidgetProvider::class.java.name -> SpotlightWidgetDesign.MATERIAL
-      else -> SpotlightWidgetDesign.CLASSIC
-    }
-
-private fun widgetDesign(context: Context, widgetId: Int): SpotlightWidgetDesign =
-    widgetDesignForProvider(
-        AppWidgetManager.getInstance(context).getAppWidgetInfo(widgetId)?.provider?.className
-    )
-
 open class VerseSpotlightWidgetProvider : AppWidgetProvider() {
   override fun onUpdate(
       context: Context,
@@ -535,13 +519,7 @@ open class VerseSpotlightWidgetProvider : AppWidgetProvider() {
 
     val chapter = assets.index.chapter(state.verseKey) ?: return
     val reference = "${chapter.nameSimple}  •  ${state.verseKey}"
-    // Actions are delivered to the shared receiver, so resolve design from the widget ID.
-    val layoutId = when (widgetDesign(context, widgetId)) {
-      SpotlightWidgetDesign.SERENITY -> R.layout.verse_spotlight_serenity_widget
-      SpotlightWidgetDesign.MATERIAL -> R.layout.verse_spotlight_material_widget
-      SpotlightWidgetDesign.CLASSIC -> R.layout.verse_spotlight_widget
-    }
-    val views = RemoteViews(context.packageName, layoutId)
+    val views = RemoteViews(context.packageName, R.layout.verse_spotlight_widget)
     val contentIntent =
         Intent(context, VerseSpotlightTextService::class.java)
             .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widgetId)
@@ -725,23 +703,13 @@ private class VerseSpotlightTextFactory(
 
   override fun getViewAt(position: Int): RemoteViews? {
     val text = textItems.getOrNull(position) ?: return null
-    val design = widgetDesign(context, widgetId)
     val layoutId =
         if (isArabicOnly) {
           R.layout.verse_spotlight_arabic_text_item
-        } else when (design) {
-          SpotlightWidgetDesign.SERENITY -> R.layout.verse_spotlight_serenity_text_item
-          SpotlightWidgetDesign.MATERIAL -> R.layout.verse_spotlight_material_text_item
-          SpotlightWidgetDesign.CLASSIC -> R.layout.verse_spotlight_text_item
+        } else {
+          R.layout.verse_spotlight_text_item
         }
     return RemoteViews(context.packageName, layoutId).apply {
-      when (design) {
-        SpotlightWidgetDesign.SERENITY ->
-            setTextColor(R.id.verse_spotlight_text, context.getColor(R.color.verse_spotlight_serenity_text))
-        SpotlightWidgetDesign.MATERIAL ->
-            setTextColor(R.id.verse_spotlight_text, context.getColor(R.color.verse_spotlight_material_text))
-        SpotlightWidgetDesign.CLASSIC -> Unit
-      }
       setTextViewText(R.id.verse_spotlight_text, text)
       setContentDescription(R.id.verse_spotlight_text, text)
       setOnClickFillInIntent(R.id.verse_spotlight_text_item, Intent())
@@ -750,7 +718,7 @@ private class VerseSpotlightTextFactory(
 
   override fun getLoadingView(): RemoteViews? = null
 
-  override fun getViewTypeCount(): Int = 4
+  override fun getViewTypeCount(): Int = 2
 
   override fun getItemId(position: Int): Long = position.toLong()
 
