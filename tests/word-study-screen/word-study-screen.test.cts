@@ -995,7 +995,9 @@ test('occurrence explorer cancels stale queries, keeps page size bounded, and av
   assert.match(source, /Animated\.timing\(bodyHeight/);
   assert.match(source, /useNativeDriver: false/);
   assert.match(source, /onLayout=\{handleBodyLayout\}/);
-  assert.match(source, /familyBodyViewport: \{ overflow: 'hidden' \}/);
+  assert.match(source, /familyCard: \{ borderRadius: 20, overflow: 'hidden' \}/);
+  assert.match(source, /familyBodyViewport: \{[\s\S]*?overflow: 'hidden'/);
+  assert.match(source, /familyRowLast: \{ borderBottomLeftRadius: 20, borderBottomRightRadius: 20 \}/);
   assert.match(source, /accessibilityElementsHidden=\{!expanded\}/);
   assert.doesNotMatch(source, /setRootFamilyExpanded\(false\)/);
   assert.match(source, /MAX_EXPANDED_FAMILY_RESULTS_HEIGHT_FLOOR/);

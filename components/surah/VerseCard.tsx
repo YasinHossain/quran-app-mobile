@@ -351,6 +351,7 @@ function VerseCardComponent({
       ) : (
         <Text
           key={`${verseKey}-arabic-${renderSignal}`}
+          selectable
           className="text-right"
           style={{
             color: palette.text,
@@ -384,6 +385,7 @@ function VerseCardComponent({
                 {shouldShowTranslationAttribution && resourceName ? (
                   <Text
                     className="text-xs font-normal uppercase tracking-wider"
+                    selectable
                     style={{ color: palette.muted }}
                   >
                     {resourceName}
@@ -391,6 +393,7 @@ function VerseCardComponent({
                 ) : null}
                 <Text
                   className=""
+                  selectable
                   style={{
                     color: palette.text,
                     fontSize: translationFontSize,

@@ -122,21 +122,13 @@ export const TafsirHtml = React.memo(function TafsirHtml({
         />
       ) : (
         <View>
-          {(paragraphs.length ? paragraphs : [plainText]).map((paragraph, index) => (
-            <Text
-              key={`${contentKey ?? 'tafsir'}-${index}`}
-              style={[
-                baseStyle,
-                {
-                  writingDirection: 'auto',
-                  textAlign: 'left',
-                  marginBottom: index === paragraphs.length - 1 ? 0 : 14,
-                },
-              ]}
-            >
-              {paragraph}
-            </Text>
-          ))}
+          <Text
+            key={contentKey ?? 'tafsir'}
+            selectable
+            style={[baseStyle, { writingDirection: 'auto', textAlign: 'left' }]}
+          >
+            {(paragraphs.length ? paragraphs : [plainText]).join('\n\n')}
+          </Text>
         </View>
       )}
     </View>
