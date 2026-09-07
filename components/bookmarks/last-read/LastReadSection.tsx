@@ -6,6 +6,7 @@ import {
   Text,
   useWindowDimensions,
   View,
+  type LayoutChangeEvent,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from 'react-native';
@@ -19,17 +20,14 @@ import { useUiTranslation } from '@/providers/UiLanguageContext';
 import { LastReadCard } from './LastReadCard';
 import { LastReadHeader } from './LastReadHeader';
 import { buildNormalizedLastReadEntries, type NormalizedLastReadEntry } from './lastReadEntries';
+import {
+  getLastReadCardWidth,
+  getLastReadNumColumns,
+  LAST_READ_GRID_GAP,
+  LAST_READ_HORIZONTAL_PADDING,
+} from './lastReadLayout';
 
 import type { LastReadMap } from '@/types';
-
-function getNumColumns(width: number): number {
-  const horizontalPadding = 16 * 2;
-  const gap = 12;
-  const minCardWidth = 176; // ~11rem
-  const available = Math.max(0, width - horizontalPadding);
-  const columns = Math.floor((available + gap) / (minCardWidth + gap));
-  return Math.max(1, Math.min(3, columns || 1));
-}
 
 export function LastReadSection({
   lastRead,
@@ -55,14 +53,38 @@ export function LastReadSection({
   const { resolvedTheme } = useAppTheme();
   const { t } = useUiTranslation();
   const palette = Colors[resolvedTheme];
-  const { width } = useWindowDimensions();
+  const { width: windowWidth } = useWindowDimensions();
   const { audioPlayerBarHeight } = useLayoutMetrics();
-  const numColumns = React.useMemo(() => getNumColumns(width), [width]);
+  const [containerWidth, setContainerWidth] = React.useState<number>(0);
+  const effectiveWidth = containerWidth > 0 ? containerWidth : windowWidth;
+  const numColumns = React.useMemo(() => getLastReadNumColumns(effectiveWidth), [effectiveWidth]);
   const listRef = React.useRef<FlatList<NormalizedLastReadEntry> | null>(null);
   const contentContainerStyle = React.useMemo(
-    () => ({ paddingHorizontal: 16, paddingBottom: 24 + audioPlayerBarHeight }),
+    () => ({
+      paddingHorizontal: LAST_READ_HORIZONTAL_PADDING / 2,
+      paddingBottom: 24 + audioPlayerBarHeight,
+    }),
     [audioPlayerBarHeight]
   );
+
+  const cardWidth = React.useMemo(
+    () => getLastReadCardWidth(effectiveWidth, numColumns),
+    [effectiveWidth, numColumns]
+  );
+
+  const handleLayout = React.useCallback(
+    (event: LayoutChangeEvent) => {
+      const nextWidth = Math.round(event.nativeEvent.layout.width);
+      if (nextWidth > 0 && Math.abs(nextWidth - containerWidth) > 1) {
+        setContainerWidth(nextWidth);
+      }
+    },
+    [containerWidth]
+  );
+
+  React.useEffect(() => {
+    setContainerWidth(windowWidth);
+  }, [windowWidth]);
 
   const { chapters, isLoading: isChaptersLoading, errorMessage: chaptersError } = useChapters();
 
@@ -86,9 +108,11 @@ export function LastReadSection({
       ref={listRef}
       key={numColumns}
       style={{ flex: 1 }}
+      onLayout={handleLayout}
       data={normalizedEntries}
       keyExtractor={(item) => item.surahId}
       numColumns={numColumns}
+      columnWrapperStyle={numColumns > 1 ? { justifyContent: 'flex-start' } : undefined}
       onScroll={onScroll}
       onScrollBeginDrag={onScrollBeginDrag}
       onScrollEndDrag={onScrollEndDrag}
@@ -119,15 +143,16 @@ export function LastReadSection({
         )
       }
       renderItem={({ item, index }) => {
-        const gap = 12;
         const isLastInRow = numColumns === 1 ? true : (index + 1) % numColumns === 0;
 
         return (
           <View
             style={{
-              flex: 1,
-              marginBottom: gap,
-              marginRight: isLastInRow ? 0 : gap,
+              width: cardWidth,
+              maxWidth: cardWidth,
+              flex: numColumns === 1 ? 1 : undefined,
+              marginBottom: LAST_READ_GRID_GAP,
+              marginEnd: isLastInRow ? 0 : LAST_READ_GRID_GAP,
             }}
           >
             <LastReadCard

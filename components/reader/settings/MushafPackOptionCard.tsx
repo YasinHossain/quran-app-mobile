@@ -18,11 +18,16 @@ type MushafPackOptionAction = {
   tone?: ActionTone | undefined;
 };
 
-// Bundled script samples are illustrative, not exact page or Tajweed previews.
-// Keep this panel independent of reader fonts, WebViews, and network access.
-const SCRIPT_PREVIEWS = {
-  uthmani: require('../../../assets/images/mushaf-previews/uthmani.png'),
-  indopak: require('../../../assets/images/mushaf-previews/indopak.png'),
+// Bundled authentic 3-line previews for all mushaf options.
+// Keeps the panel independent of runtime WebViews, network requests, and dynamic font loading.
+const MUSHAF_PREVIEWS = {
+  'qcf-madani-v1': require('@/assets/images/mushaf-previews/qcf-madani-v1.png'),
+  'qcf-madani-v2': require('@/assets/images/mushaf-previews/qcf-madani-v2.png'),
+  'qpc-uthmani-hafs': require('@/assets/images/mushaf-previews/qpc-uthmani-hafs.png'),
+  'unicode-indopak-15': require('@/assets/images/mushaf-previews/unicode-indopak-15.png'),
+  'unicode-indopak-16': require('@/assets/images/mushaf-previews/unicode-indopak-16.png'),
+  'qcf-tajweed-v4-light': require('@/assets/images/mushaf-previews/qcf-tajweed-v4-light.png'),
+  'qcf-tajweed-v4-dark': require('@/assets/images/mushaf-previews/qcf-tajweed-v4-dark.png'),
 } as const;
 
 const cardShadow = {
@@ -72,6 +77,7 @@ export function MushafPackOptionCard({
   const hasTrailingAction = Boolean(trailingAction);
   const option = findMushafOption(packId);
   const isIndopak = option?.script === 'indopak';
+  const isTajweed = packId === 'qcf-tajweed-v4';
   const scriptLabel = isIndopak
     ? 'IndoPak'
     : option?.script === 'tajweed'
@@ -84,6 +90,13 @@ export function MushafPackOptionCard({
     }
   };
 
+  const previewImageSource = isTajweed
+    ? (isDark ? MUSHAF_PREVIEWS['qcf-tajweed-v4-dark'] : MUSHAF_PREVIEWS['qcf-tajweed-v4-light'])
+    : (packId && packId in MUSHAF_PREVIEWS
+        ? MUSHAF_PREVIEWS[packId as keyof typeof MUSHAF_PREVIEWS]
+        : MUSHAF_PREVIEWS['qpc-uthmani-hafs']);
+
+  const previewTintColor = isDark ? '#FFFFFF' : '#374151';
   const bgColor = isSelected ? palette.accent : palette.surface;
   const borderColor = isSelected ? palette.accent : palette.border;
 
@@ -105,7 +118,6 @@ export function MushafPackOptionCard({
             borderColor: borderColor,
             borderWidth: 1,
             borderStyle: 'solid',
-            // Even thinner symmetrical padding on left, right, and bottom (8px)
             paddingTop: 12,
             paddingRight: 8,
             paddingBottom: 8,
@@ -128,7 +140,7 @@ export function MushafPackOptionCard({
           >
             {title}
           </Text>
-          
+
           {hasTrailingAction ? (
             <Pressable
               accessibilityRole="button"
@@ -162,23 +174,27 @@ export function MushafPackOptionCard({
           ) : null}
         </View>
 
+        {/* Inset preview box: clean background matching page background, borderless */}
         <View
-          className="rounded-md px-3 py-2"
-          style={{ backgroundColor: palette.background }}
+          className="rounded-md justify-center items-center"
+          style={{
+            backgroundColor: palette.background,
+            overflow: 'hidden',
+            paddingHorizontal: 8,
+            paddingVertical: 4,
+            minHeight: 88,
+          }}
         >
-          <Text className="text-xs" style={{ color: palette.muted }}>
-            {scriptLabel}{option ? ` · ${option.lines} lines` : ''}
-          </Text>
           <Image
-            source={isIndopak ? SCRIPT_PREVIEWS.indopak : SCRIPT_PREVIEWS.uthmani}
+            source={previewImageSource}
             resizeMode="contain"
             fadeDuration={0}
             accessible={false}
-            style={{ width: '100%', height: 52, tintColor: palette.text }}
+            style={[
+              { width: '100%', height: 80 },
+              isTajweed ? undefined : { tintColor: previewTintColor },
+            ]}
           />
-          <Text className="text-xs" style={{ color: palette.muted }}>
-            Script sample
-          </Text>
         </View>
 
         {progressLabel ? (

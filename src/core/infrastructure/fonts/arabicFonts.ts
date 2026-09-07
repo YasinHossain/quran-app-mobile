@@ -28,6 +28,7 @@ export const STARTUP_FONT_ASSETS = {
   'Noto Naskh Arabic': FONT_ASSETS['Noto Naskh Arabic'],
   'Me Quran': FONT_ASSETS['Me Quran'],
   'KFGQ V2': FONT_ASSETS['KFGQ V2'],
+  IndoPak: FONT_ASSETS.IndoPak,
   [QURAN_TEXT_SUPPORT_FONT_FAMILY]: FONT_ASSETS[QURAN_TEXT_SUPPORT_FONT_FAMILY],
 } as const;
 
