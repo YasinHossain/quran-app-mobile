@@ -381,29 +381,23 @@ function VerseCardComponent({
                 : undefined;
 
             return (
-              <View key={`${renderSignal}-${idx}-${translation.text.slice(0, 24)}`} className="gap-2">
+              <Text
+                key={`${renderSignal}-${idx}-${translation.text.slice(0, 24)}`}
+                selectable
+                style={{
+                  color: palette.text,
+                  fontSize: translationFontSize,
+                  lineHeight: translationLineHeight,
+                  writingDirection: 'auto',
+                }}
+              >
                 {shouldShowTranslationAttribution && resourceName ? (
-                  <Text
-                    className="text-xs font-normal uppercase tracking-wider"
-                    selectable
-                    style={{ color: palette.muted }}
-                  >
-                    {resourceName}
+                  <Text style={{ color: palette.muted, fontSize: 12, lineHeight: 18 }}>
+                    {resourceName}{'\n'}
                   </Text>
                 ) : null}
-                <Text
-                  className=""
-                  selectable
-                  style={{
-                    color: palette.text,
-                    fontSize: translationFontSize,
-                    lineHeight: translationLineHeight,
-                    writingDirection: 'auto',
-                  }}
-                >
-                  {translation.text}
-                </Text>
-              </View>
+                {translation.text}
+              </Text>
             );
           })}
         </View>
