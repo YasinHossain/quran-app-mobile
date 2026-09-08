@@ -19,6 +19,8 @@ import {
   type ViewToken,
 } from 'react-native';
 
+import { copyTextToClipboard } from '@/lib/clipboard';
+import { formatVerseText } from '@/lib/verse/formatVerseText';
 import { BookmarkModal } from '@/components/bookmarks/BookmarkModal';
 import {
   MushafSingleDocumentReader,
@@ -409,6 +411,11 @@ export default function SurahScreen(): React.JSX.Element {
     verseApiId?: number;
     arabicText: string;
     translationTexts: string[];
+    translationItems?: Array<{
+      text: string;
+      resourceId?: number;
+      resourceName?: string;
+    }>;
   } | null>(null);
 
   const { resolvedTheme } = useAppTheme();
@@ -673,6 +680,11 @@ export default function SurahScreen(): React.JSX.Element {
       verseApiId?: number;
       arabicText: string;
       translationTexts: string[];
+      translationItems?: Array<{
+        text: string;
+        resourceId?: number;
+        resourceName?: string;
+      }>;
     }) => {
       setActiveVerse(params);
       setIsVerseActionsOpen(true);
@@ -1102,21 +1114,38 @@ export default function SurahScreen(): React.JSX.Element {
     setIsAddToPlannerOpen(true);
   }, [activeVerse?.arabicText, activeVerse?.translationTexts, activeVerse?.verseKey, chapterNumber]);
 
+  const handleCopy = React.useCallback(async () => {
+    if (!activeVerse) return;
+    const textToCopy = formatVerseText({
+      surahName: chapter?.name_simple,
+      verseKey: activeVerse.verseKey,
+      arabicText: activeVerse.arabicText,
+      translationTexts: activeVerse.translationTexts,
+      translationItems: activeVerse.translationItems,
+      translationsById,
+    });
+    await copyTextToClipboard(
+      textToCopy,
+      t('verse_copied', { fallback: 'Verse copied to clipboard' })
+    );
+  }, [activeVerse, chapter?.name_simple, t, translationsById]);
+
   const handleShare = React.useCallback(async () => {
     if (!activeVerse) return;
-    const lines = [
-      chapter?.name_simple ? `${chapter.name_simple} ${activeVerse.verseKey}` : activeVerse.verseKey,
-      '',
-      activeVerse.arabicText,
-      '',
-      ...(activeVerse.translationTexts?.length ? [activeVerse.translationTexts[0]!] : []),
-    ];
+    const textToShare = formatVerseText({
+      surahName: chapter?.name_simple,
+      verseKey: activeVerse.verseKey,
+      arabicText: activeVerse.arabicText,
+      translationTexts: activeVerse.translationTexts,
+      translationItems: activeVerse.translationItems,
+      translationsById,
+    });
     try {
-      await Share.share({ message: lines.join('\n') });
+      await Share.share({ message: textToShare });
     } catch {
       // Ignore share failures.
     }
-  }, [activeVerse, chapter?.name_simple]);
+  }, [activeVerse, chapter?.name_simple, translationsById]);
 
   const renderTranslationVerseCard = React.useCallback(
     (verse: SurahVerse, options?: { actionsEnabled?: boolean }) => {
@@ -1167,6 +1196,7 @@ export default function SurahScreen(): React.JSX.Element {
                       verseApiId,
                       arabicText: verse.text_uthmani ?? '',
                       translationTexts,
+                      translationItems,
                     })
                 : undefined
             }
@@ -2613,6 +2643,7 @@ export default function SurahScreen(): React.JSX.Element {
         onOpenTafsir={handleOpenTafsir}
         onBookmark={handleBookmark}
         onAddToPlan={handleAddToPlan}
+        onCopy={handleCopy}
         onShare={handleShare}
       />
 

@@ -20,6 +20,7 @@ type OpenVerseActionsParams = {
   verseApiId?: number;
   arabicText: string;
   translationTexts: string[];
+  translationItems?: Array<{ resourceId?: number; resourceName?: string; text: string }>;
 };
 
 type UseNativeSurahReaderEventsParams = {
@@ -157,11 +158,13 @@ export function useNativeSurahReaderEvents({
           : undefined;
       const translationTexts =
         loadedVerse?.translationTexts ?? event.nativeEvent.translationTexts ?? [];
+      const translationItems = loadedVerse?.translationItems;
       openVerseActions({
         verseKey: event.nativeEvent.verseKey,
         verseApiId: event.nativeEvent.verseApiId ?? loadedVerse?.id,
         arabicText: loadedVerse?.text_uthmani ?? event.nativeEvent.arabicText ?? '',
         translationTexts,
+        translationItems,
       });
     },
     [getVerseByNumberRef, openVerseActions]

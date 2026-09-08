@@ -11,6 +11,12 @@ import android.widget.LinearLayout
 import android.widget.TextView
 
 internal class NativeWordLayoutView(context: Context) : ViewGroup(context) {
+  var onVerseLongPress: (() -> Boolean)? = null
+
+  init {
+    setOnLongClickListener { onVerseLongPress?.invoke() ?: false }
+  }
+
   private var words: List<NativeWord> = emptyList()
   private var arabicFontFace: String? = null
   private var arabicFontSize: Float = 25f
@@ -202,6 +208,7 @@ internal class NativeWordLayoutView(context: Context) : ViewGroup(context) {
               dp(if (showTranslations) 10 else 2),
               dp(if (showTranslations) 10 else 1),
           )
+          setOnLongClickListener { onVerseLongPress?.invoke() ?: false }
           configureTokenPress(this, word)
         }
 
@@ -250,9 +257,8 @@ internal class NativeWordLayoutView(context: Context) : ViewGroup(context) {
 
   private fun configureTokenPress(token: View, word: NativeWord) {
     token.isClickable = wordPressEnabled
-    token.isFocusable = wordPressEnabled
-    token.importantForAccessibility =
-        if (wordPressEnabled) IMPORTANT_FOR_ACCESSIBILITY_YES else IMPORTANT_FOR_ACCESSIBILITY_NO
+    token.isFocusable = true
+    token.importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_YES
     token.contentDescription =
         if (wordPressEnabled) {
           listOfNotNull(
@@ -262,10 +268,11 @@ internal class NativeWordLayoutView(context: Context) : ViewGroup(context) {
               )
               .joinToString(". ")
         } else {
-          null
+          word.uthmani
         }
     if (!wordPressEnabled) {
       token.setOnClickListener(null)
+      token.isClickable = false
       return
     }
 

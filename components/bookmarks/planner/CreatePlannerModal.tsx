@@ -3,6 +3,7 @@ import React from 'react';
 import {
   ActivityIndicator,
   Animated,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -20,6 +21,7 @@ import { dialogTransform, useModalTransition } from '@/components/motion/modalTr
 import Colors from '@/constants/Colors';
 import { useChapters } from '@/hooks/useChapters';
 import { useBookmarks } from '@/providers/BookmarkContext';
+import { OverlayPortalProvider } from '@/providers/OverlayPortalContext';
 import { useAppTheme } from '@/providers/ThemeContext';
 import { useUiTranslation } from '@/providers/UiLanguageContext';
 
@@ -131,9 +133,27 @@ export function CreatePlannerModal({
     stats.totalVerses > 0 &&
     !duplicatePlanName;
 
+  const [openSelectorId, setOpenSelectorId] = React.useState<'start' | 'end' | null>(null);
+  const [selectorDismissRequest, setSelectorDismissRequest] = React.useState(0);
+  const isSelectorOpen = openSelectorId !== null;
+
+  const dismissOpenSelector = React.useCallback(() => {
+    Keyboard.dismiss();
+    setSelectorDismissRequest((current) => current + 1);
+  }, []);
+
+  const handleStartSelectorOpenChange = React.useCallback((isOpen: boolean) => {
+    setOpenSelectorId((current) => (isOpen ? 'start' : current === 'start' ? null : current));
+  }, []);
+
+  const handleEndSelectorOpenChange = React.useCallback((isOpen: boolean) => {
+    setOpenSelectorId((current) => (isOpen ? 'end' : current === 'end' ? null : current));
+  }, []);
+
   const handleClose = React.useCallback(() => {
     setFormData(resetFormState());
     setIsSubmitting(false);
+    setOpenSelectorId(null);
     onClose();
   }, [onClose]);
 
@@ -142,9 +162,13 @@ export function CreatePlannerModal({
   }, []);
 
   const handleOverlayPress = React.useCallback(() => {
+    if (isSelectorOpen) {
+      dismissOpenSelector();
+      return;
+    }
     if (!dismissEnabledRef.current) return;
     handleClose();
-  }, [dismissEnabledRef, handleClose]);
+  }, [dismissEnabledRef, dismissOpenSelector, handleClose, isSelectorOpen]);
 
   const handleSelectStartSurah = React.useCallback(
     (surahId: number) => {
@@ -212,29 +236,17 @@ export function CreatePlannerModal({
   const currentLength = Math.min(maxName, formData.planName.length);
   const maxDialogHeight = Math.max(0, Math.round(windowHeight * 0.92));
 
-  let contentMinHeight = 530;
-  if (duplicatePlanName) {
-    contentMinHeight += 30;
-  }
-  if (stats.isValidRange && stats.totalVerses > 0) {
-    contentMinHeight += 100;
-  }
-  if (chapters.length === 0) {
-    contentMinHeight += 70;
-  }
-
-  const minDialogHeight = Math.min(maxDialogHeight, contentMinHeight);
-
   return (
-      <Modal
-        transparent
-        visible={visible}
-        onShow={onModalShow}
-        onRequestClose={handleClose}
-        animationType="none"
-        {...(Platform.OS === 'ios' ? { presentationStyle: 'overFullScreen' as const } : {})}
-        statusBarTranslucent
-      >
+    <Modal
+      transparent
+      visible={visible}
+      onShow={onModalShow}
+      onRequestClose={handleClose}
+      animationType="none"
+      {...(Platform.OS === 'ios' ? { presentationStyle: 'overFullScreen' as const } : {})}
+      statusBarTranslucent
+    >
+      <OverlayPortalProvider>
         <View className={isDark ? 'dark' : ''} style={styles.root}>
           <Pressable style={StyleSheet.absoluteFill} onPress={handleOverlayPress}>
             <Animated.View style={[styles.overlay, { opacity: progress }]} />
@@ -293,9 +305,18 @@ export function CreatePlannerModal({
                   <ScrollView
                     style={styles.flex}
                     keyboardShouldPersistTaps="handled"
+                    onScrollBeginDrag={dismissOpenSelector}
                     contentContainerStyle={styles.scrollContent}
                   >
-                    <View className="px-5 gap-6">
+                    <View className="px-5 gap-6" style={styles.formContent}>
+                      {isSelectorOpen ? (
+                        <Pressable
+                          onPress={dismissOpenSelector}
+                          accessibilityRole="button"
+                          accessibilityLabel="Close selector list"
+                          style={styles.selectorDismissLayer}
+                        />
+                      ) : null}
                       <View>
                         <View className="flex-row items-center justify-between mb-2">
                           <Text className="text-sm font-semibold text-foreground dark:text-foreground-dark">
@@ -324,7 +345,7 @@ export function CreatePlannerModal({
                         ) : null}
                       </View>
 
-                      <View className="gap-4">
+                      <View style={styles.selectorsSection} className="gap-4">
                         <SurahVerseSelectorRow
                           chapters={chapters}
                           isLoading={isChaptersLoading}
@@ -334,6 +355,10 @@ export function CreatePlannerModal({
                           selectedVerse={formData.startVerse}
                           onSelectSurah={handleSelectStartSurah}
                           onSelectVerse={handleSelectStartVerse}
+                          autoAdvanceToVerse
+                          floatingDropdown
+                          onOpenChange={handleStartSelectorOpenChange}
+                          dismissRequest={selectorDismissRequest}
                         />
 
                         <SurahVerseSelectorRow
@@ -345,6 +370,10 @@ export function CreatePlannerModal({
                           selectedVerse={formData.endVerse}
                           onSelectSurah={handleSelectEndSurah}
                           onSelectVerse={handleSelectEndVerse}
+                          autoAdvanceToVerse
+                          floatingDropdown
+                          onOpenChange={handleEndSelectorOpenChange}
+                          dismissRequest={selectorDismissRequest}
                         />
                       </View>
 
@@ -466,7 +495,8 @@ export function CreatePlannerModal({
             </Animated.View>
           </KeyboardAvoidingView>
         </View>
-      </Modal>
+      </OverlayPortalProvider>
+    </Modal>
   );
 }
 
@@ -490,4 +520,18 @@ const styles = StyleSheet.create({
   inner: { flexShrink: 1 },
   flex: { flexShrink: 1 },
   scrollContent: { paddingBottom: 10 },
+  formContent: {
+    position: 'relative',
+  },
+  selectorDismissLayer: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    zIndex: 1,
+  },
+  selectorsSection: {
+    zIndex: 2,
+  },
 });

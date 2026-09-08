@@ -274,6 +274,8 @@
   "verse_options": "Verse options",
   "add_to_plan": "Add to Plan",
   "share": "Share",
+  "copy_verse": "Copy Verse",
+  "verse_copied": "Verse copied to clipboard",
   "remove_bookmark": "Remove Bookmark",
   "pin_or_bookmark": "Pin or Bookmark",
   "view_tafsir": "View Tafsir",

@@ -2,6 +2,7 @@ import {
   Bookmark,
   BookOpenText,
   Calendar,
+  Copy,
   Pause,
   Play,
   Share2,
@@ -29,6 +30,7 @@ export function VerseActionsSheet({
   onOpenTafsir,
   onBookmark,
   onAddToPlan,
+  onCopy,
   onShare,
 }: {
   isOpen: boolean;
@@ -43,6 +45,7 @@ export function VerseActionsSheet({
   onOpenTafsir?: () => void;
   onBookmark?: () => void;
   onAddToPlan?: () => void;
+  onCopy?: () => void | Promise<void>;
   onShare?: () => void | Promise<void>;
 }): React.JSX.Element {
   const { resolvedTheme, isDark } = useAppTheme();
@@ -177,6 +180,12 @@ export function VerseActionsSheet({
                     label={t('add_to_plan', { fallback: 'Add to Plan' })}
                     onPress={() => handleDeferredAction(onAddToPlan)}
                     disabled={!onAddToPlan}
+                  />
+                  <ActionRow
+                    icon={<Copy color={palette.muted} size={20} strokeWidth={2.25} />}
+                    label={t('copy_verse', { fallback: 'Copy Verse' })}
+                    onPress={() => handleDeferredAction(onCopy)}
+                    disabled={!onCopy}
                   />
                   <ActionRow
                     icon={<Share2 color={palette.muted} size={20} strokeWidth={2.25} />}

@@ -3,6 +3,9 @@ import { isValidVerseKey } from './canonicalIndex';
 import type { VerseKey, VerseSpotlightState, VerseSpotlightSurface } from './contracts';
 
 export const VERSE_SPOTLIGHT_STATE_SCHEMA_VERSION = 1;
+// Rotate automatically while the spotlight is visible on Home. The controller
+// pauses when it is scrolled off-screen or the app is inactive, and preserves
+// the selected verse across visits.
 export const HOME_SPOTLIGHT_ROTATION_INTERVAL_MS = 5 * 60 * 1000;
 export const ANDROID_WIDGET_ROTATION_INTERVAL_MS = 4 * 60 * 60 * 1000;
 

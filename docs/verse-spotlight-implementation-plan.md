@@ -30,7 +30,7 @@ This document is intended for phase-by-phase AI implementation. Complete and ver
 
 ### Surface-specific behavior
 
-- Home automatic rotation: approximately every five minutes while the Home tab is active. On focus/resume, rotate immediately if the stored deadline has passed. Do not run a permanent background timer.
+- Home automatic rotation: approximately every five minutes while the spotlight is visible. Pause rotation when it is scrolled off-screen or Home/app is inactive. If the stored deadline passes while inactive, keep the current verse on resume and restart the rotation window; do not surprise the user with an immediate replacement. Do not run a permanent background timer.
 - Android widget automatic rotation: approximately every four hours by default, using battery-respectful Android scheduling.
 - Widget interval presets may be added as `30 minutes`, `1 hour`, `4 hours`, `12 hours`, `daily`, and `manual only`, but a settings UI is not required unless explicitly requested during implementation.
 - Manual shuffle is immediate on both surfaces.
@@ -204,7 +204,7 @@ Replace the demo home verse with a polished, accessible, fully offline interacti
 
 - The demo text is gone.
 - Home never fetches verse text from the network.
-- Automatic rotation occurs only while appropriate and catches up on focus/resume.
+- Automatic rotation occurs only while appropriate; time elapsed while Home is inactive does not replace the verse immediately on resume.
 - Shuffle is random; arrows and swipes are sequential.
 - The card remains usable for long translations and accessibility font sizes.
 - No Android widget is required yet.

@@ -332,8 +332,12 @@ function HomeSearchHeader({
 }
 
 function HomeIntro({
+  isSpotlightVisible,
+  onSpotlightHeightChange,
   onHeightChange,
 }: {
+  isSpotlightVisible: boolean;
+  onSpotlightHeightChange?: (height: number) => void;
   onHeightChange?: (height: number) => void;
 }): React.JSX.Element {
   return (
@@ -341,8 +345,11 @@ function HomeIntro({
       className="pb-4"
       onLayout={(event) => onHeightChange?.(event.nativeEvent.layout.height)}
     >
-      <View className="px-3">
-        <HomeVerseSpotlight />
+      <View
+        className="px-3"
+        onLayout={(event) => onSpotlightHeightChange?.(event.nativeEvent.layout.height)}
+      >
+        <HomeVerseSpotlight isVisible={isSpotlightVisible} />
       </View>
       <View className="mt-4 px-3">
         <HomeShortcutGrid />
@@ -491,8 +498,10 @@ export default function ReadScreen(): React.JSX.Element {
   useScrollToTop(listRef);
   const scrollY = React.useRef(new Animated.Value(0)).current;
   const homeIntroHeightRef = React.useRef(0);
+  const spotlightHeightRef = React.useRef(0);
   const listScrollOffsetRef = React.useRef(0);
   const [homeIntroHeight, setHomeIntroHeight] = React.useState(0);
+  const [isSpotlightVisible, setIsSpotlightVisible] = React.useState(true);
   const [tabsBarHeight, setTabsBarHeight] = React.useState(HOME_TABS_BAR_ESTIMATED_HEIGHT);
   const [listViewportHeight, setListViewportHeight] = React.useState(0);
   const { chapters, isLoading, errorMessage } = useChapters();
@@ -558,6 +567,10 @@ export default function ReadScreen(): React.JSX.Element {
     setHomeIntroHeight(height);
   }, []);
 
+  const handleSpotlightHeightChange = React.useCallback((height: number) => {
+    spotlightHeightRef.current = height;
+  }, []);
+
   const handleTabsBarHeightChange = React.useCallback((height: number) => {
     setTabsBarHeight((currentHeight) =>
       Math.abs(currentHeight - height) < 1 ? currentHeight : height
@@ -601,10 +614,15 @@ export default function ReadScreen(): React.JSX.Element {
     (event: { nativeEvent: { contentOffset: { y: number } } }) => {
       const offset = event.nativeEvent.contentOffset.y;
       listScrollOffsetRef.current = offset;
+      setIsSpotlightVisible((visible) => {
+        const spotlightHeight = spotlightHeightRef.current;
+        const nextVisible = spotlightHeight <= 0 || offset < spotlightHeight;
+        return visible === nextVisible ? visible : nextVisible;
+      });
       updateCurrentIndexFromScroll(offset);
       scrubberRef.current?.show();
     },
-    [updateCurrentIndexFromScroll]
+    [effectiveHomeIntroHeight, updateCurrentIndexFromScroll]
   );
 
   const handleAnimatedListScroll = React.useMemo(
@@ -684,7 +702,13 @@ export default function ReadScreen(): React.JSX.Element {
   const renderItem = React.useCallback(
     ({ item }: { item: HomeListRow }) => {
       if (item.type === 'intro') {
-        return <HomeIntro onHeightChange={handleHomeIntroHeightChange} />;
+        return (
+          <HomeIntro
+            isSpotlightVisible={isSpotlightVisible}
+            onSpotlightHeightChange={handleSpotlightHeightChange}
+            onHeightChange={handleHomeIntroHeightChange}
+          />
+        );
       }
 
       if (item.type === 'tabs') {
@@ -746,8 +770,10 @@ export default function ReadScreen(): React.JSX.Element {
     [
       activeTab,
       handleHomeIntroHeightChange,
+      handleSpotlightHeightChange,
       handleTabChange,
       handleTabsBarHeightChange,
+      isSpotlightVisible,
       numColumns,
       width,
     ]

@@ -27,6 +27,32 @@ import { container } from '@/src/core/infrastructure/di/container';
 
 const SWIPE_TAP_SUPPRESSION_MS = 300;
 
+// Expo Router may remount the home list's intro row (for example when a
+// clipped FlatList cell is brought back on screen). Keep the controller alive
+// so the already-resolved verse can be painted immediately instead of showing
+// the loading skeleton on every return to Home.
+let sharedHomeController: HomeVerseSpotlightController | null = null;
+
+function getSharedHomeController(
+  requestedTranslationId: number
+): HomeVerseSpotlightController {
+  if (sharedHomeController) return sharedHomeController;
+
+  sharedHomeController = new HomeVerseSpotlightController(requestedTranslationId, {
+    hydrate: hydrateHomeSpotlightState,
+    persist: persistHomeSpotlightState,
+    resolve: ({ requestedTranslationId: translationId, verseKey }) =>
+      resolveSpotlightVerse({
+        requestedTranslationId: translationId,
+        verseKey,
+        downloadIndex: container.getDownloadIndexRepository(),
+        offlineTranslations: container.getTranslationOfflineStore(),
+      }),
+  });
+
+  return sharedHomeController;
+}
+
 function HomeVerseSpotlightSkeleton(): React.JSX.Element {
   const { resolvedTheme } = useAppTheme();
   const palette = Colors[resolvedTheme];
@@ -45,7 +71,9 @@ function HomeVerseSpotlightSkeleton(): React.JSX.Element {
   );
 }
 
-export function HomeVerseSpotlight(): React.JSX.Element {
+export function HomeVerseSpotlight(
+  { isVisible = true }: { isVisible?: boolean } = {}
+): React.JSX.Element {
   const router = useRouter();
   const { resolvedTheme } = useAppTheme();
   const palette = Colors[resolvedTheme];
@@ -60,18 +88,7 @@ export function HomeVerseSpotlight(): React.JSX.Element {
   const [isAppActive, setIsAppActive] = React.useState(AppState.currentState === 'active');
 
   const controller = React.useMemo(
-    () =>
-      new HomeVerseSpotlightController(requestedTranslationIdRef.current, {
-        hydrate: hydrateHomeSpotlightState,
-        persist: persistHomeSpotlightState,
-        resolve: ({ requestedTranslationId: translationId, verseKey }) =>
-          resolveSpotlightVerse({
-            requestedTranslationId: translationId,
-            verseKey,
-            downloadIndex: container.getDownloadIndexRepository(),
-            offlineTranslations: container.getTranslationOfflineStore(),
-          }),
-      }),
+    () => getSharedHomeController(requestedTranslationIdRef.current),
     []
   );
   const snapshot = React.useSyncExternalStore(
@@ -82,9 +99,13 @@ export function HomeVerseSpotlight(): React.JSX.Element {
 
   React.useEffect(() => {
     if (!areSettingsHydrated) return;
+    // A shared controller already has the current state/content after a
+    // remount. Hydrate only on the first mount (or before any state exists).
+    if (controller.getSnapshot().state) return;
     void controller.hydrate();
-    return () => controller.dispose();
   }, [areSettingsHydrated, controller]);
+
+  React.useEffect(() => () => controller.setActive(false), [controller]);
 
   React.useEffect(() => {
     if (!areSettingsHydrated) return;
@@ -106,8 +127,8 @@ export function HomeVerseSpotlight(): React.JSX.Element {
   }, []);
 
   React.useEffect(() => {
-    controller.setActive(isScreenFocused && isAppActive);
-  }, [controller, isAppActive, isScreenFocused]);
+    controller.setActive(isScreenFocused && isAppActive && isVisible);
+  }, [controller, isAppActive, isScreenFocused, isVisible]);
 
   const handleOpenVerse = React.useCallback(() => {
     if (Date.now() < suppressedTapUntilRef.current) return;

@@ -28,6 +28,7 @@ import type { BookmarkContextType } from '@/providers/bookmarks/types';
 import type { Bookmark, Folder, LastReadMap, PlannerPlan } from '@/types';
 
 const PERSIST_DEBOUNCE_MS = 250;
+let cachedLastRead: LastReadMap | null = null;
 
 const sameVerseId = (a: string | number, b: string | number): boolean => String(a) === String(b);
 
@@ -73,7 +74,7 @@ export const BookmarkProvider = ({
 function useBookmarkProviderValue(): BookmarkContextType {
   const [folders, setFolders] = useState<Folder[]>([]);
   const [pinnedVerses, setPinnedVerses] = useState<Bookmark[]>([]);
-  const [lastRead, setLastReadState] = useState<LastReadMap>({});
+  const [lastRead, setLastReadState] = useState<LastReadMap>(() => cachedLastRead ?? {});
   const [planner, setPlanner] = useState<Record<string, PlannerPlan>>({});
 
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -88,7 +89,7 @@ function useBookmarkProviderValue(): BookmarkContextType {
     pinnedVerses,
     planner,
   });
-  const [isHydrated, setIsHydrated] = useReducer(() => true, false);
+  const [isHydrated, setIsHydrated] = useReducer(() => true, cachedLastRead !== null);
 
   useEffect(() => {
     let cancelled = false;
@@ -97,7 +98,7 @@ function useBookmarkProviderValue(): BookmarkContextType {
       const [loadedFolders, loadedPinned, loadedLastRead, loadedPlanner] = await Promise.all([
         loadBookmarksFromStorage(),
         loadPinnedFromStorage(),
-        loadLastReadFromStorage(),
+        cachedLastRead !== null ? Promise.resolve(cachedLastRead) : loadLastReadFromStorage(),
         loadPlannerFromStorage(),
       ]);
 
@@ -105,7 +106,13 @@ function useBookmarkProviderValue(): BookmarkContextType {
       hasLoadedFromStorage.current = true;
       setFolders(loadedFolders);
       setPinnedVerses(loadedPinned);
-      setLastReadState(loadedLastRead);
+      // A remounted provider already has the last-read map synchronously.
+      // Keep that object stable so HomeRecentCard does not flash/recompute
+      // while the rest of the bookmark data is being hydrated.
+      if (cachedLastRead === null) {
+        setLastReadState(loadedLastRead);
+        cachedLastRead = loadedLastRead;
+      }
       setPlanner(loadedPlanner);
       latestStateRef.current = {
         folders: loadedFolders,
@@ -332,12 +339,15 @@ function useBookmarkProviderValue(): BookmarkContextType {
 
       const entries = Object.entries(updated);
       if (entries.length <= 5) {
+        cachedLastRead = updated;
         return updated;
       }
 
       const sorted = entries.sort(([, a], [, b]) => b.updatedAt - a.updatedAt);
       const limited = sorted.slice(0, 5);
-      return Object.fromEntries(limited);
+      const next = Object.fromEntries(limited);
+      cachedLastRead = next;
+      return next;
     });
   }, []);
 
@@ -373,6 +383,7 @@ function useBookmarkProviderValue(): BookmarkContextType {
       if (!prev[id]) return prev;
       const next = { ...prev };
       delete next[id];
+      cachedLastRead = next;
       return next;
     });
   }, []);

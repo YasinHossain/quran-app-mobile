@@ -19,6 +19,8 @@ import {
 } from 'react-native';
 
 import { ComprehensiveSearchDropdown } from '@/components/search/ComprehensiveSearchDropdown';
+import { copyTextToClipboard } from '@/lib/clipboard';
+import { formatVerseText } from '@/lib/verse/formatVerseText';
 import { AppSearchHeader, ReaderOverlayHeader } from '@/components/navigation/AppHeader';
 import { useCollapsibleReaderHeader } from '@/components/navigation/useCollapsibleReaderHeader';
 import { useHeaderSearch } from '@/components/navigation/useHeaderSearch';
@@ -57,6 +59,7 @@ import { useAudioPlayer } from '@/providers/AudioPlayerContext';
 import { useLayoutMetrics } from '@/providers/LayoutMetricsContext';
 import { useSettings } from '@/providers/SettingsContext';
 import { useAppTheme } from '@/providers/ThemeContext';
+import { useUiTranslation } from '@/providers/UiLanguageContext';
 import { container } from '@/src/core/infrastructure/di/container';
 import juzData from '../../src/data/juz.json';
 
@@ -238,6 +241,7 @@ export default function JuzScreen(): React.JSX.Element {
   }>();
   const router = useRouter();
   const { settings, isHydrated, setReadingMode } = useSettings();
+  const { t } = useUiTranslation();
   const juzNumberParam = Array.isArray(params.juzNumber) ? params.juzNumber[0] : params.juzNumber;
   const startVerseParam = Array.isArray(params.startVerse) ? params.startVerse[0] : params.startVerse;
   const startPageParam = Array.isArray(params.startPage) ? params.startPage[0] : params.startPage;
@@ -310,6 +314,11 @@ export default function JuzScreen(): React.JSX.Element {
     verseApiId?: number;
     arabicText: string;
     translationTexts: string[];
+    translationItems?: Array<{
+      text: string;
+      resourceId?: number;
+      resourceName?: string;
+    }>;
   } | null>(null);
 
   const { resolvedTheme } = useAppTheme();
@@ -538,6 +547,11 @@ export default function JuzScreen(): React.JSX.Element {
       verseApiId?: number;
       arabicText: string;
       translationTexts: string[];
+      translationItems?: Array<{
+        text: string;
+        resourceId?: number;
+        resourceName?: string;
+      }>;
     }) => {
       setActiveVerse(params);
       setIsVerseActionsOpen(true);
@@ -897,24 +911,42 @@ export default function JuzScreen(): React.JSX.Element {
     setIsAddToPlannerOpen(true);
   }, [activeVerse?.arabicText, activeVerse?.translationTexts, activeVerse?.verseKey]);
 
+  const handleCopy = React.useCallback(async () => {
+    if (!activeVerse) return;
+    const parsed = parseVerseKeyNumbers(activeVerse.verseKey);
+    const surahName = parsed ? (chapterNamesById.get(parsed.surahId) ?? '') : '';
+    const textToCopy = formatVerseText({
+      surahName,
+      verseKey: activeVerse.verseKey,
+      arabicText: activeVerse.arabicText,
+      translationTexts: activeVerse.translationTexts,
+      translationItems: activeVerse.translationItems,
+      translationsById,
+    });
+    await copyTextToClipboard(
+      textToCopy,
+      t('verse_copied', { fallback: 'Verse copied to clipboard' })
+    );
+  }, [activeVerse, chapterNamesById, t, translationsById]);
+
   const handleShare = React.useCallback(async () => {
     if (!activeVerse) return;
     const parsed = parseVerseKeyNumbers(activeVerse.verseKey);
     const surahName = parsed ? (chapterNamesById.get(parsed.surahId) ?? '') : '';
-    const title = surahName ? `${surahName} ${activeVerse.verseKey}` : activeVerse.verseKey;
-    const lines = [
-      title,
-      '',
-      activeVerse.arabicText,
-      '',
-      ...(activeVerse.translationTexts?.length ? [activeVerse.translationTexts[0]!] : []),
-    ];
+    const textToShare = formatVerseText({
+      surahName,
+      verseKey: activeVerse.verseKey,
+      arabicText: activeVerse.arabicText,
+      translationTexts: activeVerse.translationTexts,
+      translationItems: activeVerse.translationItems,
+      translationsById,
+    });
     try {
-      await Share.share({ message: lines.join('\n') });
+      await Share.share({ message: textToShare });
     } catch {
       // Ignore
     }
-  }, [activeVerse, chapterNamesById]);
+  }, [activeVerse, chapterNamesById, translationsById]);
 
   const handleScrubToVerse = React.useCallback(
     (targetVerseNumber: number, options?: { isFinal?: boolean }) => {

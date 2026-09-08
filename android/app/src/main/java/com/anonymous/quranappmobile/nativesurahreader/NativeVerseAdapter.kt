@@ -73,6 +73,7 @@ internal class NativeVerseAdapter(
             wordPressEnabled,
             showTranslationAttribution,
             theme,
+            surahIntro?.surahName,
         )
       }
     }
@@ -131,6 +132,7 @@ internal class NativeVerseViewHolder(private val row: NativeVerseRowView) :
       wordPressEnabled: Boolean,
       showTranslationAttribution: Boolean,
       theme: NativeReaderTheme,
+      surahName: String? = null,
   ) {
     row.bind(
         verse,
@@ -145,6 +147,7 @@ internal class NativeVerseViewHolder(private val row: NativeVerseRowView) :
         wordPressEnabled,
         showTranslationAttribution,
         theme,
+        surahName,
     )
   }
 

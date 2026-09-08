@@ -28,6 +28,7 @@ import type { Chapter } from '@/types';
 
 const QUICK_LINKS_STORAGE_KEY = 'quranAppHomeQuickLinks_v1';
 const MAX_QUICK_LINKS = 5;
+let cachedQuickLinks: HomeQuickLink[] | null = null;
 
 type HomeQuickLink = {
   id: string;
@@ -94,16 +95,23 @@ export function HomeQuickLinksCard(): React.JSX.Element {
   const palette = Colors[resolvedTheme];
   const { chapters, isLoading } = useChapters();
 
-  const [quickLinks, setQuickLinks] = React.useState<HomeQuickLink[]>([]);
-  const [isHydrated, setIsHydrated] = React.useState(false);
+  const [quickLinks, setQuickLinks] = React.useState<HomeQuickLink[]>(() => cachedQuickLinks ?? []);
+  const [isHydrated, setIsHydrated] = React.useState(() => cachedQuickLinks !== null);
   const [isAddOpen, setIsAddOpen] = React.useState(false);
 
   React.useEffect(() => {
+    // The in-memory value is authoritative for the lifetime of this app
+    // session. Avoid an asynchronous storage read replacing the already
+    // rendered chips every time the home tab is mounted again.
+    if (cachedQuickLinks !== null) return;
+
     let isMounted = true;
 
     void getItem(QUICK_LINKS_STORAGE_KEY).then((raw) => {
       if (!isMounted) return;
-      setQuickLinks(normalizeQuickLinks(parseJson<unknown>(raw)));
+      const next = normalizeQuickLinks(parseJson<unknown>(raw));
+      cachedQuickLinks = next;
+      setQuickLinks(next);
       setIsHydrated(true);
     });
 
@@ -114,6 +122,8 @@ export function HomeQuickLinksCard(): React.JSX.Element {
 
   React.useEffect(() => {
     if (!isHydrated) return;
+    if (cachedQuickLinks === quickLinks) return;
+    cachedQuickLinks = quickLinks;
     void setItem(QUICK_LINKS_STORAGE_KEY, JSON.stringify(quickLinks));
   }, [isHydrated, quickLinks]);
 

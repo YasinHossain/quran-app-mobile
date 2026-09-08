@@ -418,7 +418,7 @@ test('Home controller hydrates, resolves offline content, and persists effective
   controller.dispose();
 });
 
-test('Home controller catches up an expired active state and shuffle avoids an immediate repeat', async () => {
+test('Home controller keeps an expired saved state stable and shuffle avoids an immediate repeat', async () => {
   let now = HOME_SPOTLIGHT_ROTATION_INTERVAL_MS + 1;
   const controller = new HomeVerseSpotlightController(20, {
     hydrate: async () => homeState(CURATED_ANCHOR_KEYS[0], 0),
@@ -433,7 +433,7 @@ test('Home controller catches up an expired active state and shuffle avoids an i
   controller.setActive(true);
   await controller.hydrate();
   const rotatedKey = controller.getSnapshot().state?.verseKey;
-  assert.notEqual(rotatedKey, CURATED_ANCHOR_KEYS[0]);
+  assert.equal(rotatedKey, CURATED_ANCHOR_KEYS[0]);
   assert.equal(controller.getSnapshot().state?.selectedAt, now);
 
   const beforeShuffle = rotatedKey;
@@ -557,6 +557,34 @@ test('Home controller schedules only while active and cancels on blur', async ()
   controller.dispose();
 });
 
+test('Home resume defers an expired background rotation and keeps the verse visible', async () => {
+  let now = 2_000;
+  let resolutionCount = 0;
+  const controller = new HomeVerseSpotlightController(20, {
+    hydrate: async () => homeState('2:255', 0),
+    persist: async () => undefined,
+    resolve: async ({ verseKey }) => {
+      resolutionCount += 1;
+      return spotlightContent(verseKey as VerseKey);
+    },
+    now: () => now,
+    schedule: () => 1,
+    cancelScheduled: () => undefined,
+  });
+
+  await controller.hydrate();
+  assert.equal(controller.getSnapshot().state?.verseKey, '2:255');
+  assert.equal(resolutionCount, 1);
+
+  now = HOME_SPOTLIGHT_ROTATION_INTERVAL_MS + 1;
+  controller.setActive(true);
+
+  assert.equal(controller.getSnapshot().state?.verseKey, '2:255');
+  assert.equal(controller.getSnapshot().state?.nextRandomAt, now + HOME_SPOTLIGHT_ROTATION_INTERVAL_MS);
+  assert.equal(resolutionCount, 1);
+  controller.dispose();
+});
+
 test('long-verse presentation is deterministic and exposes the full-reader affordance threshold', () => {
   assert.equal(isHomeSpotlightContentLong(spotlightContent('1:1')), false);
   assert.equal(
@@ -588,7 +616,7 @@ test('Home component wires focus/resume, clean presentation, accessible swipes, 
   ) as string;
   const homeSource = require('node:fs').readFileSync('app/(tabs)/index.tsx', 'utf8') as string;
 
-  assert.match(homeSource, /<HomeVerseSpotlight \/>/);
+  assert.match(homeSource, /<HomeVerseSpotlight(?:\s[^>]*)?\/>/);
   assert.match(source, /useFocusEffect/);
   assert.match(source, /AppState\.addEventListener/);
   assert.match(source, /useReducedMotion/);

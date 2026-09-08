@@ -50,10 +50,39 @@ internal class NativeVerseRowView(
 
   private val dividerView = android.view.View(context)
 
+  private val textSelection = NativeVerseTextSelection(context)
+  private val tajweedMovementMethod = NativeTajweedMovementMethod()
+  private var boundArabicFontFace: String? = null
+  private var boundArabicFontSize = 25f
   private var boundVerse: NativeVerse? = null
   private var boundTheme: NativeReaderTheme = NativeReaderTheme.default()
   private var boundActiveWord: NativeActiveWord? = null
   private var boundWordPressEnabled: Boolean = false
+  private var boundSurahName: String? = null
+
+  private fun buildFullVerseText(verse: NativeVerse): String {
+    val header = if (!boundSurahName.isNullOrBlank()) {
+      "${boundSurahName} ${verse.verseKey}"
+    } else {
+      verse.verseKey
+    }
+    val sb = StringBuilder()
+    sb.append(header).append("\n\n").append(verse.arabicText.trim())
+    if (verse.translationItems.isNotEmpty()) {
+      sb.append("\n")
+      verse.translationItems.forEach { item ->
+        val cleanText = item.text.replace(Regex("<[^>]+>"), "").trim()
+        if (cleanText.isNotEmpty()) {
+          sb.append("\n")
+          if (!item.resourceName.isNullOrBlank()) {
+            sb.append(item.resourceName).append(":\n")
+          }
+          sb.append(cleanText)
+        }
+      }
+    }
+    return sb.toString()
+  }
 
   init {
     orientation = VERTICAL
@@ -94,6 +123,20 @@ internal class NativeVerseRowView(
         },
     )
 
+    val selectVerse = OnLongClickListener {
+      val verse = boundVerse ?: return@OnLongClickListener false
+      textSelection.show(
+          verse.verseKey, verse.arabicText, boundTheme, boundArabicFontSize,
+          boundArabicFontFace, arabic = true,
+          fullVerseText = buildFullVerseText(verse),
+      )
+    }
+    setOnLongClickListener(selectVerse)
+    arabicView.setOnLongClickListener(selectVerse)
+    wordLayoutView.onVerseLongPress = { selectVerse.onLongClick(wordLayoutView) }
+    referenceView.setOnLongClickListener(selectVerse)
+    translationContainer.setOnLongClickListener(selectVerse)
+
     actionButton.setOnClickListener {
       boundVerse?.let(onActionPress)
     }
@@ -112,7 +155,12 @@ internal class NativeVerseRowView(
       wordPressEnabled: Boolean,
       showTranslationAttribution: Boolean,
       theme: NativeReaderTheme,
+      surahName: String? = null,
   ) {
+    if (boundVerse !== verse || boundTheme != theme) textSelection.dismiss()
+    boundSurahName = surahName
+    boundArabicFontFace = arabicFontFace
+    boundArabicFontSize = arabicFontSize
     boundVerse = verse
     boundTheme = theme
     boundActiveWord = activeWord?.takeIf { it.verseKey == verse.verseKey }
@@ -167,7 +215,8 @@ internal class NativeVerseRowView(
       arabicView.text = tajweedText ?: verse.arabicText
       arabicView.contentDescription = if (tajweedText == null) verse.arabicText else null
       arabicView.movementMethod =
-          if (tajweedText != null && wordPressEnabled) LinkMovementMethod.getInstance() else null
+          if (tajweedText != null && wordPressEnabled) tajweedMovementMethod else null
+      arabicView.isLongClickable = true
       arabicView.linksClickable = tajweedText != null && wordPressEnabled
       arabicView.highlightColor = Color.TRANSPARENT
       arabicView.typeface =
@@ -192,17 +241,27 @@ internal class NativeVerseRowView(
     actionButton.background = circleDrawable(Color.TRANSPARENT)
     translationContainer.removeAllViews()
     verse.translationItems.forEachIndexed { index, item ->
+      val onTranslationLongClick = OnLongClickListener {
+        val verse = boundVerse ?: return@OnLongClickListener false
+        textSelection.show(
+            verse.verseKey, item.text, boundTheme, translationFontSize,
+            attribution = item.resourceName,
+            fullVerseText = buildFullVerseText(verse),
+        )
+      }
       val itemLayout =
           LinearLayout(context).apply {
             orientation = VERTICAL
             if (index > 0) {
               setPadding(0, dp(18), 0, 0)
             }
+            setOnLongClickListener(onTranslationLongClick)
           }
 
       if (showTranslationAttribution && !item.resourceName.isNullOrBlank()) {
         itemLayout.addView(
             TextView(context).apply {
+              setOnLongClickListener(onTranslationLongClick)
               text = item.resourceName.uppercase()
               textSize = 12f
               typeface = Typeface.DEFAULT
@@ -219,6 +278,7 @@ internal class NativeVerseRowView(
 
       itemLayout.addView(
           TextView(context).apply {
+            setOnLongClickListener(onTranslationLongClick)
             text = item.text
             textSize = translationFontSize
             setTextColor(theme.textColor)
@@ -261,9 +321,16 @@ internal class NativeVerseRowView(
     )
     val hasClickableTajweedWords =
         enabled && arabicView.visibility == View.VISIBLE && arabicView.text is android.text.Spanned
-    arabicView.movementMethod = if (hasClickableTajweedWords) LinkMovementMethod.getInstance() else null
+    arabicView.movementMethod = if (hasClickableTajweedWords) tajweedMovementMethod else null
+    arabicView.isLongClickable = true
     arabicView.linksClickable = hasClickableTajweedWords
     arabicView.invalidate()
+  }
+
+  override fun onDetachedFromWindow() {
+    tajweedMovementMethod.cancel(arabicView)
+    textSelection.dismiss()
+    super.onDetachedFromWindow()
   }
 
   private fun dp(value: Int): Int {

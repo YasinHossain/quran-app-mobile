@@ -155,7 +155,10 @@ export class HomeVerseSpotlightController {
     this.persist(state);
 
     if (this.isActive && isSpotlightStateExpired(state, this.dependencies.now())) {
-      this.selectVerse(selectRandomAnchor(state.verseKey, this.dependencies.random));
+      // Expiration may have happened while the app was closed. Keep the
+      // persisted verse stable on relaunch and start a fresh active window.
+      this.deferExpiredState(state);
+      await this.resolveCurrent();
       return;
     }
 
@@ -177,12 +180,24 @@ export class HomeVerseSpotlightController {
     if (!state) return;
 
     if (isSpotlightStateExpired(state, this.dependencies.now())) {
-      this.selectVerse(selectRandomAnchor(state.verseKey, this.dependencies.random));
+      // The timer is paused while Home is not visible. Do not surprise the
+      // user with a different verse immediately when they return after a
+      // long absence; restart the rotation window from the time Home becomes
+      // active and keep the current content on screen.
+      this.deferExpiredState(state);
       return;
     }
 
     this.scheduleExpiration();
-    if (didBecomeActive) {
+    // Re-check on focus only when the current content is incomplete for the
+    // requested translation. This still picks up a translation installed
+    // while the app was in the background, but avoids resolving the same
+    // already-correct verse on every Home tab entry.
+    const contentNeedsRevalidation =
+      !this.snapshot.content ||
+      this.snapshot.content.requestedTranslationId !== this.requestedTranslationId ||
+      this.snapshot.content.effectiveTranslationId !== this.requestedTranslationId;
+    if (didBecomeActive && contentNeedsRevalidation) {
       void this.resolveCurrent();
     }
   }
@@ -259,6 +274,25 @@ export class HomeVerseSpotlightController {
     this.persist(state);
     this.scheduleExpiration();
     void this.resolveCurrent();
+  }
+
+  private deferExpiredState(state: VerseSpotlightState): void {
+    if (this.isDisposed) return;
+
+    const deferred = createSpotlightState({
+      surface: 'home',
+      verseKey: state.verseKey,
+      selectedAt: this.dependencies.now(),
+      rotationIntervalMs: HOME_SPOTLIGHT_ROTATION_INTERVAL_MS,
+      requestedTranslationId: state.requestedTranslationId,
+      effectiveTranslationId: state.effectiveTranslationId,
+      poolVersion: state.poolVersion,
+    });
+
+    this.snapshot = { ...this.snapshot, state: deferred };
+    this.emit();
+    this.persist(deferred);
+    this.scheduleExpiration();
   }
 
   private async resolveCurrent(): Promise<void> {

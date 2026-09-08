@@ -274,6 +274,8 @@
   "verse_options": "আয়াতের অপশন",
   "add_to_plan": "পরিকল্পনায় যোগ করুন",
   "share": "শেয়ার",
+  "copy_verse": "আয়াত কপি করুন",
+  "verse_copied": "আয়াত ক্লিপবোর্ডে কপি করা হয়েছে",
   "remove_bookmark": "বুকমার্ক সরান",
   "pin_or_bookmark": "পিন বা বুকমার্ক",
   "view_tafsir": "তাফসির দেখুন",
