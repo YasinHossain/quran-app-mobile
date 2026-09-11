@@ -466,6 +466,7 @@ function VerseCardComponent({
 
     return (
       <Modal
+        hardwareAccelerated
         visible={true}
         transparent={true}
         animationType="none"

@@ -29,8 +29,7 @@ export function GrammarGuideSheet({
   const { resolvedTheme, isDark } = useAppTheme();
   const palette = Colors[resolvedTheme];
   const { visible, progress, dismissEnabledRef, onModalShow } = useModalTransition(isOpen, {
-    openDuration: 240,
-    closeDuration: 170,
+    preset: 'sheet',
   });
   const source = WORD_GRAMMAR_PACK_METADATA.manifest.source;
   const maxSheetHeight = Math.max(0, Math.round(windowHeight * 0.9));
@@ -43,6 +42,7 @@ export function GrammarGuideSheet({
 
   return (
     <Modal
+      hardwareAccelerated
       transparent
       visible={visible}
       animationType="none"

@@ -12,7 +12,7 @@ import React from 'react';
 import { Animated, Modal, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { useModalTransition, verticalSheetTransform } from '@/components/motion/modalTransition';
+import { modalMotion, useModalTransition, verticalSheetTransform } from '@/components/motion/modalTransition';
 import Colors from '@/constants/Colors';
 import { useAppTheme } from '@/providers/ThemeContext';
 import { useUiTranslation } from '@/providers/UiLanguageContext';
@@ -64,8 +64,8 @@ export function VerseActionsSheet({
   }, [isOpen]);
 
   const { visible, progress, dismissEnabledRef, onModalShow } = useModalTransition(isOpen, {
-    openDuration: 260,
-    closeDuration: instantClose ? 0 : 150,
+    preset: 'sheet',
+    closeDuration: instantClose ? 0 : modalMotion.sheet.closeDuration,
     onAfterClose: () => {
       if (pendingActionRef.current) {
         const action = pendingActionRef.current;
@@ -110,6 +110,7 @@ export function VerseActionsSheet({
   return (
     <Modal
       transparent
+      hardwareAccelerated
       visible={visible}
       onShow={onModalShow}
       onRequestClose={onClose}

@@ -16,7 +16,10 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import Colors from '@/constants/Colors';
-import { dialogTransform, useModalTransition } from '@/components/motion/modalTransition';
+import {
+  dialogTransform,
+  useModalTransition,
+} from '@/components/motion/modalTransition';
 import { useChapters } from '@/hooks/useChapters';
 import { useBookmarks } from '@/providers/BookmarkContext';
 import { useAppTheme } from '@/providers/ThemeContext';
@@ -238,12 +241,6 @@ export function AddToPlannerModal({
     return null;
   }, [chapterLookup, hasValidReference, selectedPlan, selectedPlanId, verseNumber, planner, verseSurahId]);
 
-  React.useEffect(() => {
-    if (!isOpen) {
-      setSelectedPlanId(null);
-    }
-  }, [isOpen]);
-
   const handlePlanSelect = React.useCallback((planId: string) => {
     setSelectedPlanId((prev) => (prev === planId ? null : planId));
   }, []);
@@ -291,7 +288,6 @@ export function AddToPlannerModal({
       }
     }
 
-    setSelectedPlanId(null);
     onClose();
   }, [
     chapterLookup,
@@ -305,7 +301,9 @@ export function AddToPlannerModal({
     verseSurahId,
   ]);
 
-  const { visible, progress, dismissEnabledRef, onModalShow } = useModalTransition(isOpen);
+  const { visible, progress, dismissEnabledRef, onModalShow } = useModalTransition(isOpen, {
+    onAfterClose: () => setSelectedPlanId(null),
+  });
 
   const handleOverlayPress = React.useCallback(() => {
     if (!dismissEnabledRef.current) return;
@@ -320,6 +318,7 @@ export function AddToPlannerModal({
   return (
     <Modal
       transparent
+      hardwareAccelerated
       visible={visible}
       onShow={onModalShow}
       onRequestClose={onClose}

@@ -215,15 +215,14 @@ export function ComprehensiveSearchModal({
   });
 
   const { visible, progress, dismissEnabledRef, onModalShow } = useModalTransition(isOpen, {
-    openDuration: 230,
-    closeDuration: 160,
+    preset: 'sheet',
+    onAfterOpen: () => inputRef.current?.focus(),
+    onAfterClose: () => setQuery(''),
   });
-  const focusFrameRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const closeAndReset = React.useCallback(() => {
     inputRef.current?.blur();
     Keyboard.dismiss();
-    setQuery('');
     onClose();
   }, [onClose]);
 
@@ -232,20 +231,8 @@ export function ComprehensiveSearchModal({
     closeAndReset();
   }, [closeAndReset, dismissEnabledRef]);
 
-  React.useEffect(() => {
-    if (isOpen) {
-      setQuery(initialQuery);
-      focusFrameRef.current = setTimeout(() => {
-        inputRef.current?.focus();
-      }, 260);
-
-      return () => {
-        if (focusFrameRef.current !== null) {
-          clearTimeout(focusFrameRef.current);
-          focusFrameRef.current = null;
-        }
-      };
-    }
+  React.useLayoutEffect(() => {
+    if (isOpen) setQuery(initialQuery);
   }, [initialQuery, isOpen]);
 
   const navigateToSearchPage = React.useCallback(() => {
@@ -383,6 +370,7 @@ export function ComprehensiveSearchModal({
 
   return (
     <Modal
+      hardwareAccelerated
       transparent
       visible={visible}
       onShow={onModalShow}

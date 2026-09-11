@@ -16,10 +16,14 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { UI_LANGUAGES, type UiLanguageCode } from '@/lib/i18n/uiLanguages';
+import { localizeDigits } from '@/lib/i18n/localizeNumbers';
 import {
   INITIAL_TRANSLATION_BY_UI_LANGUAGE,
+  cancelInitialTranslationAsync,
   markWelcomeCompletedAsync,
+  preloadInitialTranslationAsync,
   silentlyInstallInitialTranslationAsync,
+  subscribeInitialTranslationProgress,
 } from '@/lib/onboarding/initialSetup';
 import { useSettings } from '@/providers/SettingsContext';
 import { loadSettings, saveSettings } from '@/providers/settingsStorage';
@@ -64,7 +68,38 @@ export default function WelcomeScreen(): React.JSX.Element {
   const { completeWelcome } = useWelcome();
   const [language, setLanguage] = React.useState<UiLanguageCode>('en');
   const [isStarting, setIsStarting] = React.useState(false);
+  const [downloadPercent, setDownloadPercent] = React.useState(100);
   const copy = COPY[language];
+
+  React.useEffect(() => {
+    const preferredTranslationId = INITIAL_TRANSLATION_BY_UI_LANGUAGE[language];
+    if (!preferredTranslationId || preferredTranslationId === 20) {
+      setDownloadPercent(100);
+      return;
+    }
+
+    let isSubscribed = true;
+    setDownloadPercent(0);
+
+    const unsubscribe = subscribeInitialTranslationProgress(language, (progress) => {
+      if (isSubscribed) {
+        setDownloadPercent(progress.percent);
+      }
+    });
+
+    void preloadInitialTranslationAsync({
+      language,
+      wordLanguage: settings.wordLang,
+    });
+
+    return () => {
+      isSubscribed = false;
+      unsubscribe();
+      if (!isStarting) {
+        cancelInitialTranslationAsync(language);
+      }
+    };
+  }, [isStarting, language, settings.wordLang]);
 
   const handleStart = React.useCallback(async () => {
     if (isStarting) return;
@@ -78,6 +113,9 @@ export default function WelcomeScreen(): React.JSX.Element {
         const installPromise = silentlyInstallInitialTranslationAsync({
           language,
           wordLanguage: settings.wordLang,
+          onProgress: (progress) => {
+            setDownloadPercent(progress.percent);
+          },
         });
 
         // If the download finishes after timeout, update from initial fallback in the background
@@ -100,12 +138,13 @@ export default function WelcomeScreen(): React.JSX.Element {
         });
 
         const timeoutPromise = new Promise<boolean>((resolve) => {
-          setTimeout(() => resolve(false), 7000);
+          setTimeout(() => resolve(false), 25000);
         });
 
         const installed = await Promise.race([installPromise, timeoutPromise]).catch(() => false);
         if (installed) {
           targetTranslationId = preferredTranslationId;
+          setDownloadPercent(100);
         }
       }
 
@@ -141,6 +180,10 @@ export default function WelcomeScreen(): React.JSX.Element {
       router.replace('/');
     }
   }, [completeWelcome, isStarting, language, router, setSettings, settings]);
+
+  const percentNumber = Math.max(0, Math.min(100, downloadPercent));
+  const percentSymbol = language === 'ar' || language === 'ur' ? '٪' : '%';
+  const localizedPercent = `${localizeDigits(String(percentNumber), language)}${percentSymbol}`;
 
   return (
     <View style={styles.screen}>
@@ -209,22 +252,36 @@ export default function WelcomeScreen(): React.JSX.Element {
 
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={isStarting ? OPTIMIZING_COPY[language] : copy.action}
+          accessibilityLabel={
+            isStarting
+              ? `${OPTIMIZING_COPY[language]} ${localizedPercent}`
+              : copy.action
+          }
           disabled={isStarting}
           onPress={() => void handleStart()}
-          style={({ pressed }) => ({ opacity: pressed || isStarting ? 0.78 : 1 })}
+          style={({ pressed }) => ({ opacity: pressed ? 0.88 : 1 })}
         >
           <View style={styles.startButton}>
             {isStarting ? (
-              <>
+              <View
+                style={[
+                  styles.buttonProgressFill,
+                  { width: `${Math.max(4, percentNumber)}%` },
+                ]}
+              />
+            ) : null}
+            {isStarting ? (
+              <View style={styles.buttonContentRow}>
                 <ActivityIndicator color="#FFFFFF" size="small" />
-                <Text style={styles.startButtonText}>{OPTIMIZING_COPY[language]}</Text>
-              </>
+                <Text style={styles.startButtonText}>
+                  {`${OPTIMIZING_COPY[language]} ${localizedPercent}`}
+                </Text>
+              </View>
             ) : (
-              <>
+              <View style={styles.buttonContentRow}>
                 <Text style={styles.startButtonText}>{copy.action}</Text>
                 <ChevronRight color="#FFFFFF" size={21} strokeWidth={2.5} />
-              </>
+              </View>
             )}
           </View>
         </Pressable>
@@ -285,6 +342,40 @@ const styles = StyleSheet.create({
   englishLabel: { color: '#6B7280', fontSize: 12, marginTop: 2, textAlign: 'left' },
   radio: { alignItems: 'center', borderColor: '#C7CDD3', borderRadius: 12, borderWidth: 1.5, height: 24, justifyContent: 'center', marginLeft: 12, width: 24 },
   radioSelected: { backgroundColor: '#0D9488', borderColor: '#0D9488' },
-  startButton: { alignItems: 'center', backgroundColor: '#1F6248', borderRadius: 18, flexDirection: 'row', gap: 10, justifyContent: 'center', marginTop: 20, minHeight: 58, paddingHorizontal: 22, ...Platform.select({ ios: { shadowColor: '#173C2E', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.2, shadowRadius: 14 }, android: { elevation: 5 } }) },
+  startButton: {
+    alignItems: 'center',
+    backgroundColor: '#1F6248',
+    borderRadius: 18,
+    justifyContent: 'center',
+    marginTop: 20,
+    minHeight: 58,
+    overflow: 'hidden',
+    paddingHorizontal: 22,
+    position: 'relative',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#173C2E',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.2,
+        shadowRadius: 14,
+      },
+      android: { elevation: 5 },
+    }),
+  },
+  buttonProgressFill: {
+    backgroundColor: '#0D9488',
+    bottom: 0,
+    left: 0,
+    position: 'absolute',
+    top: 0,
+  },
+  buttonContentRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 10,
+    justifyContent: 'center',
+    zIndex: 1,
+  },
   startButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '800', letterSpacing: 0.1 },
 });
+

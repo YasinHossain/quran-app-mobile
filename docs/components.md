@@ -181,7 +181,7 @@ This document lists reusable UI components currently available in the codebase s
 | `BookmarkFolderCard` | Folder card UI used in the Bookmarks folder list (glyph, verse preview chips, updated date, options). | `components/bookmarks/BookmarkFolderCard.tsx` |
 | `FolderActionsSheet` | Bottom sheet for folder options (Edit Folder, Delete Folder). | `components/bookmarks/FolderActionsSheet.tsx` |
 | `FolderSettingsModal` | Create/edit folder modal (name + color) for bookmarks (offline-first, persisted). | `components/bookmarks/FolderSettingsModal.tsx` |
-| `DeleteFolderModal` | Delete folder confirmation modal (warns when the folder contains verses). | `components/bookmarks/DeleteFolderModal.tsx` |
+| `DeleteFolderModal` | Simple confirmation modal for deleting bookmark folders. | `components/bookmarks/DeleteFolderModal.tsx` |
 | `folderColor` | Shared folder color tokens + resolver used across folder UI (settings + cards). | `components/bookmarks/folderColor.ts` |
 | `PlannerSection` | Planner section list UI (header + empty + cards) used in Bookmarks → Planner. | `components/bookmarks/planner/PlannerSection.tsx` |
 | `PlannerCard` | Planner card (daily focus + stats + progress + continue/delete). | `components/bookmarks/planner/PlannerCard.tsx` |

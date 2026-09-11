@@ -17,7 +17,10 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { dialogTransform, useModalTransition } from '@/components/motion/modalTransition';
+import {
+  dialogTransform,
+  useModalTransition,
+} from '@/components/motion/modalTransition';
 import Colors from '@/constants/Colors';
 import { useChapters } from '@/hooks/useChapters';
 import { useBookmarks } from '@/providers/BookmarkContext';
@@ -64,30 +67,15 @@ export function CreatePlannerModal({
   const [formData, setFormData] = React.useState<PlanFormData>(resetFormState);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
 
-  const shouldRender = isOpen;
-
-  const { visible, progress, dismissEnabledRef, onModalShow } = useModalTransition(shouldRender);
   const inputRef = React.useRef<TextInput | null>(null);
-  const focusTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  React.useEffect(() => {
-    if (isOpen) {
-      focusTimeoutRef.current = setTimeout(() => {
-        inputRef.current?.focus();
-      }, 320);
-    } else {
-      if (focusTimeoutRef.current) {
-        clearTimeout(focusTimeoutRef.current);
-        focusTimeoutRef.current = null;
-      }
-    }
-    return () => {
-      if (focusTimeoutRef.current) {
-        clearTimeout(focusTimeoutRef.current);
-        focusTimeoutRef.current = null;
-      }
-    };
-  }, [isOpen]);
+  const { visible, progress, dismissEnabledRef, onModalShow } = useModalTransition(isOpen, {
+    onAfterOpen: () => inputRef.current?.focus(),
+    onAfterClose: () => {
+      setFormData(resetFormState());
+      setIsSubmitting(false);
+      setOpenSelectorId(null);
+    },
+  });
 
   const chapterLookup = React.useMemo(() => buildChapterLookup(chapters), [chapters]);
 
@@ -151,9 +139,7 @@ export function CreatePlannerModal({
   }, []);
 
   const handleClose = React.useCallback(() => {
-    setFormData(resetFormState());
-    setIsSubmitting(false);
-    setOpenSelectorId(null);
+    Keyboard.dismiss();
     onClose();
   }, [onClose]);
 
@@ -239,6 +225,7 @@ export function CreatePlannerModal({
   return (
     <Modal
       transparent
+      hardwareAccelerated
       visible={visible}
       onShow={onModalShow}
       onRequestClose={handleClose}

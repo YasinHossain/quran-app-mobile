@@ -1,4 +1,4 @@
-import { Folder as FolderIcon, Trash2, X } from 'lucide-react-native';
+import { Trash2, X } from 'lucide-react-native';
 import React from 'react';
 import {
   Animated,
@@ -6,13 +6,11 @@ import {
   Modal,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   useWindowDimensions,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { dialogTransform, useModalTransition } from '@/components/motion/modalTransition';
 import Colors from '@/constants/Colors';
@@ -61,8 +59,13 @@ export function DeleteFolderModal({
 
   const maxDialogHeight = Math.max(0, Math.round(windowHeight * 0.92));
 
+  const confirmMessage = folder?.name
+    ? t('delete_folder_confirm_named', { name: folder.name })
+    : t('delete_folder_confirm');
+
   return (
     <Modal
+      hardwareAccelerated
       transparent
       visible={visible}
       onShow={onModalShow}
@@ -90,21 +93,21 @@ export function DeleteFolderModal({
           >
             <View style={styles.safeArea}>
               <View className={isDark ? 'dark' : ''} style={styles.inner}>
-                <View className="flex-row items-center justify-between px-6 pt-6 pb-4">
-                  <View className="flex-row items-center gap-3">
-                    <View className="h-10 w-10 rounded-xl bg-error/10 items-center justify-center">
+                <View className="flex-row items-start justify-between px-6 pt-6 pb-5">
+                  <View className="flex-row items-start gap-3 flex-1 pr-3">
+                    <View className="pt-0.5">
                       <Trash2
-                        size={20}
+                        size={22}
                         strokeWidth={2.25}
                         color={isDark ? '#F87171' : '#DC2626'}
                       />
                     </View>
-                    <View>
-                      <Text className="text-xl font-bold text-foreground dark:text-foreground-dark">
+                    <View className="flex-1 min-w-0">
+                      <Text className="text-lg font-bold text-foreground dark:text-foreground-dark">
                         {t('delete_folder')}
                       </Text>
-                      <Text className="text-sm text-muted dark:text-muted-dark">
-                        {t('delete_folder_subtitle')}
+                      <Text className="text-sm text-muted dark:text-muted-dark mt-1 leading-snug">
+                        {confirmMessage}
                       </Text>
                     </View>
                   </View>
@@ -115,58 +118,11 @@ export function DeleteFolderModal({
                     accessibilityRole="button"
                     accessibilityLabel={t('close')}
                     style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
-                    className="p-2 rounded-full"
+                    className="p-2 -mr-2 rounded-full"
                   >
                     <X size={18} strokeWidth={2.25} color={palette.muted} />
                   </Pressable>
                 </View>
-
-                <ScrollView
-                  style={styles.flex}
-                  keyboardShouldPersistTaps="handled"
-                  contentContainerStyle={styles.scrollContent}
-                >
-                  <View className="px-6 pb-6">
-                    <Text className="text-foreground dark:text-foreground-dark mb-5">
-                      {t('delete_folder_confirm')}
-                    </Text>
-
-                    {folder ? (
-                      <View className="bg-interactive/60 dark:bg-interactive-dark/60 border border-border/60 dark:border-border-dark/60 rounded-xl p-4 mb-6">
-                        <View className="flex-row items-center gap-3">
-                          <View className="h-8 w-8 rounded-lg bg-accent/10 items-center justify-center">
-                            <FolderIcon size={18} strokeWidth={2.25} color={palette.muted} />
-                          </View>
-                          <View>
-                            <Text className="font-semibold text-foreground dark:text-foreground-dark">
-                              {folder.name}
-                            </Text>
-                            <Text className="text-sm text-muted dark:text-muted-dark">
-                              {folder.bookmarks.length} verse
-                              {folder.bookmarks.length !== 1 ? 's' : ''}
-                            </Text>
-                          </View>
-                        </View>
-                      </View>
-                    ) : null}
-
-                    {folder && folder.bookmarks.length > 0 ? (
-                      <View className="bg-error/10 border border-error/20 rounded-xl p-4">
-                        <Text className="font-semibold text-error dark:text-error-dark text-sm mb-1">
-                          Warning: Contains bookmarked verses
-                        </Text>
-                        <Text className="text-error dark:text-error-dark text-sm">
-                          This folder contains{' '}
-                          <Text className="font-semibold">
-                            {folder.bookmarks.length} bookmarked verse
-                            {folder.bookmarks.length !== 1 ? 's' : ''}
-                          </Text>
-                          . All bookmarks will be permanently deleted and cannot be recovered.
-                        </Text>
-                      </View>
-                    ) : null}
-                  </View>
-                </ScrollView>
 
                 <View className="px-6 py-3 border-t border-border/60 dark:border-border-dark/40 bg-surface dark:bg-background-dark">
                   <View className="flex-row items-center justify-end gap-3">
@@ -186,7 +142,7 @@ export function DeleteFolderModal({
                       onPress={handleDelete}
                       disabled={isDeleting}
                       accessibilityRole="button"
-                      accessibilityLabel={t('delete_forever')}
+                      accessibilityLabel={t('delete')}
                       className={[
                         'px-5 py-2.5 rounded-lg bg-error dark:bg-error-dark',
                         isDeleting ? 'opacity-40' : '',
@@ -194,7 +150,7 @@ export function DeleteFolderModal({
                       style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
                     >
                       <Text className="text-sm font-semibold text-on-accent">
-                        {isDeleting ? t('loading') : t('delete_forever')}
+                        {isDeleting ? t('loading') : t('delete')}
                       </Text>
                     </Pressable>
                   </View>
@@ -226,7 +182,7 @@ const styles = StyleSheet.create({
   },
   dialog: {
     width: '100%',
-    maxWidth: 460,
+    maxWidth: 440,
     alignSelf: 'center',
     borderRadius: 24,
     overflow: 'hidden',
@@ -236,12 +192,5 @@ const styles = StyleSheet.create({
   },
   inner: {
     flexShrink: 1,
-  },
-  flex: {
-    flexShrink: 1,
-    flexGrow: 0,
-  },
-  scrollContent: {
-    paddingBottom: 16,
   },
 });

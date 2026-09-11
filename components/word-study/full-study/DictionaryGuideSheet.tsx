@@ -32,8 +32,7 @@ export function DictionaryGuideSheet({
   const { resolvedTheme, isDark } = useAppTheme();
   const palette = Colors[resolvedTheme];
   const { visible, progress, dismissEnabledRef, onModalShow } = useModalTransition(isOpen, {
-    openDuration: 240,
-    closeDuration: 170,
+    preset: 'sheet',
   });
   const maxSheetHeight = Math.max(0, Math.round(windowHeight * 0.9));
   const sheetHeight = Math.min(maxSheetHeight, Math.max(480, Math.round(windowHeight * 0.78)));
@@ -44,6 +43,7 @@ export function DictionaryGuideSheet({
 
   return (
     <Modal
+      hardwareAccelerated
       transparent
       visible={visible}
       animationType="none"

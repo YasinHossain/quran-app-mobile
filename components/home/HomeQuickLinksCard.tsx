@@ -2,6 +2,7 @@ import { ArrowUpRight, Plus, X } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import React from 'react';
 import {
+  Animated,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -14,6 +15,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { dialogTransform, useModalTransition } from '@/components/motion/modalTransition';
 import { SurahVerseSelectorRow } from '@/components/search/SurahVerseSelectorRow';
 import Colors from '@/constants/Colors';
 import { useChapters } from '@/hooks/useChapters';
@@ -396,11 +398,16 @@ function AddQuickLinkModal({
   const [selectedSurah, setSelectedSurah] = React.useState<number | undefined>(undefined);
   const [selectedVerse, setSelectedVerse] = React.useState<number | undefined>(undefined);
 
-  React.useEffect(() => {
-    if (isOpen) return;
-    setSelectedSurah(undefined);
-    setSelectedVerse(undefined);
-  }, [isOpen]);
+  const { visible, progress, dismissEnabledRef, onModalShow } = useModalTransition(isOpen, {
+    onAfterClose: () => {
+      setSelectedSurah(undefined);
+      setSelectedVerse(undefined);
+    },
+  });
+
+  const handleOverlayPress = React.useCallback(() => {
+    if (dismissEnabledRef.current) onClose();
+  }, [dismissEnabledRef, onClose]);
 
   const handleSelectSurah = React.useCallback(
     (surahId: number) => {
@@ -419,25 +426,27 @@ function AddQuickLinkModal({
 
   return (
     <Modal
+      hardwareAccelerated
       transparent
-      visible={isOpen}
+      visible={visible}
+      onShow={onModalShow}
       onRequestClose={onClose}
-      animationType="fade"
+      animationType="none"
       statusBarTranslucent
       {...(Platform.OS === 'ios' ? { presentationStyle: 'overFullScreen' as const } : {})}
     >
       <View className={isDark ? 'dark' : ''} style={styles.modalRoot}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose}>
-          <View style={styles.overlay} />
+        <Pressable style={StyleSheet.absoluteFill} onPress={handleOverlayPress}>
+          <Animated.View style={[styles.overlay, { opacity: progress }]} />
         </Pressable>
 
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={styles.modalWrap}
         >
-          <View
+          <Animated.View
             className="overflow-hidden rounded-2xl border border-border/40 bg-surface dark:border-border-dark/30 dark:bg-background-dark"
-            style={{ maxHeight }}
+            style={[{ maxHeight }, dialogTransform(progress)]}
           >
             <SafeAreaView edges={['bottom']} className={isDark ? 'dark' : ''}>
               <View className="px-5 pt-5">
@@ -498,7 +507,7 @@ function AddQuickLinkModal({
                 </Pressable>
               </View>
             </SafeAreaView>
-          </View>
+          </Animated.View>
         </KeyboardAvoidingView>
       </View>
     </Modal>

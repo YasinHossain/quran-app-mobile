@@ -30,8 +30,7 @@ export function MorphologyGuideSheet({
   const { resolvedTheme, isDark } = useAppTheme();
   const palette = Colors[resolvedTheme];
   const { visible, progress, dismissEnabledRef, onModalShow } = useModalTransition(isOpen, {
-    openDuration: 240,
-    closeDuration: 170,
+    preset: 'sheet',
   });
 
   const maxSheetHeight = Math.max(0, Math.round(windowHeight * 0.9));
@@ -44,6 +43,7 @@ export function MorphologyGuideSheet({
 
   return (
     <Modal
+      hardwareAccelerated
       transparent
       visible={visible}
       animationType="none"

@@ -310,6 +310,7 @@ export function PlaybackOptionsModal({
 
   return (
     <Modal
+      hardwareAccelerated
       transparent
       visible={visible}
       onShow={onModalShow}

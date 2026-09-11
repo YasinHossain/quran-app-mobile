@@ -155,8 +155,7 @@ function HomeSearchHeader({
   const hiddenTranslateX = -menuWidth;
 
   const { visible, progress, onModalShow } = useModalTransition(isMenuOpen, {
-    openDuration: 380,
-    closeDuration: 300,
+    preset: 'drawer',
   });
 
   const { isDark, setDarkModeEnabled } = useAppTheme();
@@ -205,6 +204,7 @@ function HomeSearchHeader({
           </HeaderActionButton>
 
           <Modal
+            hardwareAccelerated
             transparent
             visible={visible}
             onShow={onModalShow}

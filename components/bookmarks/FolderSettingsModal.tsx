@@ -47,30 +47,14 @@ export function FolderSettingsModal({
   const [selectedColor, setSelectedColor] = React.useState<string>(DEFAULT_FOLDER_COLOR);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
 
-  const { visible, progress, dismissEnabledRef, onModalShow } = useModalTransition(shouldRender);
   const inputRef = React.useRef<TextInput | null>(null);
-  const focusTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { visible, progress, dismissEnabledRef, onModalShow } = useModalTransition(shouldRender, {
+    onAfterOpen: () => {
+      if (mode === 'create') inputRef.current?.focus();
+    },
+  });
 
-  React.useEffect(() => {
-    if (shouldRender && mode === 'create') {
-      focusTimeoutRef.current = setTimeout(() => {
-        inputRef.current?.focus();
-      }, 320);
-    } else {
-      if (focusTimeoutRef.current) {
-        clearTimeout(focusTimeoutRef.current);
-        focusTimeoutRef.current = null;
-      }
-    }
-    return () => {
-      if (focusTimeoutRef.current) {
-        clearTimeout(focusTimeoutRef.current);
-        focusTimeoutRef.current = null;
-      }
-    };
-  }, [shouldRender, mode]);
-
-  React.useEffect(() => {
+  React.useLayoutEffect(() => {
     if (!shouldRender) return;
     setName(mode === 'edit' ? folder?.name ?? '' : '');
     setSelectedColor((mode === 'edit' ? folder?.color : undefined) ?? DEFAULT_FOLDER_COLOR);
@@ -112,6 +96,7 @@ export function FolderSettingsModal({
 
   return (
     <Modal
+      hardwareAccelerated
       transparent
       visible={visible}
       onShow={onModalShow}
@@ -126,7 +111,7 @@ export function FolderSettingsModal({
         </Pressable>
 
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={styles.keyboardWrapper}
         >
           <Animated.View
@@ -161,6 +146,11 @@ export function FolderSettingsModal({
                   style={styles.flex}
                   keyboardShouldPersistTaps="handled"
                   contentContainerStyle={styles.scrollContent}
+                  bounces={false}
+                  automaticallyAdjustContentInsets={false}
+                  automaticallyAdjustKeyboardInsets={false}
+                  contentInsetAdjustmentBehavior="never"
+                  overScrollMode="never"
                 >
                   <View className="px-5">
                     <View className="rounded-xl border border-border dark:border-border-dark bg-surface dark:bg-surface-dark px-3 py-2">
@@ -173,6 +163,8 @@ export function FolderSettingsModal({
                         maxLength={30}
                         returnKeyType="done"
                         onSubmitEditing={handleSubmit}
+                        numberOfLines={1}
+                        style={{ paddingVertical: 0 }}
                         className="text-base text-foreground dark:text-foreground-dark"
                       />
                     </View>
@@ -281,12 +273,15 @@ const styles = StyleSheet.create({
   },
   safeArea: {
     flexShrink: 1,
+    flexGrow: 0,
   },
   inner: {
     flexShrink: 1,
+    flexGrow: 0,
   },
   flex: {
     flexShrink: 1,
+    flexGrow: 0,
   },
   scrollContent: {
     paddingBottom: 16,

@@ -4,7 +4,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import Colors from '@/constants/Colors';
 import {
-  modalMotion,
   sideSheetTransform,
   useModalTransition,
 } from '@/components/motion/modalTransition';
@@ -45,8 +44,7 @@ export function SettingsSidebar({
     : Math.min(390, Math.round(width * 0.92));
   const hiddenTranslateX = sheetWidth + 12;
   const { visible, progress, onModalShow } = useModalTransition(isOpen, {
-    openDuration: modalMotion.quickOpenDuration,
-    closeDuration: modalMotion.quickCloseDuration,
+    preset: 'drawer',
     onAfterClose: () => {
       setIsMushafManagerFullScreen(false);
       onAfterClose?.();
@@ -55,6 +53,7 @@ export function SettingsSidebar({
 
   return (
     <Modal
+      hardwareAccelerated
       transparent
       visible={visible}
       onShow={onModalShow}

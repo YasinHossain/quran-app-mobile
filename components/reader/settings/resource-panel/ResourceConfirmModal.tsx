@@ -69,6 +69,7 @@ export function ResourceConfirmModal({
 
   return (
     <Modal
+      hardwareAccelerated
       transparent
       animationType="none"
       visible={isModalVisible}

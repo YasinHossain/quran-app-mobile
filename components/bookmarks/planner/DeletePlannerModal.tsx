@@ -66,6 +66,7 @@ export function DeletePlannerModal({
   const minDialogHeight = Math.min(maxDialogHeight, 280);
   return (
     <Modal
+      hardwareAccelerated
       transparent
       visible={visible}
       onShow={onModalShow}

@@ -431,6 +431,7 @@ export function AudioDownloadModal({
 
   return (
     <Modal
+      hardwareAccelerated
       transparent
       visible={visible}
       onShow={onModalShow}

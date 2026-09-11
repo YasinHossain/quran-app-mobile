@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { useModalTransition, verticalSheetTransform } from '@/components/motion/modalTransition';
+import { modalMotion, useModalTransition, verticalSheetTransform } from '@/components/motion/modalTransition';
 import Colors from '@/constants/Colors';
 import { useAppTheme } from '@/providers/ThemeContext';
 import { useUiTranslation } from '@/providers/UiLanguageContext';
@@ -46,8 +46,8 @@ export function FolderActionsSheet({
   }, [isOpen]);
 
   const { visible, progress, dismissEnabledRef, onModalShow } = useModalTransition(isOpen, {
-    openDuration: 240,
-    closeDuration: instantClose ? 0 : 150,
+    preset: 'sheet',
+    closeDuration: instantClose ? 0 : modalMotion.sheet.closeDuration,
     onAfterClose: () => {
       if (pendingActionRef.current) {
         const action = pendingActionRef.current;
@@ -78,6 +78,7 @@ export function FolderActionsSheet({
 
   return (
     <Modal
+      hardwareAccelerated
       transparent
       visible={visible}
       onShow={onModalShow}

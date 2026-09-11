@@ -72,8 +72,7 @@ export function WordQuickSheet({
   const sheetHeight = Math.max(0, Math.min(510, windowHeight * 0.85, windowHeight - insets.top - 12));
   const pendingActionRef = React.useRef<(() => void) | null>(null);
   const { visible, progress, dismissEnabledRef, onModalShow } = useModalTransition(isOpen, {
-    openDuration: 220,
-    closeDuration: 150,
+    preset: 'sheet',
     onAfterClose: () => {
       const action = pendingActionRef.current;
       pendingActionRef.current = null;
@@ -102,6 +101,7 @@ export function WordQuickSheet({
 
   return (
     <Modal
+      hardwareAccelerated
       transparent
       visible={visible}
       animationType="none"

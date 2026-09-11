@@ -8,6 +8,7 @@ import {
 import React from 'react';
 import {
   Animated as RNAnimated,
+  Keyboard,
   KeyboardAvoidingView,
   LayoutAnimation,
   Modal,
@@ -181,19 +182,18 @@ export function BookmarkModal({
   const [isCreatingFolder, setIsCreatingFolder] = React.useState(false);
   const [newFolderName, setNewFolderName] = React.useState('');
 
-  const { visible, progress, dismissEnabledRef, onModalShow } = useModalTransition(isOpen);
-
-  const closeAndReset = React.useCallback(() => {
-    onClose();
-  }, [onClose]);
-
-  React.useEffect(() => {
-    if (!visible) {
+  const { visible, progress, dismissEnabledRef, onModalShow } = useModalTransition(isOpen, {
+    onAfterClose: () => {
       setActiveTab('pin');
       setIsCreatingFolder(false);
       setNewFolderName('');
-    }
-  }, [visible]);
+    },
+  });
+
+  const closeAndReset = React.useCallback(() => {
+    Keyboard.dismiss();
+    onClose();
+  }, [onClose]);
 
   const handleOverlayPress = React.useCallback(() => {
     if (!dismissEnabledRef.current) return;
@@ -243,6 +243,7 @@ export function BookmarkModal({
 
   return (
     <Modal
+      hardwareAccelerated
       transparent
       visible={visible}
       onShow={onModalShow}
@@ -257,7 +258,7 @@ export function BookmarkModal({
         </Pressable>
 
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={styles.keyboardWrapper}
         >
           <RNAnimated.View
@@ -304,7 +305,7 @@ export function BookmarkModal({
                       activeTab={activeTab}
                       onTabChange={handleTabChange}
                       palette={palette}
-                      isOpen={isOpen}
+                      isOpen={visible}
                     />
                   </View>
                 </View>
@@ -312,7 +313,7 @@ export function BookmarkModal({
                 {activeTab === 'pin' ? (
                   <Animated.View
                     key="pin-tab"
-                    entering={FadeIn.duration(200)}
+                    entering={dismissEnabledRef.current ? FadeIn.duration(200) : undefined}
                     exiting={FadeOut.duration(150)}
                     style={styles.tabFill}
                   >
@@ -368,7 +369,7 @@ export function BookmarkModal({
                 ) : (
                   <Animated.View
                     key="bookmark-tab"
-                    entering={FadeIn.duration(200)}
+                    entering={dismissEnabledRef.current ? FadeIn.duration(200) : undefined}
                     exiting={FadeOut.duration(150)}
                     style={styles.tabFill}
                   >

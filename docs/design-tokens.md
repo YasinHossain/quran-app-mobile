@@ -52,3 +52,18 @@ The mobile radius scale is:
 - `rounded-lg`: `12px`
 - `rounded-xl`: `16px`
 - `rounded-2xl`: `24px`
+
+## Modal motion
+
+`components/motion/modalTransition.ts` owns native-driver transitions for dialogs, sheets, drawers, and anchored popovers. Use the shared `preset` option rather than screen-specific durations:
+
+| Preset | Entrance / exit | Movement |
+| --- | --- | --- |
+| `dialog` (default) | 200 / 140 ms | `dialogTransform`: fade with a 12-point upward movement, no scale. |
+| `sheet` | 240 / 160 ms | `verticalSheetTransform`: slide from the bottom. |
+| `drawer` | 240 / 160 ms | `sideSheetTransform`: slide from the appropriate side. |
+| `popover` | 140 / 100 ms | Opacity only; keep the position attached to its anchor. |
+
+Native modal windows enable Android hardware acceleration. Verse translation tooltips remain immediate, measured overlays so they do not add animation work to every rendered verse. Action sheets can use a zero-duration exit when handing off to another modal.
+
+Start entrance motion from hidden after the native modal's `onShow`, including when the component first mounts already open. Use `onAfterOpen` for keyboard autofocus and `onAfterClose` for content resets so those layout changes do not overlap the dialog animation. The shared transition skips animation when the system reduced-motion setting is enabled at app startup, and supports reopening during an unfinished exit.

@@ -1,5 +1,6 @@
 import React from 'react';
-import { Modal, Platform, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { Animated, Modal, Platform, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { useModalTransition } from '@/components/motion/modalTransition';
 import { useAppTheme } from '@/providers/ThemeContext';
 
 type AnchorLayout = { x: number; y: number; width: number; height: number };
@@ -48,7 +49,12 @@ export function AnchoredDropdownModal({
     measure();
   }, [isOpen, measure, windowHeight, windowWidth]);
 
-  if (!isOpen) return null;
+  const { visible, progress, onModalShow } = useModalTransition(isOpen && Boolean(anchorLayout), {
+    preset: 'popover',
+    onAfterClose: () => setAnchorLayout(null),
+  });
+
+  if (!visible) return null;
 
   const margin = 6;
   const availableWidth = Math.max(0, windowWidth - horizontalInset * 2);
@@ -81,8 +87,10 @@ export function AnchoredDropdownModal({
 
   return (
     <Modal
+      hardwareAccelerated
       transparent
-      visible
+      visible={visible}
+      onShow={onModalShow}
       onRequestClose={onClose}
       animationType="none"
       statusBarTranslucent
@@ -95,9 +103,9 @@ export function AnchoredDropdownModal({
         accessibilityLabel="Close dropdown"
       />
       {anchorLayout ? (
-        <View className={isDark ? 'dark' : ''} style={[styles.dropdown, { left, top, width, maxHeight: maxHeightClamped }]}>
+        <Animated.View className={isDark ? 'dark' : ''} style={[styles.dropdown, { left, top, width, maxHeight: maxHeightClamped, opacity: progress }]}>
           {children}
-        </View>
+        </Animated.View>
       ) : null}
     </Modal>
   );
