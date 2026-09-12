@@ -91,8 +91,10 @@ function getStatusLabel(args: {
 
 export function useMushafPackManager({
   selectedPackId,
+  enabled = true,
 }: {
   selectedPackId?: MushafPackId;
+  enabled?: boolean;
 }): {
   entries: MushafPackManagerEntry[];
   isLoading: boolean;
@@ -109,7 +111,7 @@ export function useMushafPackManager({
   const busyInstallKeysRef = React.useRef<Set<string>>(new Set());
   const { items, itemsByKey, isLoading: isDownloadIndexLoading, refresh: refreshDownloadIndex } =
     useDownloadIndexItems({
-      enabled: true,
+      enabled,
       pollIntervalMs: 1000,
       pollWhileEnabled: busyInstallKeys.size > 0,
     });
@@ -137,8 +139,9 @@ export function useMushafPackManager({
   }, []);
 
   React.useEffect(() => {
+    if (!enabled) return;
     void loadInstalls();
-  }, [loadInstalls]);
+  }, [enabled, loadInstalls]);
 
   const mushafDownloadSignature = React.useMemo(() => {
     return items

@@ -2,7 +2,6 @@ import React from 'react';
 import {
   Alert,
   FlatList,
-  InteractionManager,
   Platform,
   Pressable,
   Text,
@@ -22,11 +21,9 @@ import {
 } from '@/src/core/application/use-cases/DownloadTranslation';
 import type { DownloadIndexItemWithKey } from '@/src/core/domain/entities/DownloadIndexItem';
 import { getDownloadKey } from '@/src/core/domain/entities/DownloadIndexItem';
-import { apiFetch } from '@/src/core/infrastructure/api/apiFetch';
 import { container } from '@/src/core/infrastructure/di/container';
 import { logger } from '@/src/core/infrastructure/monitoring/logger';
-
-import chaptersData from '../../../src/data/chapters.en.json';
+import { getBundledTranslationDownloadSizeBytes } from '@/src/core/infrastructure/offline-packs/bundledDownloadMetadata';
 
 import { ReorderableSelectionList } from './resource-panel/ReorderableSelectionList';
 import { ResourceConfirmModal } from './resource-panel/ResourceConfirmModal';
@@ -38,34 +35,8 @@ import { buildLanguages, filterResources, groupResources, type ResourceRecord } 
 export const MAX_TRANSLATION_SELECTIONS = 5;
 
 const DEFAULT_SAHEEH_ID = 20;
-const ESTIMATE_SAMPLE_CHAPTERS = [1, 2, 18, 36, 55, 78] as const;
-const ESTIMATE_SAMPLE_PER_PAGE = 50;
-const ESTIMATE_STORAGE_OVERHEAD_MULTIPLIER = 1.35;
 const BYTES_PER_MEGABYTE = 1024 * 1024;
-const FALLBACK_TOTAL_VERSE_COUNT = 6236;
 const SELECTION_COMMIT_DEBOUNCE_MS = 48;
-
-const TOTAL_VERSE_COUNT = (
-  Array.isArray(chaptersData)
-    ? chaptersData.reduce((total, chapter) => {
-        const verses = typeof chapter?.verses_count === 'number' ? chapter.verses_count : 0;
-        return total + Math.max(0, verses);
-      }, 0)
-    : 0
-) || FALLBACK_TOTAL_VERSE_COUNT;
-
-type DownloadSizeInfo = {
-  mb: number | null;
-  isExact: boolean;
-};
-
-type ApiEstimateVerse = {
-  translations?: Array<{ resource_id?: number; text?: string }>;
-};
-
-type ApiEstimateResponse = {
-  verses?: ApiEstimateVerse[];
-};
 
 function isSaheehName(name: string): boolean {
   const lower = name.toLowerCase();
@@ -114,88 +85,10 @@ function areSelectionsEqual(a: number[], b: number[]): boolean {
   return true;
 }
 
-function stripHtml(input: string): string {
-  return input
-    .replace(/<[^>]*>/g, ' ')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&amp;/g, '&')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function utf8ByteLength(input: string): number {
-  const encoded = encodeURIComponent(input);
-  let bytes = 0;
-
-  for (let index = 0; index < encoded.length; index += 1) {
-    if (encoded[index] === '%') {
-      bytes += 1;
-      index += 2;
-      continue;
-    }
-    bytes += 1;
-  }
-
-  return bytes;
-}
-
-async function estimateTranslationSizeMb(translationId: number): Promise<number> {
-  const sampleResponses = await Promise.all(
-    ESTIMATE_SAMPLE_CHAPTERS.map((chapterNumber) =>
-      apiFetch<ApiEstimateResponse>(
-        `/verses/by_chapter/${chapterNumber}`,
-        {
-          language: 'en',
-          words: 'false',
-          translations: String(translationId),
-          per_page: String(ESTIMATE_SAMPLE_PER_PAGE),
-          page: '1',
-        },
-        'Failed to estimate translation size'
-      )
-    )
-  );
-
-  let sampleByteCount = 0;
-  let sampleVerseCount = 0;
-
-  for (const response of sampleResponses) {
-    for (const verse of response.verses ?? []) {
-      const firstTranslation = verse.translations?.[0];
-      const text = stripHtml(String(firstTranslation?.text ?? ''));
-      if (!text) continue;
-
-      sampleByteCount += utf8ByteLength(text);
-      sampleVerseCount += 1;
-    }
-  }
-
-  if (sampleVerseCount <= 0) {
-    throw new Error('No sample verses available for size estimation');
-  }
-
-  const averageBytesPerVerse = sampleByteCount / sampleVerseCount;
-  const estimatedStoredBytes =
-    averageBytesPerVerse * TOTAL_VERSE_COUNT * ESTIMATE_STORAGE_OVERHEAD_MULTIPLIER;
-  const estimatedMb = estimatedStoredBytes / BYTES_PER_MEGABYTE;
-
-  return Math.max(0.1, Math.round(estimatedMb * 10) / 10);
-}
-
-async function resolveTranslationDownloadSizeInfo(translationId: number): Promise<DownloadSizeInfo> {
-  const packAvailability = await container.getTranslationPackRepository().getPackAvailability(translationId);
-  if (packAvailability && packAvailability.sizeBytes > 0) {
-    const mb = Math.max(0.1, Math.round((packAvailability.sizeBytes / BYTES_PER_MEGABYTE) * 10) / 10);
-    return { mb, isExact: true };
-  }
-
-  const estimatedMb = await estimateTranslationSizeMb(translationId);
-  return {
-    mb: estimatedMb,
-    isExact: false,
-  };
+function formatDownloadSizeLabel(sizeBytes: number | null): string {
+  return sizeBytes
+    ? `Download size: ${Math.max(0.1, sizeBytes / BYTES_PER_MEGABYTE).toFixed(1)} MB`
+    : 'Download size unavailable';
 }
 
 type Row =
@@ -351,12 +244,6 @@ export function ManageTranslationsPanel({
   const [downloadTarget, setDownloadTarget] = React.useState<ResourceRecord | null>(null);
   const [deleteTarget, setDeleteTarget] = React.useState<ResourceRecord | null>(null);
   const [selectionTarget, setSelectionTarget] = React.useState<ResourceRecord | null>(null);
-  const [downloadSizeInfoById, setDownloadSizeInfoById] = React.useState<
-    Record<number, DownloadSizeInfo | null | undefined>
-  >({});
-  const [estimatingTranslationIds, setEstimatingTranslationIds] = React.useState<Set<number>>(
-    () => new Set()
-  );
   const [localOrderedSelection, setLocalOrderedSelection] = React.useState<number[]>(() =>
     normalizeOrderedSelection(orderedSelection ?? [])
   );
@@ -522,38 +409,6 @@ export function ManageTranslationsPanel({
     [busyTranslationIds, refreshIndex, setBusy]
   );
 
-  const ensureDownloadSizeInfo = React.useCallback(
-    async (translationId: number): Promise<void> => {
-      if (downloadSizeInfoById[translationId] !== undefined) return;
-      if (estimatingTranslationIds.has(translationId)) return;
-
-      setEstimatingTranslationIds((prev) => {
-        const next = new Set(prev);
-        next.add(translationId);
-        return next;
-      });
-
-      try {
-        const sizeInfo = await resolveTranslationDownloadSizeInfo(translationId);
-        setDownloadSizeInfoById((prev) => ({ ...prev, [translationId]: sizeInfo }));
-      } catch (error) {
-        logger.warn(
-          'Failed to resolve translation download size',
-          { translationId },
-          error as Error
-        );
-        setDownloadSizeInfoById((prev) => ({ ...prev, [translationId]: null }));
-      } finally {
-        setEstimatingTranslationIds((prev) => {
-          const next = new Set(prev);
-          next.delete(translationId);
-          return next;
-        });
-      }
-    },
-    [downloadSizeInfoById, estimatingTranslationIds]
-  );
-
   const handlePressDownload = React.useCallback(
     (translation: ResourceRecord) => {
       if (busyTranslationIds.has(translation.id)) return;
@@ -561,36 +416,6 @@ export function ManageTranslationsPanel({
     },
     [busyTranslationIds]
   );
-
-  React.useEffect(() => {
-    if (!downloadTarget) return;
-
-    let cancelled = false;
-    const interactionHandle = InteractionManager.runAfterInteractions(() => {
-      if (cancelled) return;
-      void ensureDownloadSizeInfo(downloadTarget.id);
-    });
-
-    return () => {
-      cancelled = true;
-      interactionHandle.cancel();
-    };
-  }, [downloadTarget, ensureDownloadSizeInfo]);
-
-  React.useEffect(() => {
-    if (!selectionTarget) return;
-
-    let cancelled = false;
-    const interactionHandle = InteractionManager.runAfterInteractions(() => {
-      if (cancelled) return;
-      void ensureDownloadSizeInfo(selectionTarget.id);
-    });
-
-    return () => {
-      cancelled = true;
-      interactionHandle.cancel();
-    };
-  }, [ensureDownloadSizeInfo, selectionTarget]);
 
   const handleConfirmDownload = React.useCallback(() => {
     if (!downloadTarget) return;
@@ -884,30 +709,12 @@ export function ManageTranslationsPanel({
     );
   }
 
-  const downloadSizeInfo = downloadTarget ? downloadSizeInfoById[downloadTarget.id] : undefined;
-  const isEstimatingDownloadSize =
-    downloadTarget !== null &&
-    (downloadSizeInfo === undefined || estimatingTranslationIds.has(downloadTarget.id));
-  const downloadEstimateLabel = isEstimatingDownloadSize
-    ? 'Estimating size...'
-    : downloadSizeInfo && typeof downloadSizeInfo.mb === 'number'
-      ? downloadSizeInfo.isExact
-        ? `Download size: ${downloadSizeInfo.mb.toFixed(1)} MB`
-        : `Estimated size: ~${downloadSizeInfo.mb.toFixed(1)} MB`
-      : 'Download size unavailable';
-  const selectionDownloadSizeInfo = selectionTarget
-    ? downloadSizeInfoById[selectionTarget.id]
-    : undefined;
-  const isEstimatingSelectionDownloadSize =
-    selectionTarget !== null &&
-    (selectionDownloadSizeInfo === undefined || estimatingTranslationIds.has(selectionTarget.id));
-  const selectionDownloadEstimateLabel = isEstimatingSelectionDownloadSize
-    ? 'Estimating size...'
-    : selectionDownloadSizeInfo && typeof selectionDownloadSizeInfo.mb === 'number'
-      ? selectionDownloadSizeInfo.isExact
-        ? `Download size: ${selectionDownloadSizeInfo.mb.toFixed(1)} MB`
-        : `Estimated size: ~${selectionDownloadSizeInfo.mb.toFixed(1)} MB`
-      : 'Download size unavailable';
+  const downloadSizeLabel = formatDownloadSizeLabel(
+    downloadTarget ? getBundledTranslationDownloadSizeBytes(downloadTarget.id) : null
+  );
+  const selectionDownloadSizeLabel = formatDownloadSizeLabel(
+    selectionTarget ? getBundledTranslationDownloadSizeBytes(selectionTarget.id) : null
+  );
 
   return (
     <View className="flex-1">
@@ -936,12 +743,10 @@ export function ManageTranslationsPanel({
         visible={downloadTarget !== null}
         title="Download translation?"
         resourceName={downloadTarget?.name ?? null}
-        detailLabel={downloadEstimateLabel}
-        isDetailLoading={isEstimatingDownloadSize}
+        detailLabel={downloadSizeLabel}
         description="This downloads the translation for offline reading."
         confirmLabel="Download"
         mutedColor={palette.muted}
-        tintColor={palette.tint}
         onConfirm={handleConfirmDownload}
         onClose={() => setDownloadTarget(null)}
       />
@@ -954,7 +759,6 @@ export function ManageTranslationsPanel({
         confirmLabel="Delete"
         confirmTone="danger"
         mutedColor={palette.muted}
-        tintColor={palette.tint}
         onConfirm={handleConfirmDelete}
         onClose={() => setDeleteTarget(null)}
       />
@@ -963,14 +767,12 @@ export function ManageTranslationsPanel({
         visible={selectionTarget !== null}
         title="Translation not downloaded"
         resourceName={selectionTarget?.name ?? null}
-        detailLabel={selectionDownloadEstimateLabel}
-        isDetailLoading={isEstimatingSelectionDownloadSize}
+        detailLabel={selectionDownloadSizeLabel}
         description="Download it for offline reading, or continue online for in-app reading only. The Verse Spotlight widget cannot use online-only translations."
         confirmLabel="Download"
         showCancelAction={false}
         secondaryLabel="Continue online"
         mutedColor={palette.muted}
-        tintColor={palette.tint}
         onConfirm={downloadAndSelect}
         onSecondary={commitOnlineSelection}
         onClose={() => setSelectionTarget(null)}

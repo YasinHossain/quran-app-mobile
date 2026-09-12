@@ -25,7 +25,10 @@ import type {
   WordAnalysis,
 } from '@/src/core/domain/word-study';
 import { container } from '@/src/core/infrastructure/di/container';
-import type { WordReferencePackCatalogEntry } from '@/src/core/infrastructure/word-reference';
+import {
+  getBundledWordReferencePacks,
+  type WordReferencePackCatalogEntry,
+} from '@/src/core/infrastructure/word-reference';
 import { LruCache } from '@/src/core/infrastructure/word-study/LruCache';
 
 import { DictionaryGuideSheet } from './DictionaryGuideSheet';
@@ -44,10 +47,6 @@ type Palette = {
   error: string;
 };
 
-type CatalogState =
-  | { status: 'loading' }
-  | { status: 'ready'; entries: readonly WordReferencePackCatalogEntry[] }
-  | { status: 'error'; message: string };
 type InstalledSourcesState =
   | { status: 'loading' }
   | { status: 'ready'; sources: readonly DictionarySource[] }
@@ -70,6 +69,7 @@ type DictionarySelectedWord = {
 };
 
 const LAST_SOURCE_KEY = 'wordStudyDictionaryLastPack_v1';
+const BUNDLED_DICTIONARY_ENTRIES = getBundledWordReferencePacks();
 
 function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(bytes >= 10 * 1024 * 1024 ? 0 : 1)} MB`;
@@ -115,12 +115,10 @@ export function DictionarySection({
     pollIntervalMs: 700,
     pollWhileEnabled: isActive,
   });
-  const [catalog, setCatalog] = React.useState<CatalogState>({ status: 'loading' });
   const [installedSources, setInstalledSources] = React.useState<InstalledSourcesState>({
     status: 'loading',
   });
   const [selectedPackId, setSelectedPackId] = React.useState<string | null>(null);
-  const [refreshNonce, setRefreshNonce] = React.useState(0);
 
   const loadSources = React.useCallback(async () => {
     try {
@@ -143,25 +141,6 @@ export function DictionarySection({
     }
   }, [repository]);
 
-  const loadCatalog = React.useCallback(() => {
-    setCatalog({ status: 'loading' });
-    const controller = new AbortController();
-    void container
-      .getWordReferencePackCatalogClient()
-      .listCompatiblePacksAsync(controller.signal)
-      .then((entries) => setCatalog({ status: 'ready', entries }))
-      .catch((error) => {
-        if (!controller.signal.aborted) {
-          setCatalog({
-            status: 'error',
-            message: error instanceof Error ? error.message : 'Dictionary catalog is unavailable.',
-          });
-        }
-      });
-    return () => controller.abort();
-  }, []);
-
-  React.useEffect(() => loadCatalog(), [loadCatalog, refreshNonce]);
   React.useEffect(() => {
     void loadSources();
     return installer.subscribe(() => {
@@ -180,8 +159,9 @@ export function DictionarySection({
     () => new Set(sources.map((source) => source.packId)),
     [sources]
   );
-  const catalogEntries = catalog.status === 'ready' ? catalog.entries : [];
-  const downloadableEntries = catalogEntries.filter((entry) => !installedPackIds.has(entry.packId));
+  const downloadableEntries = BUNDLED_DICTIONARY_ENTRIES.filter(
+    (entry) => !installedPackIds.has(entry.packId)
+  );
   const selectedSource = sources.find((source) => source.packId === selectedPackId);
 
   return (
@@ -208,9 +188,7 @@ export function DictionarySection({
         />
       ) : null}
 
-      {installedSources.status === 'loading' ? (
-        <LoadingCard label="Loading installed dictionaries…" palette={palette} />
-      ) : installedSources.status === 'error' ? (
+      {installedSources.status === 'error' ? (
         <StateCard
           title="Dictionaries could not be opened"
           message={installedSources.message}
@@ -218,7 +196,7 @@ export function DictionarySection({
           actionLabel="Retry"
           onAction={() => void loadSources()}
         />
-      ) : selectedPackId ? (
+      ) : installedSources.status === 'ready' && selectedPackId ? (
         <View>
           {sources.map((source) => (
             <DictionarySourcePanel
@@ -234,16 +212,6 @@ export function DictionarySection({
             />
           ))}
         </View>
-      ) : catalog.status === 'loading' ? (
-        <LoadingCard label="Checking available dictionary packs…" palette={palette} />
-      ) : catalog.status === 'error' ? (
-        <StateCard
-          title="Dictionary packs are not installed"
-          message="Connect to the internet to view and download optional dictionary resources."
-          palette={palette}
-          actionLabel="Retry"
-          onAction={() => setRefreshNonce((value) => value + 1)}
-        />
       ) : downloadableEntries.length === 0 ? (
         <StateCard
           title="Choose an optional dictionary"
@@ -252,7 +220,7 @@ export function DictionarySection({
         />
       ) : null}
 
-      {installedSources.status === 'ready' && downloadableEntries.length > 0 ? (
+      {installedSources.status !== 'error' && downloadableEntries.length > 0 ? (
         <View style={styles.downloadList}>
           {sources.length > 0 ? (
             <Text style={[styles.subheading, { color: palette.text }]}>Available downloads</Text>
@@ -272,9 +240,9 @@ export function DictionarySection({
                 percent={downloadItem?.progress?.kind === 'percent' ? downloadItem.progress.percent : undefined}
                 error={downloadItem?.error}
                 palette={palette}
-                onDownload={() => {
+                onDownload={installedSources.status === 'ready' ? () => {
                   void installer.installAsync(entry).catch(() => undefined);
-                }}
+                } : undefined}
                 onCancel={() => installer.cancel(entry.packId, entry.version)}
               />
             );
@@ -823,7 +791,7 @@ function DownloadCard({ entry, status, percent, error, palette, onDownload, onCa
   percent?: number;
   error?: string;
   palette: Palette;
-  onDownload: () => void;
+  onDownload?: () => void;
   onCancel: () => void;
 }): React.JSX.Element {
   return (

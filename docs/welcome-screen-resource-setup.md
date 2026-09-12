@@ -94,7 +94,11 @@ A tafsir must be downloaded before it can be selected. After installation, selec
 
 ## Word-by-word
 
-Word-by-word onboarding and resource behavior are intentionally outside the scope of this plan. They will be designed and implemented separately. The welcome screen must not add word-by-word prompts or downloads.
+The welcome screen records the matching word-by-word language when one is supported: English, Bangla, Urdu, or Hindi. Arabic UI falls back to English word meanings. This is a preference only; first-run setup must not prompt for or silently download a word-by-word pack.
+
+When the user first turns on word-by-word reading, require the selected word-language pack. If it is not installed, show its download confirmation and size, keep word-by-word off during the download, and turn it on only after a successful install. Cancellation or failure leaves word-by-word off.
+
+Verse translations and word-by-word languages are separate downloads. The selected word-language pack also supplies localized contextual meanings inside Word Study, but it does not include morphology, roots, lemmas, occurrences, or other Word Study analysis. Those remain in the separate Word Study Essentials pack.
 
 ## Required bundled-resource work
 
@@ -119,5 +123,5 @@ Removing Uthmani Unicode must also remove its payload from the application bundl
 - Entering Mushaf mode without an installed mushaf opens Manage Mushaf and never shows an empty page.
 - No Uthmani Unicode mushaf remains bundled or selectable.
 - Tafsir without an installed selection shows **Add Tafsir** and opens Manage Tafsirs.
-- No word-by-word setup is added by this work.
-
+- First launch records a matching word-language preference without downloading its pack.
+- Turning on word-by-word prompts for the selected language pack when needed and enables the feature only after installation.

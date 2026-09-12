@@ -78,10 +78,12 @@ export function PlannerSection({
 
   if (groupedCards.length === 0) {
     return (
-      <View className="flex-1 px-4">
+      <View className="flex-1 px-4" style={{ paddingBottom: 24 + audioPlayerBarHeight }}>
         {topContent}
         <PlannerHeader onCreatePlan={onCreatePlan} />
-        <PlannerEmptyState />
+        <View className="flex-1 items-center justify-center -mt-6">
+          <PlannerEmptyState />
+        </View>
       </View>
     );
   }

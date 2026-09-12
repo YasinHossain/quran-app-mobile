@@ -246,7 +246,7 @@ export default function DownloadsScreen(): React.JSX.Element {
         case 'word-study-pack': {
           category = 'Word Study';
           title = 'Word Study Essentials';
-          subtitle = `Morphology, meanings, and occurrences · ${item.content.version}`;
+          subtitle = `Morphology, roots, lemmas, and occurrences · ${item.content.version}`;
           break;
         }
         case 'word-grammar-pack': {
@@ -684,7 +684,6 @@ export default function DownloadsScreen(): React.JSX.Element {
         confirmLabel={t('delete', { fallback: 'Delete' })}
         confirmTone="danger"
         mutedColor={palette.muted}
-        tintColor={palette.tint}
         onConfirm={() => {
           if (deleteTarget) {
             void performDelete(deleteTarget);

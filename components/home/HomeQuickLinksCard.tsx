@@ -40,6 +40,12 @@ type HomeQuickLink = {
   updatedAt: number;
 };
 
+const DEFAULT_QUICK_LINKS: HomeQuickLink[] = [
+  { id: 'default-18-1', surahId: 18, verseNumber: 1, createdAt: 3, updatedAt: 3 },
+  { id: 'default-67-1', surahId: 67, verseNumber: 1, createdAt: 2, updatedAt: 2 },
+  { id: 'default-36-1', surahId: 36, verseNumber: 1, createdAt: 1, updatedAt: 1 },
+];
+
 function isQuickLink(value: unknown): value is HomeQuickLink {
   if (!value || typeof value !== 'object') return false;
   const candidate = value as Partial<HomeQuickLink>;
@@ -97,7 +103,7 @@ export function HomeQuickLinksCard(): React.JSX.Element {
   const palette = Colors[resolvedTheme];
   const { chapters, isLoading } = useChapters();
 
-  const [quickLinks, setQuickLinks] = React.useState<HomeQuickLink[]>(() => cachedQuickLinks ?? []);
+  const [quickLinks, setQuickLinks] = React.useState<HomeQuickLink[]>(() => cachedQuickLinks ?? DEFAULT_QUICK_LINKS);
   const [isHydrated, setIsHydrated] = React.useState(() => cachedQuickLinks !== null);
   const [isAddOpen, setIsAddOpen] = React.useState(false);
 
@@ -111,7 +117,8 @@ export function HomeQuickLinksCard(): React.JSX.Element {
 
     void getItem(QUICK_LINKS_STORAGE_KEY).then((raw) => {
       if (!isMounted) return;
-      const next = normalizeQuickLinks(parseJson<unknown>(raw));
+      const parsed = parseJson<unknown>(raw);
+      const next = raw === null ? DEFAULT_QUICK_LINKS : normalizeQuickLinks(parsed);
       cachedQuickLinks = next;
       setQuickLinks(next);
       setIsHydrated(true);
@@ -240,7 +247,7 @@ export function HomeQuickLinksCard(): React.JSX.Element {
                   key={link.id}
                   onPress={() => navigateToQuickLink(link)}
                   accessibilityRole="button"
-                  accessibilityLabel={`Open quick link ${surahName} ${verseLabel}`}
+                  accessibilityLabel={`${surahName} ${verseLabel}`}
                   style={({ pressed }) => ({
                     maxWidth: 242,
                     opacity: pressed ? 0.92 : 1,
@@ -285,7 +292,7 @@ export function HomeQuickLinksCard(): React.JSX.Element {
                       }}
                       hitSlop={8}
                       accessibilityRole="button"
-                      accessibilityLabel={`Remove quick link ${surahName} ${verseLabel}`}
+                      accessibilityLabel={`${t('remove_bookmark', { fallback: 'Remove' })} ${surahName} ${verseLabel}`}
                       className="ml-2 h-7 w-7 items-center justify-center rounded-full"
                       style={({ pressed }) => ({
                         backgroundColor: pressed
@@ -306,7 +313,7 @@ export function HomeQuickLinksCard(): React.JSX.Element {
               <Pressable
                 onPress={() => setIsAddOpen(true)}
                 accessibilityRole="button"
-                accessibilityLabel="Add quick link"
+                accessibilityLabel={t('add_quick_link', { fallback: 'Add quick link' })}
                 style={({ pressed }) => ({
                   minWidth: quickLinks.length === 0 ? undefined : 46,
                   alignSelf: 'flex-start',
@@ -453,7 +460,7 @@ function AddQuickLinkModal({
                 <View className="flex-row items-center justify-between">
                   <View className="min-w-0 flex-1">
                     <Text className="text-xl font-bold text-foreground dark:text-foreground-dark">
-                      {t('add') + ' ' + t('quick_navigation')}
+                      {t('add_quick_link', { fallback: 'Add quick link' })}
                     </Text>
                   </View>
                   <Pressable
@@ -499,7 +506,7 @@ function AddQuickLinkModal({
                   }}
                   disabled={!canSubmit}
                   accessibilityRole="button"
-                  accessibilityLabel={t('add') + ' ' + t('quick_navigation')}
+                  accessibilityLabel={t('add_quick_link', { fallback: 'Add quick link' })}
                   className="rounded-lg bg-accent px-5 py-2.5"
                   style={({ pressed }) => ({ opacity: !canSubmit ? 0.5 : pressed ? 0.9 : 1 })}
                 >

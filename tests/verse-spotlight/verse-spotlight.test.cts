@@ -625,7 +625,7 @@ test('Home component wires focus/resume, clean presentation, accessible swipes, 
   assert.match(source, /accessibilityActions=/);
   assert.match(source, /actionName === 'increment'/);
   assert.match(source, /actionName === 'decrement'/);
-  assert.match(source, /const reference = `\[\$\{verse\.surahName\}/);
+  assert.match(source, /const reference = `\[\$\{localizedSurahName\}/);
   assert.match(source, /textAlign: 'center'/);
   assert.match(source, /buildHomeSpotlightPreviewText/);
   assert.match(source, /styles\.referenceDiamond/);

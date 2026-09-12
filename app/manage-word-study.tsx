@@ -2,7 +2,6 @@ import { router, useFocusEffect } from 'expo-router';
 import { ArrowLeft, BookMarked, Check, Download, ShieldCheck, Trash2, X } from 'lucide-react-native';
 import React from 'react';
 import {
-  ActivityIndicator,
   Alert,
   Pressable,
   ScrollView,
@@ -18,30 +17,38 @@ import Colors from '@/constants/Colors';
 import { useDownloadIndexItems } from '@/hooks/useDownloadIndexItems';
 import { useAppTheme } from '@/providers/ThemeContext';
 import { container } from '@/src/core/infrastructure/di/container';
-import type { ReadyWordGrammarPack, WordGrammarPackCatalogEntry } from '@/src/core/infrastructure/word-grammar';
-import type { ReadyWordReferencePack, WordReferencePackCatalogEntry } from '@/src/core/infrastructure/word-reference';
-import type { ReadyWordStudyPack, WordStudyPackCatalogEntry } from '@/src/core/infrastructure/word-study';
+import {
+  getBundledWordGrammarPacks,
+  type ReadyWordGrammarPack,
+  type WordGrammarPackCatalogEntry,
+} from '@/src/core/infrastructure/word-grammar';
+import {
+  getBundledWordReferencePacks,
+  type ReadyWordReferencePack,
+  type WordReferencePackCatalogEntry,
+} from '@/src/core/infrastructure/word-reference';
+import {
+  getBundledWordStudyPacks,
+  type ReadyWordStudyPack,
+  type WordStudyPackCatalogEntry,
+} from '@/src/core/infrastructure/word-study';
 
 type LoadState = {
-  loading: boolean;
   coreCatalog: readonly WordStudyPackCatalogEntry[];
   grammarCatalog: readonly WordGrammarPackCatalogEntry[];
   dictionaryCatalog: readonly WordReferencePackCatalogEntry[];
   coreInstalled: ReadyWordStudyPack | null;
   grammarInstalled: ReadyWordGrammarPack | null;
   dictionariesInstalled: readonly ReadyWordReferencePack[];
-  catalogError: boolean;
 };
 
 const EMPTY_STATE: LoadState = {
-  loading: true,
-  coreCatalog: [],
-  grammarCatalog: [],
-  dictionaryCatalog: [],
+  coreCatalog: getBundledWordStudyPacks(),
+  grammarCatalog: getBundledWordGrammarPacks(),
+  dictionaryCatalog: getBundledWordReferencePacks(),
   coreInstalled: null,
   grammarInstalled: null,
   dictionariesInstalled: [],
-  catalogError: false,
 };
 
 function formatBytes(bytes: number): string {
@@ -68,21 +75,12 @@ export default function ManageWordStudyScreen(): React.JSX.Element {
   useFocusEffect(
     React.useCallback(() => {
       let active = true;
-      setState((current) => ({ ...current, loading: true }));
       void Promise.all([
-        Promise.allSettled([
-          container.getWordStudyPackCatalogClient().listCompatiblePacksAsync(),
-          container.getWordGrammarPackCatalogClient().listCompatiblePacksAsync(),
-          container.getWordReferencePackCatalogClient().listCompatiblePacksAsync(),
-        ]),
-        Promise.all([
-          container.getWordStudyPackInstaller().getInstalledAsync().catch(() => null),
-          container.getWordGrammarPackInstaller().getInstalledAsync().catch(() => null),
-          container.getWordReferencePackInstaller().listInstalledAsync().catch(() => []),
-        ]),
-      ]).then(async ([catalogs, installed]) => {
+        container.getWordStudyPackInstaller().getInstalledAsync().catch(() => null),
+        container.getWordGrammarPackInstaller().getInstalledAsync().catch(() => null),
+        container.getWordReferencePackInstaller().listInstalledAsync().catch(() => []),
+      ]).then(async (installed) => {
         if (!active) return;
-        const [coreCatalog, grammarCatalog, dictionaryCatalog] = catalogs;
         const [coreInstalled, grammarInstalled, dictionariesInstalled] = installed;
         if (coreInstalled) {
           await container.getDownloadIndexRepository().upsert(
@@ -95,16 +93,12 @@ export default function ManageWordStudyScreen(): React.JSX.Element {
           );
         }
         if (!active) return;
-        setState({
-          loading: false,
-          coreCatalog: coreCatalog.status === 'fulfilled' ? coreCatalog.value : [],
-          grammarCatalog: grammarCatalog.status === 'fulfilled' ? grammarCatalog.value : [],
-          dictionaryCatalog: dictionaryCatalog.status === 'fulfilled' ? dictionaryCatalog.value : [],
+        setState((current) => ({
+          ...current,
           coreInstalled,
           grammarInstalled,
           dictionariesInstalled,
-          catalogError: catalogs.some((catalog) => catalog.status === 'rejected'),
-        });
+        }));
         void refresh();
       });
       return () => {
@@ -162,17 +156,13 @@ export default function ManageWordStudyScreen(): React.JSX.Element {
           </View>
         </View>
 
-        {state.catalogError ? (
-          <Text style={[styles.offlineNote, { color: palette.muted }]}>Some download choices could not be checked. Installed resources remain available offline.</Text>
-        ) : null}
-
         <SectionTitle text="Essential analysis" color={palette.text} />
         <ResourceCard
           title="Word Study Essentials"
-          description="Morphology, word meanings, roots, lemmas, verb forms, and word-family occurrence search. Required before Word Study can open."
+          description="Morphology, roots, lemmas, verb forms, and word-family occurrence search. Word meanings use the separate word-by-word language pack selected in Reader settings."
           size={coreEntry?.databaseSizeBytes ?? state.coreInstalled?.manifest.databaseSizeBytes}
           installed={Boolean(state.coreInstalled)}
-          unavailable={!state.loading && !coreEntry && !state.coreInstalled}
+          unavailable={!coreEntry && !state.coreInstalled}
           unavailableText="Connect to the internet to check this download."
           item={coreEntry ? statusFor('word-study-pack', coreEntry.packId, coreEntry.version) : undefined}
           palette={palette}
@@ -187,7 +177,7 @@ export default function ManageWordStudyScreen(): React.JSX.Element {
           description="Source-provided grammatical analysis. Optional."
           size={grammarEntry?.databaseSizeBytes ?? state.grammarInstalled?.manifest.databaseSizeBytes}
           installed={Boolean(state.grammarInstalled)}
-          unavailable={!state.loading && !grammarEntry && !state.grammarInstalled}
+          unavailable={!grammarEntry && !state.grammarInstalled}
           unavailableText="Connect to the internet to check this download."
           item={grammarEntry ? statusFor('word-grammar-pack', grammarEntry.packId, grammarEntry.version) : undefined}
           palette={palette}
@@ -220,10 +210,9 @@ export default function ManageWordStudyScreen(): React.JSX.Element {
             />
           );
         })}
-        {!state.loading && state.dictionaryCatalog.length === 0 ? (
-          <Text style={[styles.offlineNote, { color: palette.muted }]}>Connect to the internet to check dictionary downloads.</Text>
+        {state.dictionaryCatalog.length === 0 ? (
+          <Text style={[styles.offlineNote, { color: palette.muted }]}>No dictionary downloads are included in this app version.</Text>
         ) : null}
-        {state.loading ? <ActivityIndicator color={palette.tint} style={styles.loader} /> : null}
       </ScrollView>
     </View>
   );
@@ -321,5 +310,4 @@ const styles = StyleSheet.create({
   meta: { fontSize: 12, lineHeight: 18, fontWeight: '700', marginTop: 6 },
   error: { fontSize: 11, lineHeight: 17, marginTop: 3 },
   action: { width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  loader: { marginVertical: 24 },
 });

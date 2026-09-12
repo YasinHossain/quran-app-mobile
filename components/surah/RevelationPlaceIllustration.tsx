@@ -82,7 +82,7 @@ function MakkahIllustration({ dark }: { dark: boolean }): React.JSX.Element {
   const goldLight = dark ? '#D3AB3B' : '#E5C158';
 
   return (
-    <Svg width="100%" height="100%" viewBox="0 0 136 78">
+    <Svg width="100%" height="100%" viewBox="39 12 98 66">
       {/* Background Arch Backdrop */}
       <Path
         d="M 40,78 C 40,30 65,15 88,15 C 111,15 136,30 136,78 Z"
@@ -106,9 +106,9 @@ function MakkahIllustration({ dark }: { dark: boolean }): React.JSX.Element {
 
       {/* Ground Line */}
       <Line
-        x1={20}
+        x1={39}
         y1={72}
-        x2={125}
+        x2={136}
         y2={72}
         stroke={groundColor}
         strokeWidth={1.8}
@@ -162,7 +162,7 @@ function MadinahIllustration({ dark }: { dark: boolean }): React.JSX.Element {
   const gold = dark ? '#B8922A' : '#C5A028';
 
   return (
-    <Svg width="100%" height="100%" viewBox="0 0 136 78">
+    <Svg width="100%" height="100%" viewBox="39 12 98 66">
       {/* Background Arch Backdrop */}
       <Path
         d="M 40,78 C 40,30 65,15 88,15 C 111,15 136,30 136,78 Z"
@@ -185,9 +185,9 @@ function MadinahIllustration({ dark }: { dark: boolean }): React.JSX.Element {
 
       {/* Ground Line */}
       <Line
-        x1={20}
+        x1={39}
         y1={72}
-        x2={125}
+        x2={136}
         y2={72}
         stroke={groundColor}
         strokeWidth={1.8}
@@ -257,7 +257,7 @@ function RevelationPlaceIllustrationComponent({
 }
 
 const styles = StyleSheet.create({
-  frame: { width: 136, height: 78 },
+  frame: { width: 92, height: 62 },
 });
 
 export const RevelationPlaceIllustration = React.memo(RevelationPlaceIllustrationComponent);

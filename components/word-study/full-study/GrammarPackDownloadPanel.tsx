@@ -1,12 +1,11 @@
-import { RefreshCw } from 'lucide-react-native';
 import React from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
 import { useDownloadIndexItems } from '@/hooks/useDownloadIndexItems';
 import { container } from '@/src/core/infrastructure/di/container';
-import type {
-  ReadyWordGrammarPack,
-  WordGrammarPackCatalogEntry,
+import {
+  getBundledWordGrammarPacks,
+  type ReadyWordGrammarPack,
 } from '@/src/core/infrastructure/word-grammar';
 
 import { StudyPackDownloadCard } from './StudyPackDownloadCard';
@@ -23,14 +22,11 @@ type Palette = {
   error: string;
 };
 
-type CatalogState =
-  | { status: 'loading' }
-  | { status: 'ready'; entry: WordGrammarPackCatalogEntry | null }
-  | { status: 'error'; message: string };
-
 function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
+
+const BUNDLED_ENTRY = getBundledWordGrammarPacks()[0] ?? null;
 
 export function GrammarPackDownloadPanel({
   palette,
@@ -45,27 +41,7 @@ export function GrammarPackDownloadPanel({
     pollIntervalMs: 600,
     pollWhileEnabled: true,
   });
-  const [catalog, setCatalog] = React.useState<CatalogState>({ status: 'loading' });
   const [installedPack, setInstalledPack] = React.useState<ReadyWordGrammarPack | null>(null);
-  const [retryNonce, setRetryNonce] = React.useState(0);
-
-  React.useEffect(() => {
-    const controller = new AbortController();
-    setCatalog({ status: 'loading' });
-    void container
-      .getWordGrammarPackCatalogClient()
-      .listCompatiblePacksAsync(controller.signal)
-      .then((entries) => setCatalog({ status: 'ready', entry: entries[0] ?? null }))
-      .catch((error) => {
-        if (!controller.signal.aborted) {
-          setCatalog({
-            status: 'error',
-            message: error instanceof Error ? error.message : 'Grammar download is unavailable.',
-          });
-        }
-      });
-    return () => controller.abort();
-  }, [retryNonce]);
 
   React.useEffect(() => {
     let active = true;
@@ -87,7 +63,7 @@ export function GrammarPackDownloadPanel({
     };
   }, [installer]);
 
-  const entry = catalog.status === 'ready' ? catalog.entry : null;
+  const entry = BUNDLED_ENTRY;
   const item = entry
     ? items.find(
         (candidate) =>
@@ -107,33 +83,11 @@ export function GrammarPackDownloadPanel({
     if (entryIsInstalled) onInstalled();
   }, [entryIsInstalled, onInstalled]);
 
-  const displayStatus = itemIsActive
-    ? item.status
-    : item?.status;
+  const displayStatus = itemIsActive ? item.status : item?.status;
 
   return (
     <View style={styles.section}>
-      {catalog.status === 'loading' ? (
-        <View style={styles.statusRow} accessibilityLiveRegion="polite">
-          <ActivityIndicator color={palette.tint} size="small" />
-          <Text style={[styles.statusText, { color: palette.muted }]}>Checking availability…</Text>
-        </View>
-      ) : catalog.status === 'error' ? (
-        <View style={[styles.card, { backgroundColor: palette.surfaceNavigation }]}>
-          <View style={styles.cardCopy}>
-            <Text style={[styles.statusText, { color: palette.muted }]}>{catalog.message}</Text>
-          </View>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Retry grammar catalog"
-            onPress={() => setRetryNonce((value) => value + 1)}
-            style={[styles.secondaryButton, { backgroundColor: palette.surfaceNavigation }]}
-          >
-            <RefreshCw color={palette.tint} size={17} />
-            <Text style={[styles.secondaryLabel, { color: palette.tint }]}>Retry</Text>
-          </Pressable>
-        </View>
-      ) : entryIsInstalled || item?.status === 'installed' ? (
+      {entryIsInstalled || item?.status === 'installed' ? (
         <View style={styles.statusRow} accessibilityLiveRegion="polite">
           <ActivityIndicator color={palette.tint} size="small" />
           <Text style={[styles.statusText, { color: palette.muted }]}>Opening Arabic grammar…</Text>
@@ -183,6 +137,4 @@ const styles = StyleSheet.create({
   card: { minHeight: 92, borderRadius: 18, padding: 15, flexDirection: 'row', alignItems: 'center', gap: 12 },
   cardCopy: { flex: 1, gap: 4 },
   cardTitle: { fontSize: 15, lineHeight: 21, fontWeight: '700' },
-  secondaryButton: { minHeight: 42, borderRadius: 12, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 8 },
-  secondaryLabel: { fontSize: 13, fontWeight: '700' },
 });

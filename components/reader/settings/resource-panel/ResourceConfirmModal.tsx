@@ -1,7 +1,6 @@
 import { X } from 'lucide-react-native';
 import React from 'react';
 import {
-  ActivityIndicator,
   Animated,
   Modal,
   Platform,
@@ -21,14 +20,12 @@ export function ResourceConfirmModal({
   title,
   resourceName,
   detailLabel,
-  isDetailLoading = false,
   description,
   confirmLabel,
   confirmTone = 'accent',
   showCancelAction = true,
   secondaryLabel,
   mutedColor,
-  tintColor,
   onConfirm,
   onSecondary,
   onClose,
@@ -37,14 +34,12 @@ export function ResourceConfirmModal({
   title: string;
   resourceName?: string | null;
   detailLabel?: string | null;
-  isDetailLoading?: boolean;
   description: string;
   confirmLabel: string;
   confirmTone?: 'accent' | 'danger';
   showCancelAction?: boolean;
   secondaryLabel?: string;
   mutedColor: string;
-  tintColor: string;
   onConfirm: () => void;
   onSecondary?: () => void;
   onClose: () => void;
@@ -112,12 +107,9 @@ export function ResourceConfirmModal({
               <Text className="text-sm font-semibold text-foreground dark:text-foreground-dark">
                 {resourceName}
               </Text>
-              {detailLabel || isDetailLoading ? (
+              {detailLabel ? (
                 <View className="mt-2 flex-row items-center gap-2">
-                  {isDetailLoading ? <ActivityIndicator size="small" color={tintColor} /> : null}
-                  <Text className="text-xs text-muted dark:text-muted-dark">
-                    {detailLabel ?? ''}
-                  </Text>
+                  <Text className="text-xs text-muted dark:text-muted-dark">{detailLabel}</Text>
                 </View>
               ) : null}
             </View>

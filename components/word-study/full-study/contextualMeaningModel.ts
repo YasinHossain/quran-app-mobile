@@ -1,4 +1,4 @@
-import type { WordAnalysis } from '../../../src/core/domain/word-study';
+import type { WordStudyLocation } from '../../../src/core/domain/word-study';
 import {
   getWordLanguageDirection,
   getWordLanguageName,
@@ -7,8 +7,6 @@ import {
   type WordLanguageDirection,
 } from '../../../lib/i18n/wordLanguages';
 
-import { getPrimaryGloss } from '../wordQuickSheetModel';
-
 export type ContextualMeaningPresentation = {
   text: string;
   languageCode: WordLanguageCode;
@@ -16,6 +14,7 @@ export type ContextualMeaningPresentation = {
   direction: WordLanguageDirection;
   sourceLabel: string;
   isFallback: boolean;
+  isUnavailable: boolean;
   fallbackMessage?: string;
 };
 
@@ -47,55 +46,67 @@ export function getStoredWordTranslation(
 }
 
 export function resolveContextualMeaning({
-  analysis,
+  location,
   selectedLanguageCode,
   selectedLanguageWordsJson,
-  lookupFailed = false,
+  englishWordsJson,
+  selectedLookupFailed = false,
+  englishLookupFailed = false,
 }: {
-  analysis: WordAnalysis;
+  location: WordStudyLocation;
   selectedLanguageCode: string;
   selectedLanguageWordsJson?: string | null;
-  lookupFailed?: boolean;
+  englishWordsJson?: string | null;
+  selectedLookupFailed?: boolean;
+  englishLookupFailed?: boolean;
 }): ContextualMeaningPresentation {
   const selectedCode = normalizeWordLanguageCode(selectedLanguageCode);
-  const englishText = getPrimaryGloss(analysis);
-
-  if (selectedCode === 'en') {
-    return {
-      text: englishText,
-      languageCode: 'en',
-      languageName: 'English',
-      direction: 'ltr',
-      sourceLabel: 'English · Bundled offline',
-      isFallback: false,
-    };
-  }
-
+  const selectedName = getWordLanguageName(selectedCode);
   const selectedText = getStoredWordTranslation(
     selectedLanguageWordsJson,
-    analysis.location.wordPosition
+    location.wordPosition
   );
   if (selectedText) {
     return {
       text: selectedText,
       languageCode: selectedCode,
-      languageName: getWordLanguageName(selectedCode),
+      languageName: selectedName,
       direction: getWordLanguageDirection(selectedCode),
-      sourceLabel: `${getWordLanguageName(selectedCode)} · Installed offline`,
+      sourceLabel: `${selectedName} · Installed offline`,
       isFallback: false,
+      isUnavailable: false,
     };
   }
 
-  const selectedName = getWordLanguageName(selectedCode);
+  const englishText = selectedCode === 'en'
+    ? null
+    : getStoredWordTranslation(englishWordsJson, location.wordPosition);
+  if (englishText) {
+    return {
+      text: englishText,
+      languageCode: 'en',
+      languageName: 'English',
+      direction: 'ltr',
+      sourceLabel: 'English fallback · Installed offline',
+      isFallback: true,
+      isUnavailable: false,
+      fallbackMessage: selectedLookupFailed
+        ? `The installed ${selectedName} meaning could not be read. Showing installed English.`
+        : `${selectedName} is not available offline for this word. Showing installed English.`,
+    };
+  }
+
   return {
-    text: englishText,
-    languageCode: 'en',
-    languageName: 'English',
-    direction: 'ltr',
-    sourceLabel: 'English fallback · Bundled offline',
-    isFallback: true,
-    fallbackMessage: lookupFailed
-      ? `The installed ${selectedName} meaning could not be read. Showing bundled English.`
-      : `${selectedName} is not available offline for this word. Showing bundled English.`,
+    text: 'Meaning unavailable offline',
+    languageCode: selectedCode,
+    languageName: selectedName,
+    direction: getWordLanguageDirection(selectedCode),
+    sourceLabel: `${selectedName} word pack required`,
+    isFallback: false,
+    isUnavailable: true,
+    fallbackMessage:
+      selectedLookupFailed || englishLookupFailed
+        ? 'The installed word-meaning data could not be read. Try reinstalling the language pack.'
+        : `Download the ${selectedName} word-by-word pack to use this meaning in the reader and Word Study.`,
   };
 }

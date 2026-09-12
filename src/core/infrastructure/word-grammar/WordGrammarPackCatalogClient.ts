@@ -1,5 +1,7 @@
 import Constants from 'expo-constants';
 
+import catalogJson from '../../../../dist/word-grammar-packs/catalog.json';
+
 import {
   WORD_GRAMMAR_PACK_SCHEMA_VERSION,
   type WordGrammarPackCatalog,
@@ -16,6 +18,31 @@ function catalogUrl(): string {
     : RAW_CATALOG_URL;
 }
 
+function compatiblePacks(catalog: WordGrammarPackCatalog, url: string): WordGrammarPackCatalogEntry[] {
+  if (catalog.format !== 'quran-word-grammar-catalog-v1' || !Array.isArray(catalog.packs)) {
+    throw new Error('Grammar catalog format is invalid');
+  }
+
+  return catalog.packs
+    .filter(
+      (entry) =>
+        entry.schemaVersion === WORD_GRAMMAR_PACK_SCHEMA_VERSION &&
+        Boolean(entry.packId?.trim()) &&
+        Boolean(entry.version?.trim()) &&
+        Boolean(entry.sourceId?.trim()) &&
+        /^[a-f0-9]{64}$/i.test(entry.databaseChecksumSha256)
+    )
+    .map((entry) => ({
+      ...entry,
+      manifestUrl: new URL(entry.manifestUrl, url).toString(),
+      databaseUrl: new URL(entry.databaseUrl, url).toString(),
+    }));
+}
+
+export function getBundledWordGrammarPacks(): WordGrammarPackCatalogEntry[] {
+  return compatiblePacks(catalogJson as WordGrammarPackCatalog, catalogUrl());
+}
+
 export class WordGrammarPackCatalogClient {
   async listCompatiblePacksAsync(signal?: AbortSignal): Promise<WordGrammarPackCatalogEntry[]> {
     let url = catalogUrl();
@@ -26,23 +53,6 @@ export class WordGrammarPackCatalogClient {
     }
     if (response.status === 404) return [];
     if (!response.ok) throw new Error(`Grammar catalog request failed (${response.status})`);
-    const catalog = (await response.json()) as WordGrammarPackCatalog;
-    if (catalog.format !== 'quran-word-grammar-catalog-v1' || !Array.isArray(catalog.packs)) {
-      throw new Error('Grammar catalog format is invalid');
-    }
-    return catalog.packs
-      .filter(
-        (entry) =>
-          entry.schemaVersion === WORD_GRAMMAR_PACK_SCHEMA_VERSION &&
-          Boolean(entry.packId?.trim()) &&
-          Boolean(entry.version?.trim()) &&
-          Boolean(entry.sourceId?.trim()) &&
-          /^[a-f0-9]{64}$/i.test(entry.databaseChecksumSha256)
-      )
-      .map((entry) => ({
-        ...entry,
-        manifestUrl: new URL(entry.manifestUrl, url).toString(),
-        databaseUrl: new URL(entry.databaseUrl, url).toString(),
-      }));
+    return compatiblePacks((await response.json()) as WordGrammarPackCatalog, url);
   }
 }

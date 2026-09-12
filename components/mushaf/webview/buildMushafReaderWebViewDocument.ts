@@ -114,7 +114,7 @@ function buildRevelationIllustrationHtml(isMakkah: boolean): string {
   `;
   const ground = `
     <ellipse cx="${isMakkah ? 92 : 85}" cy="70" rx="${isMakkah ? 22 : 26}" ry="${isMakkah ? 4.5 : 4}" fill="var(--intro-shadow)" opacity="var(--intro-shadow-opacity)"/>
-    <path d="M20 72h105" fill="none" stroke="var(--intro-art-line)" stroke-linecap="round" stroke-width="1.8"/>
+    <path d="M39 72h97" fill="none" stroke="var(--intro-art-line)" stroke-linecap="round" stroke-width="1.8"/>
   `;
   const mosqueWall = `
     <path d="M45 78V${isMakkah ? 62 : 64}h3q5-4 10 0h3v${isMakkah ? 16 : 14}m0 0V${isMakkah ? 62 : 64}h3q5-4 10 0h3v${isMakkah ? 16 : 14}m0 0V${isMakkah ? 62 : 64}h3q5-4 10 0h3v${isMakkah ? 16 : 14}m0 0V${isMakkah ? 62 : 64}h3q5-4 10 0h3v${isMakkah ? 16 : 14}m0 0V${isMakkah ? 62 : 64}h3q5-4 10 0h3v${isMakkah ? 16 : 14}" fill="var(--intro-mosque)" opacity=".5"/>
@@ -122,7 +122,7 @@ function buildRevelationIllustrationHtml(isMakkah: boolean): string {
 
   if (isMakkah) {
     return `
-      <svg viewBox="0 0 136 78" aria-hidden="true">
+      <svg viewBox="39 12 98 66" aria-hidden="true">
         ${background}
         ${buildBackgroundMinaretSvg(54, 50)}
         ${buildBackgroundMinaretSvg(68, 56)}
@@ -139,7 +139,7 @@ function buildRevelationIllustrationHtml(isMakkah: boolean): string {
   }
 
   return `
-    <svg viewBox="0 0 136 78" aria-hidden="true">
+    <svg viewBox="39 12 98 66" aria-hidden="true">
       ${background}
       ${buildBackgroundMinaretSvg(52, 54)}
       ${buildBackgroundMinaretSvg(118, 50)}
@@ -408,44 +408,46 @@ function buildShellDocumentHtml({
         padding: 0 0 20px;
         position: relative;
         transform: translateX(-50%);
-        width: calc(100vw - 40px);
+        width: calc(100vw - 32px);
       }
 
       .surah-intro-heading {
         align-items: center;
         display: flex;
-        gap: 16px;
+        gap: 12px;
         justify-content: space-between;
-        min-height: 104px;
-        padding: 0 8px;
+        min-height: 84px;
+        padding: 0;
       }
 
       .surah-intro-copy {
         flex: 1;
         min-width: 0;
-        padding-top: 12px;
+        padding-top: 8px;
       }
 
       .surah-intro-copy h1 {
         color: ${theme === 'dark' ? '#E7E5E4' : '#374151'};
-        font-size: 26px;
+        font-size: 21px;
         font-weight: 700;
-        line-height: 32px;
+        line-height: 28px;
         margin: 0;
-        overflow-wrap: anywhere;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
       }
 
       .surah-intro-copy p {
         color: ${theme === 'dark' ? '#94A3B8' : '#6B7280'};
         font-size: 14px;
         line-height: 20px;
-        margin: 2px 0 0;
+        margin: 4px 0 0;
       }
 
       .surah-intro-illustration {
         flex: none;
-        height: 78px;
-        width: 136px;
+        height: 62px;
+        width: 92px;
       }
 
       .surah-intro-illustration svg {

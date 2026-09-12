@@ -11,10 +11,10 @@ export function PlannerHeader({ onCreatePlan }: { onCreatePlan: () => void }): R
     <View className="mb-2 gap-4">
       <View className="flex-row items-center justify-between gap-3">
         <View className="flex-row items-center gap-3 min-w-0 flex-1">
-          <View className="h-9 w-9 rounded-xl bg-accent items-center justify-center">
+          <View className="h-9 w-9 rounded-xl bg-accent items-center justify-center flex-shrink-0">
             <Calendar size={20} strokeWidth={2.25} color="#FFFFFF" />
           </View>
-          <View className="min-w-0">
+          <View className="min-w-0 flex-1">
             <Text className="text-lg font-bold text-foreground dark:text-foreground-dark">
               {t('binder_tab_planner')}
             </Text>
@@ -28,7 +28,7 @@ export function PlannerHeader({ onCreatePlan }: { onCreatePlan: () => void }): R
           onPress={onCreatePlan}
           accessibilityRole="button"
           accessibilityLabel={t('planner_create_plan')}
-          className="h-9 w-9 items-center justify-center rounded-xl bg-accent"
+          className="h-9 w-9 items-center justify-center rounded-xl bg-accent flex-shrink-0"
           style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
         >
           <Plus size={20} strokeWidth={2.25} color="#FFFFFF" />

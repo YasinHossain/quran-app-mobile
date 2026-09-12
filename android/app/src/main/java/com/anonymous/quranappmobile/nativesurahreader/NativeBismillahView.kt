@@ -37,19 +37,24 @@ internal class NativeBismillahView(context: Context) : FrameLayout(context) {
   }
 
   override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-    val width = MeasureSpec.getSize(widthMeasureSpec)
-    val desiredHeight = (width * BISMILLAH_FRAME_HEIGHT / BISMILLAH_FRAME_WIDTH).toInt().coerceAtLeast(dp(58))
+    val rawWidth = MeasureSpec.getSize(widthMeasureSpec)
+    val maxWidth = dp(560)
+    val width = if (rawWidth > maxWidth && maxWidth > 0) maxWidth else rawWidth
+    val desiredHeight = Math.round(width * BISMILLAH_FRAME_HEIGHT / BISMILLAH_FRAME_WIDTH)
     val resolvedHeight = resolveSize(desiredHeight, heightMeasureSpec)
     updateCalligraphyInsets(width, resolvedHeight)
-    super.onMeasure(widthMeasureSpec, MeasureSpec.makeMeasureSpec(resolvedHeight, MeasureSpec.EXACTLY))
+    super.onMeasure(
+        MeasureSpec.makeMeasureSpec(width, MeasureSpec.EXACTLY),
+        MeasureSpec.makeMeasureSpec(resolvedHeight, MeasureSpec.EXACTLY),
+    )
   }
 
   private fun updateCalligraphyInsets(width: Int, height: Int) {
     val params = calligraphyView.layoutParams as LayoutParams
-    params.leftMargin = (width * 0.20f).toInt()
-    params.rightMargin = (width * 0.20f).toInt()
-    params.topMargin = (height * 0.23f).toInt()
-    params.bottomMargin = (height * 0.23f).toInt()
+    params.leftMargin = Math.round(width * 0.20f)
+    params.rightMargin = Math.round(width * 0.20f)
+    params.topMargin = Math.round(height * 0.23f)
+    params.bottomMargin = Math.round(height * 0.23f)
   }
 
   private fun luminance(color: Int): Float {

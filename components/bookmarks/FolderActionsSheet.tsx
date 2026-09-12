@@ -2,8 +2,6 @@ import { SlidersHorizontal, Trash2, X } from 'lucide-react-native';
 import React from 'react';
 import {
   Animated,
-  Modal,
-  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -13,6 +11,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { modalMotion, useModalTransition, verticalSheetTransform } from '@/components/motion/modalTransition';
+import { PortalOverlay } from '@/components/motion/PortalOverlay';
 import Colors from '@/constants/Colors';
 import { useAppTheme } from '@/providers/ThemeContext';
 import { useUiTranslation } from '@/providers/UiLanguageContext';
@@ -77,15 +76,10 @@ export function FolderActionsSheet({
   );
 
   return (
-    <Modal
-      hardwareAccelerated
-      transparent
+    <PortalOverlay
       visible={visible}
       onShow={onModalShow}
       onRequestClose={onClose}
-      animationType="none"
-      {...(Platform.OS === 'ios' ? { presentationStyle: 'overFullScreen' as const } : {})}
-      statusBarTranslucent
     >
       <View className={isDark ? 'dark' : ''} style={styles.root}>
         <Pressable style={StyleSheet.absoluteFill} onPress={handleOverlayPress}>
@@ -93,6 +87,8 @@ export function FolderActionsSheet({
         </Pressable>
 
         <Animated.View
+          renderToHardwareTextureAndroid
+          shouldRasterizeIOS
           style={[
             styles.sheet,
             {
@@ -156,7 +152,7 @@ export function FolderActionsSheet({
           </SafeAreaView>
         </Animated.View>
       </View>
-    </Modal>
+    </PortalOverlay>
   );
 }
 

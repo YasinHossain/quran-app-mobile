@@ -1,6 +1,5 @@
 import { useRouter } from 'expo-router';
 import React from 'react';
-import { Share } from 'react-native';
 
 import { WordQuickSheet } from './WordQuickSheet';
 import type { WordStudyPressEvent } from './WordStudyPressEvent';
@@ -33,27 +32,6 @@ export function ReaderWordStudySheet({
     if (selectedLocation) playVerseFromWord(selectedLocation);
   }, [playVerseFromWord, selectedLocation]);
 
-  const handleShare = React.useCallback(async () => {
-    if (!selectedLocation) return;
-    const analysis =
-      controller.loadState.status === 'ready' ? controller.loadState.analysis : null;
-    const gloss = analysis?.contextualGlosses.find((item) => item.languageCode === 'en')?.text;
-    const lines = [
-      `${surahName} ${selectedLocation.verseKey}:${selectedLocation.wordPosition}`,
-      '',
-      analysis?.surfaceUthmani ?? selectedLocation.surfaceText ?? '',
-      ...(gloss ? ['', gloss] : []),
-      '',
-      'Word analysis: Quranic Arabic Corpus v0.4',
-    ].filter((line, index, all) => line || all[index - 1] !== '');
-
-    try {
-      await Share.share({ message: lines.join('\n') });
-    } catch {
-      // Native share cancellation and unavailable targets need no reader error state.
-    }
-  }, [controller.loadState, selectedLocation, surahName]);
-
   const handleOpenFullStudy = React.useCallback(() => {
     if (!selectedLocation) return;
     const [surah, ayah] = selectedLocation.verseKey.split(':');
@@ -75,7 +53,6 @@ export function ReaderWordStudySheet({
       onPresented={controller.reportPresented}
       onPlayWord={handlePlayWord}
       onPlayVerseFromHere={handlePlayVerseFromWord}
-      onShare={handleShare}
       onOpenFullStudy={handleOpenFullStudy}
     />
   );

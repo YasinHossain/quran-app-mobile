@@ -3,7 +3,6 @@ import {
   BookOpenText,
   Play,
   RotateCw,
-  Share2,
   Volume2,
   X,
 } from 'lucide-react-native';
@@ -49,7 +48,6 @@ export function WordQuickSheet({
   onPresented,
   onPlayWord,
   onPlayVerseFromHere,
-  onShare,
   onOpenFullStudy,
 }: {
   isOpen: boolean;
@@ -61,7 +59,6 @@ export function WordQuickSheet({
   onPresented: () => void;
   onPlayWord: () => void;
   onPlayVerseFromHere: () => void;
-  onShare: () => void | Promise<void>;
   onOpenFullStudy: () => void;
 }): React.JSX.Element {
   const { resolvedTheme } = useAppTheme();

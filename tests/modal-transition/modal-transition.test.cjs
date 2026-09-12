@@ -252,3 +252,36 @@ for (const [preset, openDuration, closeDuration] of [
     assert.equal(hook.current.visible, false);
   });
 }
+
+test('frequent drawers and action sheets stay in the app window portal', () => {
+  const targets = [
+    'app/(tabs)/index.tsx',
+    'components/reader/settings/SettingsSidebar.tsx',
+    'components/bookmarks/FolderActionsSheet.tsx',
+    'components/surah/VerseActionsSheet.tsx',
+  ];
+
+  for (const target of targets) {
+    const targetSource = readFileSync(path.join(__dirname, '../..', target), 'utf8');
+    assert.match(targetSource, /<PortalOverlay/);
+    assert.doesNotMatch(targetSource, /<Modal\b/);
+  }
+});
+
+test('drawer data work is deferred until its entrance completes', () => {
+  const homeSource = readFileSync(path.join(__dirname, '../../app/(tabs)/index.tsx'), 'utf8');
+  const sidebarSource = readFileSync(
+    path.join(__dirname, '../../components/reader/settings/SettingsSidebar.tsx'),
+    'utf8'
+  );
+  const settingsSource = readFileSync(
+    path.join(__dirname, '../../components/reader/settings/SettingsSidebarContent.tsx'),
+    'utf8'
+  );
+
+  assert.match(homeSource, /onAfterOpen: \(\) => setIsMenuSettled\(true\)/);
+  assert.match(homeSource, /enabled: isMenuSettled/);
+  assert.match(sidebarSource, /onAfterOpen: \(\) => setIsDrawerSettled\(true\)/);
+  assert.match(settingsSource, /enabled: dataEnabled &&/);
+  assert.match(settingsSource, /initialNumToRender=\{2\}/);
+});

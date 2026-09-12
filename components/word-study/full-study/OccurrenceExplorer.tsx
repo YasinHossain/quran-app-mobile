@@ -49,6 +49,8 @@ import {
 } from './occurrenceExplorerModel';
 import { OccurrenceGuideSheet } from './OccurrenceGuideSheet';
 import { SlidingSegmentedControl } from '@/components/ui/SlidingSegmentedControl';
+import type { ContextualMeaningPresentation } from './contextualMeaningModel';
+import { useContextualMeanings } from './useContextualMeanings';
 
 type Palette = (typeof Colors)['light'];
 type PageState =
@@ -418,6 +420,14 @@ export function OccurrenceExplorer({
   const readyPage = visiblePageState.status === 'ready' ? visiblePageState.page : null;
   const isPageRefreshing =
     visiblePageState.status === 'ready' && visiblePageState.refreshing;
+  const occurrenceLocations = React.useMemo(
+    () => readyPage?.items.map((occurrence) => occurrence.location) ?? [],
+    [readyPage]
+  );
+  const occurrenceMeanings = useContextualMeanings(
+    occurrenceLocations,
+    isActive && Boolean(readyPage?.items.length)
+  );
 
   return (
     <View style={styles.section}>
@@ -589,6 +599,14 @@ export function OccurrenceExplorer({
               <MemoizedOccurrenceResult
                 key={occurrence.location.locationKey}
                 occurrence={occurrence}
+                meaning={
+                  occurrenceMeanings.status === 'ready'
+                    ? occurrenceMeanings.presentationsByLocationKey.get(
+                        occurrence.location.locationKey
+                      )
+                    : undefined
+                }
+                meaningLoading={occurrenceMeanings.status === 'loading'}
                 palette={palette}
                 onOpenReader={onOpenReader}
               />
@@ -795,26 +813,42 @@ function RootFamilyBrowser({
 
 function OccurrenceResult({
   occurrence,
+  meaning,
+  meaningLoading,
   palette,
   onOpenReader,
 }: {
   occurrence: WordOccurrence;
+  meaning?: ContextualMeaningPresentation;
+  meaningLoading: boolean;
   palette: Palette;
   onOpenReader: (occurrence: WordOccurrence) => void;
 }): React.JSX.Element {
   const contextRuns = getOccurrenceAyahContextRuns(occurrence);
+  const meaningText = meaningLoading ? 'Loading meaning…' : getOccurrenceGloss(occurrence, meaning);
 
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`Open reader at ${occurrence.location.locationKey}, ${getOccurrenceGloss(occurrence)}`}
+      accessibilityLabel={`Open reader at ${occurrence.location.locationKey}, ${meaningText}`}
       onPress={() => onOpenReader(occurrence)}
       style={[styles.resultCard, { backgroundColor: palette.surfaceNavigation }]}
     >
       <View style={styles.resultHeader}>
         <View style={styles.resultLocationBlock}>
           <Text style={[styles.resultLocation, { color: palette.tint }]}>{occurrence.location.locationKey}</Text>
-          <Text style={[styles.resultGloss, { color: palette.text }]}>{getOccurrenceGloss(occurrence)}</Text>
+          <Text
+            style={[
+              styles.resultGloss,
+              {
+                color: meaning?.isUnavailable ? palette.muted : palette.text,
+                writingDirection: meaning?.direction ?? 'ltr',
+                textAlign: meaning?.direction === 'rtl' ? 'right' : 'left',
+              },
+            ]}
+          >
+            {meaningText}
+          </Text>
         </View>
         <Text
           style={[

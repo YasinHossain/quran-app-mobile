@@ -5,7 +5,7 @@ import type {
   WordStudySourceReference,
 } from '../../../src/core/domain/word-study';
 
-import { describeMissingReason, getPrimaryGloss } from '../wordQuickSheetModel';
+import { describeMissingReason } from '../wordQuickSheetModel';
 
 export type MorphologyDetail = {
   key: keyof MorphologyFeatures;
@@ -159,7 +159,7 @@ export function getStudySources(
         title: 'Quran App offline word pack',
         version: reference.sourceVersion,
         layers: [...layers],
-        attribution: 'Canonical Uthmani surface and contextual word gloss from the installed offline pack.',
+        attribution: 'Canonical Uthmani surface from the Quran App word dataset.',
       };
     }
     return {
@@ -172,7 +172,11 @@ export function getStudySources(
   });
 }
 
-export function buildWordStudyShareMessage(analysis: WordAnalysis, surahName: string): string {
+export function buildWordStudyShareMessage(
+  analysis: WordAnalysis,
+  surahName: string,
+  contextualMeaning?: string
+): string {
   const lemma = analysis.lemma.status === 'available' ? `Lemma: ${analysis.lemma.value.arabic}` : null;
   const root = analysis.root.status === 'available' ? `Root: ${analysis.root.value.arabic}` : null;
   const sources = getStudySources(analysis.sourceReferences)
@@ -181,7 +185,7 @@ export function buildWordStudyShareMessage(analysis: WordAnalysis, surahName: st
   return [
     `${surahName} ${analysis.location.locationKey}`,
     analysis.surfaceUthmani,
-    getPrimaryGloss(analysis),
+    contextualMeaning,
     lemma,
     root,
     sources ? `Analysis sources: ${sources}` : null,

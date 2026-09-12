@@ -10,11 +10,11 @@
   },
   "canonical": {
     "sourceId": "quran-app-offline-word-pack-en-2026-07-04",
-    "title": "Quran App offline English word translation pack",
+    "title": "Quran App canonical word surface dataset",
     "version": "2026-07-04",
     "license": "Offline app distribution permission confirmed by the product owner",
     "url": "dist/word-translation-packs/languages/en/2026-07-04/payload.json",
     "checksumSha256": "38975bff99637665869e8231d1d5824b1bc4db4c6cd3b6358b8231d4e882b6f3",
-    "attribution": "Canonical Uthmani surface and contextual English word gloss from the app offline word pack"
+    "attribution": "Canonical Uthmani word surfaces from the app word dataset; contextual meanings are distributed separately by language"
   }
 }

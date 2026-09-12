@@ -2,10 +2,10 @@
 
 Status: **PASSED**
 
-- Compiler: 2.0.0
-- Schema: 2
-- Logical SHA-256: `5ffae99e2e62d10c89efc98bb7d18cf1e8d89a59f5211b73cc26d571fbcacccd`
-- Database SHA-256: `b6fc4770fc68c43c7b41d2596a01cffa94ad1c6f5bd76ee6f820a4af37c65715`
+- Compiler: 3.0.0
+- Schema: 3
+- Logical SHA-256: `a384f0c7cb3fea90b0e26691ccb94ecf16fee5d4ac2afcf0092c29bff28002c0`
+- Database SHA-256: `a78130b1ae5c9e4cc64c34232dcc4fa652963151d1ab567200ad0e1a77d08dbc`
 
 ## Alignment checks
 
@@ -21,7 +21,6 @@ Status: **PASSED**
 - Segments: 128219
 - Lemmas: 5155
 - Roots: 1642
-- Contextual glosses: 77429
 - Exceptions: 3 (0 unresolved)
 
 ## Exceptions and dispositions

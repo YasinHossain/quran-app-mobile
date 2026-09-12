@@ -61,6 +61,8 @@ When a user taps download:
 
 That means you can ship the new pipeline safely without breaking current downloads.
 
+A translation pack contains full-verse translation text only. It does not install word-by-word meanings, even when both resources use the same language. Word-by-word meanings are installed independently from the word-language catalog so changing or deleting a verse translation cannot silently change the reader's selected word language.
+
 ## Configure the app
 
 Set the catalog URL in `app.json`:

@@ -135,7 +135,7 @@ The guide is help content, not another study destination, so it must not become 
 
 The contextual word translation appears immediately after the segmented Arabic word so the user can understand the analyzed form while studying its parts.
 
-Use the user's selected word-by-word language when an installed word pack can supply the same location. Fall back to the bundled English contextual gloss when the selected language is unavailable. The compact visual summary does not show an extra language-status row; its accessible meaning announcement retains the actual source and fallback explanation.
+Use the user's selected word-by-word language when its installed pack can supply the same location. English follows this exact path and is not bundled in Word Study Essentials. When another selected language is unavailable, fall back only if the separate English word pack is installed; otherwise show a clear offline-unavailable state. The compact visual summary does not show an extra language-status row; its accessible meaning announcement retains the actual source and fallback explanation.
 
 Language integration must reuse the existing offline word-language pack and settings infrastructure. Do not add a network-only dependency to Word Study.
 

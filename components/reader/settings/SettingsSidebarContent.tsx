@@ -13,7 +13,11 @@ import { useTranslationResources } from '@/hooks/useTranslationResources';
 import { useSettings } from '@/providers/SettingsContext';
 import { useAppTheme } from '@/providers/ThemeContext';
 import { getUiLanguageLabel, UI_LANGUAGES } from '@/lib/i18n/uiLanguages';
-import { getWordLanguageName, WORD_LANGUAGES } from '@/lib/i18n/wordLanguages';
+import {
+  getWordLanguageName,
+  normalizeWordLanguageCode,
+  WORD_LANGUAGES,
+} from '@/lib/i18n/wordLanguages';
 import { useUiTranslation } from '@/providers/UiLanguageContext';
 
 import { CollapsibleSection } from './CollapsibleSection';
@@ -37,7 +41,10 @@ import { container } from '@/src/core/infrastructure/di/container';
 import { getFirstFontFamily } from '@/src/core/infrastructure/fonts/arabicFonts';
 import { logger } from '@/src/core/infrastructure/monitoring/logger';
 import { isMushafPackInstallCanceledError } from '@/src/core/infrastructure/mushaf/MushafPackInstaller';
-import { getMushafPackCatalogUrl } from '@/src/core/infrastructure/mushaf/mushafPackCatalogConfig';
+import {
+  getBundledMushafDownloadSizeBytes,
+  getBundledWordTranslationDownloadSizeBytes,
+} from '@/src/core/infrastructure/offline-packs/bundledDownloadMetadata';
 
 import type { MushafPackId } from '@/types';
 import { clampMushafScaleStep, MUSHAF_SCALE_MAX, MUSHAF_SCALE_MIN } from '@/types';
@@ -59,11 +66,6 @@ const ARABIC_FONT_PREVIEW_TEXT = 'بِسْمِ اللَّهِ الرَّحْمَ
 
 type WordLanguageItem = ResourceRecord & {
   code: string;
-};
-
-type MushafDownloadSizeInfo = {
-  mb: number | null;
-  isExact: boolean;
 };
 
 const WORD_LANGUAGE_ITEMS: WordLanguageItem[] = WORD_LANGUAGES.map((item, index) => ({
@@ -135,25 +137,14 @@ function getLanguageName(code: string | undefined): string {
   return code ? getWordLanguageName(code) : '';
 }
 
-function getMushafPackEntryKey(entry: MushafPackManagerEntry): string {
-  return `${entry.option.id}@${entry.option.version}`;
-}
-
 function formatMushafDownloadDetailLabel(
-  entry: MushafPackManagerEntry | null,
-  sizeInfo: MushafDownloadSizeInfo | null | undefined,
-  isLoading: boolean
+  entry: MushafPackManagerEntry | null
 ): string {
   const details: string[] = [];
+  const sizeBytes = entry ? getBundledMushafDownloadSizeBytes(entry.option.id) : null;
 
-  if (isLoading) {
-    details.push('Estimating size...');
-  } else if (sizeInfo && typeof sizeInfo.mb === 'number') {
-    details.push(
-      sizeInfo.isExact
-        ? `Download size: ${sizeInfo.mb.toFixed(1)} MB`
-        : `Estimated size: ~${sizeInfo.mb.toFixed(1)} MB`
-    );
+  if (sizeBytes) {
+    details.push(`Download size: ${Math.max(0.1, sizeBytes / BYTES_PER_MEGABYTE).toFixed(1)} MB`);
   } else {
     details.push('Download size unavailable');
   }
@@ -163,28 +154,6 @@ function formatMushafDownloadDetailLabel(
   }
 
   return details.join(' · ');
-}
-
-async function resolveMushafDownloadSizeInfo(
-  entry: MushafPackManagerEntry
-): Promise<MushafDownloadSizeInfo | null> {
-  const catalogUrl = getMushafPackCatalogUrl();
-  if (!catalogUrl) return null;
-
-  const catalogEntry = await container.getMushafPackCatalogClient().getPack(catalogUrl, {
-    packId: entry.option.id,
-    version: entry.option.version,
-  });
-  if (!catalogEntry || catalogEntry.sizeBytes <= 0) return null;
-
-  const filesBytes = (catalogEntry.files ?? []).reduce((total, file) => {
-    return total + (typeof file.sizeBytes === 'number' && file.sizeBytes > 0 ? file.sizeBytes : 0);
-  }, 0);
-  const payloadAndAssetsBytes = Math.max(catalogEntry.sizeBytes, filesBytes);
-  const totalBytes = payloadAndAssetsBytes + (catalogEntry.manifestSizeBytes ?? 0);
-  const mb = Math.max(0.1, Math.round((totalBytes / BYTES_PER_MEGABYTE) * 10) / 10);
-
-  return { mb, isExact: true };
 }
 
 const WordLanguageResourceRow = React.memo(function WordLanguageResourceRow({
@@ -280,6 +249,7 @@ export function SettingsSidebarContent({
   onOpenMushafManager,
   onSubPanelBack,
   hideRootWhenSubPanel = false,
+  dataEnabled = true,
 }: {
   onClose?: () => void;
   showTafsirSetting?: boolean;
@@ -292,6 +262,7 @@ export function SettingsSidebarContent({
   onOpenMushafManager?: () => void;
   onSubPanelBack?: () => void;
   hideRootWhenSubPanel?: boolean;
+  dataEnabled?: boolean;
 }): React.JSX.Element {
   const { width: windowWidth } = useWindowDimensions();
   const {
@@ -333,13 +304,6 @@ export function SettingsSidebarContent({
   const [mushafDownloadTargetId, setMushafDownloadTargetId] = React.useState<MushafPackId | null>(null);
   const [mushafDeleteTargetId, setMushafDeleteTargetId] = React.useState<MushafPackId | null>(null);
   const [enableTajweedAfterDownload, setEnableTajweedAfterDownload] = React.useState(false);
-  const [mushafDownloadSizeInfoByKey, setMushafDownloadSizeInfoByKey] = React.useState<
-    Record<string, MushafDownloadSizeInfo | null | undefined>
-  >({});
-  const [estimatingMushafDownloadKeys, setEstimatingMushafDownloadKeys] = React.useState<Set<string>>(
-    () => new Set()
-  );
-
 
   const previousMushafIdRef = React.useRef<MushafPackId | undefined>(
     settings.mushafId === TAJWEED_MUSHAF_ID ? undefined : settings.mushafId
@@ -369,15 +333,10 @@ export function SettingsSidebarContent({
 
   const [busyWordLangCodes, setBusyWordLangCodes] = React.useState<Set<string>>(() => new Set());
   const requestedWordLanguageRef = React.useRef<string | null>(null);
+  const enableWordByWordAfterDownloadRef = React.useRef<string | null>(null);
   const activeWordDownloadsRef = React.useRef(new Set<string>());
   const [wordDownloadTarget, setWordDownloadTarget] = React.useState<WordLanguageItem | null>(null);
   const [wordDeleteTarget, setWordDeleteTarget] = React.useState<WordLanguageItem | null>(null);
-  const [wordDownloadSizeBytesByCode, setWordDownloadSizeBytesByCode] = React.useState<
-    Record<string, number | null | undefined>
-  >({});
-  const [loadingWordDownloadSizeCodes, setLoadingWordDownloadSizeCodes] = React.useState<Set<string>>(
-    () => new Set()
-  );
 
   const {
     items,
@@ -385,7 +344,7 @@ export function SettingsSidebarContent({
     isLoading: isDownloadIndexLoading,
     refresh: refreshIndex,
   } = useDownloadIndexItems({
-    enabled: panel.type === 'root' || panel.type === 'word-language',
+    enabled: dataEnabled && (panel.type === 'root' || panel.type === 'word-language'),
     pollIntervalMs: 800,
     pollWhileEnabled: busyWordLangCodes.size > 0,
   });
@@ -414,11 +373,17 @@ export function SettingsSidebarContent({
       });
       if (installed?.status === 'installed' && requestedWordLanguageRef.current === code) {
         setWordLang(code);
+        if (enableWordByWordAfterDownloadRef.current === code) {
+          updateShowByWords(true);
+        }
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       Alert.alert('Download failed', message);
     } finally {
+      if (enableWordByWordAfterDownloadRef.current === code) {
+        enableWordByWordAfterDownloadRef.current = null;
+      }
       activeWordDownloadsRef.current.delete(code);
       setBusyWordLangCodes((prev) => {
         const next = new Set(prev);
@@ -427,7 +392,7 @@ export function SettingsSidebarContent({
       });
       refreshIndex();
     }
-  }, [refreshIndex, setWordLang]);
+  }, [refreshIndex, setWordLang, updateShowByWords]);
 
   const deleteWordLanguage = React.useCallback(async (code: string) => {
     if (busyWordLangCodes.has(code)) return;
@@ -444,6 +409,9 @@ export function SettingsSidebarContent({
       );
       await useCase.execute(code);
       clearOfflineSurahPageCache();
+      if (normalizeWordLanguageCode(settings.wordLang) === code && settings.showByWords) {
+        updateShowByWords(false);
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       Alert.alert('Delete failed', message);
@@ -455,52 +423,20 @@ export function SettingsSidebarContent({
       });
       refreshIndex();
     }
-  }, [busyWordLangCodes, refreshIndex]);
+  }, [busyWordLangCodes, refreshIndex, settings.showByWords, settings.wordLang, updateShowByWords]);
 
   const handlePressDownloadWordLanguage = React.useCallback(
     (code: string) => {
       if (busyWordLangCodes.has(code)) return;
       const target = WORD_LANGUAGE_ITEMS.find((item) => item.code === code);
       if (target) {
+        enableWordByWordAfterDownloadRef.current = null;
         requestedWordLanguageRef.current = code;
         setWordDownloadTarget(target);
       }
     },
     [busyWordLangCodes]
   );
-
-  const ensureWordDownloadSize = React.useCallback(
-    async (code: string) => {
-      if (wordDownloadSizeBytesByCode[code] !== undefined) return;
-      if (loadingWordDownloadSizeCodes.has(code)) return;
-
-      setLoadingWordDownloadSizeCodes((prev) => {
-        const next = new Set(prev);
-        next.add(code);
-        return next;
-      });
-
-      try {
-        const sizeBytes = await container.getWordTranslationPackRepository().getPackSizeBytes(code);
-        setWordDownloadSizeBytesByCode((prev) => ({ ...prev, [code]: sizeBytes }));
-      } catch (error) {
-        logger.warn('Failed to resolve word-by-word download size', { languageCode: code }, error as Error);
-        setWordDownloadSizeBytesByCode((prev) => ({ ...prev, [code]: null }));
-      } finally {
-        setLoadingWordDownloadSizeCodes((prev) => {
-          const next = new Set(prev);
-          next.delete(code);
-          return next;
-        });
-      }
-    },
-    [loadingWordDownloadSizeCodes, wordDownloadSizeBytesByCode]
-  );
-
-  React.useEffect(() => {
-    if (!wordDownloadTarget) return;
-    void ensureWordDownloadSize(wordDownloadTarget.code);
-  }, [ensureWordDownloadSize, wordDownloadTarget]);
 
   const handleConfirmDownloadWordLanguage = React.useCallback(() => {
     if (!wordDownloadTarget) return;
@@ -525,17 +461,12 @@ export function SettingsSidebarContent({
     void deleteWordLanguage(code);
   }, [deleteWordLanguage, wordDeleteTarget]);
 
-  const isLoadingWordDownloadSize = wordDownloadTarget
-    ? loadingWordDownloadSizeCodes.has(wordDownloadTarget.code)
-    : false;
   const wordDownloadSizeBytes = wordDownloadTarget
-    ? wordDownloadSizeBytesByCode[wordDownloadTarget.code]
-    : undefined;
-  const wordDownloadSizeLabel = isLoadingWordDownloadSize
-    ? 'Loading download size...'
-    : typeof wordDownloadSizeBytes === 'number'
-      ? `Download size: ${Math.max(0.1, wordDownloadSizeBytes / BYTES_PER_MEGABYTE).toFixed(1)} MB`
-      : 'Download size unavailable';
+    ? getBundledWordTranslationDownloadSizeBytes(wordDownloadTarget.code)
+    : null;
+  const wordDownloadSizeLabel = wordDownloadSizeBytes
+    ? `Download size: ${Math.max(0.1, wordDownloadSizeBytes / BYTES_PER_MEGABYTE).toFixed(1)} MB`
+    : 'Download size unavailable';
 
   const handleCancelWordDownload = React.useCallback((code: string) => {
     requestWordDownloadCancel(code);
@@ -599,7 +530,7 @@ export function SettingsSidebarContent({
     errorMessage: translationResourcesError,
     refresh: refreshTranslationResources,
   } = useTranslationResources({
-    enabled: activeTab === 'translations' || panel.type === 'translations',
+    enabled: dataEnabled && (activeTab === 'translations' || panel.type === 'translations'),
     language: settings.contentLanguage,
   });
 
@@ -646,6 +577,7 @@ export function SettingsSidebarContent({
     refresh: refreshMushafPacks,
   } = useMushafPackManager({
     selectedPackId: settings.mushafId,
+    enabled: dataEnabled,
   });
   const mushafDownloadTarget = React.useMemo(
     () =>
@@ -661,21 +593,9 @@ export function SettingsSidebarContent({
         : null,
     [mushafDeleteTargetId, mushafPackEntries]
   );
-  const mushafDownloadTargetKey = mushafDownloadTarget ? getMushafPackEntryKey(mushafDownloadTarget) : null;
-  const mushafDownloadSizeInfo = mushafDownloadTargetKey
-    ? mushafDownloadSizeInfoByKey[mushafDownloadTargetKey]
-    : undefined;
-  const isEstimatingMushafDownloadSize =
-    mushafDownloadTargetKey !== null &&
-    (mushafDownloadSizeInfo === undefined || estimatingMushafDownloadKeys.has(mushafDownloadTargetKey));
   const mushafDownloadDetailLabel = React.useMemo(
-    () =>
-      formatMushafDownloadDetailLabel(
-        mushafDownloadTarget,
-        mushafDownloadSizeInfo,
-        isEstimatingMushafDownloadSize
-      ),
-    [isEstimatingMushafDownloadSize, mushafDownloadSizeInfo, mushafDownloadTarget]
+    () => formatMushafDownloadDetailLabel(mushafDownloadTarget),
+    [mushafDownloadTarget]
   );
   const tajweedPackEntry = React.useMemo(
     () => mushafPackEntries.find((entry) => entry.option.id === TAJWEED_MUSHAF_ID) ?? null,
@@ -710,6 +630,7 @@ export function SettingsSidebarContent({
     (id: number) => {
       const selected = WORD_LANGUAGE_ITEMS.find((item) => item.id === id);
       if (!selected || isDownloadIndexLoading) return;
+      enableWordByWordAfterDownloadRef.current = null;
       requestedWordLanguageRef.current = selected.code;
       const download = itemsByKey.get(getDownloadKey({
         kind: 'word-translation', languageCode: selected.code,
@@ -724,6 +645,48 @@ export function SettingsSidebarContent({
       }
     },
     [busyWordLangCodes, isDownloadIndexLoading, itemsByKey, setWordLang]
+  );
+  const handleShowByWordsChange = React.useCallback(
+    (enabled: boolean) => {
+      if (!enabled) {
+        enableWordByWordAfterDownloadRef.current = null;
+        updateShowByWords(false);
+        return;
+      }
+
+      if (isDownloadIndexLoading) return;
+
+      const code = normalizeWordLanguageCode(settings.wordLang);
+      const target = WORD_LANGUAGE_ITEMS.find((item) => item.code === code);
+      if (!target) return;
+
+      const download = itemsByKey.get(getDownloadKey({
+        kind: 'word-translation',
+        languageCode: code,
+      }));
+
+      requestedWordLanguageRef.current = code;
+      if (download?.status === 'installed') {
+        enableWordByWordAfterDownloadRef.current = null;
+        updateShowByWords(true);
+        return;
+      }
+
+      if (
+        busyWordLangCodes.has(code) ||
+        download?.status === 'queued' ||
+        download?.status === 'downloading'
+      ) {
+        enableWordByWordAfterDownloadRef.current = code;
+        return;
+      }
+
+      if (download?.status === 'deleting') return;
+
+      enableWordByWordAfterDownloadRef.current = code;
+      setWordDownloadTarget(target);
+    },
+    [busyWordLangCodes, isDownloadIndexLoading, itemsByKey, settings.wordLang, updateShowByWords]
   );
   const handleSelectArabicFont = React.useCallback(
     (id: number) => {
@@ -882,48 +845,6 @@ export function SettingsSidebarContent({
     setMushafDownloadTargetId(null);
     void handleInstallMushafPack(packId);
   }, [handleInstallMushafPack, mushafDownloadTarget]);
-
-  React.useEffect(() => {
-    if (!mushafDownloadTarget) return;
-
-    const key = getMushafPackEntryKey(mushafDownloadTarget);
-    if (mushafDownloadSizeInfoByKey[key] !== undefined) return;
-    if (estimatingMushafDownloadKeys.has(key)) return;
-
-    let cancelled = false;
-    setEstimatingMushafDownloadKeys((prev) => {
-      const next = new Set(prev);
-      next.add(key);
-      return next;
-    });
-
-    void resolveMushafDownloadSizeInfo(mushafDownloadTarget)
-      .then((sizeInfo) => {
-        if (cancelled) return;
-        setMushafDownloadSizeInfoByKey((prev) => ({ ...prev, [key]: sizeInfo }));
-      })
-      .catch((error) => {
-        if (cancelled) return;
-        logger.warn(
-          'Failed to resolve mushaf download size',
-          { packId: mushafDownloadTarget.option.id, version: mushafDownloadTarget.option.version },
-          error as Error
-        );
-        setMushafDownloadSizeInfoByKey((prev) => ({ ...prev, [key]: null }));
-      })
-      .finally(() => {
-        if (cancelled) return;
-        setEstimatingMushafDownloadKeys((prev) => {
-          const next = new Set(prev);
-          next.delete(key);
-          return next;
-        });
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [mushafDownloadSizeInfoByKey, mushafDownloadTarget]);
 
   const handleCancelMushafPackInstall = React.useCallback(
     async (packId: MushafPackId) => {
@@ -1251,8 +1172,9 @@ export function SettingsSidebarContent({
               data={mushafPackEntries}
               keyExtractor={(item) => item.option.id}
               contentContainerStyle={{ padding: 12, gap: 10, paddingBottom: 24 }}
-              initialNumToRender={mushafPackEntries.length}
-              maxToRenderPerBatch={mushafPackEntries.length}
+              initialNumToRender={2}
+              maxToRenderPerBatch={2}
+              updateCellsBatchingPeriod={32}
               windowSize={3}
               removeClippedSubviews={Platform.OS === 'android'}
               ListHeaderComponent={
@@ -1448,9 +1370,10 @@ export function SettingsSidebarContent({
                               onPress={() => openPanel('translations')}
                             />
                             <ToggleRow
+                              disabled={isDownloadIndexLoading}
                               label={t('show_word_by_word')}
                               value={displayShowByWords}
-                              onChange={updateShowByWords}
+                              onChange={handleShowByWordsChange}
                             />
                             <SelectionBox
                               label={t('word_by_word_language')}
@@ -1623,11 +1546,9 @@ export function SettingsSidebarContent({
         title="Download mushaf pack?"
         resourceName={mushafDownloadTarget?.option.name ?? null}
         detailLabel={mushafDownloadDetailLabel}
-        isDetailLoading={isEstimatingMushafDownloadSize}
         description="This downloads the mushaf pack."
         confirmLabel="Download"
         mutedColor={palette.muted}
-        tintColor={palette.tint}
         onConfirm={handleConfirmMushafPackDownload}
         onClose={() => {
           setMushafDownloadTargetId(null);
@@ -1643,7 +1564,6 @@ export function SettingsSidebarContent({
         confirmLabel="Delete"
         confirmTone="danger"
         mutedColor={palette.muted}
-        tintColor={palette.tint}
         onConfirm={handleConfirmMushafPackDelete}
         onClose={() => setMushafDeleteTargetId(null)}
       />
@@ -1653,13 +1573,18 @@ export function SettingsSidebarContent({
         title="Download word-by-word translation?"
         resourceName={wordDownloadTarget?.name ?? null}
         detailLabel={wordDownloadSizeLabel}
-        isDetailLoading={isLoadingWordDownloadSize}
-        description="Download this language once for word-by-word reading and word study meanings. It will be selected when the download finishes. Arabic stays the same."
+        description={enableWordByWordAfterDownloadRef.current === wordDownloadTarget?.code
+          ? 'Download this language to turn on word-by-word reading. The same meanings are also used in Word Study; Word Study Essentials remains a separate download.'
+          : 'Download this language once for word-by-word reading and Word Study meanings. Word Study Essentials remains a separate download.'}
         confirmLabel="Download and use"
         mutedColor={palette.muted}
-        tintColor={palette.tint}
         onConfirm={handleConfirmDownloadWordLanguage}
-        onClose={() => setWordDownloadTarget(null)}
+        onClose={() => {
+          if (enableWordByWordAfterDownloadRef.current === wordDownloadTarget?.code) {
+            enableWordByWordAfterDownloadRef.current = null;
+          }
+          setWordDownloadTarget(null);
+        }}
       />
 
       <ResourceConfirmModal
@@ -1670,7 +1595,6 @@ export function SettingsSidebarContent({
         confirmLabel="Delete"
         confirmTone="danger"
         mutedColor={palette.muted}
-        tintColor={palette.tint}
         onConfirm={handleConfirmDeleteWordLanguage}
         onClose={() => setWordDeleteTarget(null)}
       />

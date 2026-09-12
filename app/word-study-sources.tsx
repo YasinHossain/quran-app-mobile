@@ -34,7 +34,7 @@ type SourcesLoadState =
 
 const METHODOLOGY_BOUNDARIES = [
   'Morphology, segmentation, part-of-speech labels, lemma, and root records reproduce the installed source annotations. The app does not generate or correct those annotations.',
-  'The offline word pack is authoritative for displayed Uthmani word forms and bundled English contextual glosses. The morphology source remains authoritative for structured analysis.',
+  'The canonical word dataset is authoritative for displayed Uthmani word forms. Independently installed word-by-word language packs provide contextual meanings, including English. The morphology source remains authoritative for structured analysis.',
   'Occurrence indexes group normalized surface forms, lemmas, or roots. A shared index key does not imply that every occurrence has the same contextual meaning.',
   'Arabic i‘rab is source-provided prose stored in a separate optional pack. Selected-word matching changes presentation order only and never rewrites the source text.',
   'Dictionaries are optional local downloads. Their definitions remain attributed to their individual source and are not merged into the morphology analysis.',

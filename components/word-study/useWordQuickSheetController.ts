@@ -174,7 +174,7 @@ export function useWordQuickSheetController(
                 loadState: {
                   status: 'error',
                   message: needsDownload
-                    ? 'Download Word Study Essentials once to use morphology, meanings, and occurrences fully offline.'
+                    ? 'Download Word Study Essentials once to use morphology and occurrences fully offline. Meanings use your selected word-by-word language pack.'
                     : 'Word analysis could not be loaded from the offline study pack.',
                   needsDownload,
                 },

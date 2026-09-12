@@ -10,8 +10,8 @@ import type {
 import { WordStudyPackFileStore } from './WordStudyPackFileStore';
 import {
   WORD_STUDY_PACK_APPLICATION_ID,
-  WORD_STUDY_PACK_SCHEMA_VERSION,
   assertCompatibleWordStudyManifest,
+  isSupportedWordStudyPackSchemaVersion,
   type WordStudyInstalledPackRef,
   type WordStudyPackActivationState,
   type WordStudyPackCatalogEntry,
@@ -188,8 +188,8 @@ export class ExpoWordStudyPackBackend implements WordStudyPackLifecycleBackend {
         throw new Error('Word-study database application ID is incompatible');
       }
       if (
-        schemaVersion?.value !== WORD_STUDY_PACK_SCHEMA_VERSION ||
-        schemaVersion.value !== manifest.schemaVersion
+        !isSupportedWordStudyPackSchemaVersion(schemaVersion?.value ?? 0) ||
+        schemaVersion?.value !== manifest.schemaVersion
       ) {
         throw new Error('Word-study database schema is incompatible');
       }

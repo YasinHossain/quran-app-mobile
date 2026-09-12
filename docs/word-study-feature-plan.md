@@ -295,15 +295,15 @@ Ship a compact **Core Word Study** pack with the app so the first tap works offl
 
 Suggested layers:
 
-- Core Word Study, bundled:
+- Core Word Study, optional language-neutral download:
   - word location;
   - segments and POS;
   - structured morphology;
   - root and lemma IDs;
   - occurrence indexes/counts;
-  - English contextual gloss where redistribution is allowed.
 - Word language packs, existing/optional:
-  - Bangla, Urdu, Hindi, Indonesian, Persian, Turkish, Tamil, and others.
+  - English, Bangla, Urdu, Hindi, Indonesian, Persian, Turkish, Tamil, and others;
+  - the selected pack supplies contextual meanings to both the reader and Word Study.
 - Deep Arabic Grammar, optional:
   - full prose i'rab and sarf;
   - must have separate provenance, license, and expert review.
@@ -374,14 +374,6 @@ root(
   normalized TEXT NOT NULL,
   occurrence_count INTEGER NOT NULL,
   lemma_count INTEGER NOT NULL
-);
-
-word_gloss(
-  location TEXT NOT NULL,
-  language_code TEXT NOT NULL,
-  text TEXT NOT NULL,
-  source_id TEXT NOT NULL,
-  PRIMARY KEY(location, language_code, source_id)
 );
 
 source_metadata(

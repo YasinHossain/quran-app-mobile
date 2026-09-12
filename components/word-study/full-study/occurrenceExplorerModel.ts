@@ -5,6 +5,7 @@ import type {
   WordOccurrenceQuery,
   WordOccurrenceScope,
 } from '../../../src/core/domain/word-study';
+import type { ContextualMeaningPresentation } from './contextualMeaningModel';
 
 // Each result lays out a full Arabic ayah. Keep native text layout bounded
 // on budget devices; the existing pager exposes every remaining occurrence.
@@ -124,12 +125,11 @@ export function orderRootFamilyLemmas(
   });
 }
 
-export function getOccurrenceGloss(occurrence: WordOccurrence): string {
-  return (
-    occurrence.contextualGlosses.find((gloss) => gloss.languageCode === 'en')?.text ??
-    occurrence.contextualGlosses[0]?.text ??
-    'Contextual gloss unavailable.'
-  );
+export function getOccurrenceGloss(
+  _occurrence: WordOccurrence,
+  meaning?: ContextualMeaningPresentation
+): string {
+  return meaning?.text ?? 'Meaning unavailable offline';
 }
 
 export type OccurrenceAyahContextRun = {

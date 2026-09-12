@@ -13,8 +13,14 @@ test('installing and removing Bangla changes only the contextual meaning at the 
     { position: position + 1, translationText: 'adjacent word', charTypeName: 'word' },
     { position, translationText: 'এবং তিনি নাযিল করেছেন', charTypeName: 'word' },
   ]);
+  const english = JSON.stringify([
+    { position, translationText: 'and He revealed', charTypeName: 'word' },
+  ]);
   const resolve = (words: string | null) => resolveContextualMeaning({
-    analysis, selectedLanguageCode: 'bn', selectedLanguageWordsJson: words,
+    location: analysis.location,
+    selectedLanguageCode: 'bn',
+    selectedLanguageWordsJson: words,
+    englishWordsJson: english,
   });
   const missing = resolve(null);
   assert.equal(missing.isFallback, true);

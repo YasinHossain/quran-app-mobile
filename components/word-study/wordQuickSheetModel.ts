@@ -150,19 +150,14 @@ export function getAnalysisSegments(analysis: WordAnalysis): readonly Morpheme[]
   return [];
 }
 
-export function getPrimaryGloss(analysis: WordAnalysis): string {
-  const english = analysis.contextualGlosses.find((gloss) => gloss.languageCode === 'en');
-  return english?.text ?? analysis.contextualGlosses[0]?.text ?? 'No contextual gloss is available.';
-}
-
 export function getSourceLabel(analysis: WordAnalysis): string {
   const hasQac = analysis.sourceReferences.some((source) => source.sourceId === 'qac-morphology-v0.4');
-  const hasOfflineGloss = analysis.sourceReferences.some((source) =>
+  const hasCanonicalSurface = analysis.sourceReferences.some((source) =>
     source.sourceId.startsWith('quran-app-offline-word-pack-')
   );
   const labels = [
     hasQac ? 'Quranic Arabic Corpus v0.4' : null,
-    hasOfflineGloss ? 'Quran App offline word pack' : null,
+    hasCanonicalSurface ? 'Quran App canonical word surface' : null,
   ].filter((label): label is string => Boolean(label));
 
   if (labels.length) return labels.join(' · ');

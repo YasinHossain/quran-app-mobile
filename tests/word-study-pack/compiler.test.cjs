@@ -91,7 +91,7 @@ test('normalizes the unmarked default verb form without changing explicit forms'
   assert.equal(structuredFeatures('STEM|POS:N|NOM', 'N').verbForm, undefined);
 });
 
-test('compiles golden morphology, segmentation, glosses, and derived counts', () => {
+test('compiles language-neutral morphology, segmentation, and derived counts', () => {
   const { data, report } = buildFixture();
   assert.equal(report.status, 'passed');
   assert.equal(report.logicalChecksum.length, 64);
@@ -102,7 +102,7 @@ test('compiles golden morphology, segmentation, glosses, and derived counts', ()
   assert.equal(verb.aspect, 'perfect');
   assert.equal(verb.voice, 'active');
   assert.equal(verb.verbForm, 'IV');
-  assert.equal(verb.gloss, 'and He revealed');
+  assert.equal('gloss' in verb, false);
   const lemma = data.lemmas.find((item) => item.id === verb.lemmaId);
   const root = data.roots.find((item) => item.id === verb.rootId);
   assert.equal(lemma.occurrenceCount, 2);

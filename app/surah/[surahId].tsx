@@ -2635,7 +2635,7 @@ export default function SurahScreen(): React.JSX.Element {
       <VerseActionsSheet
         isOpen={isVerseActionsOpen}
         onClose={closeVerseActions}
-        title={chapter?.name_simple ?? 'Surah'}
+        title={resolvedChapter?.name_simple ?? 'Surah'}
         verseKey={activeVerse?.verseKey ?? ''}
         isPlaying={Boolean(audio.isPlaying && audio.activeVerseKey === activeVerse?.verseKey)}
         isBookmarked={activeVersePinned}

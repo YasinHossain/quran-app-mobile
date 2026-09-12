@@ -9,10 +9,11 @@ import {
   X,
 } from 'lucide-react-native';
 import React from 'react';
-import { Animated, Modal, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Animated, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { modalMotion, useModalTransition, verticalSheetTransform } from '@/components/motion/modalTransition';
+import { PortalOverlay } from '@/components/motion/PortalOverlay';
 import Colors from '@/constants/Colors';
 import { useAppTheme } from '@/providers/ThemeContext';
 import { useUiTranslation } from '@/providers/UiLanguageContext';
@@ -108,14 +109,10 @@ export function VerseActionsSheet({
   const localizedVerseKey = localizeDigits(verseKey);
 
   return (
-    <Modal
-      transparent
-      hardwareAccelerated
+    <PortalOverlay
       visible={visible}
       onShow={onModalShow}
       onRequestClose={onClose}
-      animationType="none"
-      statusBarTranslucent
     >
       <View className={isDark ? 'dark' : ''} style={styles.root}>
         <Pressable style={StyleSheet.absoluteFill} onPress={handleOverlayPress}>
@@ -123,6 +120,8 @@ export function VerseActionsSheet({
         </Pressable>
 
         <Animated.View
+          renderToHardwareTextureAndroid
+          shouldRasterizeIOS
           style={[
             styles.sheet,
             {
@@ -137,8 +136,8 @@ export function VerseActionsSheet({
             <View className={isDark ? 'dark' : ''}>
               <View className="flex-row items-center justify-between border-b border-border/30 px-6 py-4 dark:border-border-dark/20">
                 <Text
-                  numberOfLines={1}
-                  className="flex-1 text-base font-semibold text-foreground dark:text-foreground-dark"
+                  numberOfLines={2}
+                  className="flex-1 text-base font-semibold text-foreground dark:text-foreground-dark mr-3"
                 >
                   {surahName} {localizedVerseKey}
                 </Text>
@@ -200,7 +199,7 @@ export function VerseActionsSheet({
           </SafeAreaView>
         </Animated.View>
       </View>
-    </Modal>
+    </PortalOverlay>
   );
 }
 
@@ -228,8 +227,8 @@ function ActionRow({
       ].join(' ')}
       style={({ pressed }) => ({ opacity: disabled ? 0.5 : pressed ? 0.9 : 1 })}
     >
-      <View className="h-5 w-5 items-center justify-center">{icon}</View>
-      <Text className="text-sm font-medium text-foreground dark:text-foreground-dark">
+      <View className="h-5 w-5 items-center justify-center shrink-0">{icon}</View>
+      <Text className="flex-1 text-sm font-medium text-foreground dark:text-foreground-dark">
         {label}
       </Text>
     </Pressable>

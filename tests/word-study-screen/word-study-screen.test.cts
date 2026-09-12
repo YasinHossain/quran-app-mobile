@@ -165,7 +165,7 @@ test('contextual meaning uses the selected installed language at the exact word 
   assert.equal(getStoredWordTranslation(wordsJson, 10), null);
 
   const meaning = resolveContextualMeaning({
-    analysis: verb,
+    location: verb.location,
     selectedLanguageCode: 'bn',
     selectedLanguageWordsJson: wordsJson,
   });
@@ -176,24 +176,29 @@ test('contextual meaning uses the selected installed language at the exact word 
     direction: 'ltr',
     sourceLabel: 'Bangla · Installed offline',
     isFallback: false,
+    isUnavailable: false,
   });
 });
 
-test('contextual meaning labels deterministic bundled-English fallback', () => {
+test('contextual meaning uses only installed language packs and labels English fallback', () => {
   const fallback = resolveContextualMeaning({
-    analysis: verb,
+    location: verb.location,
     selectedLanguageCode: 'ur',
     selectedLanguageWordsJson: null,
+    englishWordsJson: JSON.stringify([
+      { position: 9, charTypeName: 'word', translationText: 'and He revealed' },
+    ]),
   });
   assert.equal(fallback.text, 'and He revealed');
   assert.equal(fallback.languageCode, 'en');
   assert.equal(fallback.direction, 'ltr');
-  assert.equal(fallback.sourceLabel, 'English fallback · Bundled offline');
+  assert.equal(fallback.sourceLabel, 'English fallback · Installed offline');
   assert.equal(fallback.isFallback, true);
+  assert.equal(fallback.isUnavailable, false);
   assert.match(fallback.fallbackMessage ?? '', /Urdu is not available offline/);
 
   const urdu = resolveContextualMeaning({
-    analysis: verb,
+    location: verb.location,
     selectedLanguageCode: 'ur',
     selectedLanguageWordsJson: JSON.stringify([
       { position: 9, charTypeName: 'word', translationText: 'اور نازل کی' },
@@ -201,6 +206,13 @@ test('contextual meaning labels deterministic bundled-English fallback', () => {
   });
   assert.equal(urdu.direction, 'rtl');
   assert.equal(urdu.isFallback, false);
+
+  const englishMissing = resolveContextualMeaning({
+    location: verb.location,
+    selectedLanguageCode: 'en',
+  });
+  assert.equal(englishMissing.isUnavailable, true);
+  assert.match(englishMissing.fallbackMessage ?? '', /English word-by-word pack/);
 });
 
 test('rootless particles explain the absence instead of rendering a blank field', () => {
@@ -262,14 +274,14 @@ test('source presentation and sharing retain source versions and attribution', (
       {
         sourceId: 'quran-app-offline-word-pack-en-2026-07-04',
         sourceVersion: '2026-07-04',
-        layer: 'contextual-gloss',
+        layer: 'surface',
       },
     ],
   };
   const sources = getStudySources(analysis.sourceReferences);
   assert.equal(sources.length, 2);
   assert.deepEqual(sources[0]?.layers, ['morphology', 'segmentation']);
-  const message = buildWordStudyShareMessage(analysis, 'Ali ‘Imran');
+  const message = buildWordStudyShareMessage(analysis, 'Ali ‘Imran', 'and He revealed');
   assert.match(message, /Ali ‘Imran 3:3:9/);
   assert.match(message, /Quranic Arabic Corpus morphology 0\.4/);
   assert.match(message, /Root:/);
@@ -470,7 +482,16 @@ test('occurrence queries remain fixed-size and reader navigation retains the exa
   assert.equal(buildOccurrenceQuery(verb, 'root').rootId, 'root-nzl');
 
   const occurrence = WORD_STUDY_CONTRACT_OCCURRENCE_PAGE.items[0]!;
-  assert.equal(getOccurrenceGloss(occurrence), 'and He revealed');
+  assert.equal(getOccurrenceGloss(occurrence), 'Meaning unavailable offline');
+  assert.equal(getOccurrenceGloss(occurrence, {
+    text: 'and He revealed',
+    languageCode: 'en',
+    languageName: 'English',
+    direction: 'ltr',
+    sourceLabel: 'English · Installed offline',
+    isFallback: false,
+    isUnavailable: false,
+  }), 'and He revealed');
   assert.equal(getOccurrencePageLabel('30', 30, 93), '31–60 of 93');
   assert.deepEqual(buildOccurrenceReaderParams(occurrence), {
     pathname: '/surah/[surahId]',
@@ -800,7 +821,8 @@ test('selected-language lookup reads only the exact offline language row', () =>
   assert.doesNotMatch(exactLookup, /COALESCE|fetch\(/);
   assert.match(hook, /settings\.wordLang/);
   assert.match(hook, /getWordTranslationWordsJson/);
-  assert.match(hook, /lookupFailed: true/);
+  assert.match(hook, /selectedLookupFailed/);
+  assert.doesNotMatch(hook, /contextualGlosses/);
 });
 
 test('full-screen focus order and selection semantics do not depend on color', () => {
@@ -938,7 +960,7 @@ test('dictionary UI prioritizes the best match and moves guidance into an inform
   assert.match(guide, /height: sheetHeight/);
 });
 
-test('dictionary downloads stay hidden until installed dictionaries have been checked', () => {
+test('dictionary pack metadata is immediate while install actions wait for local status', () => {
   const section = readFileSync(
     join(process.cwd(), 'components/word-study/full-study/DictionarySection.tsx'),
     'utf8'
@@ -948,11 +970,12 @@ test('dictionary downloads stay hidden until installed dictionaries have been ch
     'utf8'
   );
 
-  assert.match(section, /installedSources\.status === 'loading'/);
+  assert.match(section, /BUNDLED_DICTIONARY_ENTRIES = getBundledWordReferencePacks\(\)/);
   assert.match(
     section,
-    /installedSources\.status === 'ready' && downloadableEntries\.length > 0/
+    /installedSources\.status !== 'error' && downloadableEntries\.length > 0/
   );
+  assert.match(section, /onDownload=\{installedSources\.status === 'ready'/);
   assert.match(fallbackPanel, /\.listInstalledSources\(\)/);
   assert.match(fallbackPanel, /if \(installedSources\.length > 0\)/);
   assert.match(fallbackPanel, /setState\(\{ status: 'installed' \}\)/);

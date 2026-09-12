@@ -18,8 +18,10 @@ export type ContextualMeaningLoadState =
 
 type ResolvedState = {
   key: string;
-  wordsJson?: string | null;
-  lookupFailed?: boolean;
+  selectedWordsJson?: string | null;
+  englishWordsJson?: string | null;
+  selectedLookupFailed?: boolean;
+  englishLookupFailed?: boolean;
 };
 
 export function useContextualMeaning(
@@ -28,51 +30,75 @@ export function useContextualMeaning(
   const { settings, isHydrated } = useSettings();
   const selectedLanguageCode = normalizeWordLanguageCode(settings.wordLang);
   const verseKey = analysis?.location.verseKey;
-  const { itemsByKey } = useDownloadIndexItems({
-    enabled: Boolean(verseKey) && isHydrated && selectedLanguageCode !== 'en',
+  const { itemsByKey, isLoading: isDownloadIndexLoading } = useDownloadIndexItems({
+    enabled: Boolean(verseKey) && isHydrated,
+    pollIntervalMs: 0,
   });
   const download = itemsByKey.get(`word-translation:${selectedLanguageCode}`);
-  const resourceRevision = `${download?.status ?? 'unknown'}:${download?.updatedAt ?? 0}`;
+  const englishDownload = itemsByKey.get('word-translation:en');
+  const resourceRevision = [
+    download?.status ?? 'unknown',
+    download?.updatedAt ?? 0,
+    englishDownload?.status ?? 'unknown',
+    englishDownload?.updatedAt ?? 0,
+  ].join(':');
   const requestKey = verseKey
     ? `${verseKey}:${selectedLanguageCode}:${resourceRevision}`
     : '';
   const [resolved, setResolved] = React.useState<ResolvedState | null>(null);
 
   React.useEffect(() => {
-    if (!verseKey || !isHydrated || selectedLanguageCode === 'en') return;
+    if (!verseKey || !isHydrated || isDownloadIndexLoading) return;
     let cancelled = false;
-    void container
-      .getTranslationOfflineStore()
-      .getWordTranslationWordsJson(verseKey, selectedLanguageCode)
-      .then((wordsJson) => {
+    const store = container.getTranslationOfflineStore();
+    const selectedInstalled = download?.status === 'installed';
+    const englishInstalled = englishDownload?.status === 'installed';
+    const selectedPromise = selectedInstalled
+      ? store.getWordTranslationWordsJson(verseKey, selectedLanguageCode)
+      : Promise.resolve(null);
+    const englishPromise = selectedLanguageCode !== 'en' && englishInstalled
+      ? store.getWordTranslationWordsJson(verseKey, 'en')
+      : Promise.resolve(null);
+
+    void Promise.allSettled([selectedPromise, englishPromise]).then(
+      ([selectedResult, englishResult]) => {
         if (cancelled) return;
-        setResolved({ key: requestKey, wordsJson });
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setResolved({ key: requestKey, lookupFailed: true });
-      });
+        setResolved({
+          key: requestKey,
+          selectedWordsJson: selectedResult.status === 'fulfilled' ? selectedResult.value : null,
+          englishWordsJson: englishResult.status === 'fulfilled' ? englishResult.value : null,
+          selectedLookupFailed: selectedResult.status === 'rejected',
+          englishLookupFailed: englishResult.status === 'rejected',
+        });
+      }
+    );
     return () => {
       cancelled = true;
     };
-  }, [verseKey, isHydrated, requestKey, selectedLanguageCode]);
+  }, [
+    download?.status,
+    englishDownload?.status,
+    isDownloadIndexLoading,
+    isHydrated,
+    requestKey,
+    selectedLanguageCode,
+    verseKey,
+  ]);
 
   if (!analysis) return { status: 'idle' };
-  if (!isHydrated) return { status: 'loading', languageName: 'selected language' };
-  if (selectedLanguageCode === 'en') {
-    return {
-      status: 'ready',
-      presentation: resolveContextualMeaning({ analysis, selectedLanguageCode }),
-    };
+  if (!isHydrated || isDownloadIndexLoading) {
+    return { status: 'loading', languageName: getWordLanguageName(selectedLanguageCode) };
   }
   if (resolved?.key === requestKey) {
     return {
       status: 'ready',
       presentation: resolveContextualMeaning({
-        analysis,
+        location: analysis.location,
         selectedLanguageCode,
-        selectedLanguageWordsJson: resolved.wordsJson,
-        lookupFailed: resolved.lookupFailed,
+        selectedLanguageWordsJson: resolved.selectedWordsJson,
+        englishWordsJson: resolved.englishWordsJson,
+        selectedLookupFailed: resolved.selectedLookupFailed,
+        englishLookupFailed: resolved.englishLookupFailed,
       }),
     };
   }

@@ -22,19 +22,21 @@ export function SurahHeaderCard({ chapter }: { chapter: SurahHeaderChapter }): R
   const { infoLabel, showBismillah, surahName } = getSurahHeaderPresentation(chapter, t);
 
   return (
-    <View className="mb-2 -mt-1 px-1">
-      <View className="border-b pb-4" style={{ borderBottomColor: `${palette.border}66` }}>
-        <View className="min-h-[104px] flex-row items-center justify-between gap-4 px-2">
+    <View className="mb-4 -mt-1">
+      <View className="border-b pb-5" style={{ borderBottomColor: `${palette.border}66` }}>
+        <View className="min-h-[84px] flex-row items-center justify-between gap-3">
           {/* Left Side: Surah Name and Metadata */}
-          <View className="min-w-0 flex-1 items-start justify-center pt-3">
+          <View className="min-w-0 flex-1 items-start justify-center pt-2">
             <Text
-              numberOfLines={2}
-              style={{ color: palette.text, fontSize: 26, lineHeight: 32 }}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.88}
+              style={{ color: palette.text, fontSize: 21, lineHeight: 28 }}
               className="text-left font-bold"
             >
               {surahName}
             </Text>
-            <Text className="mt-0.5 text-left text-sm" style={{ color: palette.muted }}>
+            <Text className="mt-1 text-left text-sm" style={{ color: palette.muted }}>
               {infoLabel}
             </Text>
           </View>

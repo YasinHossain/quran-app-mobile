@@ -22,8 +22,8 @@ function buildVerseOptions(
 export function SurahVerseSelectorRow({
   chapters,
   isLoading = false,
-  surahLabel = 'Surah',
-  verseLabel = 'Verse',
+  surahLabel,
+  verseLabel,
   selectedSurah,
   selectedVerse,
   onSelectSurah,
@@ -51,6 +51,8 @@ export function SurahVerseSelectorRow({
   dismissRequest?: number;
 }): React.JSX.Element {
   const { t, formatNumber } = useUiTranslation();
+  const resolvedSurahLabel = surahLabel ?? t('surah_tab', { fallback: 'Surah' });
+  const resolvedVerseLabel = verseLabel ?? t('verse', { fallback: 'Verse' });
   const surahOptions = React.useMemo(() => {
     return chapters.map((chapter) => ({
       value: chapter.id,
@@ -118,7 +120,7 @@ export function SurahVerseSelectorRow({
       <View style={{ flex: hideVerse ? 1 : 3 }}>
         {!hideLabels ? (
           <Text className="mb-2 text-base font-semibold text-foreground dark:text-foreground-dark">
-            {surahLabel}
+            {resolvedSurahLabel}
           </Text>
         ) : null}
         <SurahSelector
@@ -138,7 +140,7 @@ export function SurahVerseSelectorRow({
         <View style={{ flex: 2 }}>
           {!hideLabels ? (
             <Text className="mb-2 text-base font-semibold text-foreground dark:text-foreground-dark">
-              {verseLabel}
+              {resolvedVerseLabel}
             </Text>
           ) : null}
           <VerseSelector

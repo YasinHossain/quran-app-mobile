@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { UI_LANGUAGES, type UiLanguageCode } from '@/lib/i18n/uiLanguages';
 import { localizeDigits } from '@/lib/i18n/localizeNumbers';
+import { getPreferredWordLanguageForUiLanguage } from '@/lib/i18n/wordLanguages';
 import {
   INITIAL_TRANSLATION_BY_UI_LANGUAGE,
   cancelInitialTranslationAsync,
@@ -152,6 +153,9 @@ export default function WelcomeScreen(): React.JSX.Element {
         ...settings,
         uiLanguage: language,
         contentLanguage: language,
+        // Remember the matching word language, but keep its optional pack out of first-run setup.
+        // The reader settings prompt for that pack only if word-by-word is turned on.
+        wordLang: getPreferredWordLanguageForUiLanguage(language),
         translationId: targetTranslationId,
         translationIds: [targetTranslationId],
         mushafId: undefined,
@@ -168,6 +172,7 @@ export default function WelcomeScreen(): React.JSX.Element {
         ...settings,
         uiLanguage: language,
         contentLanguage: language,
+        wordLang: getPreferredWordLanguageForUiLanguage(language),
         translationId: 20,
         translationIds: [20],
         mushafId: undefined,
@@ -378,4 +383,3 @@ const styles = StyleSheet.create({
   },
   startButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '800', letterSpacing: 0.1 },
 });
-

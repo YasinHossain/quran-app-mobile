@@ -1,5 +1,6 @@
 export const WORD_STUDY_PACK_FORMAT = 'quran-word-study-sqlite-v1';
-export const WORD_STUDY_PACK_SCHEMA_VERSION = 2;
+export const WORD_STUDY_PACK_SCHEMA_VERSION = 3;
+export const WORD_STUDY_PACK_MIN_SUPPORTED_SCHEMA_VERSION = 2;
 export const WORD_STUDY_PACK_APPLICATION_ID = 1465078867;
 
 export interface WordStudyPackSourceMetadata {
@@ -56,15 +57,23 @@ export interface ReadyWordStudyPack extends WordStudyInstalledPackRef {
   readonly recovery: 'none' | 'rollback';
 }
 
+export function isSupportedWordStudyPackSchemaVersion(value: number): boolean {
+  return (
+    Number.isInteger(value) &&
+    value >= WORD_STUDY_PACK_MIN_SUPPORTED_SCHEMA_VERSION &&
+    value <= WORD_STUDY_PACK_SCHEMA_VERSION
+  );
+}
+
 export function assertCompatibleWordStudyManifest(
   manifest: WordStudyPackManifest
 ): WordStudyPackManifest {
   if (manifest.format !== WORD_STUDY_PACK_FORMAT) {
     throw new Error(`Unsupported word-study pack format: ${manifest.format}`);
   }
-  if (manifest.schemaVersion !== WORD_STUDY_PACK_SCHEMA_VERSION) {
+  if (!isSupportedWordStudyPackSchemaVersion(manifest.schemaVersion)) {
     throw new Error(
-      `Unsupported word-study schema ${manifest.schemaVersion}; expected ${WORD_STUDY_PACK_SCHEMA_VERSION}`
+      `Unsupported word-study schema ${manifest.schemaVersion}; expected ${WORD_STUDY_PACK_MIN_SUPPORTED_SCHEMA_VERSION}-${WORD_STUDY_PACK_SCHEMA_VERSION}`
     );
   }
   if (!manifest.databaseFile.trim() || manifest.databaseFile.includes('/')) {

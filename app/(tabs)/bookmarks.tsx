@@ -457,12 +457,12 @@ export default function BookmarksScreen(): React.JSX.Element {
             <View>
               {renderSectionNavigation()}
               <View className="pt-2 pb-3">
-                <View className="mb-3 flex-row items-center justify-between">
-                  <View className="flex-row items-center gap-3">
-                    <View className="h-9 w-9 rounded-xl bg-accent items-center justify-center">
+                <View className="mb-3 flex-row items-center justify-between gap-3">
+                  <View className="flex-row items-center gap-3 min-w-0 flex-1">
+                    <View className="h-9 w-9 rounded-xl bg-accent items-center justify-center flex-shrink-0">
                       <BookmarkIcon size={20} strokeWidth={2.25} color="#FFFFFF" />
                     </View>
-                    <View>
+                    <View className="min-w-0 flex-1">
                       <Text className="text-lg font-bold text-foreground dark:text-foreground-dark">
                         {t('binder_tab_all')}
                       </Text>
@@ -474,7 +474,7 @@ export default function BookmarksScreen(): React.JSX.Element {
                     onPress={openCreateFolderModal}
                     accessibilityRole="button"
                     accessibilityLabel={t('bookmarks_create_folder')}
-                    className="h-10 w-10 items-center justify-center rounded-xl bg-accent"
+                    className="h-10 w-10 items-center justify-center rounded-xl bg-accent flex-shrink-0"
                     style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
                   >
                     <Plus size={20} strokeWidth={2.25} color="#FFFFFF" />
@@ -488,10 +488,10 @@ export default function BookmarksScreen(): React.JSX.Element {
               <View className="h-16 w-16 rounded-full bg-surface dark:bg-surface-dark items-center justify-center mb-4">
                 <BookmarkIcon size={32} strokeWidth={2.25} color={palette.muted} />
               </View>
-              <Text className="text-lg font-semibold text-foreground dark:text-foreground-dark mb-2">
+              <Text className="text-center text-lg font-semibold text-foreground dark:text-foreground-dark mb-2 px-4">
                 {t('bookmarks_empty_create_title')}
               </Text>
-              <Text className="text-muted dark:text-muted-dark text-center px-6">
+              <Text className="text-muted dark:text-muted-dark text-center px-6 max-w-sm">
                 {t('bookmarks_empty_create_description_prefix')}+{t('bookmarks_empty_create_description_suffix')}
               </Text>
             </View>

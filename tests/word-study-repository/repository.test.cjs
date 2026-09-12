@@ -24,7 +24,7 @@ test('hosted catalog metadata matches the immutable downloadable pack', () => {
   );
   const entry = catalog.packs.find((item) => item.packId === 'core-qac-v0.4');
   assert.ok(entry);
-  assert.equal(entry.version, 'qac-v0.4-essential-v2');
+  assert.equal(entry.version, 'qac-v0.4-essential-v3');
   assert.equal(entry.schemaVersion, manifest.schemaVersion);
   assert.equal(entry.databaseSizeBytes, manifest.databaseSizeBytes);
   assert.equal(entry.databaseChecksumSha256, manifest.databaseChecksumSha256);
@@ -45,8 +45,8 @@ test('real pack passes checksum, schema metadata, and golden word lookup', async
   const checksum = crypto.createHash('sha256').update(fs.readFileSync(PACK_PATH)).digest('hex');
   assert.equal(checksum, manifest.databaseChecksumSha256);
   assert.equal(fs.statSync(PACK_PATH).size, manifest.databaseSizeBytes);
-  assert.equal(manifest.schemaVersion, 2);
-  assert.equal(manifest.compilerVersion, '2.0.0');
+  assert.equal(manifest.schemaVersion, 3);
+  assert.equal(manifest.compilerVersion, '3.0.0');
   assert.ok(manifest.databaseSizeBytes < 30 * 1024 * 1024);
 
   const provider = new NodeWordStudyDatabaseProvider();
@@ -66,7 +66,13 @@ test('real pack passes checksum, schema metadata, and golden word lookup', async
     analysis.morphemes.value.map((item) => item.segmentType),
     ['prefix', 'stem']
   );
-  assert.equal(analysis.contextualGlosses[0].text, 'and He revealed');
+  assert.deepEqual(analysis.contextualGlosses, []);
+  assert.equal(
+    provider.database
+      .prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE type = 'table' AND name = 'word_gloss'")
+      .get().count,
+    0
+  );
 });
 
 test('repository exposes the documented Form I default for unmarked verbs', async (context) => {

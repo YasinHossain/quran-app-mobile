@@ -23,7 +23,6 @@ import {
   getAnalysisSegments,
   getCompactFieldPresentation,
   getPosLabel,
-  getPrimaryGloss,
   getSourceLabel,
   toWordQuickSheetLoadState,
 } from '../../components/word-study/wordQuickSheetModel';
@@ -109,7 +108,6 @@ test('builds segmented verb content and friendly morphology copy', () => {
   assert.deepEqual(getAnalysisSegments(verb).map((segment) => segment.arabic), ['وَ', 'أَنزَلَ']);
   assert.equal(getPosLabel('V'), 'Verb');
   assert.equal(getPosLabel('CONJ'), 'Conjunction');
-  assert.equal(getPrimaryGloss(verb), 'and He revealed');
   assert.equal(
     verb.morphology.status === 'available' ? describeMorphology(verb.morphology.value) : '',
     'Perfect · Active · Third person · Masculine · Singular · Form IV'
@@ -176,13 +174,13 @@ test('shows pack attribution from source identifiers', () => {
       {
         sourceId: 'quran-app-offline-word-pack-en-2026-07-04',
         sourceVersion: '2026-07-04',
-        layer: 'contextual-gloss' as const,
+        layer: 'surface' as const,
       },
     ],
   };
   assert.equal(
     getSourceLabel(analysis),
-    'Quranic Arabic Corpus v0.4 · Quran App offline word pack'
+    'Quranic Arabic Corpus v0.4 · Quran App canonical word surface'
   );
 });
 
@@ -256,7 +254,7 @@ test('an uninstalled Essentials pack is treated as an expected download state', 
   assert.match(panel, /Word Study Essentials/);
   assert.doesNotMatch(panel, /Download once to open Word Study/);
   assert.doesNotMatch(panel, /Version \{entry\.version\}/);
-  assert.match(panel, /roots & word families/);
+  assert.match(panel, /roots, lemmas & word families/);
   assert.match(panel, /StudyPackDownloadCard/);
   assert.match(progressRing, /strokeDashoffset/);
   assert.match(progressRing, /<X color=\{crossColor\}/);

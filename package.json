@@ -50,7 +50,7 @@
     "build:test-tafsir-pager": "tsc -p tests/tafsir-pager/tsconfig.json",
     "test:tafsir-pager": "npm run build:test-tafsir-pager && node --test .artifacts/tafsir-pager-tests/tests/tafsir-pager/*.cjs",
     "test:modal-transition": "node --test tests/modal-transition/*.test.cjs",
-    "test:bookmarks-layout": "node --test tests/bookmarks/last-read-layout.test.cjs"
+    "test:bookmarks-layout": "node --test tests/bookmarks/*.test.cjs"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",

@@ -1,8 +1,9 @@
 import React from 'react';
-import { Animated, Modal, Platform, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { Animated, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import Colors from '@/constants/Colors';
+import { PortalOverlay } from '@/components/motion/PortalOverlay';
 import {
   sideSheetTransform,
   useModalTransition,
@@ -39,28 +40,26 @@ export function SettingsSidebar({
   const { isDark, resolvedTheme } = useAppTheme();
   const palette = Colors[resolvedTheme];
   const [isMushafManagerFullScreen, setIsMushafManagerFullScreen] = React.useState(false);
+  const [isDrawerSettled, setIsDrawerSettled] = React.useState(false);
   const sheetWidth = isMushafManagerFullScreen
     ? width
     : Math.min(390, Math.round(width * 0.92));
   const hiddenTranslateX = sheetWidth + 12;
   const { visible, progress, onModalShow } = useModalTransition(isOpen, {
     preset: 'drawer',
+    onAfterOpen: () => setIsDrawerSettled(true),
     onAfterClose: () => {
+      setIsDrawerSettled(false);
       setIsMushafManagerFullScreen(false);
       onAfterClose?.();
     },
   });
 
   return (
-    <Modal
-      hardwareAccelerated
-      transparent
+    <PortalOverlay
       visible={visible}
       onShow={onModalShow}
       onRequestClose={onClose}
-      animationType="none"
-      statusBarTranslucent
-      {...(Platform.OS === 'ios' ? { presentationStyle: 'overFullScreen' as const } : {})}
     >
       <View className={isDark ? 'dark' : ''} style={styles.root}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose}>
@@ -68,6 +67,8 @@ export function SettingsSidebar({
         </Pressable>
 
         <Animated.View
+          renderToHardwareTextureAndroid
+          shouldRasterizeIOS
           style={[
             styles.sheet,
             {
@@ -100,13 +101,14 @@ export function SettingsSidebar({
                   onOpenMushafManager={() => setIsMushafManagerFullScreen(true)}
                   onSubPanelBack={isMushafManagerFullScreen ? onClose : undefined}
                   hideRootWhenSubPanel={isMushafManagerFullScreen || initialPanel === 'mushaf'}
+                  dataEnabled={isDrawerSettled}
                 />
               )}
             </View>
           </View>
         </Animated.View>
       </View>
-    </Modal>
+    </PortalOverlay>
   );
 }
 

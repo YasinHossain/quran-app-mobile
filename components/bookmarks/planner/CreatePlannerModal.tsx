@@ -258,12 +258,12 @@ export function CreatePlannerModal({
               <View style={styles.safeArea}>
                 <View className={isDark ? 'dark' : ''} style={styles.inner}>
                   <View className="px-5 py-5">
-                    <View className="flex-row items-center justify-between">
-                      <View className="flex-row items-center gap-3">
-                        <View className="h-12 w-12 rounded-xl items-center justify-center bg-interactive dark:bg-interactive-dark">
+                    <View className="flex-row items-center justify-between gap-3">
+                      <View className="flex-row items-center gap-3 min-w-0 flex-1">
+                        <View className="h-12 w-12 rounded-xl items-center justify-center bg-interactive dark:bg-interactive-dark flex-shrink-0">
                           <Calendar size={22} strokeWidth={2.25} color={palette.tint} />
                         </View>
-                        <View>
+                        <View className="min-w-0 flex-1">
                           <Text className="text-xl font-bold text-foreground dark:text-foreground-dark">
                             {t('binder_tab_planner')}
                           </Text>
@@ -282,7 +282,7 @@ export function CreatePlannerModal({
                         accessibilityRole="button"
                         accessibilityLabel={t('close')}
                         style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
-                        className="p-2 rounded-full"
+                        className="p-2 rounded-full flex-shrink-0"
                       >
                         <X size={18} strokeWidth={2.25} color={palette.muted} />
                       </Pressable>

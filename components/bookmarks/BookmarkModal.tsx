@@ -36,6 +36,7 @@ import Colors from '@/constants/Colors';
 import { resolveFolderAccentColor } from '@/components/bookmarks/folderColor';
 import { useBookmarks } from '@/providers/BookmarkContext';
 import { useAppTheme } from '@/providers/ThemeContext';
+import { useUiTranslation } from '@/providers/UiLanguageContext';
 
 import type { Bookmark, Folder as BookmarkFolder } from '@/types';
 
@@ -62,6 +63,7 @@ function BookmarkModalTabToggle({
   palette: any;
   isOpen: boolean;
 }): React.JSX.Element {
+  const { t } = useUiTranslation();
   const [measuredWidth, setMeasuredWidth] = React.useState(0);
   const activeIndex = activeTab === 'pin' ? 0 : 1;
   const indicatorPosition = useSharedValue(activeIndex);
@@ -126,12 +128,13 @@ function BookmarkModalTabToggle({
         style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
       >
         <Text
+          numberOfLines={1}
           style={{
             color: activeTab === 'pin' ? palette.text : palette.muted,
           }}
           className="text-[13px] font-semibold text-center"
         >
-          Pin Verse
+          {t('pin_verse', { fallback: 'Pin Verse' })}
         </Text>
       </Pressable>
 
@@ -141,12 +144,13 @@ function BookmarkModalTabToggle({
         style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
       >
         <Text
+          numberOfLines={1}
           style={{
             color: activeTab === 'bookmark' ? palette.text : palette.muted,
           }}
           className="text-[13px] font-semibold text-center"
         >
-          Add to Folder
+          {t('add_to_folder', { fallback: 'Add to Folder' })}
         </Text>
       </Pressable>
     </View>
@@ -169,6 +173,7 @@ export function BookmarkModal({
   const { height: windowHeight } = useWindowDimensions();
   const { resolvedTheme, isDark } = useAppTheme();
   const palette = Colors[resolvedTheme];
+  const { t, localizeDigits } = useUiTranslation();
   const { folders, createFolder, addBookmark, removeBookmark, isPinned, togglePinned } =
     useBookmarks();
 
@@ -279,11 +284,14 @@ export function BookmarkModal({
                   <View className="flex-row items-start justify-center">
                     <View className="items-center gap-1">
                       <Text className="text-xl font-semibold text-foreground dark:text-foreground-dark">
-                        Add to Collections
+                        {t('add_to_collections', { fallback: 'Add to Collections' })}
                       </Text>
                       {resolvedVerseRef ? (
                         <Text className="text-sm text-muted dark:text-muted-dark">
-                          Surah {resolvedVerseRef}
+                          {t('surah_verse_key', {
+                            verseKey: localizeDigits(resolvedVerseRef),
+                            fallback: `Surah ${localizeDigits(resolvedVerseRef)}`,
+                          })}
                         </Text>
                       ) : null}
                     </View>
@@ -292,7 +300,7 @@ export function BookmarkModal({
                       onPress={closeAndReset}
                       hitSlop={10}
                       accessibilityRole="button"
-                      accessibilityLabel="Close"
+                      accessibilityLabel={t('close', { fallback: 'Close' })}
                       className="absolute right-2 top-2 p-2 rounded-full"
                       style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
                     >
@@ -334,12 +342,20 @@ export function BookmarkModal({
 
                           <View className="items-center gap-2 px-2">
                             <Text className="font-medium text-foreground dark:text-foreground-dark">
-                              {verseIsPinned ? 'Pinned verse' : 'Pin this verse'}
+                              {verseIsPinned
+                                ? t('pinned_verse_title', { fallback: 'Pinned verse' })
+                                : t('pin_this_verse_title', { fallback: 'Pin this verse' })}
                             </Text>
                             <Text className="text-sm text-muted dark:text-muted-dark text-center">
                               {verseIsPinned
-                                ? `Verse ${resolvedVerseRef} is pinned to your pinned verses section.`
-                                : `Pin verse ${resolvedVerseRef} for quick access from the pinned verses section of the bookmarks page.`}
+                                ? t('pinned_verse_description', {
+                                    verseRef: localizeDigits(resolvedVerseRef),
+                                    fallback: `Verse ${resolvedVerseRef} is pinned to your pinned verses section.`,
+                                  })
+                                : t('pin_this_verse_description', {
+                                    verseRef: localizeDigits(resolvedVerseRef),
+                                    fallback: `Pin verse ${resolvedVerseRef} for quick access from the pinned verses section of the bookmarks page.`,
+                                  })}
                             </Text>
                           </View>
                         </View>
@@ -347,7 +363,11 @@ export function BookmarkModal({
                         <Pressable
                           onPress={handleTogglePinned}
                           accessibilityRole="button"
-                          accessibilityLabel={verseIsPinned ? 'Unpin verse' : 'Pin verse'}
+                          accessibilityLabel={
+                            verseIsPinned
+                              ? t('unpin_verse', { fallback: 'Unpin verse' })
+                              : t('pin_verse_action', { fallback: 'Pin verse' })
+                          }
                           className={[
                             'px-6 py-3 rounded-lg',
                             verseIsPinned ? 'bg-accent/10' : 'bg-accent',
@@ -360,7 +380,9 @@ export function BookmarkModal({
                               verseIsPinned ? 'text-accent dark:text-accent-dark' : 'text-on-accent',
                             ].join(' ')}
                           >
-                            {verseIsPinned ? 'Unpin verse' : 'Pin verse'}
+                            {verseIsPinned
+                              ? t('unpin_verse', { fallback: 'Unpin verse' })
+                              : t('pin_verse_action', { fallback: 'Pin verse' })}
                           </Text>
                         </Pressable>
                       </View>
@@ -381,7 +403,9 @@ export function BookmarkModal({
                               <TextInput
                                 value={newFolderName}
                                 onChangeText={setNewFolderName}
-                                placeholder="Folder name"
+                                placeholder={t('bookmarks_folder_name_placeholder', {
+                                  fallback: 'Folder name',
+                                })}
                                 placeholderTextColor={palette.muted}
                                 maxLength={30}
                                 autoFocus
@@ -393,7 +417,9 @@ export function BookmarkModal({
                               onPress={handleCreateFolder}
                               disabled={!newFolderName.trim()}
                               accessibilityRole="button"
-                              accessibilityLabel="Create Folder"
+                              accessibilityLabel={t('bookmarks_create_folder', {
+                                fallback: 'Create Folder',
+                              })}
                               className={[
                                 'h-10 w-10 items-center justify-center rounded-xl',
                                 newFolderName.trim()
@@ -409,13 +435,15 @@ export function BookmarkModal({
                           <Pressable
                             onPress={() => setIsCreatingFolder(true)}
                             accessibilityRole="button"
-                            accessibilityLabel="Create Folder"
+                            accessibilityLabel={t('bookmarks_create_folder', {
+                              fallback: 'Create Folder',
+                            })}
                             className="w-full flex-row items-center justify-center gap-3 p-4 border-2 border-dashed border-border dark:border-border-dark rounded-xl"
                             style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
                           >
                             <Plus size={20} strokeWidth={2.25} color={palette.muted} />
                             <Text className="font-medium text-muted dark:text-muted-dark">
-                              Create Folder
+                              {t('bookmarks_create_folder', { fallback: 'Create Folder' })}
                             </Text>
                           </Pressable>
                         )}
@@ -433,7 +461,9 @@ export function BookmarkModal({
                                 <Folder size={24} strokeWidth={2.25} color={palette.muted} />
                               </View>
                               <Text className="text-muted dark:text-muted-dark text-center">
-                                No folders yet. Create one to get started!
+                                {t('bookmarks_no_folders_yet', {
+                                  fallback: 'No folders yet. Create one to get started!',
+                                })}
                               </Text>
                             </View>
                           ) : (
@@ -443,9 +473,16 @@ export function BookmarkModal({
                                   (bookmark) => String(bookmark.verseId) === String(verseId)
                                 );
                                 const bookmarkCount = folder.bookmarks?.length ?? 0;
-                                const countLabel = `${bookmarkCount} ${
-                                  bookmarkCount === 1 ? 'Verse' : 'Verses'
-                                }`;
+                                const countLabel =
+                                  bookmarkCount === 1
+                                    ? t('bookmarks_bookmark_count_single', {
+                                        count: bookmarkCount,
+                                        fallback: '1 Verse',
+                                      })
+                                    : t('bookmarks_bookmark_count_plural', {
+                                        count: bookmarkCount,
+                                        fallback: `${bookmarkCount} Verses`,
+                                      });
                                 const accentColor = resolveFolderAccentColor(folder.color);
 
                                 return (

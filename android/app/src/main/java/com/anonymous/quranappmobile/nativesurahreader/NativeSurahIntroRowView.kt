@@ -7,18 +7,29 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
 import android.graphics.Typeface
+import android.text.TextUtils
+import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.core.widget.TextViewCompat
 
 internal class NativeSurahIntroRowView(context: Context) : LinearLayout(context) {
   private val titleView =
       TextView(context).apply {
-        textSize = 24f
+        textSize = 21f
         typeface = Typeface.DEFAULT_BOLD
-        includeFontPadding = true
-        maxLines = 2
+        includeFontPadding = false
+        maxLines = 1
+        ellipsize = TextUtils.TruncateAt.END
+        TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(
+            this,
+            18,
+            21,
+            1,
+            TypedValue.COMPLEX_UNIT_SP,
+        )
       }
 
   private val metadataView =
@@ -35,43 +46,44 @@ internal class NativeSurahIntroRowView(context: Context) : LinearLayout(context)
 
   init {
     orientation = VERTICAL
-    setPadding(dp(4), 0, dp(4), 0)
+    setPadding(0, 0, 0, 0)
 
     val content =
         LinearLayout(context).apply {
           gravity = Gravity.CENTER_VERTICAL
           orientation = HORIZONTAL
-          setPadding(dp(8), dp(12), dp(8), 0)
-          minimumHeight = dp(104)
+          setPadding(0, dp(8), 0, 0)
+          minimumHeight = dp(84)
         }
 
     val textColumn =
         LinearLayout(context).apply {
-          gravity = Gravity.CENTER_VERTICAL
           orientation = VERTICAL
+          gravity = Gravity.CENTER_VERTICAL
         }
 
     textColumn.addView(titleView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
     textColumn.addView(
         metadataView,
         LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
-          topMargin = dp(2)
+          topMargin = dp(4)
         },
     )
 
     content.addView(textColumn, LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
     content.addView(
         illustrationView,
-        LayoutParams(dp(136), dp(78)).apply {
-          leftMargin = dp(16)
+        LayoutParams(dp(92), dp(62)).apply {
+          leftMargin = dp(12)
         },
     )
 
     addView(content, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
     addView(
         bismillahView,
-        LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
-          topMargin = dp(18)
+        LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
+          gravity = Gravity.CENTER_HORIZONTAL
+          topMargin = dp(20)
           leftMargin = dp(8)
           rightMargin = dp(8)
         },
@@ -145,8 +157,8 @@ private class RevelationIllustrationView(context: Context) : View(context) {
           if (dark) Color.rgb(52, 130, 99) else Color.rgb(30, 94, 69)
         }
 
-    val sx = width / 136f
-    val sy = height / 78f
+    val sx = width / 98f
+    val sy = height / 66f
 
     path.reset()
     path.moveTo(x(40f, sx), y(78f, sy))
@@ -174,7 +186,7 @@ private class RevelationIllustrationView(context: Context) : View(context) {
     paint.color = mutedShape
     paint.strokeWidth = scaledStroke(1.8f, sx, sy)
     paint.strokeCap = Paint.Cap.ROUND
-    canvas.drawLine(x(28f, sx), y(72f, sy), x(126f, sx), y(72f, sy), paint)
+    canvas.drawLine(x(39f, sx), y(72f, sy), x(136f, sx), y(72f, sy), paint)
 
     if (isMakkah) {
       drawMinaret(canvas, 54f, 50f, mutedShape, sx, sy)
@@ -344,9 +356,9 @@ private class RevelationIllustrationView(context: Context) : View(context) {
     return (0.2126f * Color.red(color) + 0.7152f * Color.green(color) + 0.0722f * Color.blue(color)) / 255f
   }
 
-  private fun x(value: Float, scale: Float): Float = value * scale
+  private fun x(value: Float, scale: Float): Float = (value - 39f) * scale
 
-  private fun y(value: Float, scale: Float): Float = value * scale
+  private fun y(value: Float, scale: Float): Float = (value - 12f) * scale
 
   private fun w(value: Float, scale: Float): Float = value * scale
 

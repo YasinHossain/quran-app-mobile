@@ -60,7 +60,7 @@ export function BookmarkFolderCard({
         onPress={onPress}
         accessibilityRole="button"
         accessibilityLabel={folder.name}
-        className="w-full h-full rounded-lg border border-border/50 bg-surface dark:border-border-dark/40 dark:bg-surface-dark"
+        className="w-full h-full rounded-xl border border-border/40 bg-surface-navigation dark:border-border-dark/20 dark:bg-surface-navigation-dark"
         style={({ pressed }) => ({
           flex: 1,
           opacity: pressed ? 0.92 : 1,
@@ -165,13 +165,12 @@ export function BookmarkFolderCard({
 function PreviewChip({ children }: { children: React.ReactNode }): React.JSX.Element {
   return (
     <View
-      className="bg-surface dark:bg-surface-dark border border-border/40 dark:border-border-dark/40"
+      className="rounded-full bg-surface dark:bg-surface-dark border border-border/40 dark:border-border-dark/40"
       style={{
         maxWidth: 92,
         paddingHorizontal: 10,
-        paddingVertical: 4,
+        paddingVertical: 3,
         marginRight: 6,
-        borderRadius: 4,
       }}
     >
       <Text

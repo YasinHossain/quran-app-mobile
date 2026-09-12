@@ -9,7 +9,6 @@ import {
   type PaginatedWordOccurrences,
   type Root,
   type WordAnalysis,
-  type WordGloss,
   type WordOccurrence,
   type WordOccurrenceContextWord,
   type WordOccurrenceQuery,
@@ -68,14 +67,8 @@ type RootRow = {
   lemma_count: number;
 };
 
-type GlossRow = {
-  word_id: number;
-  language_code: string;
-  text: string;
-};
-
 type SourceRoleRow = {
-  source_role: 'morphology' | 'surface' | 'contextual-gloss';
+  source_role: 'morphology' | 'surface';
   source_id: string;
   source_version: string;
 };
@@ -177,17 +170,6 @@ function parseMorphemeFeatures(raw: string, posCode: string): MorphologyFeatures
   } catch {
     return posCode === 'V' ? { verbForm: 'I' } : {};
   }
-}
-
-function mapGloss(
-  row: GlossRow,
-  sourceRef: Omit<WordStudySourceReference, 'layer'>
-): WordGloss {
-  return {
-    languageCode: row.language_code,
-    text: row.text,
-    source: source(sourceRef, 'contextual-gloss'),
-  };
 }
 
 function mapLemma(
@@ -338,22 +320,11 @@ export class SQLiteWordStudyRepository implements IWordStudyRepository {
       options.signal
     );
     throwIfCancelled(options.signal);
-    const wordIds = rows.map((row) => row.id);
     const verses = Array.from(
       new Map(rows.map((row) => [verseKey(row), { surah: row.surah, ayah: row.ayah }])).values()
     );
-    const [glosses, verseSurfaceRows] = await Promise.all([
-      this.loadGlossesForWordIdsAsync(db, wordIds),
-      this.loadVerseSurfacesAsync(db, verses),
-    ]);
+    const verseSurfaceRows = await this.loadVerseSurfacesAsync(db, verses);
     throwIfCancelled(options.signal);
-
-    const glossesByWordId = new Map<number, GlossRow[]>();
-    for (const gloss of glosses) {
-      const current = glossesByWordId.get(gloss.word_id) ?? [];
-      current.push(gloss);
-      glossesByWordId.set(gloss.word_id, current);
-    }
     const contextByVerse = new Map<string, WordOccurrenceContextWord[]>();
     for (const verseWord of verseSurfaceRows) {
       const key = verseKey(verseWord);
@@ -366,7 +337,6 @@ export class SQLiteWordStudyRepository implements IWordStudyRepository {
     }
 
     const items: WordOccurrence[] = rows.map((row) => {
-      const rowGlosses = glossesByWordId.get(row.id) ?? [];
       const contextWords = contextByVerse.get(verseKey(row)) ?? [];
       return {
         location: parseWordStudyLocation(locationKey(row)),
@@ -374,10 +344,9 @@ export class SQLiteWordStudyRepository implements IWordStudyRepository {
         normalizedSurface: row.normalized_surface,
         ayahContextUthmani: contextWords.map((word) => word.surfaceUthmani).join(' '),
         ayahContextWords: contextWords,
-        contextualGlosses: rowGlosses.map((gloss) => mapGloss(gloss, sources['contextual-gloss'])),
+        contextualGlosses: [],
         sourceReferences: uniqueSources([
           source(sources.surface, 'surface'),
-          ...(rowGlosses.length ? [source(sources['contextual-gloss'], 'contextual-gloss')] : []),
           source(sources.morphology, 'occurrence-index'),
         ]),
       };
@@ -457,13 +426,9 @@ export class SQLiteWordStudyRepository implements IWordStudyRepository {
     }
 
     const sources = await this.loadSourceRolesAsync(db);
-    const [morphemeRows, glossRows, lemma, root] = await Promise.all([
+    const [morphemeRows, lemma, root] = await Promise.all([
       db.getAllAsync<MorphemeRow>(
         'SELECT * FROM morpheme WHERE word_id = ? ORDER BY segment_index',
-        [row.id]
-      ),
-      db.getAllAsync<GlossRow>(
-        'SELECT * FROM word_gloss WHERE word_id = ? ORDER BY language_code',
         [row.id]
       ),
       row.lemma_id === null
@@ -506,11 +471,10 @@ export class SQLiteWordStudyRepository implements IWordStudyRepository {
       root: root
         ? { status: 'available', value: root, source: root.source }
         : { status: 'unsupported', reason: rootMissingReason(row.primary_pos), source: morphologySource },
-      contextualGlosses: glossRows.map((gloss) => mapGloss(gloss, sources['contextual-gloss'])),
+      contextualGlosses: [],
       sourceReferences: uniqueSources([
         morphologySource,
         source(sources.surface, 'surface'),
-        ...(glossRows.length ? [source(sources['contextual-gloss'], 'contextual-gloss')] : []),
         ...(lemma ? [lemma.source] : []),
         ...(root ? [root.source] : []),
       ]),
@@ -581,7 +545,7 @@ export class SQLiteWordStudyRepository implements IWordStudyRepository {
               { sourceId: row.source_id, sourceVersion: row.source_version },
             ])
           ) as Partial<SourceRoles>;
-          if (!values.morphology || !values.surface || !values['contextual-gloss']) {
+          if (!values.morphology || !values.surface) {
             throw new Error('Word-study source-role metadata is incomplete');
           }
           return values as SourceRoles;
@@ -620,18 +584,6 @@ export class SQLiteWordStudyRepository implements IWordStudyRepository {
       throw new Error('Surface occurrence queries require normalizedSurface or a known locationKey');
     }
     return { where: 'normalized_surface = ?', parameter: normalizedSurface };
-  }
-
-  private loadGlossesForWordIdsAsync(
-    db: WordStudyDatabase,
-    wordIds: readonly number[]
-  ): Promise<GlossRow[]> {
-    if (wordIds.length === 0) return Promise.resolve([]);
-    const placeholders = wordIds.map(() => '?').join(',');
-    return db.getAllAsync<GlossRow>(
-      `SELECT * FROM word_gloss WHERE word_id IN (${placeholders}) ORDER BY word_id, language_code`,
-      wordIds
-    );
   }
 
   private loadVerseSurfacesAsync(

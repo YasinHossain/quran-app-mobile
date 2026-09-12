@@ -4,8 +4,8 @@ const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
 
-const COMPILER_VERSION = '2.0.0';
-const SCHEMA_VERSION = 2;
+const COMPILER_VERSION = '3.0.0';
+const SCHEMA_VERSION = 3;
 const EXPECTED_AYAH_COUNT = 6236;
 const EXPECTED_WORD_COUNT = 77429;
 
@@ -265,7 +265,6 @@ function parseCanonicalPayload(payload) {
         verseKey: verse.verseKey,
         wordPosition: word.position,
         surfaceUthmani: String(word.uthmani ?? '').trim(),
-        gloss: typeof word.translationText === 'string' ? word.translationText.trim() : '',
       });
     }
   }
@@ -377,7 +376,6 @@ function buildPackData({ morphologyText, canonicalPayload, morphologySource, can
         posCode: segment.tag,
         features: structuredFeatures(segment.rawFeatures, segment.tag),
       })),
-      gloss: canonicalWord.gloss,
     };
   });
 
@@ -400,7 +398,7 @@ function buildPackData({ morphologyText, canonicalPayload, morphologySource, can
       },
       {
         id: 'canonical-surface-v1',
-        description: 'Displayed Uthmani surface text and contextual English gloss come from the app canonical offline word pack; QAC surface variants remain represented by morpheme rows and validation exceptions.',
+        description: 'Displayed Uthmani surface text comes from the app canonical word dataset; QAC surface variants remain represented by morpheme rows and validation exceptions. Contextual meanings are distributed only in independent word-language packs.',
       },
       {
         id: 'derived-counts-v1',
@@ -422,7 +420,6 @@ function buildPackData({ morphologyText, canonicalPayload, morphologySource, can
       sourceSegments: [...morphologyWords.values()].reduce((sum, word) => sum + word.segments.length, 0),
       lemmas: lemmas.length,
       roots: roots.length,
-      glosses: wordAnalyses.filter((word) => Boolean(word.gloss)).length,
       exceptions: exceptions.length,
       unresolvedExceptions: unresolvedExceptions.length,
     },
@@ -493,11 +490,6 @@ function createSql(data, logicalChecksum) {
     pos_code: segment.posCode,
     features_json: stableStringify(segment.features),
   })));
-  const glossRows = data.wordAnalyses.filter((word) => word.gloss).map((word) => ({
-    word_id: wordIds.get(word.location),
-    language_code: 'en',
-    text: word.gloss,
-  }));
   const sourceRows = data.sources.map((source) => ({
     source_id: source.sourceId,
     title: source.title,
@@ -510,7 +502,6 @@ function createSql(data, logicalChecksum) {
   const sourceRoleRows = [
     { source_role: 'morphology', source_id: data.sources[0].sourceId },
     { source_role: 'surface', source_id: data.sources[1].sourceId },
-    { source_role: 'contextual-gloss', source_id: data.sources[1].sourceId },
   ];
 
   return `PRAGMA page_size=4096;
@@ -530,7 +521,6 @@ CREATE TABLE lemma (id INTEGER PRIMARY KEY, arabic TEXT NOT NULL, normalized TEX
 CREATE TABLE root (id INTEGER PRIMARY KEY, arabic TEXT NOT NULL, normalized TEXT NOT NULL, occurrence_count INTEGER NOT NULL, lemma_count INTEGER NOT NULL);
 CREATE TABLE word_analysis (id INTEGER PRIMARY KEY, surah INTEGER NOT NULL, ayah INTEGER NOT NULL, word_position INTEGER NOT NULL, surface_uthmani TEXT NOT NULL, normalized_surface TEXT NOT NULL, lemma_id INTEGER, root_id INTEGER, primary_pos TEXT, verb_form TEXT, aspect TEXT, mood TEXT, voice TEXT, person TEXT, gender TEXT, number TEXT, grammatical_case TEXT, grammatical_state TEXT, derivation TEXT, FOREIGN KEY(lemma_id) REFERENCES lemma(id), FOREIGN KEY(root_id) REFERENCES root(id));
 CREATE TABLE morpheme (word_id INTEGER NOT NULL, segment_index INTEGER NOT NULL, arabic TEXT NOT NULL, segment_type TEXT NOT NULL, pos_code TEXT NOT NULL, features_json TEXT NOT NULL, PRIMARY KEY(word_id, segment_index), FOREIGN KEY(word_id) REFERENCES word_analysis(id)) WITHOUT ROWID;
-CREATE TABLE word_gloss (word_id INTEGER NOT NULL, language_code TEXT NOT NULL, text TEXT NOT NULL, PRIMARY KEY(word_id, language_code), FOREIGN KEY(word_id) REFERENCES word_analysis(id)) WITHOUT ROWID;
 CREATE UNIQUE INDEX idx_word_analysis_verse_position ON word_analysis(surah, ayah, word_position);
 CREATE INDEX idx_word_analysis_normalized_surface ON word_analysis(normalized_surface, id);
 CREATE INDEX idx_word_analysis_lemma ON word_analysis(lemma_id, id);
@@ -548,7 +538,6 @@ ${insertSql('lemma', ['id', 'arabic', 'normalized', 'pos_code', 'occurrence_coun
 ${insertSql('root', ['id', 'arabic', 'normalized', 'occurrence_count', 'lemma_count'], data.roots.map((root) => ({ ...root, occurrence_count: root.occurrenceCount, lemma_count: root.lemmaCount })))}
 ${insertSql('word_analysis', ['id', 'surah', 'ayah', 'word_position', 'surface_uthmani', 'normalized_surface', 'lemma_id', 'root_id', 'primary_pos', 'verb_form', 'aspect', 'mood', 'voice', 'person', 'gender', 'number', 'grammatical_case', 'grammatical_state', 'derivation'], wordRows)}
 ${insertSql('morpheme', ['word_id', 'segment_index', 'arabic', 'segment_type', 'pos_code', 'features_json'], morphemeRows)}
-${insertSql('word_gloss', ['word_id', 'language_code', 'text'], glossRows)}
 COMMIT;
 PRAGMA foreign_keys=ON;
 VACUUM;
@@ -612,7 +601,6 @@ ${checks}
 - Segments: ${report.counts.sourceSegments}
 - Lemmas: ${report.counts.lemmas}
 - Roots: ${report.counts.roots}
-- Contextual glosses: ${report.counts.glosses}
 - Exceptions: ${report.counts.exceptions} (${report.counts.unresolvedExceptions} unresolved)
 
 ## Exceptions and dispositions

@@ -155,6 +155,36 @@ export class TranslationOfflineStore implements ITranslationOfflineStore {
     return row?.words_json?.trim() || null;
   }
 
+  async getWordTranslationWordsJsonByVerseKeys(
+    verseKeys: readonly string[],
+    languageCode: string
+  ): Promise<ReadonlyMap<string, string>> {
+    const db = await getAppDbAsync();
+    const normalizedLanguageCode = normalizeWordLanguageCode(languageCode);
+    const normalizedVerseKeys = [...new Set(verseKeys.map((key) => key.trim()).filter(Boolean))];
+    if (!normalizedLanguageCode || normalizedVerseKeys.length === 0) return new Map();
+
+    const result = new Map<string, string>();
+    const batchSize = 250;
+    for (let start = 0; start < normalizedVerseKeys.length; start += batchSize) {
+      const batch = normalizedVerseKeys.slice(start, start + batchSize);
+      const placeholders = batch.map(() => '?').join(', ');
+      const rows = await db.getAllAsync<{ verse_key: string; words_json: string | null }>(
+        `
+        SELECT verse_key, words_json
+        FROM offline_word_translations
+        WHERE language_code = ? AND verse_key IN (${placeholders});
+        `,
+        [normalizedLanguageCode, ...batch]
+      );
+      for (const row of rows) {
+        const wordsJson = row.words_json?.trim();
+        if (wordsJson) result.set(row.verse_key, wordsJson);
+      }
+    }
+    return result;
+  }
+
   async upsertVersesAndTranslations(params: {
     verses: OfflineVerseRowInput[];
     translations: OfflineTranslationRowInput[];
@@ -182,7 +212,13 @@ export class TranslationOfflineStore implements ITranslationOfflineStore {
     if (!languageCode || verses.length === 0) return;
 
     await db.withExclusiveTransactionAsync(async (txn) => {
-      await upsertVerseAndTranslationRows(txn, verses, []);
+      // Base verse rows are language-neutral. Keeping translated word JSON there can leak one
+      // installed language into another through legacy fallback reads.
+      await upsertVerseAndTranslationRows(
+        txn,
+        verses.map((verse) => ({ ...verse, wordsJson: undefined })),
+        []
+      );
       await upsertWordTranslationRows(txn, languageCode, verses);
     });
   }
@@ -210,7 +246,7 @@ export class TranslationOfflineStore implements ITranslationOfflineStore {
           v.surah AS surah,
           v.ayah AS ayah,
           v.arabic_uthmani AS arabic_uthmani,
-          COALESCE(wt.words_json, v.words_json) AS words_json
+          wt.words_json AS words_json
         FROM offline_verses v
         LEFT JOIN offline_word_translations wt
           ON wt.verse_key = v.verse_key
@@ -247,7 +283,7 @@ export class TranslationOfflineStore implements ITranslationOfflineStore {
         v.surah AS surah,
         v.ayah AS ayah,
         v.arabic_uthmani AS arabic_uthmani,
-        COALESCE(wt.words_json, v.words_json) AS words_json,
+        wt.words_json AS words_json,
         t.translation_id AS translation_id,
         t.text AS translation_text
       FROM offline_verses v
@@ -303,7 +339,7 @@ export class TranslationOfflineStore implements ITranslationOfflineStore {
           v.surah AS surah,
           v.ayah AS ayah,
           v.arabic_uthmani AS arabic_uthmani,
-          COALESCE(wt.words_json, v.words_json) AS words_json
+          wt.words_json AS words_json
         FROM offline_verses v
         LEFT JOIN offline_word_translations wt
           ON wt.verse_key = v.verse_key
@@ -342,7 +378,7 @@ export class TranslationOfflineStore implements ITranslationOfflineStore {
           v.surah AS surah,
           v.ayah AS ayah,
           v.arabic_uthmani AS arabic_uthmani,
-          COALESCE(wt.words_json, v.words_json) AS words_json
+          wt.words_json AS words_json
         FROM offline_verses v
         LEFT JOIN offline_word_translations wt
           ON wt.verse_key = v.verse_key
@@ -411,7 +447,7 @@ export class TranslationOfflineStore implements ITranslationOfflineStore {
           v.surah AS surah,
           v.ayah AS ayah,
           v.arabic_uthmani AS arabic_uthmani,
-          COALESCE(wt.words_json, v.words_json) AS words_json
+          wt.words_json AS words_json
         FROM offline_verses v
         LEFT JOIN offline_word_translations wt
           ON wt.verse_key = v.verse_key
@@ -472,7 +508,7 @@ export class TranslationOfflineStore implements ITranslationOfflineStore {
           v.surah AS surah,
           v.ayah AS ayah,
           v.arabic_uthmani AS arabic_uthmani,
-          COALESCE(wt.words_json, v.words_json) AS words_json
+          wt.words_json AS words_json
         FROM offline_verses v
         LEFT JOIN offline_word_translations wt
           ON wt.verse_key = v.verse_key
@@ -550,7 +586,7 @@ export class TranslationOfflineStore implements ITranslationOfflineStore {
           v.surah AS surah,
           v.ayah AS ayah,
           v.arabic_uthmani AS arabic_uthmani,
-          COALESCE(wt.words_json, v.words_json) AS words_json
+          wt.words_json AS words_json
         FROM offline_verses v
         LEFT JOIN offline_word_translations wt
           ON wt.verse_key = v.verse_key
@@ -589,7 +625,7 @@ export class TranslationOfflineStore implements ITranslationOfflineStore {
         v.surah AS surah,
         v.ayah AS ayah,
         v.arabic_uthmani AS arabic_uthmani,
-        COALESCE(wt.words_json, v.words_json) AS words_json,
+        wt.words_json AS words_json,
         t.translation_id AS translation_id,
         t.text AS translation_text
       FROM offline_verses v

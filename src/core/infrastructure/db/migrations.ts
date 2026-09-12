@@ -120,6 +120,16 @@ const APP_DB_MIGRATIONS: AppDbMigration[] = [
       `,
     ],
   },
+  {
+    version: 7,
+    statements: [
+      `
+      UPDATE offline_verses
+      SET words_json = NULL
+      WHERE words_json IS NOT NULL;
+      `,
+    ],
+  },
 ];
 
 export const APP_DB_LATEST_SCHEMA_VERSION =

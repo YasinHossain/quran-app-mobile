@@ -99,7 +99,7 @@ Sources checked on 2026-07-16:
 | Lemma | Same as segmentation | Same as segmentation | Same as segmentation | Same as segmentation | Same as segmentation | Same as segmentation | Approved for Phase 2. |
 | Root | Same as segmentation | Same as segmentation | Same as segmentation | Same as segmentation | Same as segmentation | Same as segmentation | Approved for Phase 2. |
 | Occurrence indexes/counts | Derived by compiler from approved surface/lemma/root records | Generated SQLite pack | App-owned deterministic derivation over approved fields | Compiler-owned derivation; no source annotation corrections | Ships with approved input fields | Logical SHA-256 `5ffae99e2e62d10c89efc98bb7d18cf1e8d89a59f5211b73cc26d571fbcacccd` | Approved and generated. |
-| Contextual gloss | Existing app offline English word pack | `dist/word-translation-packs/languages/en/2026-07-04/payload.json` | Offline distribution rights confirmed by product owner | Gloss text retained verbatim | Confirmed by product owner | `38975bff99637665869e8231d1d5824b1bc4db4c6cd3b6358b8231d4e882b6f3` | Approved for Phase 2. |
+| Contextual meaning | Independent word-by-word language packs, including English | `dist/word-translation-packs/languages/<code>/<version>/payload.json` | Per-pack offline distribution rights | Meaning text retained verbatim and resolved by exact ayah/word position | Confirmed by product owner for shipped packs | Per-pack manifest checksum | Excluded from Essentials schema 3 and consumed through the shared language-pack path. |
 | Audio | Quran Foundation/CDN or existing app audio infrastructure | QF terms and audio docs | Display/playback within app may be allowed under QF terms | No content modification | Long-term caching beyond one week requires permission | N/A | Exclude from core offline pack; runtime/ephemeral use only until permission is recorded. |
 | Prose i'rab | None for MVP | N/A | N/A | N/A | N/A | N/A | Excluded. Future licensed deep grammar pack only. |
 | Sarf prose | None for MVP | N/A | N/A | N/A | N/A | N/A | Excluded. Future licensed deep grammar pack only. |
@@ -370,16 +370,16 @@ Phase 2 is a standalone build tool and does not mirror a web UI feature. No `../
 | Machine- and human-readable reports | Done | `validation-report.json` and `validation-report.md` are generated beside the pack. |
 | Tests for golden fixtures, normalization, duplicates, foreign keys, counts, determinism | Done | Six Node tests pass and are included in `npm run verify`. |
 | Byte-identical output or deterministic logical checksum | Done | Two complete builds were byte-identical and the manifest carries both database and logical SHA-256 checksums. |
-| Every row traces to source ID/version | Done | Compact schema 2 maps morphology, surface, and contextual-gloss layers through normalized `source_role` records and `source_metadata`, avoiding per-row provenance duplication. |
+| Every row traces to source ID/version | Done | Compact schema 3 maps morphology and canonical-surface layers through normalized `source_role` records and `source_metadata`. Contextual meanings retain provenance in their independent language packs. |
 | No GreenTech APK/database or unlicensed scraping | Done | Compiler accepts only local, checksummed QAC and canonical pack files; it contains no network client. |
 | Phase 3 or later work excluded | Done | No mobile repository, lifecycle, download, UI, route, audio, or native reader code was added. |
 
 Implementation decisions:
 
-- The app's offline word pack is authoritative for displayed Uthmani surface and contextual English gloss. QAC remains authoritative for segmentation and structured morphology.
+- The canonical app word dataset is authoritative for displayed Uthmani surface. Independent word-language packs are authoritative for contextual meanings, including English. QAC remains authoritative for segmentation and structured morphology.
 - Original QAC Buckwalter values are converted mechanically to Arabic for storage; annotations are not corrected. Transformations and derived-count behavior are recorded as change notices.
 - IDs are assigned after canonical sorting; builds write no timestamps. SQLite page/schema settings are fixed, and a logical checksum supports cross-SQLite-version comparison.
-- The compact schema-2 database is 29,233,152 bytes with SHA-256 `b6fc4770fc68c43c7b41d2596a01cffa94ad1c6f5bd76ee6f820a4af37c65715`.
+- The language-neutral schema-3 database is 27,549,696 bytes with SHA-256 `a78130b1ae5c9e4cc64c34232dcc4fa652963151d1ab567200ad0e1a77d08dbc`.
 
 Manual checks still required:
 
@@ -398,14 +398,14 @@ Phase 3 is mobile-only infrastructure. It consumes the shared contracts previous
 
 | Requirement | Status | Record |
 |---|---|---|
-| Mobile SQLite repository in `src/core/infrastructure` | Done | `SQLiteWordStudyRepository` maps the real schema to shared word, morpheme, morphology, lemma, root, gloss, source, and occurrence contracts. |
+| Mobile SQLite repository in `src/core/infrastructure` | Done | `SQLiteWordStudyRepository` maps the real schema to shared word, morpheme, morphology, lemma, root, source, and occurrence contracts. Meaning fields remain empty compatibility fields and are resolved from language packs by presentation hooks. |
 | Bundle/install initial pack with existing pack patterns | Done | The compact Essentials database/manifest are Metro assets and install/verify lazily on first Word Study use; general app startup no longer copies or checksums the pack behind the splash screen. |
 | Catalog metadata and hosted updates | Done | `dist/word-study-packs/catalog.json`, app catalog configuration, `WordStudyPackCatalogClient`, and staged hosted installation are implemented. Relative catalog URLs resolve against the catalog URL. |
 | Schema/version/checksum compatibility | Done | Pack format/schema, file size, SHA-256, SQLite application ID/user version, logical checksum, and `quick_check` are verified before activation. The app adds SDK-compatible `expo-crypto` because the existing filesystem API exposes only MD5. |
 | Atomic replacement, rollback, corruption recovery | Done | Version directories are staged outside the active path, directory promotion and activation records use rollback files, interrupted promotions restore the prior generation, and invalid active packs roll back or reinstall bundled content. |
 | Small cancellable LRU cache | Done | Word cache capacity is 128; lemma/root capacities are 64 each. Cache misses share in-flight promises, rejected entries are evicted, and concrete repository calls accept `AbortSignal` without changing the shared interface. |
 | Lookup and paginated occurrence use cases | Done | Existing Phase 1 use cases are wired to the repository in the container; surface/lemma/root predicates are parameterized, results are Quran-ordered, limits are bounded to 100, and offset cursors are deterministic. |
-| Repository integration tests and benchmark harness | Done | Tests use the actual 29,233,152-byte schema-2 SQLite pack via Node `node:sqlite`; lifecycle failure modes use an injected backend. `scripts/benchmark-word-study-repository.cjs` enforces the Phase 3 p95 gates. |
+| Repository integration tests and benchmark harness | Done | Tests use the actual 27,549,696-byte schema-3 SQLite pack via Node `node:sqlite`; lifecycle failure modes use an injected backend. `scripts/benchmark-word-study-repository.cjs` enforces the Phase 3 p95 gates. |
 | Offline cold lookup | Done in CI-equivalent profile | Tests open the local pack read-only with no network path. The repository never fetches content; network access exists only in the explicit hosted-update method. |
 | Golden counts and pagination through real repository | Done | `3:3:9` resolves lemma `أَنزَلَ` with 183 occurrences and root `نزل` with 293 occurrences across 12 lemmas; root pagination returns 293 items from `2:4:4` through `97:4:1`. |
 | Performance gate | Done in CI-equivalent profile | Node 24 / `node:sqlite`, warm OS file cache and repository LRU cold per lookup: lookup p95 0.111 ms; first 50 lemma p95 0.514 ms; first 50 root p95 0.572 ms. Gates are 50/100 ms. |
@@ -604,8 +604,8 @@ Release source versions/checksums:
 
 | Artifact | Version | Checksum / size |
 |---|---|---|
-| Word Study SQLite format | `quran-word-study-sqlite-v1`, schema 2 | database SHA-256 `b6fc4770fc68c43c7b41d2596a01cffa94ad1c6f5bd76ee6f820a4af37c65715`; 29,233,152 bytes |
-| Word Study logical pack | compiler 2.0.0, schema 2 | logical SHA-256 `5ffae99e2e62d10c89efc98bb7d18cf1e8d89a59f5211b73cc26d571fbcacccd` |
+| Word Study SQLite format | `quran-word-study-sqlite-v1`, schema 3 | database SHA-256 `a78130b1ae5c9e4cc64c34232dcc4fa652963151d1ab567200ad0e1a77d08dbc`; 27,549,696 bytes |
+| Word Study logical pack | compiler 3.0.0, schema 3 | logical SHA-256 `a384f0c7cb3fea90b0e26691ccb94ecf16fee5d4ac2afcf0092c29bff28002c0` |
 | Quranic Arabic Corpus morphology | v0.4 | source SHA-256 `a1d12923815341face765083805d2148ed2d9f5cc3f7d6665219d887675d8c46` |
 | Quran App offline English word pack | 2026-07-04 | source SHA-256 `38975bff99637665869e8231d1d5824b1bc4db4c6cd3b6358b8231d4e882b6f3` |
 
@@ -703,7 +703,7 @@ Implementation status on 2026-07-18: **code and automated verification complete;
 | Morphology terminology guide | Done | `MorphologyGuideSheet` is a scrollable, accessible bottom sheet with numeric height constraints, back/overlay/close dismissal, segment definitions, feature definitions, Arabic terms, and compact examples. |
 | Source relocation | Done | The in-flow About card is removed. Settings links to `Word Study Sources`, which reads active core plus installed grammar/dictionary manifests for source/version/rights/checksum/link presentation and records methodology boundaries. |
 | Attribution retention | Done | Dictionary source/version attribution remains available in the Dictionary information sheet, and Word Study sharing retains source titles and versions. |
-| Selected-language meaning | Done | The full screen reads only the selected language's exact `offline_word_translations` verse row and canonical word position. English uses the bundled Word Study gloss; unavailable or unreadable selected-language values show a visible `English fallback · Bundled offline` label and reason. No network lookup is added. |
+| Selected-language meaning | Done | The full screen and occurrence results read only exact `offline_word_translations` rows at the canonical word position. English and Bangla use the same independent pack path. Fallback uses English only when its word pack is installed; otherwise the UI reports that the meaning is unavailable offline. No network lookup is added. |
 | RTL and font scaling | Done in code/automated audit | The ayah selector remains independently RTL with selected accessibility state and font-scale-aware collapsed height. Urdu/Persian meaning text renders RTL; other supported meanings and English fallback render LTR. Content cards and the guide remain content-driven or scrollable. |
 | Automated coverage | Done | Focused tests cover the four-tab order, removed legacy UI, unique segment features, selected-language exact-position resolution, explicit English fallback, RTL/LTR meaning direction, font-scale-aware ayah sizing, guide constraints, source access, dictionary citations, and attributed sharing. |
 | Physical-device verification | Pending release gate | An API 36 emulator is available for development checks, but TalkBack, largest font/display scale, contrast, offline non-English pack, rapid selection, low-memory, and production-signed physical-device results still require the checklist record. VoiceOver remains deferred because this checkout has no iOS project. |

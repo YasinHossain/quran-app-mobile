@@ -4,7 +4,7 @@ import React from 'react';
 import {
   Animated,
   FlatList,
-  Platform, Linking, Modal, Pressable,
+  Linking, Platform, Pressable,
   StyleSheet,
   Text,
   TextInput,
@@ -36,6 +36,7 @@ import { useAppTheme } from '@/providers/ThemeContext';
 import { useUiTranslation } from '@/providers/UiLanguageContext';
 import { IndexScrubber, type IndexScrubberHandle } from '@/components/reader/IndexScrubber';
 import { sideSheetTransform, useModalTransition } from '@/components/motion/modalTransition';
+import { PortalOverlay } from '@/components/motion/PortalOverlay';
 import juzData from '../../src/data/juz.json';
 
 import type { Chapter } from '@/types';
@@ -150,18 +151,21 @@ function HomeSearchHeader({
 }): React.JSX.Element {
   const insets = useSafeAreaInsets();
   const [isMenuOpen, setIsMenuOpen] = React.useState(false);
+  const [isMenuSettled, setIsMenuSettled] = React.useState(false);
   const { width } = useWindowDimensions();
   const menuWidth = Math.min(280, Math.round(width * 0.8));
   const hiddenTranslateX = -menuWidth;
 
   const { visible, progress, onModalShow } = useModalTransition(isMenuOpen, {
     preset: 'drawer',
+    onAfterOpen: () => setIsMenuSettled(true),
+    onAfterClose: () => setIsMenuSettled(false),
   });
 
   const { isDark, setDarkModeEnabled } = useAppTheme();
   const { t } = useUiTranslation();
   const { items: downloadItems, isLoading: isDownloadIndexLoading } = useDownloadIndexItems({
-    enabled: isMenuOpen,
+    enabled: isMenuSettled,
   });
   const { label: downloadedResourceSizeLabel } = useDownloadedResourceSize(downloadItems);
 
@@ -199,19 +203,17 @@ function HomeSearchHeader({
       style={{ zIndex: 50, elevation: 0 }}
       left={
         <View>
-          <HeaderActionButton accessibilityLabel="Open menu" onPress={openMenu}>
+          <HeaderActionButton
+            accessibilityLabel={t('open_menu', { fallback: 'Open menu' })}
+            onPress={openMenu}
+          >
             <Menu size={24} color={isDark ? '#E5E5E5' : '#2F3744'} />
           </HeaderActionButton>
 
-          <Modal
-            hardwareAccelerated
-            transparent
+          <PortalOverlay
             visible={visible}
             onShow={onModalShow}
             onRequestClose={closeMenu}
-            animationType="none"
-            statusBarTranslucent
-            {...(Platform.OS === 'ios' ? { presentationStyle: 'overFullScreen' as const } : {})}
           >
             <View style={styles.menuRoot}>
               <Pressable style={StyleSheet.absoluteFill} onPress={closeMenu}>
@@ -226,6 +228,8 @@ function HomeSearchHeader({
               </Pressable>
 
               <Animated.View
+                renderToHardwareTextureAndroid
+                shouldRasterizeIOS
                 style={[
                   styles.menuSheet,
                   {
@@ -310,7 +314,7 @@ function HomeSearchHeader({
                 </View>
               </Animated.View>
             </View>
-          </Modal>
+          </PortalOverlay>
         </View>
       }
       inputRef={headerSearchInputRef}
@@ -321,7 +325,11 @@ function HomeSearchHeader({
       onSubmitEditing={onSubmit}
       right={
         <HeaderActionButton
-          accessibilityLabel={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+          accessibilityLabel={
+            isDark
+              ? t('switch_to_light', { fallback: 'Switch to light mode' })
+              : t('switch_to_dark', { fallback: 'Switch to dark mode' })
+          }
           onPress={() => setDarkModeEnabled(!isDark)}
         >
           {isDark ? <Sun size={24} color="#E5E5E5" /> : <Moon size={24} color="#2F3744" />}
@@ -491,7 +499,7 @@ export default function ReadScreen(): React.JSX.Element {
   const [activeTab, setActiveTab] = React.useState<HomeTab>('surah');
   const { resolvedTheme } = useAppTheme();
   const palette = Colors[resolvedTheme];
-  const { t } = useUiTranslation();
+  const { t, formatNumber } = useUiTranslation();
   const [searchHeaderHeight, setSearchHeaderHeight] = React.useState(0);
   const headerSearch = useHeaderSearch();
   const listRef = React.useRef<FlatList<HomeListRow> | null>(null);
@@ -680,14 +688,14 @@ export default function ReadScreen(): React.JSX.Element {
         const surah = surahs[index - 1];
         return surah
           ? t(`surah_names.${surah.id}`, { fallback: surah.name })
-          : `${t('surah_tab')} ${index}`;
+          : `${t('surah_tab')} ${formatNumber(index)}`;
       }
       if (activeTab === 'juz') {
         return t('juz_number', { number: index });
       }
       return t('page_number_label', { number: index });
     },
-    [activeTab, surahs, t]
+    [activeTab, formatNumber, surahs, t]
   );
 
   React.useEffect(() => {

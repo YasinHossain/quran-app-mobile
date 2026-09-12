@@ -29,8 +29,8 @@ export function HomeRecentCard(): React.JSX.Element {
   const hasRecentEntries = recentEntries.length > 0;
   const emptyLabel =
     isLoading && Object.keys(lastRead).length > 0
-      ? 'Loading recent verses...'
-      : 'Your recent verses will appear here';
+      ? t('home_recent_loading', { fallback: 'Loading recent verses...' })
+      : t('home_recent_empty', { fallback: 'Your recent verses will appear here' });
   const activeShadow = React.useMemo(
     () =>
       Platform.OS === 'android'
@@ -133,7 +133,7 @@ export function HomeRecentCard(): React.JSX.Element {
                 key={`${entry.surahId}-${entry.verseNumber}`}
                 onPress={() => handlePress(entry)}
                 accessibilityRole="button"
-                accessibilityLabel={`Open recent verse in ${surahName}`}
+                accessibilityLabel={t('last_read_continue_aria', { surah: surahName, verse: verseRef })}
                 style={({ pressed }) => ({
                   maxWidth: 228,
                   opacity: pressed ? 0.92 : 1,

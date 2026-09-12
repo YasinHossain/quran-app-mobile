@@ -179,7 +179,7 @@ function getOfflinePageVersesSnapshot(params: {
           v.surah AS surah,
           v.ayah AS ayah,
           v.arabic_uthmani AS arabic_uthmani,
-          COALESCE(wt.words_json, v.words_json) AS words_json
+          wt.words_json AS words_json
         FROM offline_verses v
         LEFT JOIN offline_word_translations wt
           ON wt.verse_key = v.verse_key
@@ -236,7 +236,7 @@ function getOfflinePageVersesSnapshot(params: {
         v.surah AS surah,
         v.ayah AS ayah,
         v.arabic_uthmani AS arabic_uthmani,
-          COALESCE(wt.words_json, v.words_json) AS words_json,
+          wt.words_json AS words_json,
           t.translation_id AS translation_id,
           t.text AS translation_text
         FROM offline_verses v

@@ -77,7 +77,7 @@ Android Phase 9A can be marked complete only when:
 Automated/source checks completed:
 
 - Selected installed word-language resolution is exact by `language_code`, canonical verse key, and word position; it does not coalesce silently to another language or call the network.
-- Missing, malformed, or unreadable selected-language content resolves deterministically to the bundled English gloss with a visible English-fallback label and explanation.
+- Missing, malformed, or unreadable selected-language content uses the independently installed English word pack when available, with a visible fallback label; without it, the UI explicitly reports that the meaning is unavailable offline.
 - Arabic ayah text has independent RTL direction, selected state, position labels, and previous/next accessibility actions; contextual Urdu/Persian meanings render RTL independently of app chrome.
 - Collapsed ayah viewport sizing accounts for system `fontScale`; cards use content-driven minimum sizing and the terminology guide remains height-constrained and scrollable.
 - Light/dark presentation continues to use semantic theme palettes, and selector/sheet motion continues to respect reduced-motion settings.
@@ -92,7 +92,7 @@ Emulator checks completed:
 
 - The `/study/word/3/3/9` deep link opens the redesigned screen with the correct selected word, four study tabs, and Morphology selected by default.
 - With the installed Bangla pack selected, the screen reads the exact offline word value `এবং তিনি অবতীর্ণ করেছেন` and labels it `Bangla · Installed offline`.
-- With uninstalled Urdu selected, the screen shows the bundled English gloss and visibly labels it `English fallback · Bundled offline`, including the reason that Urdu is unavailable offline for that word.
+- With uninstalled Urdu selected and the English word pack installed, the screen shows the English value and labels it `English fallback · Installed offline`; after removing English too, it reports `Meaning unavailable offline`.
 - At Android font scale `1.3`, the collapsed full-ayah selector grows to fit its scaled Arabic lines and remains expandable; the contextual meaning, source badge, morphology cards, and following heading remain readable without overlap.
 - With the app's dark theme selected, the ayah, tabs, morphology segments, contextual meaning/source badge, and cards retain readable contrast. Emulator font scale, theme, and selected word language were restored after the audit.
 
@@ -100,5 +100,5 @@ Still required before release approval:
 
 - Repeat TalkBack focus/selection announcements on physical Android hardware.
 - Repeat largest font and display scales, light/dark themes, LTR/RTL app languages, and the expanded/collapsed long-ayah selector on physical hardware and the final production-signed artifact.
-- Verify airplane-mode behavior with bundled English only and with an installed non-English word-language pack.
+- Verify airplane-mode behavior with the English word-language pack only and with an installed non-English word-language pack.
 - Complete the stress, low-memory, audio, rollback, privacy, and qualified scholarly review rows above.

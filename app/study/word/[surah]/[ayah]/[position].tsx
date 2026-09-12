@@ -343,8 +343,12 @@ export default function WordStudyScreen(): React.JSX.Element {
 
   const handleShare = React.useCallback(() => {
     if (!selected) return;
-    void Share.share({ message: buildWordStudyShareMessage(selected, surahName) });
-  }, [selected, surahName]);
+    const meaning =
+      contextualMeaning.status === 'ready' && !contextualMeaning.presentation.isUnavailable
+        ? contextualMeaning.presentation.text
+        : undefined;
+    void Share.share({ message: buildWordStudyShareMessage(selected, surahName, meaning) });
+  }, [contextualMeaning, selected, surahName]);
 
   const handleOpenGuide = React.useCallback(() => {
     if (tab === 'morphology') {

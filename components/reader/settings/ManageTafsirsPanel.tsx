@@ -1,6 +1,6 @@
 import React from 'react';
 import { FlashList } from '@shopify/flash-list';
-import { Alert, InteractionManager, Platform, Pressable, Text, View } from 'react-native';
+import { Alert, Platform, Pressable, Text, View } from 'react-native';
 
 import Colors from '@/constants/Colors';
 import { HeaderSearchInput } from '@/components/search/HeaderSearchInput';
@@ -15,11 +15,9 @@ import {
 import { DownloadTafsirSurahUseCase } from '@/src/core/application/use-cases/DownloadTafsirSurah';
 import type { DownloadIndexItemWithKey } from '@/src/core/domain/entities/DownloadIndexItem';
 import { getDownloadKey } from '@/src/core/domain/entities/DownloadIndexItem';
-import { apiFetch } from '@/src/core/infrastructure/api/apiFetch';
 import { container } from '@/src/core/infrastructure/di/container';
 import { logger } from '@/src/core/infrastructure/monitoring/logger';
-
-import chaptersData from '../../../src/data/chapters.en.json';
+import { getBundledTafsirDownloadSizeBytes } from '@/src/core/infrastructure/offline-packs/bundledDownloadMetadata';
 
 import {
   ReorderableSelectionList,
@@ -33,33 +31,7 @@ import { buildLanguages, filterResources, groupResources, type ResourceRecord } 
 
 export const MAX_TAFSIR_SELECTIONS = 3;
 
-const ESTIMATE_SAMPLE_CHAPTERS = [1, 2, 18, 36, 55, 78] as const;
-const ESTIMATE_STORAGE_OVERHEAD_MULTIPLIER = 1.2;
 const BYTES_PER_MEGABYTE = 1024 * 1024;
-const FALLBACK_TOTAL_VERSE_COUNT = 6236;
-
-const TOTAL_VERSE_COUNT = (
-  Array.isArray(chaptersData)
-    ? chaptersData.reduce((total, chapter) => {
-        const verses = typeof chapter?.verses_count === 'number' ? chapter.verses_count : 0;
-        return total + Math.max(0, verses);
-      }, 0)
-    : 0
-) || FALLBACK_TOTAL_VERSE_COUNT;
-
-type DownloadSizeInfo = {
-  mb: number | null;
-  isExact: boolean;
-};
-
-type ApiEstimateTafsir = {
-  resource_id?: number;
-  text?: string;
-};
-
-type ApiEstimateResponse = {
-  tafsirs?: ApiEstimateTafsir[];
-};
 
 type Row =
   | { type: 'tabs' }
@@ -71,72 +43,10 @@ function findEnglishTafsirId(tafsirs: ResourceRecord[]): number | undefined {
   return tafsirs.find((t) => t.lang.toLowerCase() === 'english')?.id;
 }
 
-function utf8ByteLength(input: string): number {
-  const encoded = encodeURIComponent(input);
-  let bytes = 0;
-
-  for (let index = 0; index < encoded.length; index += 1) {
-    if (encoded[index] === '%') {
-      bytes += 1;
-      index += 2;
-      continue;
-    }
-    bytes += 1;
-  }
-
-  return bytes;
-}
-
-async function estimateTafsirSizeMb(tafsirId: number): Promise<number> {
-  const sampleResponses = await Promise.all(
-    ESTIMATE_SAMPLE_CHAPTERS.map((chapterNumber) =>
-      apiFetch<ApiEstimateResponse>(
-        `/tafsirs/${tafsirId}/by_chapter/${chapterNumber}`,
-        {
-          per_page: '300',
-          page: '1',
-        },
-        'Failed to estimate tafsir size'
-      )
-    )
-  );
-
-  let sampleByteCount = 0;
-  let sampleVerseCount = 0;
-
-  for (const response of sampleResponses) {
-    for (const tafsir of response.tafsirs ?? []) {
-      if (Number(tafsir.resource_id ?? tafsirId) !== tafsirId) continue;
-      const html = String(tafsir.text ?? '').trim();
-      sampleByteCount += utf8ByteLength(html);
-      sampleVerseCount += 1;
-    }
-  }
-
-  if (sampleVerseCount <= 0) {
-    throw new Error('No sample tafsir verses available for size estimation');
-  }
-
-  const averageBytesPerVerse = sampleByteCount / sampleVerseCount;
-  const estimatedStoredBytes =
-    averageBytesPerVerse * TOTAL_VERSE_COUNT * ESTIMATE_STORAGE_OVERHEAD_MULTIPLIER;
-  const estimatedMb = estimatedStoredBytes / BYTES_PER_MEGABYTE;
-
-  return Math.max(0.1, Math.round(estimatedMb * 10) / 10);
-}
-
-async function resolveTafsirDownloadSizeInfo(tafsirId: number): Promise<DownloadSizeInfo> {
-  const packAvailability = await container.getTafsirPackRepository().getPackAvailability(tafsirId);
-  if (packAvailability && packAvailability.sizeBytes > 0) {
-    const mb = Math.max(0.1, Math.round((packAvailability.sizeBytes / BYTES_PER_MEGABYTE) * 10) / 10);
-    return { mb, isExact: true };
-  }
-
-  const estimatedMb = await estimateTafsirSizeMb(tafsirId);
-  return {
-    mb: estimatedMb,
-    isExact: false,
-  };
+function formatDownloadSizeLabel(sizeBytes: number | null): string {
+  return sizeBytes
+    ? `Download size: ${Math.max(0.1, sizeBytes / BYTES_PER_MEGABYTE).toFixed(1)} MB`
+    : 'Download size unavailable';
 }
 
 const TafsirResourceRow = React.memo(function TafsirResourceRow({
@@ -243,10 +153,6 @@ export function ManageTafsirsPanel({
   const [busyTafsirIds, setBusyTafsirIds] = React.useState<Set<number>>(() => new Set());
   const [downloadTarget, setDownloadTarget] = React.useState<ResourceRecord | null>(null);
   const [deleteTarget, setDeleteTarget] = React.useState<ResourceRecord | null>(null);
-  const [downloadSizeInfoById, setDownloadSizeInfoById] = React.useState<
-    Record<number, DownloadSizeInfo | null | undefined>
-  >({});
-  const [estimatingTafsirIds, setEstimatingTafsirIds] = React.useState<Set<number>>(() => new Set());
 
   const selectedIds = React.useMemo(() => new Set<number>(orderedSelection ?? []), [orderedSelection]);
   const {
@@ -393,34 +299,6 @@ export function ManageTafsirsPanel({
     [busyTafsirIds, refreshIndex, setBusy]
   );
 
-  const ensureDownloadSizeInfo = React.useCallback(
-    async (tafsirId: number): Promise<void> => {
-      if (downloadSizeInfoById[tafsirId] !== undefined) return;
-      if (estimatingTafsirIds.has(tafsirId)) return;
-
-      setEstimatingTafsirIds((prev) => {
-        const next = new Set(prev);
-        next.add(tafsirId);
-        return next;
-      });
-
-      try {
-        const sizeInfo = await resolveTafsirDownloadSizeInfo(tafsirId);
-        setDownloadSizeInfoById((prev) => ({ ...prev, [tafsirId]: sizeInfo }));
-      } catch (error) {
-        logger.warn('Failed to resolve tafsir download size', { tafsirId }, error as Error);
-        setDownloadSizeInfoById((prev) => ({ ...prev, [tafsirId]: null }));
-      } finally {
-        setEstimatingTafsirIds((prev) => {
-          const next = new Set(prev);
-          next.delete(tafsirId);
-          return next;
-        });
-      }
-    },
-    [downloadSizeInfoById, estimatingTafsirIds]
-  );
-
   const handlePressDownload = React.useCallback(
     (tafsir: ResourceRecord) => {
       if (busyTafsirIds.has(tafsir.id)) return;
@@ -428,21 +306,6 @@ export function ManageTafsirsPanel({
     },
     [busyTafsirIds]
   );
-
-  React.useEffect(() => {
-    if (!downloadTarget) return;
-
-    let cancelled = false;
-    const interactionHandle = InteractionManager.runAfterInteractions(() => {
-      if (cancelled) return;
-      void ensureDownloadSizeInfo(downloadTarget.id);
-    });
-
-    return () => {
-      cancelled = true;
-      interactionHandle.cancel();
-    };
-  }, [downloadTarget, ensureDownloadSizeInfo]);
 
   const handleConfirmDownload = React.useCallback(() => {
     if (!downloadTarget) return;
@@ -762,17 +625,9 @@ export function ManageTafsirsPanel({
     );
   }
 
-  const downloadSizeInfo = downloadTarget ? downloadSizeInfoById[downloadTarget.id] : undefined;
-  const isEstimatingDownloadSize =
-    downloadTarget !== null &&
-    (downloadSizeInfo === undefined || estimatingTafsirIds.has(downloadTarget.id));
-  const downloadEstimateLabel = isEstimatingDownloadSize
-    ? 'Estimating size...'
-    : downloadSizeInfo && typeof downloadSizeInfo.mb === 'number'
-      ? downloadSizeInfo.isExact
-        ? `Download size: ${downloadSizeInfo.mb.toFixed(1)} MB`
-        : `Estimated size: ~${downloadSizeInfo.mb.toFixed(1)} MB`
-      : 'Download size unavailable';
+  const downloadSizeLabel = formatDownloadSizeLabel(
+    downloadTarget ? getBundledTafsirDownloadSizeBytes(downloadTarget.id) : null
+  );
 
   return (
     <View className="flex-1">
@@ -809,12 +664,10 @@ export function ManageTafsirsPanel({
         visible={downloadTarget !== null}
         title="Download tafsir?"
         resourceName={downloadTarget?.name ?? null}
-        detailLabel={downloadEstimateLabel}
-        isDetailLoading={isEstimatingDownloadSize}
+        detailLabel={downloadSizeLabel}
         description="This downloads the tafsir for offline reading."
         confirmLabel="Download"
         mutedColor={palette.muted}
-        tintColor={palette.tint}
         onConfirm={handleConfirmDownload}
         onClose={() => setDownloadTarget(null)}
       />
@@ -827,7 +680,6 @@ export function ManageTafsirsPanel({
         confirmLabel="Delete"
         confirmTone="danger"
         mutedColor={palette.muted}
-        tintColor={palette.tint}
         onConfirm={handleConfirmDelete}
         onClose={() => setDeleteTarget(null)}
       />
