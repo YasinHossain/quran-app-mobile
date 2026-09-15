@@ -20,6 +20,7 @@ type Palette = {
 };
 
 type State =
+  | { status: 'checking' }
   | { status: 'installed' }
   | { status: 'ready' };
 
@@ -32,7 +33,7 @@ const BUNDLED_ENTRIES = getBundledWordReferencePacks();
 export function DictionaryPackDownloadPanel({ palette }: { palette: Palette }): React.JSX.Element {
   const installer = container.getWordReferencePackInstaller();
   const { items, refresh } = useDownloadIndexItems({ enabled: true, pollIntervalMs: 500, pollWhileEnabled: true });
-  const [state, setState] = React.useState<State>({ status: 'ready' });
+  const [state, setState] = React.useState<State>({ status: 'checking' });
 
   React.useEffect(() => {
     let active = true;
@@ -41,11 +42,11 @@ export function DictionaryPackDownloadPanel({ palette }: { palette: Palette }): 
       .listInstalledSources()
       .then((installedSources) => {
         if (!active) return;
-        if (installedSources.length > 0) {
-          setState({ status: 'installed' });
-        }
+        setState({ status: installedSources.length > 0 ? 'installed' : 'ready' });
       })
-      .catch(() => undefined);
+      .catch(() => {
+        if (active) setState({ status: 'ready' });
+      });
     return () => {
       active = false;
     };
@@ -53,9 +54,9 @@ export function DictionaryPackDownloadPanel({ palette }: { palette: Palette }): 
 
   return (
     <View style={styles.section}>
-      {state.status === 'installed' ? (
+      {state.status !== 'ready' ? (
         <View style={styles.loading}>
-          <ActivityIndicator color={palette.tint} />
+          <ActivityIndicator accessibilityLabel="Loading dictionary" color={palette.tint} />
           <Text style={[styles.status, { color: palette.muted }]}>Loading this word…</Text>
         </View>
       ) : BUNDLED_ENTRIES.map((entry) => {

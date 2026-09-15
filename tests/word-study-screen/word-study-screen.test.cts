@@ -977,8 +977,12 @@ test('dictionary pack metadata is immediate while install actions wait for local
   );
   assert.match(section, /onDownload=\{installedSources\.status === 'ready'/);
   assert.match(fallbackPanel, /\.listInstalledSources\(\)/);
-  assert.match(fallbackPanel, /if \(installedSources\.length > 0\)/);
-  assert.match(fallbackPanel, /setState\(\{ status: 'installed' \}\)/);
+  assert.match(fallbackPanel, /useState<State>\(\{ status: 'checking' \}\)/);
+  assert.match(
+    fallbackPanel,
+    /status: installedSources\.length > 0 \? 'installed' : 'ready'/
+  );
+  assert.match(fallbackPanel, /state\.status !== 'ready'/);
 });
 
 test('dictionary word changes wait for the default definition and preserve layout height', () => {
