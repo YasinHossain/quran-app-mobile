@@ -55,6 +55,11 @@ class NativeSurahReaderViewManager : SimpleViewManager<NativeSurahReaderView>() 
     view.setReaderState(readerState)
   }
 
+  @ReactProp(name = "wordWindow")
+  fun setWordWindow(view: NativeSurahReaderView, wordWindow: ReadableArray?) {
+    view.setWordWindow(wordWindow)
+  }
+
   @ReactProp(name = "targetVerse")
   fun setTargetVerse(view: NativeSurahReaderView, targetVerse: Int) {
     view.setTargetVerse(targetVerse)

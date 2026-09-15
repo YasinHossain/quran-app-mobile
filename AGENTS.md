@@ -9,7 +9,7 @@ The website is useful for shared business behavior, terminology, content, and fe
 - Install: `npm install`
 - Run: `npm run android` / `npm run ios`
 - Type-check: `npm run type-check`
-- Verify before handoff: `npm run verify`
+- Full verification for implementation handoff: `npm run verify`
 - Sync shared core from web: `npm run sync:web-core` (defaults to `../quran-app`)
 
 ## Repository boundaries
@@ -39,6 +39,7 @@ Use this order when requirements leave room for judgment:
 
 - Use semantic tokens from `tailwind.config.js`; avoid hard-coded colors when a suitable token exists.
 - Reuse or extend an existing component when it fits. Introduce a new component or pattern when it makes the mobile experience clearer or more cohesive.
+- Do not create a new component or file merely to hold a small local change. Extract one when it has a clear reusable responsibility or materially improves the surrounding screen's maintainability.
 - Prefer platform-native navigation, gestures, sheets, safe areas, keyboard behavior, and touch targets.
 - Keep related screens consistent, but do not preserve a weak pattern solely because it already exists.
 - New visual tokens and reusable primitives are allowed when they strengthen the mobile design system; centralize and document durable additions.
@@ -60,9 +61,12 @@ When the user explicitly asks to match the website, inspect the relevant web fil
 - Account for loading, empty, error, retry, and offline states where applicable.
 - Preserve dark mode, RTL text behavior, screen-reader semantics, reduced motion, and usable touch targets.
 - Prefer scoped changes. Refactor adjacent code when it is necessary for a coherent implementation, not as unrelated cleanup.
-- Add or update tests in proportion to the behavioral risk.
+- Add or update tests in proportion to the behavioral risk. Test observable behavior and meaningful regressions; do not add tests that merely restate TSX structure, style classes, static copy, or implementation details.
+- Prefer extending the nearest existing test suite. Create a new test file or harness only when no suitable suite exists and the new coverage protects important behavior.
+- Do not extract production components or helpers solely to make a low-value test possible. Extraction should also improve the production design or enable important behavioral coverage.
 - Update documentation only when it records a durable product decision, architecture, reusable component, data format, or operational workflow.
-- Finish implementation work with `npm run verify`.
+- During implementation, run the smallest relevant checks while iterating. Once the change is stable, finish implementation work with one `npm run verify`; repeat the full command only after subsequent changes or failures justify it.
+- Read-only reviews, diagnostics, documentation-only work, and performance measurements that do not change production behavior do not require new tests or the full verification suite. Validate their direct outputs instead.
 
 ## Established mobile patterns
 

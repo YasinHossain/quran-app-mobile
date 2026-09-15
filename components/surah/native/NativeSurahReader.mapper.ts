@@ -19,6 +19,7 @@ type BuildNativeLightSurahVersesParams = {
   supportsNativeLightSurahReader: boolean;
   translationsById: Map<number, TranslationResource>;
   verseNumbers: number[];
+  materializeWords?: boolean;
 };
 
 function buildNativeWords(verse: SurahVerse): NativeSurahReaderWord[] {
@@ -80,6 +81,7 @@ export function buildNativeLightSurahVerses({
   supportsNativeLightSurahReader,
   translationsById,
   verseNumbers,
+  materializeWords = true,
 }: BuildNativeLightSurahVersesParams): NativeSurahReaderVerse[] {
   if (!supportsNativeLightSurahReader) return [];
 
@@ -87,7 +89,7 @@ export function buildNativeLightSurahVerses({
   for (const verseNumber of verseNumbers) {
     const verse = getVerseByNumber(verseNumber);
     if (!verse) return [];
-    const shouldIncludeWords = showByWords || audioWordSyncEnabled || tajweed;
+    const shouldIncludeWords = materializeWords && (showByWords || audioWordSyncEnabled || tajweed);
     const nativeWords = shouldIncludeWords ? buildNativeWords(verse) : undefined;
     const words =
       shouldIncludeWords && nativeWords?.length

@@ -46,11 +46,13 @@
     "debug:android:ui": "node scripts/android-debug.js ui",
     "type-check": "tsc --noEmit",
     "check:core": "node scripts/check-core-purity.js",
-    "verify": "npm run type-check && npm run check:core && npm run test:search-numerals && npm run test:verse-spotlight && npm run test:verse-spotlight-widget-plugin && npm run test:welcome-resource-setup && npm run test:word-study-pack && npm run test:word-study-repository && npm run test:word-study-quick-sheet && npm run test:word-study-screen && npm run test:tafsir-pager && npm run test:bookmarks-layout && npm run test:modal-transition",
+    "verify": "npm run type-check && npm run check:core && npm run test:search-numerals && npm run test:verse-spotlight && npm run test:verse-spotlight-widget-plugin && npm run test:welcome-resource-setup && npm run test:word-study-pack && npm run test:word-study-repository && npm run test:word-study-quick-sheet && npm run test:word-study-screen && npm run test:tafsir-pager && npm run test:native-reader-word-window && npm run test:bookmarks-layout && npm run test:modal-transition",
     "build:test-tafsir-pager": "tsc -p tests/tafsir-pager/tsconfig.json",
     "test:tafsir-pager": "npm run build:test-tafsir-pager && node --test .artifacts/tafsir-pager-tests/tests/tafsir-pager/*.cjs",
     "test:modal-transition": "node --test tests/modal-transition/*.test.cjs",
-    "test:bookmarks-layout": "node --test tests/bookmarks/*.test.cjs"
+    "test:bookmarks-layout": "node --test tests/bookmarks/*.test.cjs",
+    "build:test-native-reader-word-window": "tsc -p tests/native-reader-word-window/tsconfig.json",
+    "test:native-reader-word-window": "npm run build:test-native-reader-word-window && node --test .artifacts/native-reader-word-window-tests/tests/native-reader-word-window/*.cjs"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",

@@ -40,6 +40,8 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
   )
 
   private val verses = mutableListOf<NativeVerse>()
+  private val baseVerses = mutableListOf<NativeVerse>()
+  private val wordWindowByVerseKey = mutableMapOf<String, List<NativeWord>>()
   private val layoutManager = LinearLayoutManager(reactContext)
   private var currentWordPressSource: String = "translation"
   private val adapter =
@@ -263,6 +265,25 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
     )
   }
 
+  fun setWordWindow(incomingWordWindow: ReadableArray?) {
+    val nextWindow = mutableMapOf<String, List<NativeWord>>()
+    if (incomingWordWindow != null) {
+      for (index in 0 until incomingWordWindow.size()) {
+        val item = incomingWordWindow.getMap(index)?.toNativeWordWindowVerse() ?: continue
+        nextWindow[item.verseKey] = item.words
+      }
+    }
+    if (wordWindowByVerseKey == nextWindow) return
+
+    val anchor = captureScrollAnchor()
+    wordWindowByVerseKey.clear()
+    wordWindowByVerseKey.putAll(nextWindow)
+    rebuildRenderedVerses()
+    notifyAllRowsChanged()
+    requestImmediateRecyclerRefresh()
+    restoreScrollAnchor(anchor)
+  }
+
   fun setSurahIntro(incomingSurahIntro: ReadableMap?) {
     adapter.surahIntro = incomingSurahIntro?.toNativeSurahIntro()
     adapter.notifyDataSetChanged()
@@ -270,10 +291,11 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
   }
 
   fun setVerses(incomingVerses: ReadableArray?) {
-    verses.clear()
+    baseVerses.clear()
     hasReceivedVerses = true
     lastVisibleVerseKey = null
-    verses.addAll(parseVerses(incomingVerses))
+    baseVerses.addAll(parseVerses(incomingVerses))
+    rebuildRenderedVerses()
     adapter.notifyDataSetChanged()
     completeInitialPlacementIfReady()
   }
@@ -468,8 +490,9 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
     )
     adapter.theme = nextTheme
     adapter.surahIntro = nextSurahIntro
-    verses.clear()
-    verses.addAll(nextVerses)
+    baseVerses.clear()
+    baseVerses.addAll(nextVerses)
+    rebuildRenderedVerses()
     topInsetPx = nextTopInsetPx
     bottomInsetPx = nextBottomInsetPx
     applyRecyclerPadding()
@@ -493,6 +516,11 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
     return verses.indices.all { index ->
       verses[index].stableId(surahId) == nextVerses[index].stableId(nextSurahId)
     }
+  }
+
+  private fun rebuildRenderedVerses() {
+    verses.clear()
+    verses.addAll(mergeNativeWordWindow(baseVerses, wordWindowByVerseKey))
   }
 
   private fun captureScrollAnchor(): ScrollAnchor? {

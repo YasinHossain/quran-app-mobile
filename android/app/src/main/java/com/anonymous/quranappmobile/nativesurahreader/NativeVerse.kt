@@ -48,8 +48,24 @@ internal data class NativeSurahIntro(
     val surahName: String,
 )
 
+internal data class NativeWordWindowVerse(
+    val verseKey: String,
+    val verseNumber: Int,
+    val words: List<NativeWord>,
+)
+
 internal fun NativeVerse.stableId(surahId: Int): Long {
   return verseApiId?.toLong() ?: (surahId * 1000L + verseNumber)
+}
+
+internal fun mergeNativeWordWindow(
+    baseVerses: List<NativeVerse>,
+    wordWindowByVerseKey: Map<String, List<NativeWord>>,
+): List<NativeVerse> {
+  return baseVerses.map { verse ->
+    val windowWords = wordWindowByVerseKey[verse.verseKey]
+    if (windowWords == null) verse else verse.copy(words = windowWords)
+  }
 }
 
 internal fun ReadableMap.toNativeSurahIntro(): NativeSurahIntro? {
@@ -104,29 +120,7 @@ internal fun ReadableMap.toNativeVerse(): NativeVerse? {
     }
   }
 
-  val words = mutableListOf<NativeWord>()
-  val incomingWords = getArrayIfPresent("words")
-  if (incomingWords != null) {
-    for (index in 0 until incomingWords.size()) {
-      val item = incomingWords.getMap(index) ?: continue
-      val uthmani = item.getStringIfPresent("uthmani")?.trim().orEmpty()
-      if (uthmani.isBlank()) continue
-      val charTypeName = item.getStringIfPresent("charTypeName")?.trim()?.takeIf { it.isNotBlank() }
-
-      words.add(
-          NativeWord(
-              id = item.getDoubleIfPresent("id")?.toInt()?.takeIf { it > 0 } ?: index + 1,
-              position = item.getDoubleIfPresent("position")?.toInt()?.takeIf { it > 0 },
-              uthmani = uthmani,
-              translationText =
-                  item.getStringIfPresent("translationText")?.trim()?.takeIf { it.isNotBlank() },
-              charTypeName = charTypeName,
-              codeV2 = item.getStringIfPresent("codeV2")?.trim()?.takeIf { it.isNotBlank() },
-              pageNumber = item.getDoubleIfPresent("pageNumber")?.toInt()?.takeIf { it > 0 },
-          ),
-      )
-    }
-  }
+  val words = toNativeWords()
 
   val tajweedGlyphRuns = mutableListOf<NativeTajweedGlyphRun>()
   val incomingTajweedGlyphRuns = getArrayIfPresent("tajweedGlyphRuns")
@@ -168,4 +162,46 @@ internal fun ReadableMap.toNativeVerse(): NativeVerse? {
       tajweedGlyphRuns = tajweedGlyphRuns,
       translationItems = translationItems,
   )
+}
+
+internal fun ReadableMap.toNativeWordWindowVerse(): NativeWordWindowVerse? {
+  val verseKey = getStringIfPresent("verseKey")?.trim().orEmpty()
+  val verseNumber = getDoubleIfPresent("verseNumber")?.toInt() ?: 0
+  if (verseKey.isBlank() || verseNumber <= 0) return null
+  val words = toNativeWords()
+  if (words.isEmpty()) return null
+
+  return NativeWordWindowVerse(
+      verseKey = verseKey,
+      verseNumber = verseNumber,
+      words = words,
+  )
+}
+
+private fun ReadableMap.toNativeWords(): List<NativeWord> {
+  val words = mutableListOf<NativeWord>()
+  val incomingWords = getArrayIfPresent("words")
+  if (incomingWords != null) {
+    for (index in 0 until incomingWords.size()) {
+      val item = incomingWords.getMap(index) ?: continue
+      val uthmani = item.getStringIfPresent("uthmani")?.trim().orEmpty()
+      if (uthmani.isBlank()) continue
+      val charTypeName = item.getStringIfPresent("charTypeName")?.trim()?.takeIf { it.isNotBlank() }
+
+      words.add(
+          NativeWord(
+              id = item.getDoubleIfPresent("id")?.toInt()?.takeIf { it > 0 } ?: index + 1,
+              position = item.getDoubleIfPresent("position")?.toInt()?.takeIf { it > 0 },
+              uthmani = uthmani,
+              translationText =
+                  item.getStringIfPresent("translationText")?.trim()?.takeIf { it.isNotBlank() },
+              charTypeName = charTypeName,
+              codeV2 = item.getStringIfPresent("codeV2")?.trim()?.takeIf { it.isNotBlank() },
+              pageNumber = item.getDoubleIfPresent("pageNumber")?.toInt()?.takeIf { it > 0 },
+          ),
+      )
+    }
+  }
+
+  return words
 }

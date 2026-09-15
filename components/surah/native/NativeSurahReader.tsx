@@ -19,6 +19,7 @@ export type {
   NativeSurahReaderTranslationItem,
   NativeSurahReaderVerse,
   NativeSurahReaderWord,
+  NativeSurahReaderWordWindowVerse,
   NativeSurahReaderWordPressEvent,
   NativeSurahReaderVisibleVerseChangeEvent,
 } from './NativeSurahReader.types';

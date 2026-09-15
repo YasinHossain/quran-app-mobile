@@ -32,6 +32,12 @@ export type NativeSurahReaderVerse = {
   translationItems: NativeSurahReaderTranslationItem[];
 };
 
+export type NativeSurahReaderWordWindowVerse = {
+  verseKey: string;
+  verseNumber: number;
+  words: NativeSurahReaderWord[];
+};
+
 export type NativeSurahReaderSurahIntro = {
   chapterId: number;
   infoLabel: string;
@@ -106,6 +112,7 @@ export type NativeSurahReaderWordPressEvent = {
 
 export type NativeSurahReaderProps = ViewProps & {
   readerState?: NativeSurahReaderState;
+  wordWindow?: NativeSurahReaderWordWindowVerse[];
   activeVerseKey?: string | null;
   activeWord?: NativeSurahReaderActiveWord | null;
   wordPressEnabled?: boolean;
