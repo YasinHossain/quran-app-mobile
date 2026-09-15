@@ -1,6 +1,6 @@
 import { generateId } from '@/lib/id';
 
-import { getItem, parseJson, removeItem, setItem } from '@/lib/storage/appStorage';
+import { getCachedItem, getItem, hasCachedItem, parseJson, removeItem, setItem } from '@/lib/storage/appStorage';
 
 import {
   BOOKMARKS_STORAGE_KEY,
@@ -116,7 +116,17 @@ const normalizeLastReadEntry = (value: unknown, fallbackUpdatedAt: number): Last
 };
 
 export async function loadLastReadFromStorage(): Promise<LastReadMap> {
-  const raw = parseJson<Record<string, unknown>>(await getItem(LAST_READ_STORAGE_KEY));
+  return parseLastRead(await getItem(LAST_READ_STORAGE_KEY));
+}
+
+export function getCachedLastRead(): LastReadMap | null {
+  return hasCachedItem(LAST_READ_STORAGE_KEY)
+    ? parseLastRead(getCachedItem(LAST_READ_STORAGE_KEY))
+    : null;
+}
+
+function parseLastRead(serialized: string | null): LastReadMap {
+  const raw = parseJson<Record<string, unknown>>(serialized);
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
     return {};
   }

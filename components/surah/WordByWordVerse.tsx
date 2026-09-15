@@ -197,7 +197,7 @@ function WordToken({
 
   const handlePress = React.useCallback(() => {
     if (!onWordPress) return;
-    if (pressableRef.current) {
+    if (pressBehavior === 'translation' && pressableRef.current) {
       pressableRef.current.measure((x, y, width, height, pageX, pageY) => {
         onWordPress({
           word,
@@ -208,7 +208,7 @@ function WordToken({
     } else {
       onWordPress({ word, wordPosition });
     }
-  }, [onWordPress, word, wordPosition]);
+  }, [onWordPress, pressBehavior, word, wordPosition]);
 
   if (!isPressable) {
     return <View style={wrapperStyle}>{content}</View>;

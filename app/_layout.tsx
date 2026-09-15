@@ -20,7 +20,11 @@ import { StartupResourcePrefetch } from '@/providers/StartupResourcePrefetch';
 import { UiLanguageProvider } from '@/providers/UiLanguageContext';
 import { StatusBar } from 'expo-status-bar';
 import { AppThemeProvider, useAppTheme, THEME_STORAGE_KEY, ThemePreference } from '@/providers/ThemeContext';
-import { getItem } from '@/lib/storage/appStorage';
+import { getCachedItem, preloadItems } from '@/lib/storage/appStorage';
+import { HOME_SPOTLIGHT_CONTENT_KEY, QUICK_LINKS_STORAGE_KEY } from '@/lib/home/storageKeys';
+import { VERSE_SPOTLIGHT_STORAGE_KEYS } from '@/lib/verse-spotlight/engine';
+import { LAST_READ_STORAGE_KEY } from '@/providers/bookmarks/constants';
+import { SETTINGS_KEY } from '@/providers/settingsStorage';
 import { initializeAudioModeAsync } from '@/src/core/infrastructure/audio/audioMode';
 import { initializeAppDbAsync } from '@/src/core/infrastructure/db';
 import { STARTUP_FONT_ASSETS } from '@/src/core/infrastructure/fonts/arabicFonts';
@@ -54,18 +58,25 @@ export default function RootLayout() {
 
     async function bootstrapAsync(): Promise<void> {
       try {
-        const [,,, stored, completedWelcome] = await Promise.all([
-          initializeAudioModeAsync(),
+        const [,, welcomeResult] = await Promise.allSettled([
           initializeAppDbAsync(),
           bootstrapBundledSaheehInternationalAsync(),
-          getItem(THEME_STORAGE_KEY),
           hasCompletedWelcomeAsync(),
+          preloadItems([
+            THEME_STORAGE_KEY,
+            SETTINGS_KEY,
+            LAST_READ_STORAGE_KEY,
+            QUICK_LINKS_STORAGE_KEY,
+            VERSE_SPOTLIGHT_STORAGE_KEYS.home,
+            HOME_SPOTLIGHT_CONTENT_KEY,
+          ]),
         ]);
         if (!cancelled) {
+          const stored = getCachedItem(THEME_STORAGE_KEY);
           if (stored === 'light' || stored === 'dark' || stored === 'system') {
             setInitialThemePreference(stored);
           }
-          setHasCompletedWelcome(completedWelcome);
+          setHasCompletedWelcome(welcomeResult.status === 'fulfilled' && welcomeResult.value);
           setIsThemeLoaded(true);
         }
       } catch (err) {
@@ -80,6 +91,7 @@ export default function RootLayout() {
     }
 
     void bootstrapAsync();
+    void initializeAudioModeAsync();
 
     return () => {
       cancelled = true;
@@ -175,6 +187,10 @@ function RootLayoutNav() {
             <Stack.Screen name="privacy" options={{ presentation: 'modal' }} />
             <Stack.Screen name="settings" options={{ presentation: 'modal' }} />
             <Stack.Screen name="word-study-sources" options={{ presentation: 'modal' }} />
+            <Stack.Screen
+              name="study/word/[surah]/[ayah]/[position]"
+              options={{ headerShown: false, animation: 'slide_from_right' }}
+            />
           </Stack>
           {hasCompletedWelcome ? <AudioPlayerBar /> : null}
         </View>

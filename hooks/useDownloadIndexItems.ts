@@ -126,6 +126,7 @@ export function useDownloadIndexItems({
 } {
   const [items, setItems] = React.useState<DownloadIndexItemWithKey[]>([]);
   const [isLoading, setIsLoading] = React.useState(enabled);
+  const [hasLoaded, setHasLoaded] = React.useState(false);
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
 
   const hasActiveItems = React.useMemo(() => {
@@ -150,6 +151,7 @@ export function useDownloadIndexItems({
         const useCase = new ListDownloadIndexItemsUseCase(repository);
         const result = await useCase.execute();
         setItems((previous) => (areItemsEqual(previous, result) ? previous : result));
+        setHasLoaded(true);
         setErrorMessage(null);
       } catch (error) {
         logger.warn('Failed to load download index items', undefined, error as Error);
@@ -194,5 +196,13 @@ export function useDownloadIndexItems({
     [items]
   );
 
-  return { items, itemsByKey, isLoading, errorMessage, refresh };
+  // Enabling a deferred hook must report loading in that same render. Effects
+  // run later; an empty initial index is not evidence that downloads are absent.
+  return {
+    items,
+    itemsByKey,
+    isLoading: isLoading || (enabled && !hasLoaded && !errorMessage),
+    errorMessage,
+    refresh,
+  };
 }

@@ -144,7 +144,12 @@ export default function WordStudyScreen(): React.JSX.Element {
   const [mountedTabs, setMountedTabs] = React.useState<ReadonlySet<StudyTab>>(
     () => new Set<StudyTab>(['morphology'])
   );
-  const [loadState, setLoadState] = React.useState<LoadState>({ status: 'loading' });
+  const [loadState, setLoadState] = React.useState<LoadState>(() => {
+    if (navigationHandoff?.verseAnalyses && navigationHandoff.verseAnalyses.length > 0) {
+      return { status: 'ready', words: navigationHandoff.verseAnalyses };
+    }
+    return { status: 'loading' };
+  });
   const [retryNonce, setRetryNonce] = React.useState(0);
   const [isMorphologyGuideOpen, setIsMorphologyGuideOpen] = React.useState(false);
   const [isGrammarGuideOpen, setIsGrammarGuideOpen] = React.useState(false);
@@ -176,6 +181,9 @@ export default function WordStudyScreen(): React.JSX.Element {
   React.useEffect(() => {
     if (!location) {
       setLoadState({ status: 'error', message: 'This Word Study link is not valid.' });
+      return;
+    }
+    if (loadState.status === 'ready' && loadState.words.length > 0 && retryNonce === 0) {
       return;
     }
     let cancelled = false;
@@ -239,9 +247,18 @@ export default function WordStudyScreen(): React.JSX.Element {
     };
   }, [grammarRetryNonce, location?.verseKey, tab]);
 
-  const words = loadState.status === 'ready' ? loadState.words : [];
+  const words =
+    loadState.status === 'ready'
+      ? loadState.words
+      : (navigationHandoff?.verseAnalyses ?? []);
   const immediateContextWords = React.useMemo<readonly AyahContextWord[]>(() => {
     if (!navigationHandoff || navigationHandoff.verseKey !== location?.verseKey) return [];
+    if (navigationHandoff.verseAnalyses && navigationHandoff.verseAnalyses.length > 0) {
+      return navigationHandoff.verseAnalyses.map((word) => ({
+        location: word.location,
+        surfaceUthmani: word.surfaceUthmani,
+      }));
+    }
     const previewWords = navigationHandoff.verseWords.length
       ? navigationHandoff.verseWords
       : navigationHandoff.selectedSurfaceText && location
@@ -408,7 +425,7 @@ export default function WordStudyScreen(): React.JSX.Element {
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: palette.background }]} edges={['top']}>
-      <Stack.Screen options={{ headerShown: false }} />
+      <Stack.Screen options={{ headerShown: false, animation: 'slide_from_right' }} />
       <View style={[styles.header, { borderBottomColor: palette.border, backgroundColor: palette.surface }]}>
         <Pressable
           accessibilityRole="button"

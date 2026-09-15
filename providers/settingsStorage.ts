@@ -1,5 +1,5 @@
 import { isMushafPackId } from '@/data/mushaf/options';
-import { getItem, parseJson, setItem } from '@/lib/storage/appStorage';
+import { getCachedItem, getItem, hasCachedItem, parseJson, setItem } from '@/lib/storage/appStorage';
 import { DEFAULT_ARABIC_FONT_VALUE } from '@/src/core/infrastructure/fonts/arabicFonts';
 
 import {
@@ -50,7 +50,7 @@ export const defaultSettings: Settings = {
 
 type RawSettings = Partial<Settings> & { tafsirId?: number };
 
-const SETTINGS_KEY = 'quranAppSettings';
+export const SETTINGS_KEY = 'quranAppSettings';
 
 function normalizeSettings(raw: RawSettings, defaults: Settings): Settings {
   const mutable = { ...raw };
@@ -134,6 +134,12 @@ export async function loadSettings(defaults: Settings = defaultSettings): Promis
   const savedSettings = parseJson<RawSettings>(await getItem(SETTINGS_KEY));
   if (!savedSettings) return defaults;
   return normalizeSettings(savedSettings, defaults);
+}
+
+export function getCachedSettings(defaults: Settings = defaultSettings): Settings | null {
+  if (!hasCachedItem(SETTINGS_KEY)) return null;
+  const savedSettings = parseJson<RawSettings>(getCachedItem(SETTINGS_KEY));
+  return savedSettings ? normalizeSettings(savedSettings, defaults) : defaults;
 }
 
 export async function saveSettings(settings: Settings): Promise<void> {

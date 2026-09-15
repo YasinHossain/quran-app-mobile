@@ -38,9 +38,14 @@ export function ReaderWordStudySheet({
     if (!surah || !ayah) return;
     const selectedAnalysis =
       controller.loadState.status === 'ready' ? controller.loadState.analysis : undefined;
-    stageWordStudyNavigationHandoff(selectedLocation, selectedAnalysis);
+    stageWordStudyNavigationHandoff(
+      selectedLocation,
+      selectedAnalysis,
+      controller.verseAnalyses
+    );
+    controller.close();
     router.push(`/study/word/${surah}/${ayah}/${selectedLocation.wordPosition}` as never);
-  }, [controller.loadState, router, selectedLocation]);
+  }, [controller, router, selectedLocation]);
 
   return (
     <WordQuickSheet

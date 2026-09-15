@@ -418,6 +418,35 @@ test('Home controller hydrates, resolves offline content, and persists effective
   controller.dispose();
 });
 
+test('Home controller paints restored content immediately and revalidates it without clearing the verse', async () => {
+  let resolveCount = 0;
+  let releaseResolve: ((content: ReturnType<typeof spotlightContent>) => void) | undefined;
+  const controller = new HomeVerseSpotlightController(85, {
+    hydrate: async () => homeState('2:255', 1_000, 85),
+    persist: async () => undefined,
+    resolve: () => {
+      resolveCount += 1;
+      return new Promise((resolve) => { releaseResolve = resolve; });
+    },
+    now: () => 2_000,
+  });
+  const state = homeState('2:255', 1_000, 85);
+  const savedContent = spotlightContent('2:255', 85, 85);
+  controller.restore(state, savedContent);
+  assert.equal(controller.getSnapshot().status, 'ready');
+  assert.equal(controller.getSnapshot().content, savedContent);
+  assert.equal(resolveCount, 0);
+
+  controller.setActive(true);
+  assert.equal(resolveCount, 1);
+  assert.equal(controller.getSnapshot().content, savedContent);
+  releaseResolve?.(spotlightContent('2:255', 85, 20));
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  assert.equal(controller.getSnapshot().content?.effectiveTranslationId, 20);
+  controller.setActive(false);
+  controller.dispose();
+});
+
 test('Home controller keeps an expired saved state stable and shuffle avoids an immediate repeat', async () => {
   let now = HOME_SPOTLIGHT_ROTATION_INTERVAL_MS + 1;
   const controller = new HomeVerseSpotlightController(20, {
@@ -620,7 +649,9 @@ test('Home component wires focus/resume, clean presentation, accessible swipes, 
   assert.match(source, /useFocusEffect/);
   assert.match(source, /AppState\.addEventListener/);
   assert.match(source, /useReducedMotion/);
-  assert.match(source, /PanResponder\.create/);
+  assert.match(source, /<FlatList/);
+  assert.match(source, /loadSpotlightContent/);
+  assert.match(source, /controller\.selectVerse\(verseKey\)/);
   assert.match(source, /getVerseReaderTarget/);
   assert.match(source, /accessibilityActions=/);
   assert.match(source, /actionName === 'increment'/);

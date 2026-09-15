@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { modalMotion, useModalTransition, verticalSheetTransform } from '@/components/motion/modalTransition';
+import { modalBackdropStyle, modalMotion, useModalTransition, verticalSheetTransform } from '@/components/motion/modalTransition';
 import { PortalOverlay } from '@/components/motion/PortalOverlay';
 import Colors from '@/constants/Colors';
 import { useAppTheme } from '@/providers/ThemeContext';
@@ -19,12 +19,14 @@ import { useUiTranslation } from '@/providers/UiLanguageContext';
 export function FolderActionsSheet({
   isOpen,
   onClose,
+  onAfterClose,
   folderName,
   onEdit,
   onDelete,
 }: {
   isOpen: boolean;
   onClose: () => void;
+  onAfterClose?: () => void;
   folderName: string;
   onEdit: () => void;
   onDelete: () => void;
@@ -55,11 +57,11 @@ export function FolderActionsSheet({
           action();
         });
       }
+      onAfterClose?.();
     },
   });
 
   const maxSheetHeight = Math.max(0, Math.round(windowHeight * 0.56));
-  const minSheetHeight = Math.min(maxSheetHeight, Math.max(220, Math.round(windowHeight * 0.3)));
 
   const handleOverlayPress = React.useCallback(() => {
     if (!dismissEnabledRef.current) return;
@@ -83,17 +85,14 @@ export function FolderActionsSheet({
     >
       <View className={isDark ? 'dark' : ''} style={styles.root}>
         <Pressable style={StyleSheet.absoluteFill} onPress={handleOverlayPress}>
-          <Animated.View style={[styles.overlay, { opacity: progress }]} />
+          <Animated.View style={[styles.overlay, modalBackdropStyle(progress, isDark)]} />
         </Pressable>
 
         <Animated.View
-          renderToHardwareTextureAndroid
-          shouldRasterizeIOS
           style={[
             styles.sheet,
             {
               maxHeight: maxSheetHeight,
-              minHeight: minSheetHeight,
               backgroundColor: isDark ? palette.background : palette.surface,
               borderColor: palette.border,
             },
@@ -200,7 +199,6 @@ const styles = StyleSheet.create({
   },
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.55)',
   },
   sheet: {
     width: '100%',

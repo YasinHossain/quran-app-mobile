@@ -4,6 +4,10 @@ import { useReducedMotion } from 'react-native-reanimated';
 
 export const modalMotion = {
   overlayColor: 'rgba(0,0,0,0.55)',
+  backdropColor: {
+    light: 'rgba(0,0,0,0.34)',
+    dark: 'rgba(0,0,0,0.46)',
+  },
   dialog: { openDuration: 200, closeDuration: 140 },
   sheet: { openDuration: 240, closeDuration: 160 },
   drawer: { openDuration: 240, closeDuration: 160 },
@@ -12,6 +16,21 @@ export const modalMotion = {
   openEasing: Easing.bezier(0.16, 1, 0.3, 1),
   closeEasing: Easing.bezier(0.16, 1, 0.3, 1),
 } as const;
+
+/**
+ * Backdrops should support the surface motion without flashing the whole screen.
+ * The panel keeps its responsive easing while the dim layer starts more gently.
+ */
+export function modalBackdropStyle(progress: Animated.Value, isDark: boolean) {
+  return {
+    backgroundColor: isDark ? modalMotion.backdropColor.dark : modalMotion.backdropColor.light,
+    opacity: progress.interpolate({
+      inputRange: [0, 0.5, 1],
+      outputRange: [0, 0.28, 1],
+      extrapolate: 'clamp',
+    }),
+  };
+}
 
 type UseModalTransitionOptions = {
   preset?: 'dialog' | 'sheet' | 'drawer' | 'popover';

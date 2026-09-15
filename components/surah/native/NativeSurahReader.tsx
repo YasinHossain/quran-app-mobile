@@ -1,4 +1,4 @@
-import { forwardRef, useImperativeHandle, useRef } from 'react';
+import { forwardRef, memo, useImperativeHandle, useRef } from 'react';
 import { Platform, requireNativeComponent, StyleSheet, Text, View } from 'react-native';
 
 import { useNativeSurahReaderCommands } from './useNativeSurahReaderCommands';
@@ -28,7 +28,7 @@ const AndroidNativeSurahReader =
     ? requireNativeComponent<NativeSurahReaderProps>('NativeSurahReader')
     : null;
 
-export const NativeSurahReader = forwardRef<NativeSurahReaderHandle, NativeSurahReaderProps>(
+const NativeSurahReaderComponent = forwardRef<NativeSurahReaderHandle, NativeSurahReaderProps>(
   function NativeSurahReader(props, ref) {
     const nativeRef = useRef<View>(null);
     const commands = useNativeSurahReaderCommands(nativeRef);
@@ -49,6 +49,10 @@ export const NativeSurahReader = forwardRef<NativeSurahReaderHandle, NativeSurah
     );
   }
 );
+
+// Opening an app-level overlay updates its owning screen. Keep the large native
+// reader surface out of that render when its data and callbacks are unchanged.
+export const NativeSurahReader = memo(NativeSurahReaderComponent);
 
 const styles = StyleSheet.create({
   fallback: {

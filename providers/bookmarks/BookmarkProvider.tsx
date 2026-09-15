@@ -16,6 +16,7 @@ import { BookmarkContext } from '@/providers/bookmarks/BookmarkContext';
 import {
   loadBookmarksFromStorage,
   loadLastReadFromStorage,
+  getCachedLastRead,
   loadPlannerFromStorage,
   loadPinnedFromStorage,
   saveBookmarksToStorage,
@@ -28,7 +29,7 @@ import type { BookmarkContextType } from '@/providers/bookmarks/types';
 import type { Bookmark, Folder, LastReadMap, PlannerPlan } from '@/types';
 
 const PERSIST_DEBOUNCE_MS = 250;
-let cachedLastRead: LastReadMap | null = null;
+let cachedLastRead: LastReadMap | null = getCachedLastRead();
 
 const sameVerseId = (a: string | number, b: string | number): boolean => String(a) === String(b);
 
@@ -72,6 +73,7 @@ export const BookmarkProvider = ({
 };
 
 function useBookmarkProviderValue(): BookmarkContextType {
+  cachedLastRead ??= getCachedLastRead();
   const [folders, setFolders] = useState<Folder[]>([]);
   const [pinnedVerses, setPinnedVerses] = useState<Bookmark[]>([]);
   const [lastRead, setLastReadState] = useState<LastReadMap>(() => cachedLastRead ?? {});

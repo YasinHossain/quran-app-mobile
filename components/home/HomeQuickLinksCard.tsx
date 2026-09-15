@@ -18,9 +18,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { dialogTransform, useModalTransition } from '@/components/motion/modalTransition';
 import { SurahVerseSelectorRow } from '@/components/search/SurahVerseSelectorRow';
 import Colors from '@/constants/Colors';
+import { QUICK_LINKS_STORAGE_KEY } from '@/lib/home/storageKeys';
 import { useChapters } from '@/hooks/useChapters';
 import { generateId } from '@/lib/id';
-import { getItem, parseJson, setItem } from '@/lib/storage/appStorage';
+import { getCachedItem, getItem, hasCachedItem, parseJson, setItem } from '@/lib/storage/appStorage';
 import { warmSurahReaderBeforeNavigation } from '@/lib/surah/surahReaderWarmup';
 import { useSettings } from '@/providers/SettingsContext';
 import { useAppTheme } from '@/providers/ThemeContext';
@@ -28,7 +29,6 @@ import { useUiTranslation } from '@/providers/UiLanguageContext';
 
 import type { Chapter } from '@/types';
 
-const QUICK_LINKS_STORAGE_KEY = 'quranAppHomeQuickLinks_v1';
 const MAX_QUICK_LINKS = 5;
 let cachedQuickLinks: HomeQuickLink[] | null = null;
 
@@ -96,6 +96,10 @@ function getVerseLabel(
 }
 
 export function HomeQuickLinksCard(): React.JSX.Element {
+  if (cachedQuickLinks === null && hasCachedItem(QUICK_LINKS_STORAGE_KEY)) {
+    const raw = getCachedItem(QUICK_LINKS_STORAGE_KEY);
+    cachedQuickLinks = raw === null ? DEFAULT_QUICK_LINKS : normalizeQuickLinks(parseJson<unknown>(raw));
+  }
   const router = useRouter();
   const { settings } = useSettings();
   const { isDark, resolvedTheme } = useAppTheme();

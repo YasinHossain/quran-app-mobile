@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { useModalTransition, verticalSheetTransform } from '@/components/motion/modalTransition';
+import { modalBackdropStyle, useModalTransition, verticalSheetTransform } from '@/components/motion/modalTransition';
 import Colors from '@/constants/Colors';
 import { useAppTheme } from '@/providers/ThemeContext';
 
@@ -55,7 +55,7 @@ export function OccurrenceGuideSheet({
           style={StyleSheet.absoluteFill}
           onPress={handleOverlayPress}
         >
-          <Animated.View style={[styles.overlay, { opacity: progress }]} />
+          <Animated.View style={[styles.overlay, modalBackdropStyle(progress, isDark)]} />
         </Pressable>
 
         <Animated.View
@@ -141,7 +141,7 @@ function GuideGroup({
 
 const styles = StyleSheet.create({
   root: { flex: 1, justifyContent: 'flex-end' },
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)' },
+  overlay: { flex: 1 },
   sheet: {
     width: '100%',
     borderTopLeftRadius: 26,

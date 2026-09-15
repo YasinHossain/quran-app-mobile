@@ -35,7 +35,7 @@ import { useDownloadedResourceSize } from '@/hooks/useDownloadedResourceSize';
 import { useAppTheme } from '@/providers/ThemeContext';
 import { useUiTranslation } from '@/providers/UiLanguageContext';
 import { IndexScrubber, type IndexScrubberHandle } from '@/components/reader/IndexScrubber';
-import { sideSheetTransform, useModalTransition } from '@/components/motion/modalTransition';
+import { modalBackdropStyle, sideSheetTransform, useModalTransition } from '@/components/motion/modalTransition';
 import { PortalOverlay } from '@/components/motion/PortalOverlay';
 import juzData from '../../src/data/juz.json';
 
@@ -220,9 +220,7 @@ function HomeSearchHeader({
                 <Animated.View
                   style={[
                     styles.menuOverlay,
-                    {
-                      opacity: progress,
-                    },
+                    modalBackdropStyle(progress, isDark),
                   ]}
                 />
               </Pressable>
@@ -869,7 +867,6 @@ const styles = StyleSheet.create({
   },
   menuOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.55)',
   },
   menuSheet: {
     position: 'absolute',

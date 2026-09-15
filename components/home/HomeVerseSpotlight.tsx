@@ -6,12 +6,10 @@ import {
   LayoutChangeEvent,
   NativeScrollEvent,
   NativeSyntheticEvent,
-  PanResponder,
   Platform,
   Pressable,
   StyleSheet,
   Text,
-  useWindowDimensions,
   View,
 } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
@@ -23,21 +21,59 @@ import {
   CanonicalVerse,
   getBundledFallbackVerse,
   getCanonicalVerse,
-  getHomeSpotlightSwipeNavigation,
   getVerseReaderTarget,
   HomeVerseSpotlightController,
   resolveSpotlightVerse,
   SpotlightVerseContent,
   VerseKey,
 } from '@/lib/verse-spotlight';
-import { hydrateHomeSpotlightState, persistHomeSpotlightState } from '@/lib/verse-spotlight/homeStateStorage';
+import { getPreloadedHomeSpotlightSnapshot, hydrateHomeSpotlightState, persistHomeSpotlightContent, persistHomeSpotlightState } from '@/lib/verse-spotlight/homeStateStorage';
 import { useAppTheme } from '@/providers/ThemeContext';
 import { useSettings } from '@/providers/SettingsContext';
 import { useUiTranslation } from '@/providers/UiLanguageContext';
 import { container } from '@/src/core/infrastructure/di/container';
 
 const SPOTLIGHT_HEIGHT = 210;
+const SPOTLIGHT_CACHE_LIMIT = 8;
 const spotlightContentCache = new Map<string, SpotlightVerseContent>();
+const spotlightContentRequests = new Map<string, Promise<SpotlightVerseContent>>();
+
+function getContentCacheKey(translationId: number, verseKey: VerseKey): string {
+  return `${translationId}:${verseKey}`;
+}
+
+function cacheExactSpotlightContent(content: SpotlightVerseContent): void {
+  if (content.effectiveTranslationId !== content.requestedTranslationId) return;
+
+  const key = getContentCacheKey(content.requestedTranslationId, content.verseKey as VerseKey);
+  spotlightContentCache.delete(key);
+  spotlightContentCache.set(key, content);
+  while (spotlightContentCache.size > SPOTLIGHT_CACHE_LIMIT) {
+    const oldestKey = spotlightContentCache.keys().next().value;
+    if (typeof oldestKey !== 'string') break;
+    spotlightContentCache.delete(oldestKey);
+  }
+}
+
+function loadSpotlightContent(
+  requestedTranslationId: number,
+  verseKey: VerseKey
+): Promise<SpotlightVerseContent> {
+  const key = getContentCacheKey(requestedTranslationId, verseKey);
+  const pending = spotlightContentRequests.get(key);
+  if (pending) return pending;
+
+  const request = resolveSpotlightVerse({
+    requestedTranslationId,
+    verseKey,
+    downloadIndex: container.getDownloadIndexRepository(),
+    offlineTranslations: container.getTranslationOfflineStore(),
+  }).finally(() => {
+    spotlightContentRequests.delete(key);
+  });
+  spotlightContentRequests.set(key, request);
+  return request;
+}
 
 // Expo Router may remount the home list's intro row (for example when a
 // clipped FlatList cell is brought back on screen). Keep the controller alive
@@ -54,13 +90,13 @@ function getSharedHomeController(
     hydrate: hydrateHomeSpotlightState,
     persist: persistHomeSpotlightState,
     resolve: ({ requestedTranslationId: translationId, verseKey }) =>
-      resolveSpotlightVerse({
-        requestedTranslationId: translationId,
-        verseKey,
-        downloadIndex: container.getDownloadIndexRepository(),
-        offlineTranslations: container.getTranslationOfflineStore(),
-      }),
+      loadSpotlightContent(translationId, verseKey as VerseKey),
   });
+
+  const preloaded = getPreloadedHomeSpotlightSnapshot(requestedTranslationId);
+  if (preloaded) {
+    sharedHomeController.restore(preloaded.state, preloaded.content);
+  }
 
   return sharedHomeController;
 }
@@ -84,7 +120,7 @@ function HomeVerseSpotlightSkeleton(): React.JSX.Element {
   );
 }
 
-function VerseSlideContent({
+const VerseSlideContent = React.memo(function VerseSlideContent({
   verse,
   surahName,
   previewText,
@@ -137,7 +173,7 @@ function VerseSlideContent({
       </View>
     </View>
   );
-}
+});
 
 export function HomeVerseSpotlight(
   { isVisible = true }: { isVisible?: boolean } = {}
@@ -152,10 +188,8 @@ export function HomeVerseSpotlight(
   const requestedTranslationIdRef = React.useRef(requestedTranslationId);
   requestedTranslationIdRef.current = requestedTranslationId;
 
-  const windowDimensions = useWindowDimensions();
-  const [containerWidth, setContainerWidth] = React.useState(
-    Math.max(100, windowDimensions.width - 24)
-  );
+  const [containerWidth, setContainerWidth] = React.useState(0);
+  const [contentCacheVersion, setContentCacheVersion] = React.useState(0);
 
   const flatListRef = React.useRef<FlatList<VerseKey>>(null);
   const currentIndexRef = React.useRef(-1);
@@ -207,30 +241,15 @@ export function HomeVerseSpotlight(
     controller.setActive(isScreenFocused && isAppActive && isVisible);
   }, [controller, isAppActive, isScreenFocused, isVisible]);
 
-  // Keep cache synced with loaded snapshot content
+  // Keep only exact-language results in the slide cache. A fallback for a
+  // selected non-English translation must never be painted and then replaced
+  // in-place when the downloaded translation arrives.
   React.useEffect(() => {
     if (snapshot.content) {
-      spotlightContentCache.set(
-        `${snapshot.content.requestedTranslationId}:${snapshot.content.verseKey}`,
-        snapshot.content
-      );
+      cacheExactSpotlightContent(snapshot.content);
+      if (snapshot.status === 'ready') void persistHomeSpotlightContent(snapshot.content);
     }
-  }, [snapshot.content]);
-
-  // PanResponder retained for gesture compatibility contract & testing
-  const panResponder = React.useMemo(
-    () =>
-      PanResponder.create({
-        onMoveShouldSetPanResponder: (_event, gesture) =>
-          getHomeSpotlightSwipeNavigation(gesture.dx, gesture.dy) !== null,
-        onPanResponderRelease: (_event, gesture) => {
-          const direction = getHomeSpotlightSwipeNavigation(gesture.dx, gesture.dy);
-          if (!direction) return;
-          controller.navigate(direction);
-        },
-      }),
-    [controller]
-  );
+  }, [snapshot.content, snapshot.status]);
 
   const handleOpenVerse = React.useCallback(() => {
     if (isMomentumScrollingRef.current) return;
@@ -239,17 +258,50 @@ export function HomeVerseSpotlight(
     if (target) router.push(target);
   }, [controller, router]);
 
-  const currentVerse = snapshot.state ? getCanonicalVerse(snapshot.state.verseKey) : null;
+  const currentVerse = React.useMemo(
+    () => (snapshot.state ? getCanonicalVerse(snapshot.state.verseKey) : null),
+    [snapshot.state?.verseKey]
+  );
+
+  // Resolve the two slides a user can reach next while the current verse is
+  // idle. Concurrent reads are shared with the controller, keeping swipes
+  // immediate without doing duplicate SQLite work.
+  React.useEffect(() => {
+    if (!areSettingsHydrated || !isVisible || !currentVerse) return;
+
+    let cancelled = false;
+    const timeout = setTimeout(() => {
+      const neighborKeys = [
+        CANONICAL_VERSE_KEYS[currentVerse.canonicalIndex - 1],
+        CANONICAL_VERSE_KEYS[currentVerse.canonicalIndex + 1],
+      ].filter((key): key is VerseKey => Boolean(key));
+
+      for (const verseKey of neighborKeys) {
+        const cacheKey = getContentCacheKey(requestedTranslationId, verseKey);
+        if (spotlightContentCache.has(cacheKey)) continue;
+        void loadSpotlightContent(requestedTranslationId, verseKey).then((content) => {
+          if (cancelled || content.effectiveTranslationId !== requestedTranslationId) return;
+          cacheExactSpotlightContent(content);
+          setContentCacheVersion((version) => version + 1);
+        }).catch(() => {});
+      }
+    }, 600);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timeout);
+    };
+  }, [areSettingsHydrated, currentVerse, isVisible, requestedTranslationId]);
 
   // Sync FlatList scroll position whenever external state changes (e.g. rotation timer or shuffle)
   React.useEffect(() => {
-    if (!currentVerse) return;
+    if (!currentVerse || containerWidth <= 0 || isMomentumScrollingRef.current) return;
     const targetIdx = currentVerse.canonicalIndex;
     if (currentIndexRef.current !== targetIdx) {
       currentIndexRef.current = targetIdx;
       flatListRef.current?.scrollToIndex({ index: targetIdx, animated: false });
     }
-  }, [currentVerse]);
+  }, [containerWidth, currentVerse]);
 
   const handleAccessibleNavigate = React.useCallback(
     (direction: 'next' | 'previous') => {
@@ -278,17 +330,11 @@ export function HomeVerseSpotlight(
       const index = Math.round(offsetX / containerWidth);
       if (index < 0 || index >= CANONICAL_VERSE_KEYS.length) return;
 
-      if (index !== currentIndexRef.current) {
-        currentIndexRef.current = index;
-        const currentCanonicalIdx = currentVerse?.canonicalIndex ?? index;
-        if (index > currentCanonicalIdx) {
-          controller.navigate('next');
-        } else if (index < currentCanonicalIdx) {
-          controller.navigate('previous');
-        }
-      }
+      currentIndexRef.current = index;
+      const verseKey = CANONICAL_VERSE_KEYS[index];
+      if (verseKey) controller.selectVerse(verseKey);
     },
-    [containerWidth, controller, currentVerse?.canonicalIndex]
+    [containerWidth, controller]
   );
 
   const getItemLayout = React.useCallback(
@@ -312,31 +358,34 @@ export function HomeVerseSpotlight(
   const handleLayout = React.useCallback(
     (event: LayoutChangeEvent) => {
       const measuredWidth = event.nativeEvent.layout.width;
-      if (measuredWidth > 0 && Math.abs(measuredWidth - containerWidth) > 1) {
+      if (measuredWidth > 0 && Math.abs(measuredWidth - containerWidth) > 0.5) {
+        currentIndexRef.current = currentVerse?.canonicalIndex ?? -1;
         setContainerWidth(measuredWidth);
-        const currentIdx = currentIndexRef.current;
-        if (currentIdx >= 0) {
-          setTimeout(() => {
-            flatListRef.current?.scrollToIndex({ index: currentIdx, animated: false });
-          }, 0);
-        }
       }
     },
-    [containerWidth]
+    [containerWidth, currentVerse?.canonicalIndex]
   );
 
   const renderItem = React.useCallback(
     ({ item: verseKey }: { item: VerseKey }) => {
       const verse = getCanonicalVerse(verseKey);
       if (!verse) {
-        return <View style={{ height: SPOTLIGHT_HEIGHT, width: containerWidth }} />;
+        return <View style={{ height: SPOTLIGHT_HEIGHT, width: containerWidth || '100%' }} />;
       }
 
       const isCurrent = verseKey === snapshot.state?.verseKey;
+      const exactContent = spotlightContentCache.get(
+        getContentCacheKey(requestedTranslationId, verseKey)
+      );
+      const canUseBundledFallback =
+        requestedTranslationId === 20 ||
+        (snapshot.status === 'ready' &&
+          snapshot.content?.requestedTranslationId === requestedTranslationId &&
+          snapshot.content.effectiveTranslationId !== requestedTranslationId);
       const text =
         (isCurrent && snapshot.content ? snapshot.content.translationText : null) ??
-        spotlightContentCache.get(`${requestedTranslationId}:${verseKey}`)?.translationText ??
-        getBundledFallbackVerse(verseKey)?.text ??
+        exactContent?.translationText ??
+        (canUseBundledFallback ? getBundledFallbackVerse(verseKey)?.text : null) ??
         '';
 
       const localizedSurahName = t(`surah_names.${verse.surahId}`, {
@@ -348,7 +397,7 @@ export function HomeVerseSpotlight(
       )}]`;
 
       return (
-        <View style={[styles.slide, { width: containerWidth }]}>
+        <View style={[styles.slide, { width: containerWidth || '100%' }]}>
           <Pressable
             accessibilityActions={[
               { name: 'activate' },
@@ -388,6 +437,7 @@ export function HomeVerseSpotlight(
     },
     [
       containerWidth,
+      contentCacheVersion,
       handleAccessibleNavigate,
       handleOpenVerse,
       localizeDigits,
@@ -424,34 +474,40 @@ export function HomeVerseSpotlight(
 
   return (
     <View onLayout={handleLayout} style={styles.body}>
-      <FlatList
-        ref={flatListRef}
-        bounces={false}
-        data={CANONICAL_VERSE_KEYS}
-        decelerationRate="fast"
-        directionalLockEnabled
-        disableIntervalMomentum
-        getItemLayout={getItemLayout}
-        horizontal
-        initialNumToRender={1}
-        initialScrollIndex={initialIndex >= 0 ? initialIndex : undefined}
-        keyExtractor={(key) => key}
-        maxToRenderPerBatch={2}
-        nestedScrollEnabled
-        onMomentumScrollBegin={handleMomentumScrollBegin}
-        onMomentumScrollEnd={handleMomentumScrollEnd}
-        onScrollToIndexFailed={handleScrollToIndexFailed}
-        overScrollMode="never"
-        pagingEnabled
-        removeClippedSubviews={Platform.OS === 'android'}
-        renderItem={renderItem}
-        showsHorizontalScrollIndicator={false}
-        showsVerticalScrollIndicator={false}
-        snapToAlignment="center"
-        snapToInterval={containerWidth}
-        style={styles.flatList}
-        windowSize={3}
-      />
+      {containerWidth <= 0 ? (
+        renderItem({ item: currentVerse.verseKey })
+      ) : (
+        <FlatList
+          key={String(containerWidth)}
+          ref={flatListRef}
+          bounces={false}
+          data={CANONICAL_VERSE_KEYS}
+          decelerationRate="fast"
+          directionalLockEnabled
+          disableIntervalMomentum
+          extraData={contentCacheVersion}
+          getItemLayout={getItemLayout}
+          horizontal
+          initialNumToRender={3}
+          initialScrollIndex={initialIndex >= 0 ? initialIndex : undefined}
+          keyExtractor={(key) => key}
+          maxToRenderPerBatch={3}
+          nestedScrollEnabled
+          onMomentumScrollBegin={handleMomentumScrollBegin}
+          onMomentumScrollEnd={handleMomentumScrollEnd}
+          onScrollToIndexFailed={handleScrollToIndexFailed}
+          overScrollMode="never"
+          pagingEnabled
+          removeClippedSubviews={Platform.OS === 'android'}
+          renderItem={renderItem}
+          showsHorizontalScrollIndicator={false}
+          showsVerticalScrollIndicator={false}
+          snapToAlignment="start"
+          snapToInterval={containerWidth}
+          style={styles.flatList}
+          windowSize={5}
+        />
+      )}
     </View>
   );
 }
@@ -460,8 +516,6 @@ const styles = StyleSheet.create({
   body: {
     height: SPOTLIGHT_HEIGHT,
     justifyContent: 'center',
-    paddingBottom: 8,
-    paddingTop: 16,
     width: '100%',
   },
   flatList: {
@@ -471,7 +525,9 @@ const styles = StyleSheet.create({
   slide: {
     height: SPOTLIGHT_HEIGHT,
     justifyContent: 'center',
+    paddingBottom: 8,
     paddingHorizontal: 24,
+    paddingTop: 16,
   },
   content: {
     alignItems: 'center',

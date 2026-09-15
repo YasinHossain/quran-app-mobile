@@ -24,6 +24,8 @@ type ResolvedState = {
   englishLookupFailed?: boolean;
 };
 
+const contextualWordsJsonCache = new Map<string, ResolvedState>();
+
 export function useContextualMeaning(
   analysis: WordAnalysis | undefined
 ): ContextualMeaningLoadState {
@@ -45,10 +47,24 @@ export function useContextualMeaning(
   const requestKey = verseKey
     ? `${verseKey}:${selectedLanguageCode}:${resourceRevision}`
     : '';
-  const [resolved, setResolved] = React.useState<ResolvedState | null>(null);
+  const [resolved, setResolved] = React.useState<ResolvedState | null>(() => {
+    return (requestKey && contextualWordsJsonCache.get(requestKey)) || null;
+  });
+
+  const activeResolved =
+    resolved?.key === requestKey
+      ? resolved
+      : (requestKey && contextualWordsJsonCache.get(requestKey)) || null;
 
   React.useEffect(() => {
     if (!verseKey || !isHydrated || isDownloadIndexLoading) return;
+    if (contextualWordsJsonCache.has(requestKey)) {
+      const cached = contextualWordsJsonCache.get(requestKey)!;
+      if (resolved?.key !== requestKey) {
+        setResolved(cached);
+      }
+      return;
+    }
     let cancelled = false;
     const store = container.getTranslationOfflineStore();
     const selectedInstalled = download?.status === 'installed';
@@ -63,13 +79,19 @@ export function useContextualMeaning(
     void Promise.allSettled([selectedPromise, englishPromise]).then(
       ([selectedResult, englishResult]) => {
         if (cancelled) return;
-        setResolved({
+        const nextState: ResolvedState = {
           key: requestKey,
           selectedWordsJson: selectedResult.status === 'fulfilled' ? selectedResult.value : null,
           englishWordsJson: englishResult.status === 'fulfilled' ? englishResult.value : null,
           selectedLookupFailed: selectedResult.status === 'rejected',
           englishLookupFailed: englishResult.status === 'rejected',
-        });
+        };
+        contextualWordsJsonCache.set(requestKey, nextState);
+        if (contextualWordsJsonCache.size > 120) {
+          const oldestKey = contextualWordsJsonCache.keys().next().value;
+          if (oldestKey) contextualWordsJsonCache.delete(oldestKey);
+        }
+        setResolved(nextState);
       }
     );
     return () => {
@@ -89,16 +111,16 @@ export function useContextualMeaning(
   if (!isHydrated || isDownloadIndexLoading) {
     return { status: 'loading', languageName: getWordLanguageName(selectedLanguageCode) };
   }
-  if (resolved?.key === requestKey) {
+  if (activeResolved?.key === requestKey) {
     return {
       status: 'ready',
       presentation: resolveContextualMeaning({
         location: analysis.location,
         selectedLanguageCode,
-        selectedLanguageWordsJson: resolved.selectedWordsJson,
-        englishWordsJson: resolved.englishWordsJson,
-        selectedLookupFailed: resolved.selectedLookupFailed,
-        englishLookupFailed: resolved.englishLookupFailed,
+        selectedLanguageWordsJson: activeResolved.selectedWordsJson,
+        englishWordsJson: activeResolved.englishWordsJson,
+        selectedLookupFailed: activeResolved.selectedLookupFailed,
+        englishLookupFailed: activeResolved.englishLookupFailed,
       }),
     };
   }

@@ -1,6 +1,5 @@
 import React from 'react';
-import { FlashList } from '@shopify/flash-list';
-import { Alert, Platform, Pressable, Text, View } from 'react-native';
+import { Alert, FlatList, Pressable, Text, View } from 'react-native';
 
 import Colors from '@/constants/Colors';
 import { HeaderSearchInput } from '@/components/search/HeaderSearchInput';
@@ -153,6 +152,10 @@ export function ManageTafsirsPanel({
   const [busyTafsirIds, setBusyTafsirIds] = React.useState<Set<number>>(() => new Set());
   const [downloadTarget, setDownloadTarget] = React.useState<ResourceRecord | null>(null);
   const [deleteTarget, setDeleteTarget] = React.useState<ResourceRecord | null>(null);
+  const selectionRef = React.useRef(orderedSelection);
+  React.useLayoutEffect(() => {
+    selectionRef.current = orderedSelection;
+  }, [orderedSelection]);
 
   const selectedIds = React.useMemo(() => new Set<number>(orderedSelection ?? []), [orderedSelection]);
   const {
@@ -180,25 +183,8 @@ export function ManageTafsirsPanel({
     setDownloadTarget(tafsir);
   }, []);
 
-  React.useEffect(() => {
-    if (!isActive || isDownloadIndexLoading) return;
-    if (downloadIndexErrorMessage) return;
-    const current = orderedSelection ?? [];
-    if (current.length === 0) return;
-
-    const installedSelection = current.filter(isTafsirDownloaded);
-    if (installedSelection.length === current.length) return;
-
-    onChangeSelection(installedSelection);
-    setShowLimitWarning(false);
-  }, [
-    isActive,
-    downloadIndexErrorMessage,
-    isDownloadIndexLoading,
-    isTafsirDownloaded,
-    onChangeSelection,
-    orderedSelection,
-  ]);
+  // SettingsProvider reconciles installed selections after verifying its index.
+  // Opening a picker must never rewrite preferences from its local loading state.
 
   const languages = React.useMemo(
     () => buildLanguages(tafsirs, languageSort),
@@ -256,8 +242,12 @@ export function ManageTafsirsPanel({
         );
 
         await useCase.execute(tafsirId);
-        const currentSelection = orderedSelection ?? [];
+        const installed = await container.getDownloadIndexRepository().get({
+          kind: 'tafsir', tafsirId,
+        });
+        const currentSelection = selectionRef.current ?? [];
         if (
+          installed?.status === 'installed' &&
           !currentSelection.includes(tafsirId) &&
           currentSelection.length < MAX_TAFSIR_SELECTIONS
         ) {
@@ -272,7 +262,7 @@ export function ManageTafsirsPanel({
         refreshIndex();
       }
     },
-    [busyTafsirIds, onChangeSelection, orderedSelection, refreshIndex, setBusy]
+    [busyTafsirIds, onChangeSelection, refreshIndex, setBusy]
   );
 
   const deleteTafsir = React.useCallback(
@@ -450,30 +440,9 @@ export function ManageTafsirsPanel({
     return base;
   }, [activeFilter, isLoading, resourcesToRender, sectionsToRender, tafsirs.length]);
 
-  const getRowType = React.useCallback((row: Row): string => row.type, []);
-
-  const overrideRowLayout = React.useCallback((layout: { span?: number }, row: Row): void => {
-    const sizedLayout = layout as { span?: number; size?: number };
-
-    if (row.type === 'resource') {
-      sizedLayout.size = 58;
-      return;
-    }
-
-    if (row.type === 'section') {
-      sizedLayout.size = 48;
-      return;
-    }
-
-    if (row.type === 'tabs') {
-      sizedLayout.size = 56;
-      return;
-    }
-
-    sizedLayout.size = 90;
-  }, []);
-
-  const renderHeader = React.useCallback((): React.JSX.Element => {
+  // Pass an element, not a changing component type: download updates and typing
+  // must preserve the search input, selection drag state, and header layout.
+  const listHeader = React.useMemo((): React.JSX.Element => {
     return (
       <View className="p-4 gap-4">
         <HeaderSearchInput
@@ -495,35 +464,15 @@ export function ManageTafsirsPanel({
         />
       </View>
     );
-  }, [handleReset, handleToggle, onChangeSelection, orderedSelection, searchTerm, tafsirs]);
+  }, [handleReset, handleToggle, onChangeSelection, orderedSelection, searchTerm, tafsirs, t]);
 
   const renderItem = React.useCallback(
-    ({
-      item,
-      target,
-    }: {
-      item: Row;
-      target: 'Cell' | 'StickyHeader' | 'Measurement';
-    }): React.JSX.Element | null => {
+    ({ item }: { item: Row }): React.JSX.Element | null => {
       if (item.type === 'tabs') {
         return (
           <View
             className="py-2"
-            style={
-              target === 'StickyHeader'
-                ? [
-                    { backgroundColor: palette.background, zIndex: 10 },
-                    Platform.OS === 'android'
-                      ? { shadowColor: isDark ? '#FFFFFF' : '#000000', elevation: isDark ? 2 : 1 }
-                      : {
-                          shadowColor: isDark ? '#FFFFFF' : '#000000',
-                          shadowOpacity: isDark ? 0.08 : 0.06,
-                          shadowRadius: 6,
-                          shadowOffset: { width: 0, height: 2 },
-                        },
-                  ]
-                : { backgroundColor: palette.background }
-            }
+            style={{ backgroundColor: palette.background }}
           >
             <View className="px-4">
               <ResourceTabs
@@ -639,7 +588,7 @@ export function ManageTafsirsPanel({
         </View>
       ) : null}
 
-      <FlashList
+      <FlatList
         data={rows}
         keyExtractor={(row) => {
           if (row.type === 'tabs') return 'tabs';
@@ -648,14 +597,13 @@ export function ManageTafsirsPanel({
           return `resource:${row.item.id}`;
         }}
         renderItem={renderItem}
-        ListHeaderComponent={renderHeader}
-        stickyHeaderIndices={[0]}
+        ListHeaderComponent={listHeader}
+        stickyHeaderIndices={[1]}
         keyboardShouldPersistTaps="handled"
+        initialNumToRender={12}
+        maxToRenderPerBatch={8}
+        windowSize={5}
         removeClippedSubviews={false}
-        drawDistance={Platform.OS === 'android' ? 350 : 250}
-        getItemType={getRowType}
-        overrideItemLayout={overrideRowLayout}
-        overrideProps={{ initialDrawBatchSize: 8, scrollEventThrottle: 16 }}
         scrollEnabled={!isReordering}
         contentContainerStyle={{ paddingBottom: 20 }}
       />

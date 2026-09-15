@@ -5,12 +5,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Colors from '@/constants/Colors';
 import { PortalOverlay } from '@/components/motion/PortalOverlay';
 import {
+  modalBackdropStyle,
   sideSheetTransform,
   useModalTransition,
 } from '@/components/motion/modalTransition';
 import { useAppTheme } from '@/providers/ThemeContext';
 
 import { SettingsSidebarContent, type PanelType } from './SettingsSidebarContent';
+import { TafsirSettingsContent } from './TafsirSettingsContent';
 
 import type { SettingsTab } from './SettingsTabToggle';
 
@@ -41,6 +43,7 @@ export function SettingsSidebar({
   const palette = Colors[resolvedTheme];
   const [isMushafManagerFullScreen, setIsMushafManagerFullScreen] = React.useState(false);
   const [isDrawerSettled, setIsDrawerSettled] = React.useState(false);
+  const [hasOpenedSettingsRoot, setHasOpenedSettingsRoot] = React.useState(false);
   const sheetWidth = isMushafManagerFullScreen
     ? width
     : Math.min(390, Math.round(width * 0.92));
@@ -51,6 +54,7 @@ export function SettingsSidebar({
     onAfterClose: () => {
       setIsDrawerSettled(false);
       setIsMushafManagerFullScreen(false);
+      setHasOpenedSettingsRoot(false);
       onAfterClose?.();
     },
   });
@@ -63,11 +67,10 @@ export function SettingsSidebar({
     >
       <View className={isDark ? 'dark' : ''} style={styles.root}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose}>
-          <Animated.View style={[styles.overlay, { opacity: progress }]} />
+          <Animated.View style={[styles.overlay, modalBackdropStyle(progress, isDark)]} />
         </Pressable>
 
         <Animated.View
-          renderToHardwareTextureAndroid
           shouldRasterizeIOS
           style={[
             styles.sheet,
@@ -88,7 +91,12 @@ export function SettingsSidebar({
             }}
           >
             <View className={isDark ? 'flex-1 dark' : 'flex-1'}>
-              {visible && (
+              {visible && initialPanel === 'tafsir' && !hasOpenedSettingsRoot ? (
+                <TafsirSettingsContent
+                  onClose={onClose}
+                  onBack={() => setHasOpenedSettingsRoot(true)}
+                />
+              ) : visible ? (
                 <SettingsSidebarContent
                   onClose={onClose}
                   showTafsirSetting={showTafsirSetting}
@@ -96,14 +104,14 @@ export function SettingsSidebar({
                   activeTabOverride={activeTab}
                   onTabChange={onTabChange}
                   containerWidth={sheetWidth}
-                  initialPanel={isMushafManagerFullScreen ? 'mushaf' : initialPanel}
+                  initialPanel={isMushafManagerFullScreen ? 'mushaf' : hasOpenedSettingsRoot ? 'root' : initialPanel}
                   onMushafInstalled={onMushafInstalled}
                   onOpenMushafManager={() => setIsMushafManagerFullScreen(true)}
                   onSubPanelBack={isMushafManagerFullScreen ? onClose : undefined}
                   hideRootWhenSubPanel={isMushafManagerFullScreen || initialPanel === 'mushaf'}
                   dataEnabled={isDrawerSettled}
                 />
-              )}
+              ) : null}
             </View>
           </View>
         </Animated.View>
@@ -120,7 +128,6 @@ const styles = StyleSheet.create({
   },
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.55)',
   },
   sheet: {
     position: 'absolute',

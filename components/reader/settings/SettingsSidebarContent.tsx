@@ -1,4 +1,4 @@
-import { ArrowLeft, BookOpenText, ChevronRight, Database, Globe, Type, Wand2, X, Download } from 'lucide-react-native';
+import { BookOpenText, ChevronRight, Database, Globe, Type, Wand2, X, Download } from 'lucide-react-native';
 import React from 'react';
 import { router } from 'expo-router';
 import { Alert, Animated, Easing, FlatList, Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
@@ -22,7 +22,8 @@ import { useUiTranslation } from '@/providers/UiLanguageContext';
 
 import { CollapsibleSection } from './CollapsibleSection';
 import { FontSizeSlider } from './FontSizeSlider';
-import { ManageTafsirsPanel } from './ManageTafsirsPanel';
+import { SettingsPanelHeader } from './SettingsPanelHeader';
+import { TafsirSelectionPanel } from './TafsirSettingsContent';
 import { ManageTranslationsPanel } from './ManageTranslationsPanel';
 import { SelectionBox } from './SelectionBox';
 import { ResourceItem } from './resource-panel/ResourceItem';
@@ -276,7 +277,6 @@ export function SettingsSidebarContent({
     setTafsirFontSize,
     setWordLang,
     setTranslationIds,
-    setTafsirIds,
     setUiLanguage,
     setMushafScaleStep,
     setMushafId,
@@ -297,6 +297,12 @@ export function SettingsSidebarContent({
 
   const [activeTab, setActiveTab] = React.useState<SettingsTab>(activeTabOverride ?? 'translations');
   const [panel, setPanel] = React.useState<Panel>(() => ({ type: initialPanel ?? 'root' }));
+  // A direct resource-manager open (for example, "Add Tafsir") does not need the
+  // full settings root behind it. Keep that large subtree out of the cold-open
+  // commit and mount it only if the user actually navigates back to settings.
+  const [isRootContentMounted, setIsRootContentMounted] = React.useState(
+    () => !initialPanel || initialPanel === 'root'
+  );
   const [isReadingOpen, setIsReadingOpen] = React.useState(true);
   const [isTafsirOpen, setIsTafsirOpen] = React.useState(showTafsirSetting && pageType === 'tafsir');
   const [isFontOpen, setIsFontOpen] = React.useState(true);
@@ -314,11 +320,11 @@ export function SettingsSidebarContent({
   const panelWidth = containerWidth ?? Math.min(390, Math.round(windowWidth * 0.92));
 
   React.useEffect(() => {
-    if (!initialPanel || initialPanel === 'root' || panel.type === initialPanel) return;
+    if (!initialPanel || initialPanel === 'root') return;
     navProgress.stopAnimation();
     navProgress.setValue(1);
     setPanel({ type: initialPanel });
-  }, [initialPanel, navProgress, panel.type]);
+  }, [initialPanel, navProgress]);
 
   React.useEffect(() => {
     return () => {
@@ -478,14 +484,9 @@ export function SettingsSidebarContent({
       navProgress.stopAnimation();
       navProgress.setValue(0);
       setPanel({ type: nextPanel });
-      if (openPanelRafRef.current !== null) {
-        cancelAnimationFrame(openPanelRafRef.current);
-      }
 
-      openPanelRafRef.current = requestAnimationFrame(() => {
-        openPanelRafRef.current = null;
+      const startAnimation = () => {
         if (animationTokenRef.current !== token) return;
-
         navProgress.stopAnimation();
         Animated.timing(navProgress, {
           toValue: 1,
@@ -497,6 +498,24 @@ export function SettingsSidebarContent({
           if (!finished) return;
           if (animationTokenRef.current !== token) return;
         });
+      };
+
+      if (openPanelRafRef.current !== null) {
+        cancelAnimationFrame(openPanelRafRef.current);
+        openPanelRafRef.current = null;
+      }
+
+      if (nextPanel === 'translations') {
+        // Translation is already mounted offscreen, so it can move immediately.
+        startAnimation();
+        return;
+      }
+
+      // Other panel content replaces the warmed translation list. Wait for that
+      // commit before moving the sheet so the old list can never flash onscreen.
+      openPanelRafRef.current = requestAnimationFrame(() => {
+        openPanelRafRef.current = null;
+        startAnimation();
       });
     },
     [navProgress]
@@ -509,19 +528,35 @@ export function SettingsSidebarContent({
       cancelAnimationFrame(openPanelRafRef.current);
       openPanelRafRef.current = null;
     }
-    navProgress.stopAnimation();
-    Animated.timing(navProgress, {
-      toValue: 0,
-      duration: 160,
-      easing: Easing.out(Easing.cubic),
-      isInteraction: false,
-      useNativeDriver: true,
-    }).start(({ finished }) => {
-      if (!finished) return;
+    const startAnimation = () => {
       if (animationTokenRef.current !== token) return;
-      setPanel({ type: 'root' });
+      navProgress.stopAnimation();
+      Animated.timing(navProgress, {
+        toValue: 0,
+        duration: 160,
+        easing: Easing.out(Easing.cubic),
+        isInteraction: false,
+        useNativeDriver: true,
+      }).start(({ finished }) => {
+        if (!finished) return;
+        if (animationTokenRef.current !== token) return;
+        setPanel({ type: 'root' });
+      });
+    };
+
+    if (isRootContentMounted) {
+      startAnimation();
+      return;
+    }
+
+    // The root was intentionally skipped for a direct subpanel open. Give React
+    // one frame to put it behind the subpanel before sliding the subpanel away.
+    setIsRootContentMounted(true);
+    openPanelRafRef.current = requestAnimationFrame(() => {
+      openPanelRafRef.current = null;
+      startAnimation();
     });
-  }, [navProgress, panel.type]);
+  }, [isRootContentMounted, navProgress, panel.type]);
 
   const {
     translations: translationResources,
@@ -530,7 +565,10 @@ export function SettingsSidebarContent({
     errorMessage: translationResourcesError,
     refresh: refreshTranslationResources,
   } = useTranslationResources({
-    enabled: dataEnabled && (activeTab === 'translations' || panel.type === 'translations'),
+    enabled:
+      dataEnabled &&
+      (panel.type === 'translations' ||
+        (panel.type === 'root' && activeTab === 'translations')),
     language: settings.contentLanguage,
   });
 
@@ -577,7 +615,7 @@ export function SettingsSidebarContent({
     refresh: refreshMushafPacks,
   } = useMushafPackManager({
     selectedPackId: settings.mushafId,
-    enabled: dataEnabled,
+    enabled: dataEnabled && (panel.type === 'root' || panel.type === 'mushaf'),
   });
   const mushafDownloadTarget = React.useMemo(
     () =>
@@ -705,38 +743,9 @@ export function SettingsSidebarContent({
     [setUiLanguage]
   );
 
-  const {
-    tafsirs,
-    tafsirById,
-    isLoading: isTafsirResourcesLoading,
-    errorMessage: tafsirResourcesError,
-    refresh: refreshTafsirResources,
-  } = useTafsirResources({
-    enabled: showTafsirSetting || panel.type === 'tafsir',
+  const { tafsirById } = useTafsirResources({
+    enabled: dataEnabled && showTafsirSetting,
   });
-
-  const tafsirRecords = React.useMemo<ResourceRecord[]>(() => {
-    return (tafsirs ?? []).map((t) => ({ id: t.id, name: t.displayName, lang: t.formattedLanguage }));
-  }, [tafsirs]);
-
-  const tafsirLanguageSort = React.useMemo(() => {
-    const priorityByLang = new Map<string, number>();
-
-    for (const tafsir of tafsirs ?? []) {
-      const lang = tafsir.formattedLanguage;
-      const priority = tafsir.getLanguagePriority();
-      const existing = priorityByLang.get(lang);
-      if (existing === undefined || priority < existing) {
-        priorityByLang.set(lang, priority);
-      }
-    }
-
-    return (a: string, b: string): number => {
-      const priorityA = priorityByLang.get(a) ?? Number.POSITIVE_INFINITY;
-      const priorityB = priorityByLang.get(b) ?? Number.POSITIVE_INFINITY;
-      return priorityA !== priorityB ? priorityA - priorityB : a.localeCompare(b);
-    };
-  }, [tafsirs]);
 
   const selectedTafsirName = React.useMemo(() => {
     const ids = settings.tafsirIds ?? [];
@@ -962,6 +971,9 @@ export function SettingsSidebarContent({
   ) : null;
 
   const isSubPanel = panel.type !== 'root';
+  // Translation is the most common and heaviest subpanel. Mount it offscreen
+  // after the outer drawer animation, then reuse the same list on first open.
+  const renderedPanelType: SubPanelType = isSubPanel ? panel.type : 'translations';
 
   const subTranslateX = navProgress.interpolate({
     inputRange: [0, 1],
@@ -980,19 +992,18 @@ export function SettingsSidebarContent({
     outputRange: [1, 0.9],
   });
 
-  const subPanelTitle = isSubPanel
-    ? panel.type === 'translations'
+  const subPanelTitle =
+    renderedPanelType === 'translations'
       ? t('manage_translations')
-      : panel.type === 'tafsir'
+      : renderedPanelType === 'tafsir'
         ? t('tafsir_panel_title')
-      : panel.type === 'word-language'
+      : renderedPanelType === 'word-language'
         ? t('word_by_word_language')
-      : panel.type === 'arabic-font'
+      : renderedPanelType === 'arabic-font'
         ? t('select_font_face')
-      : panel.type === 'ui-language'
+      : renderedPanelType === 'ui-language'
         ? t('language_setting')
-      : t('mushaf')
-    : '';
+      : t('mushaf');
 
   const isTranslationsVisible = panel.type === 'translations';
   const isTafsirVisible = panel.type === 'tafsir';
@@ -1001,49 +1012,10 @@ export function SettingsSidebarContent({
 
   const subPanel = (
     <View className="flex-1">
-      {isSubPanel ? (
-        <View
-          style={[styles.header, { borderBottomColor: `${palette.border}66` }]}
-          className="border-b"
-        >
-          <View style={styles.headerSide}>
-            <Pressable
-              onPress={goBack}
-              accessibilityRole="button"
-              accessibilityLabel="Go back"
-              hitSlop={8}
-              style={({ pressed }) => [styles.iconButton, pressed ? styles.pressed : null]}
-            >
-              <ArrowLeft color={palette.text} size={18} strokeWidth={2.25} />
-            </Pressable>
-          </View>
-          <View style={styles.headerTitleWrap}>
-            <Text
-              className="text-lg font-semibold"
-              numberOfLines={1}
-              style={{ color: palette.text }}
-            >
-              {subPanelTitle}
-            </Text>
-          </View>
-          <View style={styles.headerSide}>
-            {onClose ? (
-              <Pressable
-                onPress={onClose}
-                accessibilityRole="button"
-                accessibilityLabel="Close settings"
-                hitSlop={8}
-                style={({ pressed }) => [styles.iconButton, pressed ? styles.pressed : null]}
-              >
-                <X color={palette.text} size={18} strokeWidth={2.25} />
-              </Pressable>
-            ) : null}
-          </View>
-        </View>
-      ) : null}
+      <SettingsPanelHeader title={subPanelTitle} onBack={goBack} onClose={onClose} />
 
       <View className="flex-1">
-        {panel.type === 'translations' ? (
+        {renderedPanelType === 'translations' ? (
           <View style={{ flex: 1 }}>
             <ManageTranslationsPanel
               translations={translationRecords}
@@ -1057,22 +1029,11 @@ export function SettingsSidebarContent({
           </View>
         ) : null}
 
-        {panel.type === 'tafsir' ? (
-          <View style={{ flex: 1 }}>
-            <ManageTafsirsPanel
-              tafsirs={tafsirRecords}
-              orderedSelection={settings.tafsirIds ?? []}
-              onChangeSelection={setTafsirIds}
-              isLoading={isTafsirResourcesLoading}
-              errorMessage={tafsirResourcesError}
-              onRefresh={refreshTafsirResources}
-              languageSort={tafsirLanguageSort}
-              isActive={isTafsirVisible}
-            />
-          </View>
+        {renderedPanelType === 'tafsir' ? (
+          <TafsirSelectionPanel isActive={dataEnabled && isTafsirVisible} />
         ) : null}
 
-        {panel.type === 'word-language' ? (
+        {renderedPanelType === 'word-language' ? (
           <FlatList
             ListHeaderComponent={
               <Text className="px-4 pb-3 text-sm text-muted dark:text-muted-dark">
@@ -1105,7 +1066,7 @@ export function SettingsSidebarContent({
           />
         ) : null}
 
-        {panel.type === 'arabic-font' ? (
+        {renderedPanelType === 'arabic-font' ? (
           <FlatList
             data={arabicFontItems}
             keyExtractor={(item) => item.value}
@@ -1149,7 +1110,7 @@ export function SettingsSidebarContent({
           />
         ) : null}
 
-        {panel.type === 'ui-language' ? (
+        {renderedPanelType === 'ui-language' ? (
           <FlatList
             data={UI_LANGUAGE_ITEMS}
             keyExtractor={(item) => item.code}
@@ -1166,7 +1127,7 @@ export function SettingsSidebarContent({
           />
         ) : null}
 
-        {panel.type === 'mushaf' ? (
+        {renderedPanelType === 'mushaf' ? (
           <View style={{ flex: 1 }}>
             <FlatList
               data={mushafPackEntries}
@@ -1302,7 +1263,7 @@ export function SettingsSidebarContent({
 
   return (
     <View className="flex-1" style={{ backgroundColor: palette.background }}>
-      {!isSubPanel || !hideRootWhenSubPanel ? (
+      {!isSubPanel || (!hideRootWhenSubPanel && isRootContentMounted) ? (
         <Animated.View
           accessibilityElementsHidden={isSubPanel}
           importantForAccessibility={isSubPanel ? 'no-hide-descendants' : 'auto'}
@@ -1526,8 +1487,11 @@ export function SettingsSidebarContent({
         </Animated.View>
       ) : null}
 
-      {isSubPanel ? (
+      {isSubPanel || dataEnabled ? (
         <Animated.View
+          accessibilityElementsHidden={!isSubPanel}
+          importantForAccessibility={isSubPanel ? 'auto' : 'no-hide-descendants'}
+          pointerEvents={isSubPanel ? 'auto' : 'none'}
           style={[
             styles.subPanel,
             {

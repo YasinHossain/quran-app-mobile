@@ -93,6 +93,8 @@ This document lists reusable UI components currently available in the codebase s
 | --- | --- | --- |
 | `SettingsSidebar` | Right-side drawer (modal + animation) used for the reader settings panel, with explicit safe-area inset padding to keep the first-open animation stable. | `components/reader/settings/SettingsSidebar.tsx` |
 | `SettingsSidebarContent` | Shared mobile settings content (header, tabs, sections, and subpanels/controls). | `components/reader/settings/SettingsSidebarContent.tsx` |
+| `SettingsPanelHeader` | Shared title, back, and close controls for settings subpanels and direct resource entry. | `components/reader/settings/SettingsPanelHeader.tsx` |
+| `TafsirSettingsContent` / `TafsirSelectionPanel` | Direct tafsir entry mounts only the tafsir picker, with no prewarming on the reader page. The full settings controller mounts only when navigating back; the same connected picker is reused inside settings. Selection reconciliation belongs to `SettingsProvider`, never the picker's local loading state. | `components/reader/settings/TafsirSettingsContent.tsx` |
 | Full-screen Settings route | Home-menu settings surface that reuses `SettingsSidebarContent` at full screen width instead of the reader side drawer. | `app/settings.tsx` |
 | `IndexScrubber` | Shared right-side 1-based index scrubber used by verse and exact mushaf page readers; maps drag position to an index and delegates scrolling to the owning screen/reader. | `components/reader/IndexScrubber.tsx` |
 | `SettingsTabToggle` | Segmented control for switching between settings tabs. | `components/reader/settings/SettingsTabToggle.tsx` |

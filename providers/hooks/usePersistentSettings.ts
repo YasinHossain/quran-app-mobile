@@ -1,7 +1,7 @@
 import { Dispatch, useEffect, useReducer, useRef } from 'react';
 
 import { settingsReducer, type SettingsAction } from '@/providers/settingsReducer';
-import { defaultSettings, loadSettings, saveSettings } from '@/providers/settingsStorage';
+import { defaultSettings, getCachedSettings, loadSettings, saveSettings } from '@/providers/settingsStorage';
 
 import type { Settings } from '@/types';
 
@@ -14,16 +14,18 @@ interface UsePersistentSettingsReturn {
 }
 
 export function usePersistentSettings(): UsePersistentSettingsReturn {
-  const [settings, dispatch] = useReducer(settingsReducer, defaultSettings);
+  const cachedSettings = useRef(getCachedSettings());
+  const [settings, dispatch] = useReducer(settingsReducer, cachedSettings.current ?? defaultSettings);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const latestSettings = useRef(settings);
-  const hasLoadedFromStorage = useRef(false);
-  const [isHydrated, setIsHydrated] = useReducer(() => true, false);
+  const hasLoadedFromStorage = useRef(cachedSettings.current !== null);
+  const [isHydrated, setIsHydrated] = useReducer(() => true, cachedSettings.current !== null);
 
   useEffect(() => {
     let cancelled = false;
 
     async function load(): Promise<void> {
+      if (cachedSettings.current !== null) return;
       const loaded = await loadSettings(defaultSettings);
       if (cancelled) return;
       hasLoadedFromStorage.current = true;
@@ -64,4 +66,3 @@ export function usePersistentSettings(): UsePersistentSettingsReturn {
 
   return { settings, dispatch, isHydrated };
 }
-

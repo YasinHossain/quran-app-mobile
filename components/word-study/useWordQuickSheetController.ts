@@ -1,5 +1,6 @@
 import React from 'react';
-
+import type { WordAnalysis } from '@/src/core/domain/word-study';
+import { toWordStudyLocation } from '@/src/core/domain/word-study';
 import { container } from '@/src/core/infrastructure/di/container';
 import { logger } from '@/src/core/infrastructure/monitoring/logger';
 import { WordStudyPackNotInstalledError } from '@/src/core/infrastructure/word-study';
@@ -18,6 +19,7 @@ type WordQuickSheetSession = {
   loadState: WordQuickSheetLoadState;
   tapStartedAtMs: number;
   requestId: number;
+  verseAnalyses?: readonly WordAnalysis[];
 };
 
 const QUICK_SHEET_CACHE_LIMIT = 96;
@@ -82,6 +84,7 @@ export type WordQuickSheetController = {
   isOpen: boolean;
   event: WordStudyPressEvent | null;
   loadState: WordQuickSheetLoadState;
+  verseAnalyses?: readonly WordAnalysis[];
   open: (event: WordStudyPressEvent) => void;
   close: () => void;
   retry: () => void;
@@ -99,6 +102,7 @@ export function useWordQuickSheetController(
   const { isDisabled = false, onDisabledOpen } = options;
   const nextRequestIdRef = React.useRef(0);
   const cacheRef = React.useRef(new Map<string, WordQuickSheetLoadState>());
+  const verseAnalysesCacheRef = React.useRef(new Map<string, readonly WordAnalysis[]>());
   const [isOpen, setIsOpen] = React.useState(false);
   const [session, setSession] = React.useState<WordQuickSheetSession | null>(null);
 
@@ -118,13 +122,15 @@ export function useWordQuickSheetController(
       const requestId = ++nextRequestIdRef.current;
       const locationKey = getWordStudyLocationKey(event);
       const cachedLoadState = getCachedLoadState(cacheRef.current, locationKey);
+      const cachedVerseAnalyses = verseAnalysesCacheRef.current.get(event.verseKey);
       setSession({
         event,
         loadState: cachedLoadState ?? { status: 'loading' },
         tapStartedAtMs,
         requestId,
+        verseAnalyses: cachedVerseAnalyses,
       });
-      if (cachedLoadState) {
+      if (cachedLoadState && cachedVerseAnalyses) {
         logger.info('Word Study quick-sheet lookup reused cache', {
           locationKey,
           durationMs: Number((nowMs() - tapStartedAtMs).toFixed(2)),
@@ -136,12 +142,27 @@ export function useWordQuickSheetController(
       const query = (): void => {
         if (nextRequestIdRef.current !== requestId) return;
         void container
-          .getWordAnalysis()
-          .execute(locationKey)
-          .then((result) => {
+          .getVerseWordAnalyses()
+          .execute(event.verseKey)
+          .then(async (verseWords) => {
             const resolvedAtMs = nowMs();
-            const nextLoadState = toWordQuickSheetLoadState(result);
+            const targetWord = verseWords.find(
+              (w) => w.location.wordPosition === event.wordPosition
+            );
+            const nextLoadState: WordQuickSheetLoadState = targetWord
+              ? { status: 'ready', analysis: targetWord }
+              : toWordQuickSheetLoadState(await container.getWordAnalysis().execute(locationKey));
             rememberCachedLoadState(cacheRef.current, locationKey, nextLoadState);
+            verseAnalysesCacheRef.current.set(event.verseKey, verseWords);
+            for (const w of verseWords) {
+              const key = `${event.verseKey}:${w.location.wordPosition}`;
+              if (!cacheRef.current.has(key)) {
+                rememberCachedLoadState(cacheRef.current, key, {
+                  status: 'ready',
+                  analysis: w,
+                });
+              }
+            }
             setSession((current) => {
               if (!current || current.requestId !== requestId) return current;
               logger.info('Word Study quick-sheet lookup resolved', {
@@ -149,7 +170,11 @@ export function useWordQuickSheetController(
                 durationMs: Number((resolvedAtMs - tapStartedAtMs).toFixed(2)),
                 offline: true,
               });
-              return { ...current, loadState: nextLoadState };
+              return {
+                ...current,
+                loadState: nextLoadState,
+                verseAnalyses: verseWords,
+              };
             });
           })
           .catch((error: unknown) => {
@@ -236,6 +261,7 @@ export function useWordQuickSheetController(
     isOpen,
     event: session?.event ?? null,
     loadState: session?.loadState ?? { status: 'loading' },
+    verseAnalyses: session?.verseAnalyses,
     open,
     close,
     retry,

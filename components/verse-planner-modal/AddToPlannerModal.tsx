@@ -18,6 +18,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Colors from '@/constants/Colors';
 import {
   dialogTransform,
+  modalBackdropStyle,
   useModalTransition,
 } from '@/components/motion/modalTransition';
 import { useChapters } from '@/hooks/useChapters';
@@ -328,7 +329,7 @@ export function AddToPlannerModal({
     >
       <View className={isDark ? 'dark' : ''} style={styles.root}>
         <Pressable style={StyleSheet.absoluteFill} onPress={handleOverlayPress}>
-          <Animated.View style={[styles.overlay, { opacity: progress }]} />
+          <Animated.View style={[styles.overlay, modalBackdropStyle(progress, isDark)]} />
         </Pressable>
 
         <KeyboardAvoidingView
@@ -435,7 +436,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 8,
   },
-  overlay: { flex: 1, backgroundColor: '#00000080' },
+  overlay: { flex: 1 },
   sheetWrap: { flex: 1, justifyContent: 'center', width: '100%' },
   sheet: {
     width: '100%',

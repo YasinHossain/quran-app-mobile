@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { useModalTransition, verticalSheetTransform } from '@/components/motion/modalTransition';
+import { modalBackdropStyle, useModalTransition, verticalSheetTransform } from '@/components/motion/modalTransition';
 import Colors from '@/constants/Colors';
 import { useAppTheme } from '@/providers/ThemeContext';
 import type { DictionarySource } from '@/src/core/domain/word-study';
@@ -59,7 +59,7 @@ export function DictionaryGuideSheet({
           style={StyleSheet.absoluteFill}
           onPress={handleOverlayPress}
         >
-          <Animated.View style={[styles.overlay, { opacity: progress }]} />
+          <Animated.View style={[styles.overlay, modalBackdropStyle(progress, isDark)]} />
         </Pressable>
 
         <Animated.View
@@ -194,7 +194,7 @@ function GuideGroup({ title, body, palette }: {
 
 const styles = StyleSheet.create({
   root: { flex: 1, justifyContent: 'flex-end' },
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)' },
+  overlay: { flex: 1 },
   sheet: { width: '100%', borderTopLeftRadius: 26, borderTopRightRadius: 26, borderWidth: 1, overflow: 'hidden' },
   safeArea: { flex: 1, width: '100%' },
   handle: { width: 38, height: 4, borderRadius: 2, alignSelf: 'center', marginTop: 8 },

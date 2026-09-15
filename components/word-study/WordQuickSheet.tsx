@@ -10,7 +10,6 @@ import React from 'react';
 import {
   ActivityIndicator,
   Animated,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -20,7 +19,8 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useModalTransition, verticalSheetTransform } from '@/components/motion/modalTransition';
+import { PortalOverlay } from '@/components/motion/PortalOverlay';
+import { modalBackdropStyle, modalMotion, useModalTransition, verticalSheetTransform } from '@/components/motion/modalTransition';
 import Colors from '@/constants/Colors';
 import { useAppTheme } from '@/providers/ThemeContext';
 import type { WordAnalysis } from '@/src/core/domain/word-study';
@@ -61,20 +61,22 @@ export function WordQuickSheet({
   onPlayVerseFromHere: () => void;
   onOpenFullStudy: () => void;
 }): React.JSX.Element {
-  const { resolvedTheme } = useAppTheme();
+  const { resolvedTheme, isDark } = useAppTheme();
   const palette = Colors[resolvedTheme];
   const { height: windowHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   // Keep a stable drawer while data loads, without exceeding short/landscape screens.
   const sheetHeight = Math.max(0, Math.min(510, windowHeight * 0.85, windowHeight - insets.top - 12));
-  const pendingActionRef = React.useRef<(() => void) | null>(null);
+  const isNavigatingRef = React.useRef(false);
+
+  React.useEffect(() => {
+    if (isOpen) {
+      isNavigatingRef.current = false;
+    }
+  }, [isOpen]);
+
   const { visible, progress, dismissEnabledRef, onModalShow } = useModalTransition(isOpen, {
     preset: 'sheet',
-    onAfterClose: () => {
-      const action = pendingActionRef.current;
-      pendingActionRef.current = null;
-      action?.();
-    },
   });
 
   const handleModalShow = React.useCallback(() => {
@@ -86,29 +88,32 @@ export function WordQuickSheet({
     if (dismissEnabledRef.current) onClose();
   }, [dismissEnabledRef, onClose]);
 
-  const deferAfterClose = React.useCallback(
-    (action: () => void) => {
-      pendingActionRef.current = action;
-      onClose();
-    },
-    [onClose]
-  );
+  const handleOpenFullStudy = React.useCallback(() => {
+    if (isNavigatingRef.current) return;
+    isNavigatingRef.current = true;
+    onClose();
+    onOpenFullStudy();
+  }, [onClose, onOpenFullStudy]);
 
   const locationLabel = event ? `${event.verseKey}:${event.wordPosition}` : '';
+  const sheetBg = palette.background;
+  const scrollRef = React.useRef<ScrollView>(null);
+
+  React.useEffect(() => {
+    if (isOpen) {
+      scrollRef.current?.scrollTo({ y: 0, animated: false });
+    }
+  }, [isOpen, locationLabel]);
 
   return (
-    <Modal
-      hardwareAccelerated
-      transparent
+    <PortalOverlay
       visible={visible}
-      animationType="none"
-      statusBarTranslucent
       onShow={handleModalShow}
       onRequestClose={onClose}
     >
       <View style={styles.root}>
         <Pressable style={StyleSheet.absoluteFill} onPress={handleOverlayPress}>
-          <Animated.View style={[styles.overlay, { opacity: progress }]} />
+          <Animated.View style={[styles.overlay, modalBackdropStyle(progress, isDark)]} />
         </Pressable>
 
         <Animated.View
@@ -119,13 +124,13 @@ export function WordQuickSheet({
               height: sheetHeight,
               minHeight: sheetHeight,
               maxHeight: sheetHeight,
-              backgroundColor: palette.background,
+              backgroundColor: sheetBg,
               borderColor: palette.border,
             },
             verticalSheetTransform(progress, sheetHeight),
           ]}
         >
-          <SafeAreaView edges={['bottom']} style={styles.safeArea}>
+          <SafeAreaView edges={['bottom']} style={[styles.safeArea, { backgroundColor: sheetBg }]}>
             <View style={[styles.header, { borderBottomColor: palette.border }]}>
               <View style={styles.headerCopy}>
                 <Text numberOfLines={1} style={[styles.title, { color: palette.text }]}>
@@ -145,7 +150,7 @@ export function WordQuickSheet({
             </View>
 
             <ScrollView
-              key={locationLabel}
+              ref={scrollRef}
               style={styles.scrollBody}
               contentContainerStyle={styles.scrollContent}
               showsVerticalScrollIndicator
@@ -208,7 +213,7 @@ export function WordQuickSheet({
                   icon={<BookOpenText color={palette.tint} size={20} strokeWidth={2.2} />}
                   label="More"
                   accessibilityLabel={`Open full word study for ${locationLabel}`}
-                  onPress={() => deferAfterClose(onOpenFullStudy)}
+                  onPress={handleOpenFullStudy}
                   palette={palette}
                   last
                 />
@@ -217,7 +222,7 @@ export function WordQuickSheet({
           </SafeAreaView>
         </Animated.View>
       </View>
-    </Modal>
+    </PortalOverlay>
   );
 }
 
@@ -464,8 +469,16 @@ function SkeletonBar({
 
 const styles = StyleSheet.create({
   root: { flex: 1, justifyContent: 'flex-end' },
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)' },
-  sheet: { width: '100%', maxWidth: 640, alignSelf: 'center', borderTopWidth: 1, borderTopLeftRadius: 28, borderTopRightRadius: 28, overflow: 'hidden' },
+  overlay: { flex: 1 },
+  sheet: {
+    width: '100%',
+    maxWidth: 640,
+    alignSelf: 'center',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    overflow: 'hidden',
+  },
   safeArea: { flex: 1 },
   header: { minHeight: 68, paddingHorizontal: 20, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: 'row', alignItems: 'center', gap: 12 },
   headerCopy: { flex: 1, gap: 3 },

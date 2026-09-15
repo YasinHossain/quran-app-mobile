@@ -12,6 +12,7 @@ import {
   type WordOccurrence,
   type WordOccurrenceContextWord,
   type WordOccurrenceQuery,
+  type WordStudyLocation,
   type WordStudyLookupResult,
   type WordStudySourceLayer,
   type WordStudySourceReference,
@@ -180,9 +181,23 @@ function mapLemma(
     id: String(row.id),
     arabic: row.arabic,
     normalized: row.normalized,
-    ...(row.pos_code ? { posCode: row.pos_code } : {}),
     occurrenceCount: row.occurrence_count,
+    posCode: row.pos_code ?? undefined,
     source: source(sourceRef, 'lemma'),
+  };
+}
+
+function mapRoot(
+  row: RootRow,
+  sourceRef: Omit<WordStudySourceReference, 'layer'>
+): Root {
+  return {
+    id: String(row.id),
+    arabic: row.arabic,
+    normalized: row.normalized,
+    occurrenceCount: row.occurrence_count,
+    lemmaCount: row.lemma_count,
+    source: source(sourceRef, 'root'),
   };
 }
 
@@ -269,18 +284,125 @@ export class SQLiteWordStudyRepository implements IWordStudyRepository {
     const canonical = parseVerseKey(key);
     throwIfCancelled(options.signal);
     const db = await this.databaseProvider.getDatabaseAsync();
-    const rows = await cancellable(
-      db.getAllAsync<Pick<WordRow, 'surah' | 'ayah' | 'word_position'>>(
-        `SELECT surah, ayah, word_position FROM word_analysis
-         WHERE surah = ? AND ayah = ? ORDER BY word_position`,
+    const [wordRows, sources] = await Promise.all([
+      cancellable(
+        db.getAllAsync<WordRow>(
+          `SELECT * FROM word_analysis
+           WHERE surah = ? AND ayah = ? ORDER BY word_position`,
+          [canonical.surah, canonical.ayah]
+        ),
+        options.signal
+      ),
+      this.loadSourceRolesAsync(db),
+    ]);
+    throwIfCancelled(options.signal);
+    if (wordRows.length === 0) return [];
+
+    const morphemeRows = await cancellable(
+      db.getAllAsync<MorphemeRow & { word_id: number }>(
+        `SELECT m.* FROM morpheme m
+         JOIN word_analysis wa ON m.word_id = wa.id
+         WHERE wa.surah = ? AND wa.ayah = ?
+         ORDER BY wa.word_position, m.segment_index`,
         [canonical.surah, canonical.ayah]
       ),
       options.signal
     );
-    const results = await Promise.all(
-      rows.map((row) => this.findByLocation(locationKey(row), options))
+    throwIfCancelled(options.signal);
+
+    const morphemesByWordId = new Map<number, MorphemeRow[]>();
+    for (const m of morphemeRows) {
+      let list = morphemesByWordId.get(m.word_id);
+      if (!list) {
+        list = [];
+        morphemesByWordId.set(m.word_id, list);
+      }
+      list.push(m);
+    }
+
+    const uniqueLemmaIds = Array.from(
+      new Set(wordRows.map((r) => r.lemma_id).filter((id): id is number => id !== null))
     );
-    return results.filter(isWordAnalysis);
+    const uniqueRootIds = Array.from(
+      new Set(wordRows.map((r) => r.root_id).filter((id): id is number => id !== null))
+    );
+
+    const uncachedLemmaIds = uniqueLemmaIds.filter((id) => this.lemmaCache.peek(id) === undefined);
+    const uncachedRootIds = uniqueRootIds.filter((id) => this.rootCache.peek(id) === undefined);
+
+    const [newLemmaRows, newRootRows] = await Promise.all([
+      uncachedLemmaIds.length > 0
+        ? cancellable(
+            db.getAllAsync<LemmaRow>(
+              `SELECT * FROM lemma WHERE id IN (${uncachedLemmaIds.map(() => '?').join(',')})`,
+              uncachedLemmaIds
+            ),
+            options.signal
+          )
+        : Promise.resolve([]),
+      uncachedRootIds.length > 0
+        ? cancellable(
+            db.getAllAsync<RootRow>(
+              `SELECT * FROM root WHERE id IN (${uncachedRootIds.map(() => '?').join(',')})`,
+              uncachedRootIds
+            ),
+            options.signal
+          )
+        : Promise.resolve([]),
+    ]);
+    throwIfCancelled(options.signal);
+
+    const foundLemmaIds = new Set<number>();
+    for (const row of newLemmaRows) {
+      foundLemmaIds.add(row.id);
+      this.lemmaCache.set(row.id, Promise.resolve(mapLemma(row, sources.morphology)));
+    }
+    for (const id of uncachedLemmaIds) {
+      if (!foundLemmaIds.has(id)) {
+        this.lemmaCache.set(id, Promise.resolve(null));
+      }
+    }
+
+    const foundRootIds = new Set<number>();
+    for (const row of newRootRows) {
+      foundRootIds.add(row.id);
+      this.rootCache.set(row.id, Promise.resolve(mapRoot(row, sources.morphology)));
+    }
+    for (const id of uncachedRootIds) {
+      if (!foundRootIds.has(id)) {
+        this.rootCache.set(id, Promise.resolve(null));
+      }
+    }
+
+    const [resolvedLemmas, resolvedRoots] = await Promise.all([
+      Promise.all(
+        uniqueLemmaIds.map(async (id) => [id, (await this.lemmaCache.get(id)) ?? null] as const)
+      ),
+      Promise.all(
+        uniqueRootIds.map(async (id) => [id, (await this.rootCache.get(id)) ?? null] as const)
+      ),
+    ]);
+    const lemmasById = new Map<number, Lemma | null>(resolvedLemmas);
+    const rootsById = new Map<number, Root | null>(resolvedRoots);
+
+    const results: WordAnalysis[] = [];
+    for (const row of wordRows) {
+      const canonicalWord = parseWordStudyLocation(locationKey(row));
+      const morphemes = morphemesByWordId.get(row.id) ?? [];
+      const lemma = row.lemma_id !== null ? (lemmasById.get(row.lemma_id) ?? null) : null;
+      const root = row.root_id !== null ? (rootsById.get(row.root_id) ?? null) : null;
+      const analysis = this.buildWordAnalysis(
+        canonicalWord,
+        row,
+        morphemes,
+        lemma,
+        root,
+        sources
+      );
+      this.wordCache.set(canonicalWord.locationKey, Promise.resolve(analysis));
+      results.push(analysis);
+    }
+    return results;
   }
 
   findOccurrences(query: WordOccurrenceQuery): Promise<PaginatedWordOccurrences>;
@@ -438,6 +560,17 @@ export class SQLiteWordStudyRepository implements IWordStudyRepository {
         ? Promise.resolve(null)
         : this.loadRootAsync(db, row.root_id, sources.morphology),
     ]);
+    return this.buildWordAnalysis(canonical, row, morphemeRows, lemma, root, sources);
+  }
+
+  private buildWordAnalysis(
+    canonical: WordStudyLocation,
+    row: WordRow,
+    morphemeRows: readonly MorphemeRow[],
+    lemma: Lemma | null,
+    root: Root | null,
+    sources: SourceRoles
+  ): WordAnalysis {
     const morphologySource = source(sources.morphology, 'morphology');
     const segmentationSource = source(sources.morphology, 'segmentation');
     const morphemes: Morpheme[] = morphemeRows.map((item) => ({
@@ -449,7 +582,7 @@ export class SQLiteWordStudyRepository implements IWordStudyRepository {
       features: parseMorphemeFeatures(item.features_json, item.pos_code),
       source: segmentationSource,
     }));
-    const analysis: WordAnalysis = {
+    return {
       location: canonical,
       surfaceUthmani: row.surface_uthmani,
       normalizedSurface: row.normalized_surface,
@@ -479,7 +612,6 @@ export class SQLiteWordStudyRepository implements IWordStudyRepository {
         ...(root ? [root.source] : []),
       ]),
     };
-    return analysis;
   }
 
   private loadLemmaAsync(
@@ -510,18 +642,7 @@ export class SQLiteWordStudyRepository implements IWordStudyRepository {
     if (!pending) {
       pending = db
         .getFirstAsync<RootRow>('SELECT * FROM root WHERE id = ? LIMIT 1', [id])
-        .then((row) =>
-          row
-            ? {
-                id: String(row.id),
-                arabic: row.arabic,
-                normalized: row.normalized,
-                occurrenceCount: row.occurrence_count,
-                lemmaCount: row.lemma_count,
-                source: source(sourceRef, 'root'),
-              }
-            : null
-        )
+        .then((row) => (row ? mapRoot(row, sourceRef) : null))
         .catch((error) => {
           this.rootCache.delete(id);
           throw error;

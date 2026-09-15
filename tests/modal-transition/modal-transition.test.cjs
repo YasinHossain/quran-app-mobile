@@ -71,6 +71,7 @@ function mount(t, initialOpen, { reducedMotion = false, strict = false, ...initi
   t.after(() => act(() => root.unmount()));
   return {
     get current() { return result; }, animations,
+    backdropStyle(isDark) { return exports.modalBackdropStyle(result.progress, isDark); },
     update(isOpen, options = initialOptions) { act(() => root.update(element(isOpen, options))); },
     show() { act(() => result.onModalShow()); },
     finish() { act(() => animations.at(-1).finish()); },
@@ -82,6 +83,17 @@ function mount(t, initialOpen, { reducedMotion = false, strict = false, ...initi
     unmount() { act(() => root.unmount()); },
   };
 }
+
+test('modal backdrop uses a softer light theme and a gentle entrance curve', (t) => {
+  const hook = mount(t, false);
+  const light = hook.backdropStyle(false);
+  const dark = hook.backdropStyle(true);
+
+  assert.equal(light.backgroundColor, 'rgba(0,0,0,0.34)');
+  assert.equal(dark.backgroundColor, 'rgba(0,0,0,0.46)');
+  assert.deepEqual([...light.opacity.inputRange], [0, 0.5, 1]);
+  assert.deepEqual([...light.opacity.outputRange], [0, 0.28, 1]);
+});
 
 test('first mount already open waits for native presentation, then animates from hidden', (t) => {
   let opened = 0;
@@ -259,6 +271,7 @@ test('frequent drawers and action sheets stay in the app window portal', () => {
     'components/reader/settings/SettingsSidebar.tsx',
     'components/bookmarks/FolderActionsSheet.tsx',
     'components/surah/VerseActionsSheet.tsx',
+    'components/word-study/WordQuickSheet.tsx',
   ];
 
   for (const target of targets) {
@@ -284,4 +297,57 @@ test('drawer data work is deferred until its entrance completes', () => {
   assert.match(sidebarSource, /onAfterOpen: \(\) => setIsDrawerSettled\(true\)/);
   assert.match(settingsSource, /enabled: dataEnabled &&/);
   assert.match(settingsSource, /initialNumToRender=\{2\}/);
+});
+
+test('translation panel starts immediately while other warmed-panel replacements wait for commit', () => {
+  const settingsSource = readFileSync(
+    path.join(__dirname, '../../components/reader/settings/SettingsSidebarContent.tsx'),
+    'utf8'
+  );
+  const openPanelSource = settingsSource.slice(
+    settingsSource.indexOf('const openPanel = React.useCallback'),
+    settingsSource.indexOf('const closePanel = React.useCallback')
+  );
+
+  assert.match(
+    settingsSource,
+    /const renderedPanelType: SubPanelType = isSubPanel \? panel\.type : 'translations'/
+  );
+  assert.match(settingsSource, /\{isSubPanel \|\| dataEnabled \? \(/);
+  assert.match(openPanelSource, /setPanel\(\{ type: nextPanel \}\);[\s\S]*Animated\.timing\(navProgress/);
+  assert.match(
+    openPanelSource,
+    /if \(nextPanel === 'translations'\) \{[\s\S]*startAnimation\(\);[\s\S]*return;/
+  );
+  assert.match(openPanelSource, /requestAnimationFrame\(\(\) => \{[\s\S]*startAnimation\(\)/);
+});
+
+test('direct tafsir manager open keeps unrelated settings work off the entrance path', () => {
+  const sidebarSource = readFileSync(
+    path.join(__dirname, '../../components/reader/settings/SettingsSidebar.tsx'),
+    'utf8'
+  );
+  const settingsSource = readFileSync(
+    path.join(__dirname, '../../components/reader/settings/SettingsSidebarContent.tsx'),
+    'utf8'
+  );
+
+  assert.doesNotMatch(sidebarSource, /renderToHardwareTextureAndroid/);
+  assert.match(
+    settingsSource,
+    /const \[isRootContentMounted, setIsRootContentMounted\] = React\.useState\(/
+  );
+  assert.match(
+    settingsSource,
+    /!isSubPanel \|\| \(!hideRootWhenSubPanel && isRootContentMounted\)/
+  );
+  assert.match(
+    settingsSource,
+    /panel\.type === 'translations' \|\|[\s\S]*panel\.type === 'root' && activeTab === 'translations'/
+  );
+  assert.match(
+    settingsSource,
+    /enabled: dataEnabled && \(panel\.type === 'root' \|\| panel\.type === 'mushaf'\)/
+  );
+  assert.match(settingsSource, /isActive=\{dataEnabled && isTafsirVisible\}/);
 });

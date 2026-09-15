@@ -293,6 +293,9 @@ export default function BookmarksScreen(): React.JSX.Element {
 
   const closeFolderActionsSheet = React.useCallback(() => {
     setIsFolderActionsOpen(false);
+  }, []);
+
+  const handleFolderActionsSheetClosed = React.useCallback(() => {
     setFolderForActions(null);
   }, []);
 
@@ -715,6 +718,7 @@ export default function BookmarksScreen(): React.JSX.Element {
       <FolderActionsSheet
         isOpen={isFolderActionsOpen}
         onClose={closeFolderActionsSheet}
+        onAfterClose={handleFolderActionsSheetClosed}
         folderName={folderForActions?.name ?? ''}
         onEdit={
           folderForActions

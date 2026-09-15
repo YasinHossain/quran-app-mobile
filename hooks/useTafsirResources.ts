@@ -50,6 +50,12 @@ export function useTafsirResources({
 
   const fetchNow = React.useCallback(async (): Promise<void> => {
     if (!enabled) return;
+    if (cachedTafsirs) {
+      setTafsirs(cachedTafsirs);
+      setIsLoading(false);
+      setErrorMessage(null);
+      return;
+    }
     setIsLoading(true);
     setErrorMessage(null);
 
@@ -80,4 +86,3 @@ export function useTafsirResources({
 
   return { tafsirs, tafsirById, isLoading, errorMessage, refresh };
 }
-

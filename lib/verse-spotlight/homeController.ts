@@ -1,5 +1,5 @@
 import { BUNDLED_SAHIH_TRANSLATION_ID } from './bundledFallback';
-import { getNextVerseKey, getPreviousVerseKey } from './canonicalIndex';
+import { getNextVerseKey, getPreviousVerseKey, isValidVerseKey } from './canonicalIndex';
 import type {
   SpotlightVerseContent,
   VerseKey,
@@ -106,6 +106,7 @@ export class HomeVerseSpotlightController {
   private resolutionVersion = 0;
   private hydrationVersion = 0;
   private persistenceQueue: Promise<void> = Promise.resolve();
+  private restoredContentNeedsRevalidation = false;
 
   constructor(
     requestedTranslationId: number,
@@ -131,6 +132,30 @@ export class HomeVerseSpotlightController {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
   };
+
+  restore(state: VerseSpotlightState, content: SpotlightVerseContent): void {
+    if (this.isDisposed || this.snapshot.state) return;
+    if (
+      state.surface !== 'home' ||
+      !isValidVerseKey(state.verseKey) ||
+      state.requestedTranslationId !== this.requestedTranslationId ||
+      content.verseKey !== state.verseKey ||
+      content.requestedTranslationId !== this.requestedTranslationId
+    ) return;
+    const restoredState = withResolvedTranslation(
+      state,
+      this.requestedTranslationId,
+      content.effectiveTranslationId
+    );
+    this.snapshot = {
+      status: 'ready',
+      state: restoredState,
+      content,
+    };
+    this.restoredContentNeedsRevalidation = true;
+    this.emit();
+    this.persist(restoredState);
+  }
 
   async hydrate(): Promise<void> {
     const hydrationVersion = ++this.hydrationVersion;
@@ -185,6 +210,10 @@ export class HomeVerseSpotlightController {
       // long absence; restart the rotation window from the time Home becomes
       // active and keep the current content on screen.
       this.deferExpiredState(state);
+      if (this.restoredContentNeedsRevalidation) {
+        this.restoredContentNeedsRevalidation = false;
+        void this.resolveCurrent();
+      }
       return;
     }
 
@@ -194,10 +223,12 @@ export class HomeVerseSpotlightController {
     // while the app was in the background, but avoids resolving the same
     // already-correct verse on every Home tab entry.
     const contentNeedsRevalidation =
+      this.restoredContentNeedsRevalidation ||
       !this.snapshot.content ||
       this.snapshot.content.requestedTranslationId !== this.requestedTranslationId ||
       this.snapshot.content.effectiveTranslationId !== this.requestedTranslationId;
     if (didBecomeActive && contentNeedsRevalidation) {
+      this.restoredContentNeedsRevalidation = false;
       void this.resolveCurrent();
     }
   }
@@ -231,33 +262,19 @@ export class HomeVerseSpotlightController {
         : getNextVerseKey(state.verseKey);
     if (!verseKey) return false;
 
-    this.selectVerse(verseKey);
-    return true;
+    return this.selectVerse(verseKey);
   }
 
-  shuffle(): boolean {
-    const state = this.snapshot.state;
-    if (!state) return false;
-    this.selectVerse(selectRandomAnchor(state.verseKey, this.dependencies.random));
-    return true;
-  }
-
-  refresh(): void {
-    if (!this.snapshot.state) return;
-    void this.resolveCurrent();
-  }
-
-  dispose(): void {
-    this.isDisposed = true;
-    this.hydrationVersion += 1;
-    this.resolutionVersion += 1;
-    this.clearScheduledExpiration();
-    this.listeners.clear();
-  }
-
-  private selectVerse(verseKey: VerseKey): void {
+  selectVerse(verseKey: VerseKey): boolean {
     const current = this.snapshot.state;
-    if (!current || this.isDisposed) return;
+    if (
+      !current ||
+      this.isDisposed ||
+      !isValidVerseKey(verseKey) ||
+      verseKey === current.verseKey
+    ) {
+      return false;
+    }
 
     const state = createSpotlightState({
       surface: 'home',
@@ -274,6 +291,26 @@ export class HomeVerseSpotlightController {
     this.persist(state);
     this.scheduleExpiration();
     void this.resolveCurrent();
+    return true;
+  }
+
+  shuffle(): boolean {
+    const state = this.snapshot.state;
+    if (!state) return false;
+    return this.selectVerse(selectRandomAnchor(state.verseKey, this.dependencies.random));
+  }
+
+  refresh(): void {
+    if (!this.snapshot.state) return;
+    void this.resolveCurrent();
+  }
+
+  dispose(): void {
+    this.isDisposed = true;
+    this.hydrationVersion += 1;
+    this.resolutionVersion += 1;
+    this.clearScheduledExpiration();
+    this.listeners.clear();
   }
 
   private deferExpiredState(state: VerseSpotlightState): void {
@@ -333,7 +370,7 @@ export class HomeVerseSpotlightController {
       ) {
         return;
       }
-      this.snapshot = { status: 'error', state: this.snapshot.state, content: null };
+      this.snapshot = { status: 'error', state: this.snapshot.state, content: this.snapshot.content };
       this.emit();
     }
   }

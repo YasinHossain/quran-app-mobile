@@ -1,7 +1,7 @@
 import React from 'react';
+import { FlashList } from '@shopify/flash-list';
 import {
   Alert,
-  FlatList,
   Platform,
   Pressable,
   Text,
@@ -558,6 +558,29 @@ export function ManageTranslationsPanel({
     return base;
   }, [activeFilter, resourcesToRender, sectionsToRender]);
 
+  const getRowType = React.useCallback((row: Row): string => row.type, []);
+
+  const overrideRowLayout = React.useCallback((layout: { span?: number }, row: Row): void => {
+    const sizedLayout = layout as { span?: number; size?: number };
+
+    if (row.type === 'resource') {
+      sizedLayout.size = 58;
+      return;
+    }
+
+    if (row.type === 'section') {
+      sizedLayout.size = 48;
+      return;
+    }
+
+    if (row.type === 'tabs') {
+      sizedLayout.size = 56;
+      return;
+    }
+
+    sizedLayout.size = 90;
+  }, []);
+
   const handleReorderSelection = React.useCallback(
     (ids: number[]) => {
       const normalized = normalizeOrderedSelection(ids, { validIds: availableTranslationIds });
@@ -718,7 +741,7 @@ export function ManageTranslationsPanel({
 
   return (
     <View className="flex-1">
-      <FlatList
+      <FlashList
         data={rows}
         keyExtractor={(row) => {
           if (row.type === 'tabs') return 'tabs';
@@ -728,13 +751,13 @@ export function ManageTranslationsPanel({
         }}
         renderItem={renderItem}
         ListHeaderComponent={headerComponent}
-        stickyHeaderIndices={[1]}
+        stickyHeaderIndices={[0]}
         keyboardShouldPersistTaps="handled"
-        removeClippedSubviews={false}
-        scrollEventThrottle={16}
-        initialNumToRender={8}
-        maxToRenderPerBatch={8}
-        updateCellsBatchingPeriod={50}
+        removeClippedSubviews={Platform.OS === 'android'}
+        drawDistance={Platform.OS === 'android' ? 200 : 250}
+        getItemType={getRowType}
+        overrideItemLayout={overrideRowLayout}
+        overrideProps={{ initialDrawBatchSize: 4, scrollEventThrottle: 16 }}
         scrollEnabled={!isReordering}
         contentContainerStyle={{ paddingBottom: 20 }}
       />

@@ -12,18 +12,29 @@ export type WordStudyNavigationHandoff = {
   verseWords: readonly WordStudyVersePreviewWord[];
   selectedSurfaceText?: string;
   selectedAnalysis?: WordAnalysis;
+  verseAnalyses?: readonly WordAnalysis[];
 };
 
 let pendingHandoff: WordStudyNavigationHandoff | null = null;
 
 export function stageWordStudyNavigationHandoff(
   event: WordStudyPressEvent,
-  selectedAnalysis?: WordAnalysis
+  selectedAnalysis?: WordAnalysis,
+  verseAnalyses?: readonly WordAnalysis[]
 ): void {
+  const previewWords =
+    verseAnalyses && verseAnalyses.length > 0
+      ? verseAnalyses.map((word) => ({
+          wordPosition: word.location.wordPosition,
+          surfaceText: word.surfaceUthmani,
+        }))
+      : event.verseWords ?? [];
+
   pendingHandoff = {
     locationKey: getWordStudyLocationKey(event),
     verseKey: event.verseKey,
-    verseWords: event.verseWords ?? [],
+    verseWords: previewWords,
+    ...(verseAnalyses && verseAnalyses.length > 0 ? { verseAnalyses } : {}),
     ...(event.surfaceText ? { selectedSurfaceText: event.surfaceText } : {}),
     ...(selectedAnalysis ? { selectedAnalysis } : {}),
   };
