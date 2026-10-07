@@ -52,25 +52,38 @@ function sleep(milliseconds) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
 }
 
-function connectedEmulator(adb) {
+function connectedEmulator(adb, requestedAvd) {
   const result = spawnSync(adb, ["devices"], { encoding: "utf8" });
   if (result.status !== 0) {
     return "";
   }
 
+  const serials = result.stdout
+    .split(/\r?\n/)
+    .map((line) => line.match(/^(emulator-\d+)\s+device$/)?.[1])
+    .filter(Boolean);
+
+  if (!requestedAvd) return serials[0] || "";
+
   return (
-    result.stdout
-      .split(/\r?\n/)
-      .map((line) => line.match(/^(emulator-\d+)\s+device$/)?.[1])
-      .find(Boolean) || ""
+    serials.find((serial) => {
+      const avdResult = spawnSync(adb, ["-s", serial, "emu", "avd", "name"], {
+        encoding: "utf8",
+      });
+      const avdName = avdResult.stdout
+        ?.split(/\r?\n/)
+        .map((line) => line.trim())
+        .find((line) => line && line !== "OK");
+      return avdResult.status === 0 && avdName === requestedAvd;
+    }) || ""
   );
 }
 
-function waitUntilReady(adb, timeoutMilliseconds = 180_000) {
+function waitUntilReady(adb, requestedAvd, timeoutMilliseconds = 180_000) {
   const deadline = Date.now() + timeoutMilliseconds;
 
   while (Date.now() < deadline) {
-    const serial = connectedEmulator(adb);
+    const serial = connectedEmulator(adb, requestedAvd);
     if (serial) {
       const bootResult = spawnSync(
         adb,
@@ -118,7 +131,7 @@ if (!avds.includes(avd)) {
   process.exit(1);
 }
 
-const existingSerial = connectedEmulator(adb);
+const existingSerial = connectedEmulator(adb, avd);
 if (existingSerial) {
   console.log(`Android emulator already ready: ${existingSerial}`);
   process.exit(0);
@@ -126,11 +139,13 @@ if (existingSerial) {
 
 console.log(`Starting Android Virtual Device: ${avd}`);
 
+const emulatorArgs = ["-avd", avd];
+
 if (process.platform === "win32") {
   const windowsLauncher = path.join(__dirname, "start-android-emulator-windows.cmd");
   const result = spawnSync(
     "cmd.exe",
-    ["/d", "/c", windowsLauncher, emulator, avd],
+    ["/d", "/c", windowsLauncher, emulator, ...emulatorArgs],
     {
       stdio: "ignore",
       windowsHide: true,
@@ -144,7 +159,7 @@ if (process.platform === "win32") {
     process.exit(1);
   }
 
-  const serial = waitUntilReady(adb);
+  const serial = waitUntilReady(adb, avd);
   if (!serial) {
     console.error("Android emulator did not become ready within 3 minutes.");
     process.exit(1);
@@ -159,7 +174,7 @@ const launchOptions = {
   stdio: "ignore",
 };
 
-const child = spawn(emulator, ["-avd", avd], launchOptions);
+const child = spawn(emulator, emulatorArgs, launchOptions);
 
 child.on("error", (error) => {
   console.error(`Failed to start Android emulator: ${error.message}`);
@@ -168,7 +183,7 @@ child.on("error", (error) => {
 child.on("spawn", () => {
   child.unref();
 
-  const serial = waitUntilReady(adb);
+  const serial = waitUntilReady(adb, avd);
   if (!serial) {
     console.error("Android emulator did not become ready within 3 minutes.");
     process.exitCode = 1;

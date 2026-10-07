@@ -1,5 +1,5 @@
 import React from 'react';
-import type { NativeSyntheticEvent } from 'react-native';
+import { PixelRatio, type NativeSyntheticEvent } from 'react-native';
 
 import type { SurahVerse } from '@/hooks/useSurahVerses';
 import {
@@ -144,7 +144,7 @@ export function useNativeSurahReaderEvents({
   const handleNativeScroll = React.useCallback(
     (event: NativeSyntheticEvent<NativeSurahReaderScrollEvent>) => {
       if (suppressReaderFeedbackRef?.current) return;
-      readerHeader.handleScrollOffset(event.nativeEvent.contentOffsetY);
+      readerHeader.handleScrollOffset(event.nativeEvent.contentOffsetY / PixelRatio.get());
     },
     [readerHeader, suppressReaderFeedbackRef]
   );

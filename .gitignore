@@ -21,6 +21,7 @@ dist/*
 !dist/verb-reference-packs/
 !dist/verb-reference-packs/**
 web-build/
+release-builds/
 expo-env.d.ts
 
 # Native

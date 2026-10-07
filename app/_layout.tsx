@@ -26,12 +26,19 @@ import { VERSE_SPOTLIGHT_STORAGE_KEYS } from '@/lib/verse-spotlight/engine';
 import { LAST_READ_STORAGE_KEY } from '@/providers/bookmarks/constants';
 import { SETTINGS_KEY } from '@/providers/settingsStorage';
 import { initializeAudioModeAsync } from '@/src/core/infrastructure/audio/audioMode';
-import { initializeAppDbAsync } from '@/src/core/infrastructure/db';
-import { STARTUP_FONT_ASSETS } from '@/src/core/infrastructure/fonts/arabicFonts';
+import {
+  DEFAULT_ARABIC_FONT_FAMILY,
+  getFirstFontFamily,
+  isAppFontFamily,
+  loadFontFamilyAsync,
+  STARTUP_FONT_ASSETS,
+} from '@/src/core/infrastructure/fonts/arabicFonts';
 import { bootstrapBundledSaheehInternationalAsync } from '@/src/core/infrastructure/translations/bundledSaheehInternational';
-import { hasCompletedWelcomeAsync } from '@/lib/onboarding/initialSetup';
+import { WELCOME_COMPLETED_STORAGE_KEY } from '@/lib/onboarding/initialSetup';
 import { WelcomeProvider, useWelcome } from '@/providers/WelcomeContext';
 import { OverlayPortalProvider } from '@/providers/OverlayPortalContext';
+import { getCachedSettings } from '@/providers/settingsStorage';
+import { logger } from '@/src/core/infrastructure/monitoring/logger';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -48,50 +55,50 @@ void SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
   const [loaded, error] = useFonts(STARTUP_FONT_ASSETS);
-  const [isBootstrapped, setIsBootstrapped] = useState(false);
-  const [initialThemePreference, setInitialThemePreference] = useState<ThemePreference>('system');
-  const [isThemeLoaded, setIsThemeLoaded] = useState(false);
-  const [hasCompletedWelcome, setHasCompletedWelcome] = useState(false);
+  const [startupState, setStartupState] = useState<{
+    themePreference: ThemePreference;
+    hasCompletedWelcome: boolean;
+  } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
 
-    async function bootstrapAsync(): Promise<void> {
-      try {
-        const [,, welcomeResult] = await Promise.allSettled([
-          initializeAppDbAsync(),
-          bootstrapBundledSaheehInternationalAsync(),
-          hasCompletedWelcomeAsync(),
-          preloadItems([
-            THEME_STORAGE_KEY,
-            SETTINGS_KEY,
-            LAST_READ_STORAGE_KEY,
-            QUICK_LINKS_STORAGE_KEY,
-            VERSE_SPOTLIGHT_STORAGE_KEYS.home,
-            HOME_SPOTLIGHT_CONTENT_KEY,
-          ]),
-        ]);
-        if (!cancelled) {
-          const stored = getCachedItem(THEME_STORAGE_KEY);
-          if (stored === 'light' || stored === 'dark' || stored === 'system') {
-            setInitialThemePreference(stored);
-          }
-          setHasCompletedWelcome(welcomeResult.status === 'fulfilled' && welcomeResult.value);
-          setIsThemeLoaded(true);
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setIsThemeLoaded(true);
-        }
-      } finally {
-        if (!cancelled) {
-          setIsBootstrapped(true);
+    async function loadStartupStateAsync(): Promise<void> {
+      await preloadItems([
+        THEME_STORAGE_KEY,
+        SETTINGS_KEY,
+        WELCOME_COMPLETED_STORAGE_KEY,
+        LAST_READ_STORAGE_KEY,
+        QUICK_LINKS_STORAGE_KEY,
+        VERSE_SPOTLIGHT_STORAGE_KEYS.home,
+        HOME_SPOTLIGHT_CONTENT_KEY,
+      ]);
+
+      const selectedFont = getFirstFontFamily(getCachedSettings()?.arabicFontFace);
+      if (
+        selectedFont &&
+        selectedFont !== DEFAULT_ARABIC_FONT_FAMILY &&
+        isAppFontFamily(selectedFont)
+      ) {
+        try {
+          await loadFontFamilyAsync(selectedFont);
+        } catch (fontError) {
+          logger.error('Failed to load selected Arabic font', undefined, fontError as Error);
         }
       }
+
+      if (cancelled) return;
+      const storedTheme = getCachedItem(THEME_STORAGE_KEY);
+      setStartupState({
+        themePreference:
+          storedTheme === 'light' || storedTheme === 'dark' || storedTheme === 'system'
+            ? storedTheme
+            : 'system',
+        hasCompletedWelcome: getCachedItem(WELCOME_COMPLETED_STORAGE_KEY) === 'true',
+      });
     }
 
-    void bootstrapAsync();
-    void initializeAudioModeAsync();
+    void loadStartupStateAsync();
 
     return () => {
       cancelled = true;
@@ -104,19 +111,37 @@ export default function RootLayout() {
   }, [error]);
 
   useEffect(() => {
-    if (loaded && isBootstrapped && isThemeLoaded) {
-      void SplashScreen.hideAsync();
-    }
-  }, [loaded, isBootstrapped, isThemeLoaded]);
+    if (!loaded || !startupState) return;
 
-  if (!loaded || !isBootstrapped || !isThemeLoaded) {
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    void SplashScreen.hideAsync().catch((hideError) => {
+      logger.warn('Failed to hide startup splash screen', undefined, hideError as Error);
+    }).then(() => {
+      if (cancelled) return;
+      // Let Home paint before opening SQLite and configuring audio.
+      timer = setTimeout(() => {
+        void initializeAudioModeAsync();
+        void bootstrapBundledSaheehInternationalAsync().catch((bootstrapError) => {
+          logger.error('Failed to initialize bundled translation', undefined, bootstrapError as Error);
+        });
+      }, 250);
+    });
+
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [loaded, startupState]);
+
+  if (!loaded || !startupState) {
     return null;
   }
 
   return (
     <SafeAreaProvider initialMetrics={initialWindowMetrics}>
-      <AppThemeProvider initialPreference={initialThemePreference}>
-        <WelcomeProvider initialCompleted={hasCompletedWelcome}>
+      <AppThemeProvider initialPreference={startupState.themePreference}>
+        <WelcomeProvider initialCompleted={startupState.hasCompletedWelcome}>
           <SettingsProvider>
             <UiLanguageProvider>
               <StartupResourcePrefetch />

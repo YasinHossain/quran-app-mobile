@@ -1,0 +1,7 @@
+cmake_minimum_required(VERSION 3.13)
+project(appmodules)
+include(${REACT_ANDROID_DIR}/cmake-utils/ReactNative-application.cmake)
+target_sources(appmodules PRIVATE ${REACT_ANDROID_DIR}/cmake-utils/default-app-setup/OnLoad.cpp)
+add_library(idleheap SHARED IdleHeap.cpp)
+target_link_libraries(idleheap ReactAndroid::jsi)
+target_compile_features(idleheap PRIVATE cxx_std_20)

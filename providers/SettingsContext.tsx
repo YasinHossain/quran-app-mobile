@@ -119,8 +119,12 @@ export const SettingsProvider = ({ children }: { children: React.ReactNode }): R
       void syncAndroidVerseSpotlightWidget(requestedTranslationId);
     };
 
-    synchronize();
-    return repository.subscribe(synchronize);
+    const initialSync = setTimeout(synchronize, 350);
+    const unsubscribe = repository.subscribe(synchronize);
+    return () => {
+      clearTimeout(initialSync);
+      unsubscribe();
+    };
   }, [isHydrated, requestedTranslationId]);
 
   useEffect(() => {

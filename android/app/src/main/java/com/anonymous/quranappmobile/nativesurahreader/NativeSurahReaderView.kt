@@ -15,20 +15,6 @@ import com.facebook.react.uimanager.UIManagerHelper
 import com.facebook.react.uimanager.events.EventDispatcher
 
 class NativeSurahReaderView(private val reactContext: ThemedReactContext) : FrameLayout(reactContext) {
-  private data class NativeReaderSettings(
-      val arabicFontFace: String?,
-      val arabicFontSize: Float,
-      val contentLanguage: String?,
-      val translationFontSize: Float,
-      val translationIds: List<Int>,
-      val displayMode: String,
-      val showByWords: Boolean,
-      val tajweed: Boolean,
-      val audioWordSyncEnabled: Boolean,
-      val showTranslationAttribution: Boolean,
-      val wordLang: String?,
-  )
-
   private data class ScrollAnchor(
       val itemId: Long,
       val offsetTop: Int,
@@ -40,8 +26,7 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
   )
 
   private val verses = mutableListOf<NativeVerse>()
-  private val baseVerses = mutableListOf<NativeVerse>()
-  private val wordWindowByVerseKey = mutableMapOf<String, List<NativeWord>>()
+  private val verseModelCache = NativeVerseModelCache()
   private val layoutManager = LinearLayoutManager(reactContext)
   private var currentWordPressSource: String = "translation"
   private val adapter =
@@ -179,7 +164,13 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
           adapter.activeWord
         }
     val nextSurahIntro = readerState.getMapIfPresent("surahIntro")?.toNativeSurahIntro()
-    val nextVerses = parseVerses(readerState.getArrayIfPresent("verses"))
+    val nextVerseRevision = readerState.getStringIfPresent("versesRevision")?.takeIf { it.isNotBlank() }
+    val nextVerseModel = verseModelCache.resolve(
+        nextVerseRevision?.let {
+          NativeVerseModelKey(nextSurahId, it, nextSettings, nextTheme)
+        },
+    ) { parseVerses(readerState.getArrayIfPresent("verses")) }
+    val nextVerses = nextVerseModel.verses
     val nextSessionKey =
         listOf(
                 nextSurahId,
@@ -205,7 +196,9 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
                 nextSettings.showTranslationAttribution,
                 nextSettings.wordLang.orEmpty(),
                 nextTheme.hashCode(),
-                nextVerses.hashCode(),
+                nextVerseRevision.orEmpty(),
+                nextVerseModel.contentHash,
+                nextSurahIntro,
             )
             .joinToString(":")
 
@@ -265,25 +258,6 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
     )
   }
 
-  fun setWordWindow(incomingWordWindow: ReadableArray?) {
-    val nextWindow = mutableMapOf<String, List<NativeWord>>()
-    if (incomingWordWindow != null) {
-      for (index in 0 until incomingWordWindow.size()) {
-        val item = incomingWordWindow.getMap(index)?.toNativeWordWindowVerse() ?: continue
-        nextWindow[item.verseKey] = item.words
-      }
-    }
-    if (wordWindowByVerseKey == nextWindow) return
-
-    val anchor = captureScrollAnchor()
-    wordWindowByVerseKey.clear()
-    wordWindowByVerseKey.putAll(nextWindow)
-    rebuildRenderedVerses()
-    notifyAllRowsChanged()
-    requestImmediateRecyclerRefresh()
-    restoreScrollAnchor(anchor)
-  }
-
   fun setSurahIntro(incomingSurahIntro: ReadableMap?) {
     adapter.surahIntro = incomingSurahIntro?.toNativeSurahIntro()
     adapter.notifyDataSetChanged()
@@ -291,11 +265,12 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
   }
 
   fun setVerses(incomingVerses: ReadableArray?) {
-    baseVerses.clear()
+    verseModelCache.clear()
+    lastReaderStateRenderKey = null
+    verses.clear()
     hasReceivedVerses = true
     lastVisibleVerseKey = null
-    baseVerses.addAll(parseVerses(incomingVerses))
-    rebuildRenderedVerses()
+    verses.addAll(parseVerses(incomingVerses))
     adapter.notifyDataSetChanged()
     completeInitialPlacementIfReady()
   }
@@ -490,9 +465,8 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
     )
     adapter.theme = nextTheme
     adapter.surahIntro = nextSurahIntro
-    baseVerses.clear()
-    baseVerses.addAll(nextVerses)
-    rebuildRenderedVerses()
+    verses.clear()
+    verses.addAll(nextVerses)
     topInsetPx = nextTopInsetPx
     bottomInsetPx = nextBottomInsetPx
     applyRecyclerPadding()
@@ -516,11 +490,6 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
     return verses.indices.all { index ->
       verses[index].stableId(surahId) == nextVerses[index].stableId(nextSurahId)
     }
-  }
-
-  private fun rebuildRenderedVerses() {
-    verses.clear()
-    verses.addAll(mergeNativeWordWindow(baseVerses, wordWindowByVerseKey))
   }
 
   private fun captureScrollAnchor(): ScrollAnchor? {

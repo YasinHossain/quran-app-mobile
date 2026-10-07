@@ -3,7 +3,11 @@ const { homedir } = require("node:os");
 const { join } = require("node:path");
 const { spawnSync } = require("node:child_process");
 
-const PACKAGE_NAME = "com.anonymous.quranappmobile";
+const PACKAGE_NAMES = [
+  "com.anonymous.quranappmobile.dev",
+  "com.anonymous.quranappmobile",
+];
+const METRO_PORT = "8081";
 
 function findAdb() {
   const executable = process.platform === "win32" ? "adb.exe" : "adb";
@@ -45,13 +49,23 @@ const devices = devicesResult.stdout
   .filter(Boolean);
 
 for (const serial of devices) {
-  const result = spawnSync(
+  spawnSync(
     adb,
-    ["-s", serial, "shell", "am", "force-stop", PACKAGE_NAME],
+    ["-s", serial, "reverse", `tcp:${METRO_PORT}`, `tcp:${METRO_PORT}`],
     { stdio: "ignore" },
   );
 
-  if (result.status === 0) {
-    console.log(`Reset Android development client on ${serial}.`);
+  let reset = false;
+  for (const packageName of PACKAGE_NAMES) {
+    const result = spawnSync(
+      adb,
+      ["-s", serial, "shell", "am", "force-stop", packageName],
+      { stdio: "ignore" },
+    );
+    reset ||= result.status === 0;
+  }
+
+  if (reset) {
+    console.log(`Prepared Android device ${serial} for Metro over USB.`);
   }
 }

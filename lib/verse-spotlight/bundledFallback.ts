@@ -1,8 +1,7 @@
 import fallbackMetadataJson from '../../assets/verse-spotlight/bundled-sahih-metadata.json';
 import fallbackPayloadJson from '../../dist/translation-packs/translations/20/2026-04-23/payload.json';
 
-import { CANONICAL_VERSE_COUNT, CANONICAL_VERSE_KEYS, isValidVerseKey } from './canonicalIndex';
-import type { VerseKey } from './contracts';
+import { CANONICAL_VERSE_COUNT, getCanonicalVerse } from './canonicalIndex';
 
 type FallbackVerse = {
   verseKey: string;
@@ -29,7 +28,7 @@ type FallbackMetadata = {
 const payload = fallbackPayloadJson as FallbackPayload;
 const metadata = fallbackMetadataJson as FallbackMetadata;
 
-function validateFallback(): ReadonlyMap<VerseKey, Readonly<FallbackVerse>> {
+function validateFallbackMetadata(): void {
   if (
     metadata.translationId !== 20 ||
     metadata.translationId !== payload.translationId ||
@@ -40,32 +39,25 @@ function validateFallback(): ReadonlyMap<VerseKey, Readonly<FallbackVerse>> {
   ) {
     throw new Error('Bundled Verse Spotlight fallback metadata is invalid.');
   }
-
-  const verses = new Map<VerseKey, Readonly<FallbackVerse>>();
-  for (let index = 0; index < payload.verses.length; index += 1) {
-    const verse = payload.verses[index];
-    const expectedKey = CANONICAL_VERSE_KEYS[index];
-    if (
-      !verse ||
-      verse.verseKey !== expectedKey ||
-      !isValidVerseKey(verse.verseKey) ||
-      !verse.arabicUthmani.trim() ||
-      !verse.text.trim() ||
-      verses.has(verse.verseKey)
-    ) {
-      throw new Error(`Bundled Verse Spotlight fallback is invalid at ${expectedKey}.`);
-    }
-    verses.set(verse.verseKey, Object.freeze(verse));
-  }
-  return verses;
 }
 
-const fallbackByKey = validateFallback();
+validateFallbackMetadata();
 
 export const BUNDLED_SAHIH_TRANSLATION_ID = metadata.translationId;
 export const BUNDLED_SAHIH_TRANSLATOR_NAME = metadata.translatorName;
 
 export function getBundledFallbackVerse(verseKey: string): Readonly<FallbackVerse> | null {
-  if (!isValidVerseKey(verseKey)) return null;
-  return fallbackByKey.get(verseKey) ?? null;
+  const canonical = getCanonicalVerse(verseKey);
+  if (!canonical) return null;
+
+  const verse = payload.verses[canonical.canonicalIndex];
+  if (
+    !verse ||
+    verse.verseKey !== verseKey ||
+    !verse.arabicUthmani?.trim() ||
+    !verse.text?.trim()
+  ) {
+    throw new Error(`Bundled Verse Spotlight fallback is invalid at ${verseKey}.`);
+  }
+  return Object.freeze(verse);
 }

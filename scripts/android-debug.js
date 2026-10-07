@@ -5,7 +5,7 @@ const { homedir } = require("node:os");
 const { dirname, join, resolve } = require("node:path");
 const { spawnSync } = require("node:child_process");
 
-const PACKAGE_NAME = "com.anonymous.quranappmobile";
+const PACKAGE_NAME = process.env.ANDROID_PACKAGE || "com.anonymous.quranappmobile";
 const OUTPUT_DIR = resolve(process.cwd(), "scratch/android-debug");
 
 function usage() {
@@ -21,6 +21,7 @@ Commands:
   clear-logs                      Clear device logcat buffer
   screenshot [path]               Save a PNG screenshot
   ui [path]                       Dump the current Android UI tree XML
+  observe [directory]             Save screenshot, UI, logs, memory, and frames
   launch                          Launch the installed app package
   tap <x> <y>                     Tap screen coordinates
   text <value>                    Type text into the focused input
@@ -32,6 +33,7 @@ Commands:
 Environment:
   ADB=/path/to/adb                Override adb binary
   ANDROID_SERIAL=SERIAL           Select a device/emulator
+  ANDROID_PACKAGE=PACKAGE         Select app package (defaults to release)
 `);
 }
 
@@ -125,6 +127,15 @@ function runCapture(adb, serial, args, encoding = "buffer") {
   }
 
   return result.stdout;
+}
+
+function runCaptureOptional(adb, serial, args, encoding = "utf8") {
+  const adbArgs = serial ? ["-s", serial, ...args] : args;
+  const result = spawnSync(adb, adbArgs, {
+    encoding,
+    maxBuffer: 50 * 1024 * 1024,
+  });
+  return result.status === 0 ? result.stdout : "";
 }
 
 function extractPng(buffer) {
@@ -226,6 +237,61 @@ function main() {
       writeFileSync(outputPath, xml);
       run(adb, serial, ["shell", "rm", "-f", "/sdcard/window.xml"], { stdio: "ignore" });
       console.log(outputPath);
+      break;
+    }
+
+    case "observe": {
+      const outputDir = resolve(
+        process.cwd(),
+        args[0] || `${OUTPUT_DIR}/observe-${timestamp()}`,
+      );
+      mkdirSync(outputDir, { recursive: true });
+
+      const image = extractPng(runCapture(adb, serial, ["exec-out", "screencap", "-p"]));
+      writeFileSync(join(outputDir, "screen.png"), image);
+      run(adb, serial, ["shell", "uiautomator", "dump", "/sdcard/window.xml"], {
+        stdio: "ignore",
+      });
+      writeFileSync(
+        join(outputDir, "window.xml"),
+        runCapture(adb, serial, ["exec-out", "cat", "/sdcard/window.xml"], "utf8"),
+      );
+      run(adb, serial, ["shell", "rm", "-f", "/sdcard/window.xml"], {
+        stdio: "ignore",
+      });
+
+      const pid = runCaptureOptional(
+        adb,
+        serial,
+        ["shell", "pidof", "-s", PACKAGE_NAME],
+        "utf8",
+      ).trim();
+      const logcatArgs = pid
+        ? ["logcat", "-d", "-v", "threadtime", "--pid", pid]
+        : [
+            "logcat",
+            "-d",
+            "-v",
+            "threadtime",
+            "*:S",
+            "ReactNative:V",
+            "ReactNativeJS:V",
+            "Expo:V",
+            "AndroidRuntime:E",
+          ];
+      const captures = [
+        ["meminfo.txt", ["shell", "dumpsys", "meminfo", PACKAGE_NAME]],
+        ["gfxinfo.txt", ["shell", "dumpsys", "gfxinfo", PACKAGE_NAME]],
+        ["activity.txt", ["shell", "dumpsys", "activity", "activities", PACKAGE_NAME]],
+        ["logcat.txt", logcatArgs],
+      ];
+      for (const [filename, captureArgs] of captures) {
+        writeFileSync(
+          join(outputDir, filename),
+          runCapture(adb, serial, captureArgs, "utf8"),
+        );
+      }
+      console.log(outputDir);
       break;
     }
 

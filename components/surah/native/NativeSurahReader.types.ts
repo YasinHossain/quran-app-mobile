@@ -32,12 +32,6 @@ export type NativeSurahReaderVerse = {
   translationItems: NativeSurahReaderTranslationItem[];
 };
 
-export type NativeSurahReaderWordWindowVerse = {
-  verseKey: string;
-  verseNumber: number;
-  words: NativeSurahReaderWord[];
-};
-
 export type NativeSurahReaderSurahIntro = {
   chapterId: number;
   infoLabel: string;
@@ -112,7 +106,6 @@ export type NativeSurahReaderWordPressEvent = {
 
 export type NativeSurahReaderProps = ViewProps & {
   readerState?: NativeSurahReaderState;
-  wordWindow?: NativeSurahReaderWordWindowVerse[];
   activeVerseKey?: string | null;
   activeWord?: NativeSurahReaderActiveWord | null;
   wordPressEnabled?: boolean;
@@ -136,6 +129,8 @@ export type NativeSurahReaderState = {
   surahId: number;
   targetVerse: number;
   surahIntro?: NativeSurahReaderSurahIntro;
+  // Immutable snapshot: replace the array when any verse, translation, word or glyph changes.
+  // NativeSurahReader attaches its content revision at the native boundary.
   verses: NativeSurahReaderVerse[];
   settings: NativeSurahReaderSettings;
   activeVerseKey?: string | null;

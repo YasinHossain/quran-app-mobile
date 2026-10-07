@@ -39,7 +39,7 @@ import { DownloadWordTranslationUseCase, requestWordDownloadCancel } from '@/src
 import { DeleteWordTranslationUseCase } from '@/src/core/application/use-cases/DeleteWordTranslation';
 import { ResourceDownloadAction } from './resource-panel/ResourceDownloadAction';
 import { container } from '@/src/core/infrastructure/di/container';
-import { getFirstFontFamily } from '@/src/core/infrastructure/fonts/arabicFonts';
+import { getFirstFontFamily, loadArabicFontFaceAsync } from '@/src/core/infrastructure/fonts/arabicFonts';
 import { logger } from '@/src/core/infrastructure/monitoring/logger';
 import { isMushafPackInstallCanceledError } from '@/src/core/infrastructure/mushaf/MushafPackInstaller';
 import {
@@ -315,6 +315,7 @@ export function SettingsSidebarContent({
     settings.mushafId === TAJWEED_MUSHAF_ID ? undefined : settings.mushafId
   );
   const animationTokenRef = React.useRef(0);
+  const fontSelectionRequestRef = React.useRef(0);
   const openPanelRafRef = React.useRef<number | null>(null);
   const navProgress = React.useRef(new Animated.Value(initialPanel && initialPanel !== 'root' ? 1 : 0)).current;
   const panelWidth = containerWidth ?? Math.min(390, Math.round(windowWidth * 0.92));
@@ -730,7 +731,16 @@ export function SettingsSidebarContent({
     (id: number) => {
       const selected = arabicFontItems.find((item) => item.id === id);
       if (!selected) return;
-      setArabicFontFace(selected.value);
+      const requestId = ++fontSelectionRequestRef.current;
+      void loadArabicFontFaceAsync(selected.value)
+        .then(() => {
+          if (requestId === fontSelectionRequestRef.current) {
+            setArabicFontFace(selected.value);
+          }
+        })
+        .catch((error) => {
+          logger.warn('Failed to load selected Arabic font', undefined, error as Error);
+        });
     },
     [arabicFontItems, setArabicFontFace]
   );

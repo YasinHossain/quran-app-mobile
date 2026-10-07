@@ -120,6 +120,10 @@ Use `npm start` while actively coding, then switch to `npm run perf:android`
 whenever you want to measure startup time, screen transitions, list scrolling,
 or other real app performance.
 
+For a repeatable 2 GB / 2-core / 720p emulator screening lane and the exact
+development-versus-release testing cadence, see
+[`docs/android-performance-testing-workflow.md`](docs/android-performance-testing-workflow.md).
+
 To start the first installed Android emulator:
 
 ```bash

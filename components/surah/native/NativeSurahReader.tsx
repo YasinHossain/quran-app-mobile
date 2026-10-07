@@ -1,4 +1,4 @@
-import { forwardRef, memo, useImperativeHandle, useRef } from 'react';
+import { forwardRef, memo, useImperativeHandle, useMemo, useRef } from 'react';
 import { Platform, requireNativeComponent, StyleSheet, Text, View } from 'react-native';
 
 import { useNativeSurahReaderCommands } from './useNativeSurahReaderCommands';
@@ -19,7 +19,6 @@ export type {
   NativeSurahReaderTranslationItem,
   NativeSurahReaderVerse,
   NativeSurahReaderWord,
-  NativeSurahReaderWordWindowVerse,
   NativeSurahReaderWordPressEvent,
   NativeSurahReaderVisibleVerseChangeEvent,
 } from './NativeSurahReader.types';
@@ -29,15 +28,29 @@ const AndroidNativeSurahReader =
     ? requireNativeComponent<NativeSurahReaderProps>('NativeSurahReader')
     : null;
 
+// Scope revisions across reader mounts and module reloads. A revision identifies an immutable
+// verse array, not its length or verse keys (translations/words/glyphs may change independently).
+const verseRevisionSession = Date.now().toString(36);
+let nextVerseRevision = 0;
+
 const NativeSurahReaderComponent = forwardRef<NativeSurahReaderHandle, NativeSurahReaderProps>(
   function NativeSurahReader(props, ref) {
     const nativeRef = useRef<View>(null);
     const commands = useNativeSurahReaderCommands(nativeRef);
+    const verses = props.readerState?.verses;
+    const versesRevision = useMemo(
+      () => `${verseRevisionSession}:${++nextVerseRevision}`,
+      [verses]
+    );
+    const readerState = useMemo(
+      () => props.readerState && { ...props.readerState, versesRevision },
+      [props.readerState, versesRevision]
+    );
 
     useImperativeHandle(ref, () => commands, [commands]);
 
     if (AndroidNativeSurahReader) {
-      return <AndroidNativeSurahReader ref={nativeRef} {...props} />;
+      return <AndroidNativeSurahReader ref={nativeRef} {...props} readerState={readerState} />;
     }
 
     const { style } = props;

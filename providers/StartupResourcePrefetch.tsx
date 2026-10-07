@@ -10,7 +10,8 @@ export function StartupResourcePrefetch(): null {
   const [enabled, setEnabled] = React.useState(false);
 
   React.useEffect(() => {
-    setEnabled(true);
+    const timeout = setTimeout(() => setEnabled(true), 350);
+    return () => clearTimeout(timeout);
   }, []);
 
   useTranslationResources({ enabled, language: settings.contentLanguage });
