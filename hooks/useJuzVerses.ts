@@ -11,7 +11,6 @@ import {
   getOfflineJuzCached,
   getOfflineJuzPageCached,
   getOfflineJuzSnapshot,
-  peekOfflineJuzCache,
   peekOfflineJuzPageCache,
 } from '@/lib/juz/offlineJuzPageCache';
 import type { OfflineVerseWithTranslations } from '@/src/core/domain/repositories/ITranslationOfflineStore';
@@ -48,13 +47,6 @@ function stripHtml(input: string): string {
     .replace(/&#39;/g, "'")
     .replace(/&amp;/g, '&')
     .trim();
-}
-
-function buildTranslationTexts(
-  translations: Array<{ resource_id: number; resource_name?: string; text: string }> | undefined,
-  translationIds: number[]
-): string[] {
-  return buildTranslationItems(translations, translationIds).map((t) => t.text);
 }
 
 function buildTranslationItems(
@@ -200,6 +192,68 @@ function isNetworkError(error: unknown): boolean {
   );
 }
 
+const preparedOfflinePages = new WeakMap<
+  OfflineVerseWithTranslations[],
+  { key: string; pages: Record<number, JuzVerse[]> }
+>();
+
+function normalizeOfflineVersePage(
+  verses: OfflineVerseWithTranslations[],
+  translationIds: number[]
+): JuzVerse[] {
+  return verses.map((verse) => {
+    const translations = verse.translations.map((item) => ({
+      resource_id: item.translationId,
+      text: item.text,
+    }));
+    const translationItems = buildTranslationItems(translations, translationIds);
+    const translationTexts = translationItems.map((item) => item.text);
+    primeVerseDetailsCache({
+      verseKey: verse.verseKey,
+      arabicText: verse.arabicUthmani,
+      translationIds,
+      translationTexts,
+    });
+    let words: VerseWord[] | undefined;
+    if (verse.wordsJson) {
+      try {
+        const parsed = JSON.parse(verse.wordsJson);
+        if (Array.isArray(parsed)) words = parsed;
+      } catch {}
+    }
+    return {
+      verse_number: verse.ayahNumber,
+      verse_key: verse.verseKey,
+      text_uthmani: verse.arabicUthmani,
+      translations,
+      translationItems,
+      translationTexts,
+      words: words ?? getBundledVerseWords(verse.verseKey),
+    };
+  });
+}
+
+function buildOfflineJuzPages(
+  verses: OfflineVerseWithTranslations[],
+  translationIds: number[],
+  perPage: number,
+  wordLang: string
+): Record<number, JuzVerse[]> {
+  const key = [translationIds.join(','), perPage, wordLang].join('|');
+  const cached = preparedOfflinePages.get(verses);
+  if (cached?.key === key) return cached.pages;
+  const pages: Record<number, JuzVerse[]> = {};
+  // A juz can start midway through a surah and span many surahs. Pages use
+  // positions within the ordered juz, never ayah numbers that reset per surah.
+  for (let offset = 0; offset < verses.length; offset += perPage) {
+    pages[Math.floor(offset / perPage) + 1] = normalizeOfflineVersePage(
+      verses.slice(offset, offset + perPage), translationIds
+    );
+  }
+  preparedOfflinePages.set(verses, { key, pages });
+  return pages;
+}
+
 function getInitialOfflineJuzPagesSnapshot(params: {
   enabled: boolean;
   juzNumber: number;
@@ -210,7 +264,6 @@ function getInitialOfflineJuzPagesSnapshot(params: {
 }): Record<number, JuzVerse[]> {
   if (!params.enabled) return {};
   if (!Number.isFinite(params.juzNumber) || params.juzNumber <= 0) return {};
-
   const snapshot = getOfflineJuzSnapshot({
     juzId: params.juzNumber,
     translationIds: params.translationIds,
@@ -218,58 +271,9 @@ function getInitialOfflineJuzPagesSnapshot(params: {
     perPage: params.perPage,
     expectedVerseCount: params.verseCount,
   });
-  if (!snapshot) return {};
-
-  const pages: Record<number, OfflineVerseWithTranslations[]> = {};
-  for (const verse of snapshot) {
-    const pageNumber = Math.max(1, Math.floor((verse.ayahNumber - 1) / params.perPage) + 1);
-    if (!pages[pageNumber]) pages[pageNumber] = [];
-    pages[pageNumber].push(verse);
-  }
-
-  const nextPages: Record<number, JuzVerse[]> = {};
-  for (const [pageNumber, pageVerses] of Object.entries(pages)) {
-    nextPages[Number(pageNumber)] = pageVerses
-      .slice()
-      .sort((a, b) => a.ayahNumber - b.ayahNumber)
-      .map((verse) => {
-        const translations = verse.translations.map((item) => ({
-          resource_id: item.translationId,
-          text: item.text,
-        }));
-        const translationItems = buildTranslationItems(translations, params.translationIds);
-        const translationTexts = buildTranslationTexts(translations, params.translationIds);
-
-        primeVerseDetailsCache({
-          verseKey: verse.verseKey,
-          arabicText: verse.arabicUthmani,
-          translationIds: params.translationIds,
-          translationTexts,
-        });
-
-        let words: VerseWord[] | undefined;
-        if (verse.wordsJson) {
-          try {
-            words = JSON.parse(verse.wordsJson);
-          } catch {
-            words = undefined;
-          }
-        }
-
-        return {
-          id: undefined,
-          verse_number: verse.ayahNumber,
-          verse_key: verse.verseKey,
-          text_uthmani: verse.arabicUthmani,
-          translations,
-          translationItems,
-          translationTexts,
-          words: words ?? getBundledVerseWords(verse.verseKey),
-        };
-      });
-  }
-
-  return nextPages;
+  return snapshot
+    ? buildOfflineJuzPages(snapshot, params.translationIds, params.perPage, params.wordLang)
+    : {};
 }
 
 export function useJuzVerses({
@@ -325,7 +329,7 @@ export function useJuzVerses({
       perPage,
       verseCount,
     });
-  }, [enabled, juzNumber, translationsKey, perPage, verseCount, resolvedTranslationIds]);
+  }, [enabled, juzNumber, translationsKey, perPage, verseCount, resolvedTranslationIds, resolvedWordLang]);
 
   const initialHasLoadedContent = Object.keys(initialPagesByNumber).length > 0;
 
@@ -353,10 +357,12 @@ export function useJuzVerses({
 
   const [prevJuzNumber, setPrevJuzNumber] = React.useState(juzNumber);
   const [prevTranslationsKey, setPrevTranslationsKey] = React.useState(translationsKey);
+  const [prevWordLang, setPrevWordLang] = React.useState(resolvedWordLang);
 
-  if (juzNumber !== prevJuzNumber || translationsKey !== prevTranslationsKey) {
+  if (juzNumber !== prevJuzNumber || translationsKey !== prevTranslationsKey || resolvedWordLang !== prevWordLang) {
     setPrevJuzNumber(juzNumber);
     setPrevTranslationsKey(translationsKey);
+    setPrevWordLang(resolvedWordLang);
 
     const warmOfflinePages = getInitialOfflineJuzPagesSnapshot({
       enabled,
@@ -414,7 +420,7 @@ export function useJuzVerses({
     (pageVerses: ApiVersesResponse['verses']): JuzVerse[] =>
       (pageVerses ?? []).map((verse) => {
         const translationItems = buildTranslationItems(verse.translations, resolvedTranslationIds);
-        const translationTexts = buildTranslationTexts(verse.translations, resolvedTranslationIds);
+        const translationTexts = translationItems.map((item) => item.text);
 
         primeVerseDetailsCache({
           verseKey: verse.verse_key,
@@ -468,40 +474,7 @@ export function useJuzVerses({
       });
 
       if (cachedPage?.length) {
-        const normalized = cachedPage.map((verse) => {
-          const translations = verse.translations.map((item) => ({
-            resource_id: item.translationId,
-            text: item.text,
-          }));
-          const translationItems = buildTranslationItems(translations, resolvedTranslationIds);
-          const translationTexts = buildTranslationTexts(translations, resolvedTranslationIds);
-
-          primeVerseDetailsCache({
-            verseKey: verse.verseKey,
-            arabicText: verse.arabicUthmani,
-            translationIds: resolvedTranslationIds,
-            translationTexts,
-          });
-
-          let words: VerseWord[] | undefined;
-          if (verse.wordsJson) {
-            try {
-              words = JSON.parse(verse.wordsJson);
-            } catch {
-              words = undefined;
-            }
-          }
-
-          return {
-            verse_number: verse.ayahNumber,
-            verse_key: verse.verseKey,
-            text_uthmani: verse.arabicUthmani,
-            translations,
-            translationItems,
-            translationTexts,
-            words: words ?? getBundledVerseWords(verse.verseKey),
-          };
-        });
+        const normalized = normalizeOfflineVersePage(cachedPage, resolvedTranslationIds);
 
         dataSourceRef.current = 'offline';
         setPageData(pageNumber, normalized);
@@ -513,6 +486,7 @@ export function useJuzVerses({
       const offlineVerses = await getOfflineJuzPageCached({
         juzId: juzNumber,
         translationIds: resolvedTranslationIds,
+        wordLang: resolvedWordLang,
         page: pageNumber,
         perPage,
         expectedVerseCount,
@@ -523,40 +497,7 @@ export function useJuzVerses({
         return false;
       }
 
-      const normalized = offlineVerses.map((verse) => {
-        const translations = verse.translations.map((item) => ({
-          resource_id: item.translationId,
-          text: item.text,
-        }));
-        const translationItems = buildTranslationItems(translations, resolvedTranslationIds);
-        const translationTexts = buildTranslationTexts(translations, resolvedTranslationIds);
-
-        primeVerseDetailsCache({
-          verseKey: verse.verseKey,
-          arabicText: verse.arabicUthmani,
-          translationIds: resolvedTranslationIds,
-          translationTexts,
-        });
-
-        let words: VerseWord[] | undefined;
-        if (verse.wordsJson) {
-          try {
-            words = JSON.parse(verse.wordsJson);
-          } catch {
-            words = undefined;
-          }
-        }
-
-        return {
-          verse_number: verse.ayahNumber,
-          verse_key: verse.verseKey,
-          text_uthmani: verse.arabicUthmani,
-          translations,
-          translationItems,
-          translationTexts,
-          words: words ?? getBundledVerseWords(verse.verseKey),
-        };
-      });
+      const normalized = normalizeOfflineVersePage(offlineVerses, resolvedTranslationIds);
 
       dataSourceRef.current = 'offline';
       setPageData(pageNumber, normalized);
@@ -564,79 +505,12 @@ export function useJuzVerses({
       setErrorMessage(null);
       return true;
     },
-    [juzNumber, enabled, perPage, resolvedTranslationIds, setPageData, verseCount]
+    [juzNumber, enabled, perPage, resolvedTranslationIds, resolvedWordLang, setPageData, verseCount]
   );
 
   const loadOfflineFirstData = React.useCallback(async (token: number): Promise<boolean> => {
-    if (!enabled) return false;
-    if (!Number.isFinite(juzNumber) || juzNumber <= 0) return false;
+    if (!enabled || !Number.isFinite(juzNumber) || juzNumber <= 0) return false;
     if (requestTokenRef.current !== token) return false;
-
-    const cachedJuz = peekOfflineJuzCache({
-      juzId: juzNumber,
-      translationIds: resolvedTranslationIds,
-    });
-
-    if (
-      cachedJuz &&
-      cachedJuz.length >= verseCount
-    ) {
-      const pages: Record<number, OfflineVerseWithTranslations[]> = {};
-      for (const verse of cachedJuz) {
-        const pageNumber = Math.max(1, Math.floor((verse.ayahNumber - 1) / perPage) + 1);
-        if (!pages[pageNumber]) pages[pageNumber] = [];
-        pages[pageNumber].push(verse);
-      }
-
-      const nextPages: Record<number, JuzVerse[]> = {};
-      for (const [pageNumber, pageVerses] of Object.entries(pages)) {
-        nextPages[Number(pageNumber)] = pageVerses
-          .slice()
-          .sort((a, b) => a.ayahNumber - b.ayahNumber)
-          .map((verse) => {
-            const translations = verse.translations.map((item) => ({
-              resource_id: item.translationId,
-              text: item.text,
-            }));
-            const translationItems = buildTranslationItems(translations, resolvedTranslationIds);
-            const translationTexts = buildTranslationTexts(translations, resolvedTranslationIds);
-
-            primeVerseDetailsCache({
-              verseKey: verse.verseKey,
-              arabicText: verse.arabicUthmani,
-              translationIds: resolvedTranslationIds,
-              translationTexts,
-            });
-
-            let words: VerseWord[] | undefined;
-            if (verse.wordsJson) {
-              try {
-                words = JSON.parse(verse.wordsJson);
-              } catch {
-                words = undefined;
-              }
-            }
-
-            return {
-              verse_number: verse.ayahNumber,
-              verse_key: verse.verseKey,
-              text_uthmani: verse.arabicUthmani,
-              translations,
-              translationItems,
-              translationTexts,
-              words: words ?? getBundledVerseWords(verse.verseKey),
-            };
-          });
-      }
-
-      dataSourceRef.current = 'offline';
-      setPagesByNumber(nextPages);
-      pagesByNumberRef.current = nextPages;
-      setOfflineNotInstalled(false);
-      setErrorMessage(null);
-      return true;
-    }
-
     const offlineVerses = await getOfflineJuzCached({
       juzId: juzNumber,
       translationIds: resolvedTranslationIds,
@@ -644,71 +518,22 @@ export function useJuzVerses({
       perPage,
       expectedVerseCount: verseCount,
     });
-
     if (requestTokenRef.current !== token) return false;
-
     if (
       offlineVerses.length === 0 ||
-      (verseCount > 0 && offlineVerses.length < verseCount)
-    ) {
-      return false;
-    }
-
-    const pages: Record<number, OfflineVerseWithTranslations[]> = {};
-    for (const verse of offlineVerses) {
-      const pageNumber = Math.max(1, Math.floor((verse.ayahNumber - 1) / perPage) + 1);
-      if (!pages[pageNumber]) pages[pageNumber] = [];
-      pages[pageNumber].push(verse);
-    }
-
-    const nextPages: Record<number, JuzVerse[]> = {};
-    for (const [pageNumber, pageVerses] of Object.entries(pages)) {
-      nextPages[Number(pageNumber)] = pageVerses
-        .slice()
-        .sort((a, b) => a.ayahNumber - b.ayahNumber)
-        .map((verse) => {
-          const translations = verse.translations.map((item) => ({
-            resource_id: item.translationId,
-            text: item.text,
-          }));
-          const translationItems = buildTranslationItems(translations, resolvedTranslationIds);
-          const translationTexts = buildTranslationTexts(translations, resolvedTranslationIds);
-
-          primeVerseDetailsCache({
-            verseKey: verse.verseKey,
-            arabicText: verse.arabicUthmani,
-            translationIds: resolvedTranslationIds,
-            translationTexts,
-          });
-
-          let words: VerseWord[] | undefined;
-          if (verse.wordsJson) {
-            try {
-              words = JSON.parse(verse.wordsJson);
-            } catch {
-              words = undefined;
-            }
-          }
-
-          return {
-            verse_number: verse.ayahNumber,
-            verse_key: verse.verseKey,
-            text_uthmani: verse.arabicUthmani,
-            translations,
-            translationItems,
-            translationTexts,
-            words: words ?? getBundledVerseWords(verse.verseKey),
-          };
-        });
-    }
-
+      (verseCount > 0 && offlineVerses.length < verseCount) ||
+      !offlineVerses.every((verse) => resolvedTranslationIds.every((id) =>
+        verse.translations.some((translation) => translation.translationId === id)
+      ))
+    ) return false;
+    const nextPages = buildOfflineJuzPages(offlineVerses, resolvedTranslationIds, perPage, resolvedWordLang);
     dataSourceRef.current = 'offline';
     setPagesByNumber(nextPages);
     pagesByNumberRef.current = nextPages;
     setOfflineNotInstalled(false);
     setErrorMessage(null);
     return true;
-  }, [juzNumber, enabled, perPage, resolvedTranslationIds, verseCount]);
+  }, [juzNumber, enabled, perPage, resolvedTranslationIds, resolvedWordLang, verseCount]);
 
   const fetchPage = React.useCallback(
     async (pageNumber: number, token: number): Promise<void> => {
@@ -844,7 +669,7 @@ export function useJuzVerses({
             const previousPage = previous[numericPageNumber];
             const nextPage = warmOfflinePages[numericPageNumber];
             if (!previousPage || !nextPage) return warmOfflinePages;
-            if (previousPage.length !== nextPage.length) return warmOfflinePages;
+            if (previousPage !== nextPage) return warmOfflinePages;
           }
 
           return previous;
@@ -881,6 +706,7 @@ export function useJuzVerses({
       enabled,
       perPage,
       resolvedTranslationIds,
+      resolvedWordLang,
       verseCount,
       loadOfflineFirstData,
       fetchPage,

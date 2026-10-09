@@ -197,6 +197,7 @@ function sliceJuzPage(params: {
 function seedPageCacheFromJuz(params: {
   juzId: number;
   translationIds: number[];
+  wordLang: string;
   perPage: number;
   expectedVerseCount?: number;
   juzVerses: OfflineVerseWithTranslations[];
@@ -204,6 +205,7 @@ function seedPageCacheFromJuz(params: {
   const resolved = resolvePageParams({
     juzId: params.juzId,
     translationIds: params.translationIds,
+    wordLang: params.wordLang,
     page: 1,
     perPage: params.perPage,
   });
@@ -453,6 +455,7 @@ export function getOfflineJuzSnapshot(params: {
   const resolved = resolveJuzParams(params);
   if (!resolved) return null;
 
+  const cacheKey = getJuzCacheKey(resolved);
   const cachedJuz = peekOfflineJuzCache(resolved);
   if (
     cachedJuz &&
@@ -463,6 +466,15 @@ export function getOfflineJuzSnapshot(params: {
     )
   ) {
     return cachedJuz;
+  }
+
+  const pendingEntry = juzCache.get(cacheKey);
+  if (
+    pendingEntry &&
+    !pendingEntry.snapshot &&
+    Date.now() - pendingEntry.timestamp < CACHE_TTL_MS
+  ) {
+    return null;
   }
 
   try {
@@ -482,7 +494,7 @@ export function getOfflineJuzSnapshot(params: {
     }
 
     const now = Date.now();
-    juzCache.set(getJuzCacheKey(resolved), {
+    juzCache.set(cacheKey, {
       value: Promise.resolve(juzVerses),
       snapshot: juzVerses,
       timestamp: now,
@@ -491,6 +503,7 @@ export function getOfflineJuzSnapshot(params: {
     seedPageCacheFromJuz({
       juzId: resolved.juzId,
       translationIds: resolved.translationIds,
+      wordLang: resolved.wordLang,
       perPage: params.perPage ?? DEFAULT_JUZ_VERSES_PER_PAGE,
       expectedVerseCount: params.expectedVerseCount,
       juzVerses,
@@ -600,6 +613,7 @@ export function getOfflineJuzCached(params: {
       seedPageCacheFromJuz({
         juzId: resolved.juzId,
         translationIds: resolved.translationIds,
+        wordLang: resolved.wordLang,
         perPage: params.perPage ?? DEFAULT_JUZ_VERSES_PER_PAGE,
         expectedVerseCount: params.expectedVerseCount,
         juzVerses,

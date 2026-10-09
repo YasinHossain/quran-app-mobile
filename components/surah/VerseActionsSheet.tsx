@@ -111,6 +111,21 @@ export function VerseActionsSheet({
     [onClose]
   );
 
+  const handleNavigationAction = React.useCallback(
+    (fn?: () => void) => {
+      if (!fn) return;
+      pendingActionRef.current = null;
+      setInstantClose(true);
+
+      // Keep the sheet dismissal and route push in the same React event batch.
+      // Deferring the push until a later animation frame exposes the reader for
+      // one frame, which looks like a full-screen flash before Tafsir appears.
+      onClose();
+      fn();
+    },
+    [onClose]
+  );
+
   const handleOverlayPress = React.useCallback(() => {
     if (!dismissEnabledRef.current) return;
     onClose();
@@ -177,7 +192,7 @@ export function VerseActionsSheet({
                     <ActionRow
                       icon={<BookOpenText color={palette.muted} size={22} strokeWidth={2.25} />}
                       label={t('view_tafsir', { fallback: 'View Tafsir' })}
-                      onPress={() => handleDeferredAction(onOpenTafsir)}
+                      onPress={() => handleNavigationAction(onOpenTafsir)}
                       disabled={!onOpenTafsir}
                     />
                   ) : null}

@@ -24,17 +24,22 @@ const INDEX_SCRUBBER_THUMB_TOUCH_SLOP = 8;
 
 export type IndexScrubberHandle = {
   hide: () => void;
+  setCurrentIndex: (index: number) => void;
   show: () => void;
 };
 
 type IndexScrubberProps = {
   bottomInset: number;
+  continuousUpdates?: boolean;
   currentIndex: number;
   displayPrefix?: string;
   formatLabel?: (index: number, itemCount: number) => string;
   itemCount: number;
   onScrubStateChange?: (isScrubbing: boolean) => void;
-  onScrubToIndex: (index: number, options?: { isFinal?: boolean }) => void;
+  onScrubToIndex: (
+    index: number,
+    options?: { isFinal?: boolean; position?: number }
+  ) => void;
   topInset?: number;
 };
 
@@ -42,6 +47,7 @@ export const IndexScrubber = React.forwardRef<IndexScrubberHandle, IndexScrubber
   function IndexScrubber(
     {
       bottomInset,
+      continuousUpdates = false,
       currentIndex,
       displayPrefix,
       formatLabel,
@@ -58,8 +64,11 @@ export const IndexScrubber = React.forwardRef<IndexScrubberHandle, IndexScrubber
     const [isDragging, setIsDragging] = React.useState(false);
     const [isTouchEnabled, setIsTouchEnabled] = React.useState(false);
     const [scrubIndex, setScrubIndex] = React.useState<number | null>(null);
+    const [reportedIndex, setReportedIndex] = React.useState(currentIndex);
     const lastScrubbedIndexRef = React.useRef<number | null>(null);
+    const lastScrubbedPositionRef = React.useRef<number | null>(null);
     const desiredIndexRef = React.useRef<number | null>(null);
+    const desiredPositionRef = React.useRef<number | null>(null);
     const dragStartPageYRef = React.useRef(0);
     const dragStartIndexRef = React.useRef(1);
     const scrubFrameRef = React.useRef<ReturnType<typeof requestAnimationFrame> | null>(null);
@@ -75,7 +84,7 @@ export const IndexScrubber = React.forwardRef<IndexScrubberHandle, IndexScrubber
       ? clampNumber(INDEX_SCRUBBER_THUMB_HEIGHT, 48, trackHeight)
       : 0;
     const maxThumbOffset = Math.max(0, trackHeight - thumbHeight);
-    const rawDisplayIndex = typeof scrubIndex === 'number' ? scrubIndex : currentIndex;
+    const rawDisplayIndex = typeof scrubIndex === 'number' ? scrubIndex : reportedIndex;
     const displayIndex = clampNumber(
       Number.isFinite(rawDisplayIndex) ? Math.trunc(rawDisplayIndex) : 1,
       1,
@@ -147,11 +156,27 @@ export const IndexScrubber = React.forwardRef<IndexScrubberHandle, IndexScrubber
       opacity.setValue(0);
     }, [clearHideTimer, isDragging, opacity]);
 
+    const updateCurrentIndex = React.useCallback((index: number) => {
+      if (!Number.isFinite(index)) return;
+      const nextIndex = Math.trunc(index);
+      setReportedIndex((existingIndex) =>
+        existingIndex === nextIndex ? existingIndex : nextIndex
+      );
+    }, []);
+
     React.useImperativeHandle(
       ref,
-      () => ({ hide: hideImmediately, show: showTemporarily }),
-      [hideImmediately, showTemporarily]
+      () => ({
+        hide: hideImmediately,
+        setCurrentIndex: updateCurrentIndex,
+        show: showTemporarily,
+      }),
+      [hideImmediately, showTemporarily, updateCurrentIndex]
     );
+
+    React.useEffect(() => {
+      updateCurrentIndex(currentIndex);
+    }, [currentIndex, updateCurrentIndex]);
 
     React.useEffect(
       () => () => {
@@ -166,14 +191,17 @@ export const IndexScrubber = React.forwardRef<IndexScrubberHandle, IndexScrubber
       setIsDragging(false);
       setScrubIndex(null);
       lastScrubbedIndexRef.current = null;
+      lastScrubbedPositionRef.current = null;
       desiredIndexRef.current = null;
+      desiredPositionRef.current = null;
       scheduleHide();
     }, [onScrubStateChange, scheduleHide]);
 
     const emitScrubIndex = React.useCallback(
-      (index: number, isFinal = false) => {
+      (index: number, isFinal = false, position = index) => {
         lastScrubbedIndexRef.current = index;
-        onScrubToIndex(index, { isFinal });
+        lastScrubbedPositionRef.current = position;
+        onScrubToIndex(index, { isFinal, position });
       },
       [onScrubToIndex]
     );
@@ -182,11 +210,18 @@ export const IndexScrubber = React.forwardRef<IndexScrubberHandle, IndexScrubber
       scrubFrameRef.current = null;
 
       const targetIndex = desiredIndexRef.current;
+      const targetPosition = desiredPositionRef.current;
       if (targetIndex === null) return;
-      if (lastScrubbedIndexRef.current === targetIndex) return;
+      if (targetPosition === null) return;
+      if (
+        lastScrubbedIndexRef.current === targetIndex &&
+        (!continuousUpdates || lastScrubbedPositionRef.current === targetPosition)
+      ) {
+        return;
+      }
 
-      emitScrubIndex(targetIndex);
-    }, [emitScrubIndex]);
+      emitScrubIndex(targetIndex, false, targetPosition);
+    }, [continuousUpdates, emitScrubIndex]);
 
     const scheduleScrubFrame = React.useCallback(() => {
       if (scrubFrameRef.current !== null) return;
@@ -214,19 +249,32 @@ export const IndexScrubber = React.forwardRef<IndexScrubberHandle, IndexScrubber
             ? (dragDeltaY / maxThumbOffset) * Math.max(0, normalizedItemCount - 1)
             : 0;
 
-        const nextIndex = clampNumber(
-          Math.round(dragStartIndexRef.current + itemDelta),
+        const nextPosition = clampNumber(
+          dragStartIndexRef.current + itemDelta,
           1,
           normalizedItemCount
         );
+        const nextIndex = Math.round(nextPosition);
 
-        if (desiredIndexRef.current === nextIndex) return;
+        if (
+          desiredIndexRef.current === nextIndex &&
+          (!continuousUpdates || desiredPositionRef.current === nextPosition)
+        ) {
+          return;
+        }
 
         desiredIndexRef.current = nextIndex;
+        desiredPositionRef.current = nextPosition;
         setScrubIndex(nextIndex);
         scheduleScrubFrame();
       },
-      [isScrollable, maxThumbOffset, normalizedItemCount, scheduleScrubFrame]
+      [
+        continuousUpdates,
+        isScrollable,
+        maxThumbOffset,
+        normalizedItemCount,
+        scheduleScrubFrame,
+      ]
     );
 
     const handleResponderGrant = React.useCallback(
@@ -239,7 +287,9 @@ export const IndexScrubber = React.forwardRef<IndexScrubberHandle, IndexScrubber
         onScrubStateChange?.(true);
         setIsDragging(true);
         lastScrubbedIndexRef.current = null;
+        lastScrubbedPositionRef.current = null;
         desiredIndexRef.current = null;
+        desiredPositionRef.current = null;
         dragStartPageYRef.current = event.nativeEvent.pageY;
         dragStartIndexRef.current = displayIndex;
         setScrubIndex(displayIndex);
@@ -256,12 +306,17 @@ export const IndexScrubber = React.forwardRef<IndexScrubberHandle, IndexScrubber
 
     const finishDrag = React.useCallback(() => {
       const targetIndex = desiredIndexRef.current;
+      const targetPosition = desiredPositionRef.current;
 
       if (targetIndex !== null && lastScrubbedIndexRef.current !== targetIndex) {
         clearScrubFrame();
-        emitScrubIndex(targetIndex, true);
+        emitScrubIndex(targetIndex, true, targetPosition ?? targetIndex);
       } else if (targetIndex !== null) {
-        onScrubToIndex(targetIndex, { isFinal: true });
+        clearScrubFrame();
+        onScrubToIndex(targetIndex, {
+          isFinal: true,
+          position: targetPosition ?? targetIndex,
+        });
       } else {
         clearScrubFrame();
       }

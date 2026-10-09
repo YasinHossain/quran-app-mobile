@@ -386,7 +386,7 @@ function normalizeOfflineVersePageData(
     }
 
     const translationItems = buildTranslationItems(translations, translationIds);
-    const translationTexts = buildTranslationTexts(translations, translationIds);
+    const translationTexts = translationItems.map((item) => item.text);
 
     // CRITICAL: Prime the memory cache for all loaded/fetched offline verses.
     // This prevents layout flickers and skeletons when transitioning or swiping targets on the Tafsir screen.
@@ -412,6 +412,13 @@ function normalizeOfflineVersePageData(
   });
 }
 
+// Raw snapshots are immutable and already bounded by the offline cache. Weak keys let
+// prepared pages go with them, while avoiding a second word parse in the mount effect.
+const preparedOfflinePages = new WeakMap<
+  OfflineVerseWithTranslations[],
+  { key: string; pages: Record<number, SurahVerse[]> }
+>();
+
 function buildOfflinePagesByNumber(params: {
   offlineVerses: OfflineVerseWithTranslations[];
   includeTajweedGlyphs: boolean;
@@ -420,6 +427,10 @@ function buildOfflinePagesByNumber(params: {
   wordLang: string;
   perPage: number;
 }): Record<number, SurahVerse[]> {
+  const key = `${params.translationIds.join(',')}|${params.wordLang}|${params.perPage}|${params.includeWords}`;
+  // Tajweed glyph metadata can arrive independently of the raw verse snapshot.
+  const cached = !params.includeTajweedGlyphs && preparedOfflinePages.get(params.offlineVerses);
+  if (cached && cached.key === key) return cached.pages;
   const pages: Record<number, OfflineVerseWithTranslations[]> = {};
 
   for (const verse of params.offlineVerses) {
@@ -440,6 +451,9 @@ function buildOfflinePagesByNumber(params: {
     );
   }
 
+  if (!params.includeTajweedGlyphs) {
+    preparedOfflinePages.set(params.offlineVerses, { key, pages: nextPages });
+  }
   return nextPages;
 }
 
@@ -724,6 +738,7 @@ function getTajweedGlyphRunsSignature(verse: SurahVerse | undefined): string {
 }
 
 function arePageVersesEquivalent(current: SurahVerse[], incoming: SurahVerse[]): boolean {
+  if (current === incoming) return true;
   if (current.length !== incoming.length) return false;
 
   for (let index = 0; index < current.length; index += 1) {
@@ -983,19 +998,22 @@ export function useSurahVerses({
   const [prevIncludeWords, setPrevIncludeWords] = React.useState(includeWords);
   const [prevIncludeWordTranslations, setPrevIncludeWordTranslations] = React.useState(includeWordTranslations);
   const [prevTajweed, setPrevTajweed] = React.useState(tajweed);
+  const [prevWordLang, setPrevWordLang] = React.useState(resolvedWordLang);
 
   if (
     chapterNumber !== prevChapterNumber ||
     translationsKey !== prevTranslationsKey ||
     includeWords !== prevIncludeWords ||
     includeWordTranslations !== prevIncludeWordTranslations ||
-    tajweed !== prevTajweed
+    tajweed !== prevTajweed ||
+    resolvedWordLang !== prevWordLang
   ) {
     setPrevChapterNumber(chapterNumber);
     setPrevTranslationsKey(translationsKey);
     setPrevIncludeWords(includeWords);
     setPrevIncludeWordTranslations(includeWordTranslations);
     setPrevTajweed(tajweed);
+    setPrevWordLang(resolvedWordLang);
 
     const warmOfflinePages = getInitialOfflinePagesSnapshot({
       enabled,

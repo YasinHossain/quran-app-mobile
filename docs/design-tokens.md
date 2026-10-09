@@ -53,6 +53,14 @@ The mobile radius scale is:
 - `rounded-xl`: `16px`
 - `rounded-2xl`: `24px`
 
+## Reader navigation
+
+Android surah, juz, and page routes open without a stack animation so locally available
+content appears as soon as the reader is ready. iOS retains its native transition;
+reduced motion disables it. Native Home navigation does not wait for data warmup:
+the reader takes its complete local snapshot on the first render and uses its existing
+loading/retry path when the requested content is unavailable locally.
+
 ## Modal motion
 
 `components/motion/modalTransition.ts` owns native-driver transitions for dialogs, sheets, drawers, and anchored popovers. Use the shared `preset` option rather than screen-specific durations:

@@ -6,7 +6,8 @@ import { Stack, usePathname, useRouter } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useState } from 'react';
 import 'react-native-reanimated';
-import { StatusBar as NativeStatusBar, View } from 'react-native';
+import { useReducedMotion } from 'react-native-reanimated';
+import { Platform, StatusBar as NativeStatusBar, View } from 'react-native';
 import { initialWindowMetrics, SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { AudioPlayerBar } from '@/components/audio/AudioPlayerBar';
@@ -163,6 +164,7 @@ export default function RootLayout() {
 }
 
 function RootLayoutNav() {
+  const reduceMotion = Boolean(useReducedMotion());
   const { resolvedTheme } = useAppTheme();
   const isDark = resolvedTheme === 'dark';
   const palette = Colors[isDark ? 'dark' : 'light'];
@@ -182,6 +184,9 @@ function RootLayoutNav() {
   const router = useRouter();
   const pathname = usePathname();
   const { hasCompletedWelcome } = useWelcome();
+  const readerScreenAnimation = reduceMotion || Platform.OS === 'android'
+    ? 'none'
+    : 'default';
 
   useEffect(() => {
     if (!hasCompletedWelcome && pathname !== '/welcome') {
@@ -205,6 +210,18 @@ function RootLayoutNav() {
             screenOptions={{ headerShown: false, contentStyle: { backgroundColor: palette.background } }}
           >
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            <Stack.Screen
+              name="surah/[surahId]"
+              options={{ animation: readerScreenAnimation }}
+            />
+            <Stack.Screen
+              name="juz/[juzNumber]"
+              options={{ animation: readerScreenAnimation }}
+            />
+            <Stack.Screen
+              name="page/[pageNumber]"
+              options={{ animation: readerScreenAnimation }}
+            />
             <Stack.Screen name="welcome" options={{ headerShown: false, animation: 'fade' }} />
             <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
             <Stack.Screen name="downloads" options={{ presentation: 'modal' }} />

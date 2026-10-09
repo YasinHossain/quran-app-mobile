@@ -428,6 +428,7 @@ async function preloadTajweedFontsForOfflineVerses(
 function seedPageCacheFromSurah(params: {
   surahId: number;
   translationIds: number[];
+  wordLang: string;
   perPage: number;
   expectedVerseCount?: number;
   surahVerses: OfflineVerseWithTranslations[];
@@ -435,6 +436,7 @@ function seedPageCacheFromSurah(params: {
   const resolved = resolvePageParams({
     surahId: params.surahId,
     translationIds: params.translationIds,
+    wordLang: params.wordLang,
     page: 1,
     perPage: params.perPage,
   });
@@ -631,6 +633,7 @@ export function getOfflineSurahSnapshot(params: {
   const resolved = resolveSurahParams(params);
   if (!resolved) return null;
 
+  const cacheKey = getSurahCacheKey(resolved);
   const cachedSurah = peekOfflineSurahCache(resolved);
   if (
     cachedSurah &&
@@ -641,6 +644,15 @@ export function getOfflineSurahSnapshot(params: {
     )
   ) {
     return cachedSurah;
+  }
+
+  const pendingEntry = surahCache.get(cacheKey);
+  if (
+    pendingEntry &&
+    !pendingEntry.snapshot &&
+    Date.now() - pendingEntry.timestamp < CACHE_TTL_MS
+  ) {
+    return null;
   }
 
   try {
@@ -660,7 +672,7 @@ export function getOfflineSurahSnapshot(params: {
     }
 
     const now = Date.now();
-    surahCache.set(getSurahCacheKey(resolved), {
+    surahCache.set(cacheKey, {
       value: Promise.resolve(surahVerses),
       snapshot: surahVerses,
       timestamp: now,
@@ -669,6 +681,7 @@ export function getOfflineSurahSnapshot(params: {
     seedPageCacheFromSurah({
       surahId: resolved.surahId,
       translationIds: resolved.translationIds,
+      wordLang: resolved.wordLang,
       perPage: params.perPage ?? DEFAULT_SURAH_VERSES_PER_PAGE,
       expectedVerseCount: params.expectedVerseCount,
       surahVerses,
@@ -772,6 +785,7 @@ export function getOfflineSurahCached(params: {
       seedPageCacheFromSurah({
         surahId: resolved.surahId,
         translationIds: resolved.translationIds,
+        wordLang: resolved.wordLang,
         perPage: params.perPage ?? DEFAULT_SURAH_VERSES_PER_PAGE,
         expectedVerseCount: params.expectedVerseCount,
         surahVerses,
