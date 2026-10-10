@@ -15,7 +15,7 @@ const {
   SQLiteWordStudyRepository,
   WordStudyQueryCancelledError,
 } = loadRepositoryModule();
-const { assertCompatibleWordStudyManifest } = loadPackTypesModule();
+const { assertCompatibleWordStudyManifest, wordStudyPackAssetUrl } = loadPackTypesModule();
 
 test('hosted catalog metadata matches the immutable downloadable pack', () => {
   const manifest = JSON.parse(fs.readFileSync(MANIFEST_PATH, 'utf8'));
@@ -28,6 +28,24 @@ test('hosted catalog metadata matches the immutable downloadable pack', () => {
   assert.equal(entry.schemaVersion, manifest.schemaVersion);
   assert.equal(entry.databaseSizeBytes, manifest.databaseSizeBytes);
   assert.equal(entry.databaseChecksumSha256, manifest.databaseChecksumSha256);
+});
+
+test('word-study assets use a release-specific cache key', () => {
+  const catalogUrl = 'https://example.com/word-study-packs/catalog.json';
+  const entry = {
+    version: 'qac-v0.4-essential-v3',
+    databaseChecksumSha256: 'a78130b1ae5c9e4cc64c34232dcc4fa652963151d1ab567200ad0e1a77d08dbc',
+  };
+  const manifestUrl = wordStudyPackAssetUrl('qac-v0.4/manifest.json', catalogUrl, entry);
+  const databaseUrl = wordStudyPackAssetUrl('qac-v0.4/quran-word-study.db', catalogUrl, entry);
+  assert.equal(new URL(manifestUrl).searchParams.get('release'), new URL(databaseUrl).searchParams.get('release'));
+  assert.notEqual(
+    manifestUrl,
+    wordStudyPackAssetUrl('qac-v0.4/manifest.json', catalogUrl, {
+      ...entry,
+      databaseChecksumSha256: 'b'.repeat(64),
+    })
+  );
 });
 
 test('incompatible schemas are rejected before SQLite is opened', () => {

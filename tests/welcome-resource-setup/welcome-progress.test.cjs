@@ -34,6 +34,16 @@ test('localizeDigits correctly localizes progress percentage digits for each UI 
   assert.equal(localizeDigits('100', 'ur'), '۱۰۰');
 });
 
+test('number formatting keeps each language and option set distinct', () => {
+  const { formatLocalizedNumber } = require(path.join(root, 'lib/i18n/localizeNumbers.ts'));
+
+  assert.equal(formatLocalizedNumber(114, 'bn'), '১১৪');
+  assert.equal(formatLocalizedNumber(114, 'en'), '114');
+  assert.equal(formatLocalizedNumber(1.234, 'en', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), '1.23');
+  assert.equal(formatLocalizedNumber(1.234, 'en', { style: 'percent', maximumFractionDigits: 0 }), '123%');
+  assert.equal(formatLocalizedNumber(114, 'bn'), '১১৪');
+});
+
 test('welcome.tsx includes download percentage display, progress fill bar, and speculative preloading', () => {
   const welcomeSource = fs.readFileSync(path.join(root, 'app/welcome.tsx'), 'utf8');
 

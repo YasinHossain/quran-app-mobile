@@ -146,6 +146,10 @@ function getUserVersionSync(db: SQLiteDatabase): number {
 }
 
 export async function migrateAppDbAsync(db: SQLiteDatabase): Promise<void> {
+  // Offline pack imports use a separate write connection. WAL lets reader
+  // queries continue while that connection holds a write transaction.
+  await db.execAsync('PRAGMA busy_timeout = 15000;');
+  await db.execAsync('PRAGMA journal_mode = WAL;');
   await db.execAsync('PRAGMA foreign_keys = ON;');
 
   const startingVersion = await getUserVersionAsync(db);
@@ -175,6 +179,8 @@ export async function migrateAppDbAsync(db: SQLiteDatabase): Promise<void> {
 }
 
 export function migrateAppDbSync(db: SQLiteDatabase): void {
+  db.execSync('PRAGMA busy_timeout = 15000;');
+  db.execSync('PRAGMA journal_mode = WAL;');
   db.execSync('PRAGMA foreign_keys = ON;');
 
   const startingVersion = getUserVersionSync(db);

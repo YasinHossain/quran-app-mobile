@@ -30,6 +30,7 @@ import { DEFAULT_RECITER, type Reciter, useReciters } from '@/hooks/audio/useRec
 import { useChapters } from '@/hooks/useChapters';
 import { delocalizeDigits } from '@/lib/i18n/localizeNumbers';
 import { useAudioPlayer, type RepeatOptions } from '@/providers/AudioPlayerContext';
+import { OverlayPortalProvider } from '@/providers/OverlayPortalContext';
 import { useAppTheme } from '@/providers/ThemeContext';
 import { useUiTranslation } from '@/providers/UiLanguageContext';
 import type { Chapter } from '@/types';
@@ -319,13 +320,14 @@ export function PlaybackOptionsModal({
       {...(Platform.OS === 'ios' ? { presentationStyle: 'overFullScreen' as const } : {})}
       statusBarTranslucent
     >
+      <OverlayPortalProvider>
       <View className={isDark ? 'dark' : ''} style={styles.root}>
         <Pressable style={StyleSheet.absoluteFill} onPress={handleOverlayPress}>
           <Animated.View style={[styles.overlay, { opacity: progress }]} />
         </Pressable>
 
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={styles.keyboardWrapper}
         >
           <Animated.View
@@ -509,6 +511,7 @@ export function PlaybackOptionsModal({
           </Animated.View>
         </KeyboardAvoidingView>
       </View>
+      </OverlayPortalProvider>
     </Modal>
   );
 }
@@ -641,6 +644,7 @@ function RepeatOptionsPanel({
             selectedSurah={localRepeat.surahId}
             selectedVerse={localRepeat.verseNumber ?? localRepeat.start}
             isLoading={isLoading}
+            floatingDropdown
             onSelectSurah={(surahId) => {
               setLocalRepeat((prev) => ({
                 ...prev,
@@ -669,6 +673,7 @@ function RepeatOptionsPanel({
             selectedVerse={undefined}
             isLoading={isLoading}
             hideVerse
+            floatingDropdown
             onSelectSurah={(surahId) => {
               setLocalRepeat((prev) => ({
                 ...prev,
@@ -689,6 +694,7 @@ function RepeatOptionsPanel({
               selectedSurah={startSurahId}
               selectedVerse={startVerseNumber}
               isLoading={isLoading}
+              floatingDropdown
               onSelectSurah={(surahId) => {
                 setLocalRepeat((prev) => ({
                   ...prev,
@@ -723,6 +729,7 @@ function RepeatOptionsPanel({
               selectedSurah={endSurahId}
               selectedVerse={endVerseNumber}
               isLoading={isLoading}
+              floatingDropdown
               onSelectSurah={(surahId) => {
                 setLocalRepeat((prev) => ({
                   ...prev,

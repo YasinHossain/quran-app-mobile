@@ -4,6 +4,7 @@ import catalogJson from '../../../../dist/word-study-packs/catalog.json';
 
 import {
   WORD_STUDY_PACK_SCHEMA_VERSION,
+  wordStudyPackAssetUrl,
   type WordStudyPackCatalog,
   type WordStudyPackCatalogEntry,
 } from './WordStudyPack.types';
@@ -33,8 +34,8 @@ function compatiblePacks(catalog: WordStudyPackCatalog, url: string): WordStudyP
     )
     .map((entry) => ({
       ...entry,
-      manifestUrl: new URL(entry.manifestUrl, url).toString(),
-      databaseUrl: new URL(entry.databaseUrl, url).toString(),
+      manifestUrl: wordStudyPackAssetUrl(entry.manifestUrl, url, entry),
+      databaseUrl: wordStudyPackAssetUrl(entry.databaseUrl, url, entry),
     }));
 }
 

@@ -39,6 +39,18 @@ export interface WordStudyPackCatalog {
   readonly packs: readonly WordStudyPackCatalogEntry[];
 }
 
+// Pack versions are immutable. Give each release its own HTTP cache key so a
+// previously cached manifest cannot be paired with a newer bundled catalog.
+export function wordStudyPackAssetUrl(
+  assetUrl: string,
+  catalogUrl: string,
+  entry: WordStudyPackCatalogEntry
+): string {
+  const url = new URL(assetUrl, catalogUrl);
+  url.searchParams.set('release', `${entry.version}-${entry.databaseChecksumSha256.slice(0, 12)}`);
+  return url.toString();
+}
+
 export interface WordStudyInstalledPackRef {
   readonly packId: string;
   readonly version: string;

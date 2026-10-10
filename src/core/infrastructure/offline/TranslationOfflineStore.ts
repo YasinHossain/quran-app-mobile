@@ -1,4 +1,4 @@
-import { getAppDbAsync } from '@/src/core/infrastructure/db';
+import { getAppDbAsync, withAppDbWriteTransactionAsync } from '@/src/core/infrastructure/db';
 import type { SQLiteDatabase } from 'expo-sqlite';
 import juzData from '../../../data/juz.json';
 
@@ -205,13 +205,12 @@ export class TranslationOfflineStore implements ITranslationOfflineStore {
     languageCode: string;
     verses: OfflineVerseRowInput[];
   }): Promise<void> {
-    const db = await getAppDbAsync();
     const languageCode = normalizeWordLanguageCode(params.languageCode);
     const verses = params.verses ?? [];
 
     if (!languageCode || verses.length === 0) return;
 
-    await db.withExclusiveTransactionAsync(async (txn) => {
+    await withAppDbWriteTransactionAsync(async (txn) => {
       // Base verse rows are language-neutral. Keeping translated word JSON there can leak one
       // installed language into another through legacy fallback reads.
       await upsertVerseAndTranslationRows(
@@ -677,10 +676,9 @@ export class TranslationOfflineStore implements ITranslationOfflineStore {
   }
 
   async deleteWordTranslation(languageCode?: string): Promise<void> {
-    const db = await getAppDbAsync();
     const normalizedLanguageCode = normalizeOptionalWordLanguageCode(languageCode);
 
-    await db.withExclusiveTransactionAsync(async (txn) => {
+    await withAppDbWriteTransactionAsync(async (txn) => {
       if (normalizedLanguageCode) {
         await txn.runAsync('DELETE FROM offline_word_translations WHERE language_code = ?', [
           normalizedLanguageCode,

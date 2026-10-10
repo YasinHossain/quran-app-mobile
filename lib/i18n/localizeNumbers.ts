@@ -12,6 +12,9 @@ const LOCALE_OVERRIDES: Record<string, string> = {
   ur: 'ur-PK',
 } as const;
 
+const FORMATTER_CACHE_LIMIT = 32;
+const numberFormatters = new Map<string, Intl.NumberFormat>();
+
 const normalizeLanguageCode = (languageCode: string): string =>
   (languageCode || '').toLowerCase().split(/[-_]/)[0] ?? '';
 
@@ -33,7 +36,17 @@ export const formatLocalizedNumber = (
   try {
     const base = normalizeLanguageCode(languageCode);
     const locale = LOCALE_OVERRIDES[base] ?? languageCode;
-    return localizeDigits(new Intl.NumberFormat(locale, options).format(value), languageCode);
+    const cacheKey = options ? `${locale}:${JSON.stringify(options)}` : locale;
+    let formatter = numberFormatters.get(cacheKey);
+    if (!formatter) {
+      formatter = new Intl.NumberFormat(locale, options);
+      numberFormatters.set(cacheKey, formatter);
+      if (numberFormatters.size > FORMATTER_CACHE_LIMIT) {
+        const oldestKey = numberFormatters.keys().next().value;
+        if (oldestKey !== undefined) numberFormatters.delete(oldestKey);
+      }
+    }
+    return localizeDigits(formatter.format(value), languageCode);
   } catch {
     return localizeDigits(String(value), languageCode);
   }
