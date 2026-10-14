@@ -425,7 +425,7 @@ export default function WordStudyScreen(): React.JSX.Element {
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: palette.background }]} edges={['top']}>
-      <Stack.Screen options={{ headerShown: false, animation: 'slide_from_right' }} />
+      <Stack.Screen options={{ headerShown: false }} />
       <View style={[styles.header, { borderBottomColor: palette.border, backgroundColor: palette.surface }]}>
         <Pressable
           accessibilityRole="button"

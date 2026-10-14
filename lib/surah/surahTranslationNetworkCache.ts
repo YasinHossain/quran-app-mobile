@@ -117,6 +117,8 @@ export function getNetworkSurahTranslationCached(params: {
 
   pruneCache(now);
 
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
   const value = apiFetch<ApiVersesResponse>(
     `/verses/by_chapter/${surahId}`,
     {
@@ -126,7 +128,8 @@ export function getNetworkSurahTranslationCached(params: {
       ...(translationIds.length ? { translations: translationIds.join(',') } : {}),
       per_page: 'all',
     },
-    'Failed to load verses'
+    'Failed to load verses',
+    { signal: controller.signal }
   )
     .then((response) => {
       const verses = response.verses ?? [];
@@ -143,10 +146,19 @@ export function getNetworkSurahTranslationCached(params: {
     .catch((error) => {
       networkSurahCache.delete(key);
       throw error;
-    });
+    })
+    .finally(() => clearTimeout(timeout));
 
   networkSurahCache.set(key, { value, timestamp: now });
   return value;
+}
+
+export function invalidateNetworkSurahTranslationCache(params: {
+  surahId: number;
+  translationIds: number[];
+  wordLang?: string;
+}): void {
+  networkSurahCache.delete(getCacheKey(params));
 }
 
 export function primeNetworkSurahTranslationCache(params: {

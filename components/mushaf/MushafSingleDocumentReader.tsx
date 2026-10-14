@@ -1,5 +1,5 @@
 import React from 'react';
-import { Animated, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { StyleSheet, View, useWindowDimensions } from 'react-native';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 import * as FileSystem from 'expo-file-system/legacy';
 
@@ -182,7 +182,9 @@ const MushafWebViewSurface = React.memo(
 const BACKGROUND_WARM_BATCH_SIZE = 2;
 const BACKGROUND_WARM_BATCH_DELAY_MS = 180;
 const BACKGROUND_WARM_START_DELAY_MS = 220;
-const MAX_BACKGROUND_WARM_PAGE_COUNT = 4;
+// Covers every page of the longest Surah, so scrubbing lands on already-rendered pages.
+const MAX_BACKGROUND_WARM_PAGE_COUNT = 64;
+const DEFERRED_PAGE_RELEASE_FALLBACK_MS = 1500;
 const QCF_FONT_DATA_URI_CACHE_MAX_ENTRIES = 12;
 const qcfFontDataUriCache = new Map<string, Promise<string | null>>();
 let qcfFontDataUriReadQueue: Promise<void> = Promise.resolve();
@@ -203,9 +205,9 @@ function getQcfFontDataUri(fileUri: string): Promise<string | null> {
     return cached;
   }
 
-  // Page fonts are separate files for exact QCF mushafs. Reading several large
-  // font files concurrently can intermittently fail on lower-memory Android
-  // devices, so serialize the native reads and retry transient failures.
+  // Fallback only: the WebView normally reads page fonts from their files. Reading several
+  // large font files concurrently can intermittently fail on lower-memory Android devices,
+  // so serialize the native reads and retry transient failures.
   const loadPromise = qcfFontDataUriReadQueue.then(async () => {
     const retryDelaysMs = [0, 80, 240];
 
@@ -423,7 +425,6 @@ export const MushafSingleDocumentReader = React.forwardRef<
   const webViewRef = React.useRef<WebView>(null);
   const isReaderReadyRef = React.useRef(false);
   const hasInitialPaintRef = React.useRef(false);
-  const readerOpacity = React.useRef(new Animated.Value(0)).current;
   const readerSessionRef = React.useRef(0);
   const backgroundWarmRunRef = React.useRef(0);
   const backgroundWarmTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -436,6 +437,12 @@ export const MushafSingleDocumentReader = React.forwardRef<
   const loadingPageNumbersRef = React.useRef(new Set<number>());
   const pageLoadRetryCountsRef = React.useRef(new Map<number, number>());
   const loadPagesRef = React.useRef<((pageNumbers: number[], reason: string) => void) | null>(null);
+  // Neighbor pages wait until the initial page has rendered. The WebView renders injected pages
+  // one at a time, so a neighbor whose data arrived first used to delay the visible page.
+  const hasRenderedInitialPageRef = React.useRef(false);
+  const deferredPageNumbersRef = React.useRef(new Set<number>());
+  // Set once the WebView reports that it could not read a page font file directly.
+  const embedFontDataRef = React.useRef(false);
   const activeAudioVerseLoadRef = React.useRef<string | null>(null);
   const allowedPageNumbers = React.useMemo(
     () => normalizeAllowedPageNumbers(pageNumbers, totalPages),
@@ -458,38 +465,6 @@ export const MushafSingleDocumentReader = React.forwardRef<
   // rebuilding the HTML, which would reload the WebView and blank every page.
   const focusTopInsetPxRef = React.useRef(focusTopInsetPx);
   focusTopInsetPxRef.current = focusTopInsetPx;
-  const shellDocument = React.useMemo(
-    () =>
-      buildMushafReaderWebViewShellDocument({
-        compactPageLines,
-        estimatedPageHeight,
-        focusTopInsetPx: focusTopInsetPxRef.current,
-        highlightVerseKey,
-        initialPageNumber,
-        mushafScaleStep,
-        pageNumbers,
-        packId,
-        surahIntro,
-        surahNavigation,
-        theme: resolvedTheme,
-        totalPages,
-        viewportHeight: height,
-      }),
-    [
-      estimatedPageHeight,
-      height,
-      highlightVerseKey,
-      initialPageNumber,
-      mushafScaleStep,
-      pageNumbers,
-      packId,
-      resolvedTheme,
-      compactPageLines,
-      surahIntro,
-      surahNavigation,
-      totalPages,
-    ]
-  );
   const webViewSessionKey = React.useMemo(
     () =>
       [
@@ -536,27 +511,109 @@ export const MushafSingleDocumentReader = React.forwardRef<
       width,
     ]
   );
-  const webViewSessionAssetsRef = React.useRef<{
+  // Fixed per WebView session: changing the source reloads the WebView and blanks every page.
+  // An opening page already in memory is embedded in the document so the WebView draws it
+  // without waiting for React Native, which is still mounting the reader screen.
+  const webViewSessionRef = React.useRef<{
+    initialPages: MushafPageData[];
     key: string;
     packDirectoryUri?: string;
   } | null>(null);
-  if (webViewSessionAssetsRef.current?.key !== webViewSessionKey) {
-    webViewSessionAssetsRef.current = {
+  if (webViewSessionRef.current?.key !== webViewSessionKey) {
+    const openingPageData =
+      initialPageData?.pageNumber === initialPageNumber
+        ? initialPageData
+        : container.getMushafPageRepository().peekCachedPage({
+            expectedVersion,
+            packId,
+            pageNumber: initialPageNumber,
+          });
+    const embeddablePageData =
+      openingPageData?.pack.packId === packId &&
+      openingPageData.pack.version.trim() === expectedVersion.trim()
+        ? filterPageDataForChapter(openingPageData, filterChapterId)
+        : null;
+    const packDirectoryUri =
+      embeddablePageData?.rendererAssets?.packDirectoryUri ??
+      initialPageData?.rendererAssets?.packDirectoryUri;
+    webViewSessionRef.current = {
+      initialPages: embeddablePageData?.verses.length ? [embeddablePageData] : [],
       key: webViewSessionKey,
-      ...(initialPageData?.rendererAssets?.packDirectoryUri
-        ? { packDirectoryUri: initialPageData.rendererAssets.packDirectoryUri }
-        : {}),
+      ...(packDirectoryUri ? { packDirectoryUri } : {}),
     };
   }
+  const sessionInitialPages = webViewSessionRef.current.initialPages;
 
+  const shellDocument = React.useMemo(
+    () =>
+      buildMushafReaderWebViewShellDocument({
+        compactPageLines,
+        estimatedPageHeight,
+        focusTopInsetPx: focusTopInsetPxRef.current,
+        highlightVerseKey,
+        initialPageNumber,
+        initialPages: sessionInitialPages,
+        mushafScaleStep,
+        pageNumbers,
+        packId,
+        surahIntro,
+        surahNavigation,
+        theme: resolvedTheme,
+        totalPages,
+        viewportHeight: height,
+      }),
+    [
+      estimatedPageHeight,
+      height,
+      highlightVerseKey,
+      initialPageNumber,
+      mushafScaleStep,
+      pageNumbers,
+      packId,
+      resolvedTheme,
+      compactPageLines,
+      sessionInitialPages,
+      surahIntro,
+      surahNavigation,
+      totalPages,
+    ]
+  );
   const injectPages = React.useCallback(
     (pages: MushafPageData[]) => {
-      if (!isReaderReadyRef.current || pages.length === 0) {
+      if (!isReaderReadyRef.current) {
+        return;
+      }
+
+      const readyPages = hasRenderedInitialPageRef.current
+        ? pages
+        : pages.filter((page) => {
+            if (page.pageNumber === initialPageNumber) return true;
+            deferredPageNumbersRef.current.add(page.pageNumber);
+            return false;
+          });
+      if (readyPages.length === 0) {
+        return;
+      }
+
+      const injectReadyPages = (pagesToInject: MushafPageData[]) => {
+        webViewRef.current?.injectJavaScript(
+          buildMushafReaderWebViewPagesScript({
+            focusTopInsetPx,
+            highlightVerseKey,
+            initialPageNumber,
+            layout: shellDocument.layout,
+            pages: pagesToInject,
+          })
+        );
+      };
+
+      if (!embedFontDataRef.current) {
+        injectReadyPages(readyPages);
         return;
       }
 
       const readerSession = readerSessionRef.current;
-      void Promise.all(pages.map(hydrateQcfFontDataUri)).then((hydratedPages) => {
+      void Promise.all(readyPages.map(hydrateQcfFontDataUri)).then((hydratedPages) => {
         if (
           readerSessionRef.current !== readerSession ||
           !isReaderReadyRef.current
@@ -564,19 +621,24 @@ export const MushafSingleDocumentReader = React.forwardRef<
           return;
         }
 
-        webViewRef.current?.injectJavaScript(
-          buildMushafReaderWebViewPagesScript({
-            focusTopInsetPx,
-            highlightVerseKey,
-            initialPageNumber,
-            layout: shellDocument.layout,
-            pages: hydratedPages,
-          })
-        );
+        injectReadyPages(hydratedPages);
       });
     },
     [focusTopInsetPx, highlightVerseKey, initialPageNumber, shellDocument.layout]
   );
+
+  const releaseDeferredPages = React.useCallback(() => {
+    if (hasRenderedInitialPageRef.current) {
+      return;
+    }
+
+    hasRenderedInitialPageRef.current = true;
+    const deferredPages = Array.from(deferredPageNumbersRef.current)
+      .map((pageNumber) => pageDataByNumberRef.current.get(pageNumber))
+      .filter((pageData): pageData is MushafPageData => Boolean(pageData));
+    deferredPageNumbersRef.current = new Set();
+    injectPages(deferredPages);
+  }, [injectPages]);
 
   const syncActiveAudioWord = React.useCallback(() => {
     if (!isReaderReadyRef.current) {
@@ -901,9 +963,10 @@ export const MushafSingleDocumentReader = React.forwardRef<
     readerSessionRef.current += 1;
     isReaderReadyRef.current = false;
     hasInitialPaintRef.current = false;
+    hasRenderedInitialPageRef.current = false;
+    deferredPageNumbersRef.current = new Set();
     hasCompletedBackgroundWarmRef.current = false;
     activePageNumberRef.current = initialPageNumber;
-    readerOpacity.setValue(0);
     pageDataByNumberRef.current = new Map();
     requestedPageNumbersRef.current = new Set();
     loadingPageNumbersRef.current = new Set();
@@ -915,6 +978,8 @@ export const MushafSingleDocumentReader = React.forwardRef<
     ) {
       rememberPageData(filterPageDataForChapter(initialPageData, filterChapterId));
     }
+    // Word presses on an embedded page resolve their verse from this map.
+    webViewSessionRef.current?.initialPages.forEach(rememberPageData);
   }, [
     expectedVersion,
     clearInitialRevealFallback,
@@ -938,9 +1003,9 @@ export const MushafSingleDocumentReader = React.forwardRef<
 
     clearInitialRevealFallback();
     hasInitialPaintRef.current = true;
-    readerOpacity.setValue(1);
+    releaseDeferredPages();
     onInitialPositioned?.();
-  }, [clearInitialRevealFallback, onInitialPositioned, readerOpacity]);
+  }, [clearInitialRevealFallback, onInitialPositioned, releaseDeferredPages]);
 
   React.useEffect(() => {
     if (
@@ -1067,6 +1132,11 @@ export const MushafSingleDocumentReader = React.forwardRef<
               'renderer-ready-near-window'
             );
           }, 90);
+          // Never strand neighbors if the initial page cannot render.
+          setTimeout(() => {
+            if (readerSessionRef.current !== session || !isReaderReadyRef.current) return;
+            releaseDeferredPages();
+          }, DEFERRED_PAGE_RELEASE_FALLBACK_MS);
           return;
         }
         case 'page-window-request': {
@@ -1086,6 +1156,7 @@ export const MushafSingleDocumentReader = React.forwardRef<
               ? Math.trunc(payload.pageNumber)
               : null;
           if (pageNumber === initialPageNumber || pageNumber === null) {
+            releaseDeferredPages();
             startBackgroundWarm(
               'post-first-visible-page',
               pageNumber ?? activePageNumberRef.current
@@ -1099,6 +1170,19 @@ export const MushafSingleDocumentReader = React.forwardRef<
                 }
               }, 600);
             }
+          }
+          return;
+        }
+        case 'qcf-font-file-failed': {
+          const payload = parsed.payload as { pageNumber?: unknown } | undefined;
+          const pageNumber =
+            typeof payload?.pageNumber === 'number' && Number.isFinite(payload.pageNumber)
+              ? Math.trunc(payload.pageNumber)
+              : null;
+          embedFontDataRef.current = true;
+          const pageData = pageNumber === null ? undefined : pageDataByNumberRef.current.get(pageNumber);
+          if (pageData) {
+            injectPages([pageData]);
           }
           return;
         }
@@ -1166,6 +1250,7 @@ export const MushafSingleDocumentReader = React.forwardRef<
       onSelectionChange,
       onScrollActivity,
       onSurahNavigation,
+      releaseDeferredPages,
       revealReader,
       startBackgroundWarm,
       syncActiveAudioWord,
@@ -1175,8 +1260,8 @@ export const MushafSingleDocumentReader = React.forwardRef<
   const handleLoadStart = React.useCallback(() => {
     isReaderReadyRef.current = false;
     hasInitialPaintRef.current = false;
-    readerOpacity.setValue(0);
-  }, [readerOpacity]);
+    hasRenderedInitialPageRef.current = false;
+  }, []);
   const handleLoadEnd = React.useCallback(() => {
     webViewRef.current?.injectJavaScript(`
       (function announceRendererReady(attempt) {
@@ -1206,11 +1291,11 @@ export const MushafSingleDocumentReader = React.forwardRef<
     []
   );
 
-  const packDirectoryUri = webViewSessionAssetsRef.current?.packDirectoryUri;
+  const packDirectoryUri = webViewSessionRef.current.packDirectoryUri;
 
   return (
     <View style={[styles.container, { backgroundColor: readerBackgroundColor }]}>
-      <Animated.View style={[styles.webViewShell, { opacity: readerOpacity }]}>
+      <View style={styles.webViewShell}>
         <MushafWebViewSurface
           ref={webViewRef}
           allowingReadAccessToURL={packDirectoryUri}
@@ -1221,7 +1306,7 @@ export const MushafSingleDocumentReader = React.forwardRef<
           onMessage={handleWebViewMessage}
           sessionKey={webViewSessionKey}
         />
-      </Animated.View>
+      </View>
     </View>
   );
 });

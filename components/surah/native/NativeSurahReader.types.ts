@@ -1,4 +1,5 @@
 import type { NativeSyntheticEvent, ViewProps } from 'react-native';
+import type { ReaderTranslationRecovery } from '@/lib/surah/readerTranslationRecovery';
 
 export type NativeSurahReaderTranslationItem = {
   resourceId?: number;
@@ -112,6 +113,12 @@ export type NativeSurahReaderWordPressEvent = {
 };
 
 export type NativeSurahReaderProps = ViewProps & {
+  translationRecovery?: ReaderTranslationRecovery;
+  onTranslationAvailability?: (event: NativeSyntheticEvent<{
+    surahId: number;
+    selectionKey: string;
+    missingTranslationIds: number[];
+  }>) => void;
   readerState?: NativeSurahReaderState;
   activeVerseKey?: string | null;
   activeWord?: NativeSurahReaderActiveWord | null;

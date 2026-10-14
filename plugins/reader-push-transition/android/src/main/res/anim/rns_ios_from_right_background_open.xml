@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Parallax for the covered screen; must match the foreground's curve and duration. -->
+<set xmlns:android="http://schemas.android.com/apk/res/android"
+    android:interpolator="@interpolator/reader_push_spring"
+    android:shareInterpolator="true">
+    <translate
+        android:duration="300"
+        android:fromXDelta="0%"
+        android:toXDelta="-30%" />
+</set>

@@ -953,10 +953,20 @@ export function SettingsSidebarContent({
         setPanel({ type: 'mushaf' });
         if (onOpenMushafManager) return;
       }
-      setActiveTab(nextTab);
+      // A controlled tab switches the reader view and closes the sidebar, so keep
+      // the current panel on screen instead of flashing the other tab while it hides.
+      if (!activeTabOverride || !onTabChange) setActiveTab(nextTab);
       onTabChange?.(nextTab);
     },
-    [navProgress, onOpenMushafManager, onTabChange, panel.type, selectLayer, settings.mushafId]
+    [
+      activeTabOverride,
+      navProgress,
+      onOpenMushafManager,
+      onTabChange,
+      panel.type,
+      selectLayer,
+      settings.mushafId,
+    ]
   );
 
   React.useEffect(() => {

@@ -8,6 +8,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 
+import { useScreenTransitionSettled } from '@/components/navigation/useScreenTransitionSettled';
 import { OverlayPortal } from '@/providers/OverlayPortalContext';
 
 type PortalOverlayProps = {
@@ -57,11 +58,14 @@ export function PortalOverlay({
     didShowRef.current = false;
   }
 
+  // An idle callback alone fires while a native stack push is still sliding and would mount this
+  // hidden subtree mid-transition, dropping frames on slower phones.
+  const isTransitionSettled = useScreenTransitionSettled();
   React.useEffect(() => {
-    if (!keepMounted || isWarm) return;
+    if (!keepMounted || isWarm || !isTransitionSettled) return;
     const handle = requestIdleCallback(() => setIsWarm(true), { timeout: 2000 });
     return () => cancelIdleCallback(handle);
-  }, [isWarm, keepMounted]);
+  }, [isTransitionSettled, isWarm, keepMounted]);
 
   const isMounted = visible || (keepMounted && isWarm);
 

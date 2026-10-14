@@ -132,6 +132,7 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
   private var nativeLoadGeneration = 0
   private var nativeLoadKey: String? = null
   private var isDisposed = false
+  private var translationRecovery: ReadableMap? = null
   private var latestOfflineSettings: NativeReaderSettings? = null
   private var latestOfflineTheme: NativeReaderTheme? = null
   private var latestOfflineSurahIntro: NativeSurahIntro? = null
@@ -396,6 +397,17 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
                 topInsetPx,
                 bottomInsetPx,
             )
+            applyTranslationRecovery()
+            dispatchEvent(
+                EVENT_TRANSLATION_AVAILABILITY,
+                Arguments.createMap().apply {
+                  putInt("surahId", nextSurahId)
+                  putString("selectionKey", request.translationIds.joinToString(","))
+                  putArray("missingTranslationIds", Arguments.createArray().apply {
+                    result.missingTranslationIds.forEach { pushInt(it) }
+                  })
+                },
+            )
           }
           is NativeSurahLoadResult.Failure -> {
             dispatchEvent(
@@ -409,6 +421,40 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
         }
       }
     }
+  }
+
+  fun setTranslationRecovery(recovery: ReadableMap?) {
+    translationRecovery = recovery
+    applyTranslationRecovery()
+  }
+
+  private fun applyTranslationRecovery() {
+    val recovery = translationRecovery ?: return
+    val settings = latestOfflineSettings ?: return
+    if (!hasReceivedVerses || verses.isEmpty()) return
+    if (recovery.getDoubleIfPresent("surahId")?.toInt() != surahId ||
+        recovery.getStringIfPresent("selectionKey") != settings.translationIds.joinToString(",")) return
+    val rows = recovery.getArrayIfPresent("verses") ?: return
+    val recovered = mutableMapOf<String, List<NativeTranslationItem>>()
+    for (index in 0 until rows.size()) {
+      val row = rows.getMap(index) ?: continue
+      val key = row.getStringIfPresent("verseKey") ?: continue
+      val items = row.getArrayIfPresent("translationItems") ?: continue
+      recovered[key] = (0 until items.size()).mapNotNull { itemIndex ->
+        val item = items.getMap(itemIndex) ?: return@mapNotNull null
+        val id = item.getDoubleIfPresent("resourceId")?.toInt() ?: return@mapNotNull null
+        val text = item.getStringIfPresent("text")?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+        NativeTranslationItem(id, settings.translationNames[id], text)
+      }
+    }
+    val next = mergeRecoveredTranslations(verses, settings.translationIds, recovered)
+    if (next.indices.all { next[it] === verses[it] }) return
+    val anchor = captureScrollAnchor()
+    verses.clear()
+    verses.addAll(next)
+    adapter.notifyItemRangeChanged(0, adapter.itemCount)
+    requestImmediateRecyclerRefresh()
+    restoreScrollAnchor(anchor)
   }
 
   fun dispose() {
@@ -661,7 +707,7 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
     post {
       val position = findAdapterPositionByItemId(anchor.itemId)
       if (position < 0) return@post
-      layoutManager.scrollToPositionWithOffset(position, anchor.offsetTop)
+      layoutManager.scrollToPositionWithOffset(position, anchor.offsetTop - recyclerView.paddingTop)
       post { dispatchVisibleVerseEvent(force = true) }
     }
   }
@@ -1129,6 +1175,7 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
   }
 
   companion object {
+    const val EVENT_TRANSLATION_AVAILABILITY = "topTranslationAvailability"
     const val EVENT_READY = "topReady"
     const val EVENT_INITIAL_POSITIONED = "topInitialPositioned"
     const val EVENT_VISIBLE_VERSE_CHANGE = "topVisibleVerseChange"

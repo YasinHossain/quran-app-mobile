@@ -48,6 +48,10 @@ export function SettingsSidebar({
     ? width
     : Math.min(390, Math.round(width * 0.92));
   const hiddenTranslateX = sheetWidth + 12;
+  // Hold the tab shown while open so a reader view switch doesn't swap content mid-close.
+  const displayedTabRef = React.useRef(activeTab);
+  if (isOpen) displayedTabRef.current = activeTab;
+  const displayedTab = displayedTabRef.current;
   const { visible, progress, onModalShow } = useModalTransition(isOpen, {
     preset: 'drawer',
     onAfterOpen: () => setIsDrawerSettled(true),
@@ -101,7 +105,7 @@ export function SettingsSidebar({
                   onClose={onClose}
                   showTafsirSetting={showTafsirSetting}
                   pageType={pageType}
-                  activeTabOverride={activeTab}
+                  activeTabOverride={displayedTab}
                   onTabChange={onTabChange}
                   containerWidth={sheetWidth}
                   initialPanel={isMushafManagerFullScreen ? 'mushaf' : hasOpenedSettingsRoot ? 'root' : initialPanel}

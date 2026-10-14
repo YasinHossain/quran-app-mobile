@@ -188,8 +188,9 @@ function RootLayoutNav() {
   const pathname = usePathname();
   const { hasCompletedWelcome } = useWelcome();
   // Android's native-stack 'default' is a 450 ms slide/fade on API 33+, which made opening a
-  // reader feel sluggish. 'ios_from_right' is a 200 ms native parallax slide driven entirely by
-  // the platform, so it adds no JS work while the reader mounts.
+  // reader feel sluggish. 'ios_from_right' is a native parallax slide driven entirely by the
+  // platform, so it adds no JS work while the reader mounts. Its open curve is overridden to match
+  // the drawer spring (plugins/withReaderPushTransition.js).
   const readerScreenAnimation = reduceMotion
     ? 'none'
     : Platform.OS === 'android'
@@ -234,6 +235,10 @@ function RootLayoutNav() {
               name="page/[pageNumber]"
               options={{ animation: readerScreenAnimation }}
             />
+            <Stack.Screen
+              name="tafsir/[surahId]/[ayahId]"
+              options={{ animation: readerScreenAnimation }}
+            />
             <Stack.Screen name="welcome" options={{ headerShown: false, animation: 'fade' }} />
             <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
             <Stack.Screen name="downloads" options={{ presentation: 'modal' }} />
@@ -243,7 +248,7 @@ function RootLayoutNav() {
             <Stack.Screen name="word-study-sources" options={{ presentation: 'modal' }} />
             <Stack.Screen
               name="study/word/[surah]/[ayah]/[position]"
-              options={{ headerShown: false, animation: 'slide_from_right' }}
+              options={{ animation: readerScreenAnimation }}
             />
           </Stack>
           {hasCompletedWelcome ? <AudioPlayerBar /> : null}

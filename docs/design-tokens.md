@@ -55,9 +55,14 @@ The mobile radius scale is:
 
 ## Reader navigation
 
-Android surah, juz, and page routes open without a stack animation so locally available
-content appears as soon as the reader is ready. iOS retains its native transition;
-reduced motion disables it. Native Home navigation does not wait for data warmup:
+Android surah, juz, page, tafsir, and word-study routes open with native-stack `ios_from_right` (`readerScreenAnimation` in `app/_layout.tsx`; set it there, not per screen), a platform-driven
+parallax slide with no JS work per frame. React Native Screens forces that animation onto
+`accelerate_decelerate` over 200 ms, so `plugins/withReaderPushTransition.js` overrides its open
+resources: 300 ms on `reader_push_spring`, a cubic fit of the drawer's entrance spring. The slide
+then moves most of the way early and settles like the settings drawer. On a 90 Hz budget phone
+this left one skipped vsync per open instead of two, and the worst in-slide frame went from
+23–32 ms to ~13 ms. The back animation keeps the library default. iOS retains its native
+transition; reduced motion disables it. Native Home navigation does not wait for data warmup:
 the reader takes its complete local snapshot on the first render and uses its existing
 loading/retry path when the requested content is unavailable locally.
 
@@ -83,6 +88,7 @@ Keep work out of the transition window. The animation runs on the native driver,
 - Avoid `ActivityIndicator` inside sheets. Creating Android's `ProgressBar` view took ~31 ms on the UI thread on a budget phone, stalling the slide; use a plain skeleton bar.
 - Bottom sheets don't clip with `overflow: 'hidden'`; the rounded clip path is re-rasterized every frame. Keep sheet content inside its padding instead.
 - Don't set state on open just to reset something; reset it in `onAfterClose` while the surface is hidden.
+- Gate optional offscreen work on `useScreenTransitionSettled()`. The JS thread idles while a native stack push is still sliding, so idle callbacks and list batching land mid-slide. Kept-mounted overlays (`PortalOverlay keepMounted`, the `BottomSheet` default) warm only after it; warming on idle alone mounted the reader's sheets (~110 views, ~40 ms of UI-thread work) mid-slide. The tafsir pager renders only the visible verse page until it settles, then widens `windowSize`; building neighbouring pages during the push had cost 3 missed frames per open.
 
 While any portal overlay is presented (including its exit), `OverlayPortalProvider` renders the app behind it as a cached hardware texture (`renderToHardwareTextureAndroid`), so slide frames composite one texture instead of re-rendering all reader text underneath.
 

@@ -8,7 +8,7 @@ const HIDE_SCROLL_DISTANCE = 36;
 const SHOW_SCROLL_DISTANCE = 24;
 const RESET_SCROLL_SUPPRESSION_MS = 450;
 const MIN_TOP_VISIBLE_LOCK_DISTANCE = 32;
-const HEADER_ANIMATION_DURATION = 300;
+export const HEADER_ANIMATION_DURATION = 300;
 
 // Ignore offsets produced while the header is moving. Allowing a reversal before
 // the animation settles makes slow scrolling visibly oscillate.

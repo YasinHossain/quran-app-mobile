@@ -17,7 +17,7 @@ internal data class NativeSurahLoadRequest(
 )
 
 internal sealed class NativeSurahLoadResult {
-  data class Success(val verses: List<NativeVerse>) : NativeSurahLoadResult()
+  data class Success(val verses: List<NativeVerse>, val missingTranslationIds: List<Int>) : NativeSurahLoadResult()
 
   data class Failure(
       val code: String,
@@ -159,12 +159,7 @@ internal class NativeSurahReaderRepository(private val context: Context) {
               message = "The offline Surah text is incomplete.",
           )
         }
-        if (translationIds.any { builder.translations[it].isNullOrBlank() }) {
-          return NativeSurahLoadResult.Failure(
-              code = "translation_not_downloaded",
-              message = "A selected translation is not downloaded for this Surah.",
-          )
-        }
+
 
         val words = parseWords(builder.wordsJson, request.requireWordTranslations)
         if (words.isEmpty()) {
@@ -183,18 +178,22 @@ internal class NativeSurahReaderRepository(private val context: Context) {
                 words = words,
                 tajweedGlyphRuns = buildTajweedGlyphRuns(words, tajweedVersion),
                 translationItems =
-                    translationIds.map { translationId ->
+                    translationIds.mapNotNull { translationId ->
+                      val text = builder.translations[translationId] ?: return@mapNotNull null
                       NativeTranslationItem(
                           resourceId = translationId,
                           resourceName = request.translationNames[translationId],
-                          text = builder.translations.getValue(translationId),
+                          text = text,
                       )
                     },
             ),
         )
       }
 
-      return NativeSurahLoadResult.Success(verses)
+      return NativeSurahLoadResult.Success(
+          verses,
+          missingTranslationIds(verses, translationIds),
+      )
     }
   }
 

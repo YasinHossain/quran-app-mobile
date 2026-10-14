@@ -29,6 +29,7 @@ class NativeSurahReaderViewManager : SimpleViewManager<NativeSurahReaderView>() 
         NativeSurahReaderView.EVENT_WORD_PRESS to mutableMapOf("registrationName" to "onWordPress"),
         NativeSurahReaderView.EVENT_SCROLL to mutableMapOf("registrationName" to "onScroll"),
         NativeSurahReaderView.EVENT_LOAD_ERROR to mutableMapOf("registrationName" to "onLoadError"),
+        NativeSurahReaderView.EVENT_TRANSLATION_AVAILABILITY to mutableMapOf("registrationName" to "onTranslationAvailability"),
     )
   }
 
@@ -59,6 +60,11 @@ class NativeSurahReaderViewManager : SimpleViewManager<NativeSurahReaderView>() 
   @ReactProp(name = "readerState")
   fun setReaderState(view: NativeSurahReaderView, readerState: ReadableMap?) {
     view.setReaderState(readerState)
+  }
+
+  @ReactProp(name = "translationRecovery")
+  fun setTranslationRecovery(view: NativeSurahReaderView, recovery: ReadableMap?) {
+    view.setTranslationRecovery(recovery)
   }
 
   @ReactProp(name = "targetVerse")

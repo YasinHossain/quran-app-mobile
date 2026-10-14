@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Overrides react-native-screens' resource of the same name. Its plain <translate> gets wrapped in
+  AnimationSet(shareInterpolator = true), which forces accelerate_decelerate over 200 ms. A <set>
+  is used as-is, so it keeps this interpolator and duration. Keep in sync with the background file.
+-->
+<set xmlns:android="http://schemas.android.com/apk/res/android"
+    android:interpolator="@interpolator/reader_push_spring"
+    android:shareInterpolator="true">
+    <translate
+        android:duration="300"
+        android:fromXDelta="100%"
+        android:toXDelta="0%" />
+</set>

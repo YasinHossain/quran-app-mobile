@@ -23,6 +23,39 @@ class NativeVerseModelCacheTest {
   )
 
   @Test
+  fun missingTranslationsDoNotRemoveReadableVerses() {
+    val rows = listOf(verse, verse.copy(verseKey = "2:2", verseNumber = 2))
+    assertEquals(listOf(131), missingTranslationIds(rows, listOf(20, 131)))
+    assertEquals(listOf(131), missingTranslationIds(rows, listOf(131)))
+    assertEquals(emptyList<Int>(), missingTranslationIds(rows, emptyList()))
+    assertEquals(listOf(20), missingTranslationIds(listOf(verse.copy(translationItems = emptyList())), listOf(20)))
+  }
+
+  @Test
+  fun recoveredTranslationsKeepArabicWordsAndSelectionOrder() {
+    val second = verse.copy(verseKey = "2:2", verseNumber = 2)
+    val recovered = NativeTranslationItem(131, "Other translator", "Recovered text")
+    val rows = mergeRecoveredTranslations(listOf(verse, second), listOf(131, 20), mapOf("2:1" to listOf(recovered)))
+    assertEquals(listOf(recovered, verse.translationItems.single()), rows.first().translationItems)
+    assertSame(verse.words, rows.first().words)
+    assertEquals(verse.arabicText, rows.first().arabicText)
+    assertSame(second, rows.last())
+    assertSame(rows.first(), mergeRecoveredTranslations(rows, listOf(131, 20), mapOf("2:1" to listOf(recovered))).first())
+  }
+
+  @Test
+  fun wrongAddressesUnselectedResourcesAndEmptyTextCannotChangeTheReader() {
+    val recovered = NativeTranslationItem(131, "Other", "Recovered")
+    for (incoming in listOf(
+        mapOf("1:1" to listOf(recovered)),
+        mapOf("2:1" to listOf(recovered.copy(resourceId = 999))),
+        mapOf("2:1" to listOf(recovered.copy(text = " "))),
+    )) {
+      assertSame(verse, mergeRecoveredTranslations(listOf(verse), listOf(131, 20), incoming).single())
+    }
+  }
+
+  @Test
   fun unchangedContentReusesParsedObjectsWithoutInvokingParser() {
     val cache = NativeVerseModelCache()
     val first = cache.resolve(key) { listOf(verse) }

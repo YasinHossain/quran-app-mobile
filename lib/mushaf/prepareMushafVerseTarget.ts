@@ -25,6 +25,33 @@ type PrepareMushafVerseTargetParams = {
   verseKey: string;
 };
 
+// Verse → page results from recent preparations, so a reader opened right after a pre-navigation
+// warmup can choose its opening page during its first render instead of after an async lookup.
+const PREPARED_TARGET_CACHE_MAX_ENTRIES = 32;
+const preparedTargetCache = new Map<string, PreparedMushafVerseTarget>();
+
+function getPreparedTargetCacheKey(packId: MushafPackId, verseKey: string): string {
+  return `${packId}|${verseKey.trim()}`;
+}
+
+export function peekPreparedMushafVerseTarget(
+  packId: MushafPackId,
+  verseKey: string
+): PreparedMushafVerseTarget | null {
+  return preparedTargetCache.get(getPreparedTargetCacheKey(packId, verseKey)) ?? null;
+}
+
+function rememberPreparedTarget(target: PreparedMushafVerseTarget): void {
+  const cacheKey = getPreparedTargetCacheKey(target.packId, target.verseKey);
+  preparedTargetCache.delete(cacheKey);
+  preparedTargetCache.set(cacheKey, target);
+  while (preparedTargetCache.size > PREPARED_TARGET_CACHE_MAX_ENTRIES) {
+    const oldestKey = preparedTargetCache.keys().next().value;
+    if (typeof oldestKey !== 'string') break;
+    preparedTargetCache.delete(oldestKey);
+  }
+}
+
 function clampPageToRange(pageNumber: number, pageRange?: MushafPageRange | null): number {
   const normalizedPage = Math.max(1, Math.trunc(pageNumber));
   if (!pageRange) return normalizedPage;
@@ -79,6 +106,7 @@ export async function prepareMushafVerseTarget({
     verseKey: normalizedVerseKey,
     version: activeVersion,
   };
+  rememberPreparedTarget({ ...target, pageNumber: resolvedPage });
 
   const loadPageAndWarmNeighbors = repository
     .getPage({ packId, pageNumber })

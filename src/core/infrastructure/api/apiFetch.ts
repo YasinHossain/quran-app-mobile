@@ -3,7 +3,8 @@ const API_BASE_URL = 'https://api.quran.com/api/v4/';
 export async function apiFetch<T>(
   endpointOrUrl: string,
   params: Record<string, string> = {},
-  errorMessage = 'Request failed'
+  errorMessage = 'Request failed',
+  options?: { signal?: AbortSignal }
 ): Promise<T> {
   const url = endpointOrUrl.startsWith('http')
     ? new URL(endpointOrUrl)
@@ -17,6 +18,7 @@ export async function apiFetch<T>(
 
   const response = await fetch(url.toString(), {
     headers: { Accept: 'application/json' },
+    ...(options?.signal ? { signal: options.signal } : {}),
   });
 
   if (!response.ok) {
@@ -25,4 +27,3 @@ export async function apiFetch<T>(
 
   return (await response.json()) as T;
 }
-

@@ -50,6 +50,11 @@ test('native reader sends inset and audio updates without invalidating the full 
   assert.equal(host().topInsetPx, 332);
   assert.equal(host().bottomInsetPx, 136);
   assert.equal(host().activeVerseKey, '2:1');
+  const translationRecovery = { surahId: 2, selectionKey: '131', translationIds: [131], verses: [] };
+  await update({}, { translationRecovery });
+  assert.equal(host().translationRecovery, translationRecovery);
+  assert.equal(host().readerState, initialPayload, 'recovering translations must not reload the native base reader');
+
   const word = { verseKey: '2:1', wordPosition: 1 };
   await update({}, { activeWord: word });
   assert.equal(host().readerState, initialPayload);
@@ -338,16 +343,21 @@ for (const kind of ['Surah', 'Juz']) {
   });
 }
 
-test('mushaf reader applies header inset changes without reloading the WebView', async (t) => {
+function loadMushafReader({
+  getPage = () => new Promise(() => {}),
+  peekCachedPage = () => null,
+  readAsStringAsync = async () => '',
+} = {}) {
   const exports = {};
   const injected = [];
-  let webViewMounts = 0;
+  const shellBuilds = [];
+  const webView = { mounts: 0 };
   const source = ts.transpileModule(
     readFileSync(path.join(__dirname, '../../components/mushaf/MushafSingleDocumentReader.tsx'), 'utf8'),
     { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX } }
   ).outputText;
   const WebView = React.forwardRef(function WebView(props, ref) {
-    React.useEffect(() => { webViewMounts += 1; }, []);
+    React.useEffect(() => { webView.mounts += 1; }, []);
     React.useImperativeHandle(ref, () => ({ injectJavaScript: (script) => injected.push(script) }), []);
     return React.createElement('WebViewHost', props);
   });
@@ -363,16 +373,21 @@ test('mushaf reader applies header inset changes without reloading the WebView',
         useWindowDimensions: () => ({ width: 400, height: 800 }),
       };
       if (name === 'react-native-webview') return { WebView };
-      if (name === 'expo-file-system/legacy') return {};
+      if (name === 'expo-file-system/legacy') return { EncodingType: { Base64: 'base64' }, readAsStringAsync };
       if (name.endsWith('/mushafWordPayload')) return { resolveMushafVerseKey: () => null };
       if (name.endsWith('/buildMushafReaderWebViewDocument')) return {
-        buildMushafReaderWebViewShellDocument: ({ focusTopInsetPx }) => ({ html: `shell:${focusTopInsetPx}`, layout: {} }),
-        buildMushafReaderWebViewPagesScript: () => '',
+        buildMushafReaderWebViewShellDocument: (options) => {
+          shellBuilds.push(options);
+          return { html: `shell:${options.focusTopInsetPx}`, layout: {} };
+        },
+        buildMushafReaderWebViewPagesScript: ({ pages }) => `pages:${pages.map((page) => (
+          page.rendererAssets?.pageFontDataUri ? `${page.pageNumber}+font` : page.pageNumber
+        )).join(',')}`,
       };
       if (name.endsWith('/MushafWebViewPage')) return { estimateMushafWebViewPageHeight: () => 900 };
       if (name.endsWith('/ThemeContext')) return { useAppTheme: () => ({ resolvedTheme: 'dark' }) };
       if (name.endsWith('/container')) return {
-        container: { getMushafPageRepository: () => ({ getPage: () => new Promise(() => {}) }) },
+        container: { getMushafPageRepository: () => ({ getPage, peekCachedPage }) },
       };
       throw new Error(`Unexpected module: ${name}`);
     },
@@ -381,16 +396,237 @@ test('mushaf reader applies header inset changes without reloading the WebView',
     backgroundPageNumbers: [], chapterNamesById: new Map(), expectedVersion: 'v1', focusTopInsetPx: 76,
     initialPageNumber: 2, mushafScaleStep: 6, onSelectionChange() {}, onVersePress() {}, packId: 'qcf', totalPages: 604,
   };
+  return { Reader: exports.MushafSingleDocumentReader, injected, props, shellBuilds, webView };
+}
+
+function mushafPage(pageNumber, rendererAssets) {
+  return {
+    pack: { packId: 'qcf', version: 'v1', lines: 15 },
+    pageNumber,
+    verses: [{ verseKey: `2:${pageNumber}` }],
+    pageLines: { lines: [] },
+    ...(rendererAssets ? { rendererAssets } : {}),
+  };
+}
+
+function sendReaderMessage(root, message) {
+  return act(async () => root.root.findByType('WebViewHost').props.onMessage({
+    nativeEvent: { data: JSON.stringify(message) },
+  }));
+}
+
+test('mushaf reader applies header inset changes without reloading the WebView', async (t) => {
+  const { Reader, injected, props, webView } = loadMushafReader();
   let root;
-  await act(async () => { root = create(React.createElement(exports.MushafSingleDocumentReader, props)); });
+  await act(async () => { root = create(React.createElement(Reader, props)); });
   t.after(async () => { await act(async () => root.unmount()); });
   const host = () => root.root.findByType('WebViewHost').props;
   const initialHtml = host().source.html;
-  await act(async () => host().onMessage({ nativeEvent: { data: JSON.stringify({ type: 'renderer-ready' }) } }));
+  await sendReaderMessage(root, { type: 'renderer-ready' });
 
   // The overlay header settles on its measured height after the reader mounts.
-  await act(async () => root.update(React.createElement(exports.MushafSingleDocumentReader, { ...props, focusTopInsetPx: 93 })));
-  assert.equal(webViewMounts, 1);
+  await act(async () => root.update(React.createElement(Reader, { ...props, focusTopInsetPx: 93 })));
+  assert.equal(webView.mounts, 1);
   assert.equal(host().source.html, initialHtml);
   assert.match(injected.at(-1), /setFocusTopInset\(93\)/);
+});
+
+test('mushaf reader renders the opening page before a neighbor page whose data arrives first', async (t) => {
+  const pendingPages = new Map();
+  const { Reader, injected, props } = loadMushafReader({
+    getPage: ({ pageNumber }) => new Promise((resolve) => pendingPages.set(pageNumber, resolve)),
+  });
+  const resolvePage = (pageNumber) => act(async () => pendingPages.get(pageNumber)(mushafPage(pageNumber)));
+  const pageScripts = () => injected.filter((script) => script.startsWith('pages:'));
+  let root;
+  await act(async () => { root = create(React.createElement(Reader, props)); });
+  t.after(async () => { await act(async () => root.unmount()); });
+  await sendReaderMessage(root, { type: 'renderer-ready' });
+  await sendReaderMessage(root, { type: 'page-window-request', payload: { pageNumbers: [3] } });
+
+  await resolvePage(3);
+  assert.deepEqual(pageScripts(), [], 'a neighbor must not occupy the WebView before the opening page');
+  await resolvePage(2);
+  assert.deepEqual(pageScripts(), ['pages:2']);
+  await sendReaderMessage(root, { type: 'reader-page-rendered', payload: { pageNumber: 2 } });
+  assert.deepEqual(pageScripts(), ['pages:2', 'pages:3']);
+});
+
+test('mushaf reader embeds an opening page already in memory into the WebView document', async (t) => {
+  const { Reader, props, shellBuilds } = loadMushafReader({
+    peekCachedPage: ({ pageNumber }) => (pageNumber === 2 ? mushafPage(2) : null),
+  });
+  let root;
+  await act(async () => { root = create(React.createElement(Reader, props)); });
+  t.after(async () => { await act(async () => root.unmount()); });
+
+  assert.deepEqual(Array.from(shellBuilds.at(-1).initialPages, (page) => page.pageNumber), [2]);
+});
+
+test('mushaf reader re-sends a page with its font embedded when the WebView cannot read the font file', async (t) => {
+  const fontAssets = { qcfVersion: 'v1', pageFontFamily: 'p2', pageFontFileUri: 'file:///pack/fonts/p2.woff2' };
+  const { Reader, injected, props } = loadMushafReader({
+    getPage: async ({ pageNumber }) => mushafPage(pageNumber, fontAssets),
+    readAsStringAsync: async () => 'Zm9udA==',
+  });
+  const pageScripts = () => injected.filter((script) => script.startsWith('pages:'));
+  let root;
+  await act(async () => { root = create(React.createElement(Reader, props)); });
+  t.after(async () => { await act(async () => root.unmount()); });
+  await sendReaderMessage(root, { type: 'renderer-ready' });
+  assert.deepEqual(pageScripts(), ['pages:2'], 'fonts are read from their files by default');
+
+  await sendReaderMessage(root, { type: 'qcf-font-file-failed', payload: { pageNumber: 2 } });
+  assert.deepEqual(pageScripts(), ['pages:2', 'pages:2+font']);
+});
+
+for (const selected of [[20, 131], [131], []]) {
+  test(`Surah keeps Arabic and only selected local translations: ${selected}`, async (t) => {
+    const rows = verses(1, 1, 7);
+    const loaded = loadHook('Surah', () => rows);
+    const reader = await mount(t, loaded, { chapterNumber: 1, translationIds: selected, includeWords: true, allowPartialTranslations: true });
+    assert.equal(reader.current.hasLoadedContent, true);
+    assert.equal(reader.current.offlineNotInstalled, false);
+    assert.deepEqual(Array.from(reader.current.missingTranslationIds), selected.includes(131) ? [131] : []);
+    for (let number = 1; number <= 7; number++) {
+      const verse = reader.current.getVerseByNumber(number);
+      assert.equal(verse.text_uthmani, rows[number - 1].arabicUthmani);
+      assert.deepEqual(Array.from(verse.translationItems, (item) => item.resourceId), selected.includes(20) ? [20] : []);
+    }
+    await act(async () => reader.current.ensureVerseRangeLoaded(1, 7));
+    assert.equal(loaded.requests.length, 0, 'partial local data must not trigger verse-page network fetches');
+  });
+}
+
+test('translation recovery preserves Arabic, words, selection order and ignores a stale surah', async (t) => {
+  const rows = verses(1, 1, 7);
+  const loaded = loadHook('Surah', () => rows);
+  const reader = await mount(t, loaded, { chapterNumber: 1, translationIds: [131, 20], includeWords: true, allowPartialTranslations: true });
+  const before = reader.current.getVerseByNumber(3);
+  const recovery = {
+    surahId: 1, selectionKey: '131,20', translationIds: [131],
+    verses: rows.map((row) => ({ verseKey: row.verseKey, translationItems: [{ resourceId: 131, text: `Recovered ${row.verseKey}` }] })),
+  };
+  await act(async () => reader.current.applyRecoveredTranslations({ ...recovery, surahId: 2 }));
+  assert.equal(reader.current.getVerseByNumber(3), before);
+  await act(async () => reader.current.applyRecoveredTranslations({ ...recovery, selectionKey: '131' }));
+  assert.equal(reader.current.getVerseByNumber(3), before);
+  await act(async () => reader.current.applyRecoveredTranslations(recovery));
+  const after = reader.current.getVerseByNumber(3);
+  assert.equal(after.text_uthmani, before.text_uthmani);
+  assert.equal(after.words, before.words);
+  assert.deepEqual(Array.from(after.translationItems, (item) => item.resourceId), [131, 20]);
+  assert.equal(after.translationItems[0].text, 'Recovered 1:3');
+  assert.equal(after.translationItems[1].text, 'Translation');
+  await act(async () => reader.current.refresh());
+  assert.equal(reader.current.getVerseByNumber(3).translationItems[0].text, 'Recovered 1:3', 'refresh must retain recovered text while the local pack is still missing');
+
+  assert.equal(loaded.requests.length, 0);
+});
+
+function loadRecoveryBuilder() {
+  const exports = {};
+  vm.runInNewContext(ts.transpileModule(
+    readFileSync(path.join(__dirname, '../../lib/surah/readerTranslationRecovery.ts'), 'utf8'),
+    { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }
+  ).outputText, { exports });
+  return exports.buildReaderTranslationRecovery;
+}
+
+test('recovery validates every verse address and resource before marking a translation available', () => {
+  const build = loadRecoveryBuilder();
+  const rows = Array.from({ length: 7 }, (_, i) => ({
+    verse_key: `1:${i + 1}`, verse_number: i + 1,
+    translations: [{ resource_id: 131, text: `<p>Verse ${i + 1} &amp; text</p>` }, { resource_id: 20, text: 'Other' }],
+  })).reverse();
+  const full = build(1, [131], [131, 20], 7, rows);
+  assert.deepEqual(Array.from(full.translationIds), [131]);
+  assert.equal(full.verses[2].translationItems[0].text, 'Verse 3 & text');
+  for (const broken of [rows.slice(1), rows.map((row) => ({ ...row, verse_key: row.verse_key.replace('1:', '2:') })), rows.map((row) => ({ ...row, translations: [] }))]) {
+    assert.equal(build(1, [131], [131], 7, broken).translationIds.length, 0);
+  }
+});
+
+function loadRecoveryHook() {
+  let network = { isConnected: false, isInternetReachable: false };
+  let listener;
+  let appListener;
+  let fetchRows = async () => [];
+  let requests = 0;
+  let subscriptions = 0;
+  const exports = {};
+  vm.runInNewContext(ts.transpileModule(
+    readFileSync(path.join(__dirname, '../../hooks/useReaderTranslationRecovery.ts'), 'utf8'),
+    { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }
+  ).outputText, {
+    exports,
+    require(name) {
+      if (name === 'react') return React;
+      if (name === 'react-native') return { AppState: { currentState: 'active', addEventListener: (_, cb) => { appListener = cb; return { remove() { appListener = undefined; } }; } } };
+      if (name === 'expo-router') return { useFocusEffect: (cb) => React.useEffect(cb, [cb]) };
+      if (name === 'expo-network') return {
+        getNetworkStateAsync: async () => network,
+        addNetworkStateListener: (cb) => { listener = cb; subscriptions++; return { remove() { listener = undefined; subscriptions--; } }; },
+      };
+      if (name.endsWith('/readerTranslationRecovery')) return { buildReaderTranslationRecovery: loadRecoveryBuilder() };
+      if (name.endsWith('/surahTranslationNetworkCache')) return {
+        peekNetworkSurahTranslationSnapshot: () => null,
+        invalidateNetworkSurahTranslationCache() {},
+        getNetworkSurahTranslationCached: async () => { requests++; return fetchRows(); },
+      };
+      throw new Error(name);
+    },
+  });
+  return {
+    hook: exports.useReaderTranslationRecovery,
+    get requests() { return requests; },
+    get subscriptions() { return subscriptions; },
+    set fetchRows(value) { fetchRows = value; },
+    async connect(value) { await act(async () => { network = { isConnected: value, isInternetReachable: value }; listener?.(network); }); },
+    async foreground() { await act(async () => appListener?.('active')); },
+  };
+}
+
+test('offline recovery waits for connectivity, restores translations once and releases listeners', async (t) => {
+  const loaded = loadRecoveryHook();
+  const props = { surahId: 1, translationIds: [20, 131], missingTranslationIds: [131], verseCount: 7, enabled: true };
+  const reader = await mount(t, loaded, props);
+  assert.equal(reader.current.state, 'offline');
+  assert.equal(loaded.requests, 0);
+  await act(async () => reader.current.dismiss());
+  await reader.update({ ...props, surahId: 2 });
+  assert.equal(reader.current.dismissed, true, 'dismissal persists between surahs while offline');
+  loaded.fetchRows = async () => Array.from({ length: 7 }, (_, i) => ({ verse_key: `2:${i + 1}`, translations: [{ resource_id: 131, text: 'Restored' }] }));
+  await loaded.connect(true);
+  assert.equal(reader.current.state, 'ready');
+  assert.equal(reader.current.unavailableIds.length, 0);
+  assert.equal(reader.current.recovery.surahId, 2);
+  assert.equal(loaded.requests, 1);
+  assert.equal(loaded.subscriptions, 0, 'successful readers do not keep recovery listeners');
+  await loaded.foreground();
+  assert.equal(loaded.requests, 1);
+});
+
+test('late recovery cannot update a new surah and online failures expose retry', async (t) => {
+  const loaded = loadRecoveryHook();
+  const props = { surahId: 1, translationIds: [131], missingTranslationIds: [131], verseCount: 7, enabled: true };
+  const reader = await mount(t, loaded, props);
+  let finish;
+  loaded.fetchRows = () => new Promise((resolve) => { finish = resolve; });
+  await loaded.connect(true);
+  loaded.fetchRows = async () => { throw new Error('Service unavailable'); };
+  await reader.update({ ...props, surahId: 2 });
+  await act(async () => finish(Array.from({ length: 7 }, (_, i) => ({ verse_key: `1:${i + 1}`, translations: [{ resource_id: 131, text: 'Old' }] }))));
+  assert.equal(reader.current.state, 'error');
+  assert.equal(reader.current.recovery, undefined);
+  assert.deepEqual(Array.from(reader.current.unavailableIds), [131]);
+});
+
+
+test('other Surah hook consumers keep their existing online translation loading path', async (t) => {
+  const rows = verses(1, 1, 7);
+  const loaded = loadHook('Surah', () => rows);
+  const reader = await mount(t, loaded, { chapterNumber: 1, translationIds: [20, 131] });
+  assert.equal(reader.current.hasLoadedContent, false, 'partial translations require the reader to opt in');
+  assert.ok(loaded.requests.length > 0, 'other consumers must still request their selected online translations');
 });

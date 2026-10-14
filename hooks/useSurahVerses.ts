@@ -1,4 +1,5 @@
 import React from 'react';
+import type { ReaderTranslationRecovery } from '@/lib/surah/readerTranslationRecovery';
 
 import type { SurahHeaderChapter } from '@/components/surah/SurahHeaderCard';
 import {
@@ -51,6 +52,33 @@ export type SurahVerse = {
   translationTexts: string[];
   translationItems: Array<{ resourceId: number; resourceName?: string; text: string }>;
 };
+
+function mergeRecoveredTranslationPages(
+  pages: Record<number, SurahVerse[]>,
+  recovery: ReaderTranslationRecovery,
+  selectedIds: number[]
+): Record<number, SurahVerse[]> {
+  const byKey = new Map(recovery.verses.map((verse) => [verse.verseKey, verse.translationItems]));
+  let changed = false;
+  const next: Record<number, SurahVerse[]> = {};
+  for (const [page, verses] of Object.entries(pages)) {
+    next[Number(page)] = verses.map((verse) => {
+      const recovered = byKey.get(verse.verse_key);
+      if (!recovered?.length) return verse;
+      const items = new Map(verse.translationItems.map((item) => [item.resourceId, item]));
+      for (const item of recovered) items.set(item.resourceId, item);
+      const translationItems = selectedIds.flatMap((id) => items.get(id) ? [items.get(id)!] : []);
+      if (translationItems.length === verse.translationItems.length && translationItems.every((item, index) =>
+        item.resourceId === verse.translationItems[index].resourceId &&
+        item.text === verse.translationItems[index].text &&
+        item.resourceName === verse.translationItems[index].resourceName
+      )) return verse;
+      changed = true;
+      return { ...verse, translationItems, translationTexts: translationItems.map((item) => item.text) };
+    });
+  }
+  return changed ? next : pages;
+}
 
 type ApiVersesResponse = {
   verses: Array<{
@@ -167,17 +195,7 @@ function buildTranslationItems(
     })
     .filter((t): t is { resourceId: number; resourceName?: string; text: string } => t !== null);
 
-  if (ordered.length) return ordered;
-
-  return incoming
-    .map((t) => {
-      const text = stripHtml(t.text ?? '').trim();
-      if (!text) return null;
-      const name = typeof t.resource_name === 'string' ? t.resource_name.trim() : undefined;
-      const base = { resourceId: t.resource_id, text };
-      return name ? { ...base, resourceName: name } : base;
-    })
-    .filter((t): t is { resourceId: number; resourceName?: string; text: string } => t !== null);
+  return ordered;
 }
 
 function buildVerseWords(words: ApiWord[] | undefined): VerseWord[] | undefined {
@@ -873,6 +891,7 @@ export function useSurahVerses({
   tajweedTextColor,
   initialVerseNumber,
   enabled = true,
+  allowPartialTranslations = false,
 }: {
   chapterNumber: number;
   translationIds: number[];
@@ -886,6 +905,7 @@ export function useSurahVerses({
   tajweedTextColor?: string;
   initialVerseNumber?: number;
   enabled?: boolean;
+  allowPartialTranslations?: boolean;
 }): {
   chapter: SurahHeaderChapter | null;
   verseCount: number;
@@ -898,6 +918,8 @@ export function useSurahVerses({
   isLoadingMore: boolean;
   errorMessage: string | null;
   offlineNotInstalled: boolean;
+  missingTranslationIds: number[];
+  applyRecoveredTranslations: (recovery: ReaderTranslationRecovery) => void;
   refresh: () => void;
   retry: () => void;
   loadMore: () => void;
@@ -975,11 +997,13 @@ export function useSurahVerses({
   const [isLoadingMore, setIsLoadingMore] = React.useState(false);
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
   const [offlineNotInstalled, setOfflineNotInstalled] = React.useState(false);
+  const [missingTranslationIds, setMissingTranslationIds] = React.useState<number[]>([]);
   const [pagesByNumber, setPagesByNumber] = React.useState<Record<number, SurahVerse[]>>(
     initialPagesByNumber
   );
   const [pendingPageCount, setPendingPageCount] = React.useState(0);
 
+  const recoveredTranslationsRef = React.useRef<ReaderTranslationRecovery | null>(null);
   const pagesByNumberRef = React.useRef<Record<number, SurahVerse[]>>(initialPagesByNumber);
   const totalPagesRef = React.useRef(
     verseCount > 0 && Number.isFinite(perPage) && perPage > 0
@@ -1009,6 +1033,8 @@ export function useSurahVerses({
     tajweed !== prevTajweed ||
     resolvedWordLang !== prevWordLang
   ) {
+    recoveredTranslationsRef.current = null;
+    setMissingTranslationIds([]);
     setPrevChapterNumber(chapterNumber);
     setPrevTranslationsKey(translationsKey);
     setPrevIncludeWords(includeWords);
@@ -1378,7 +1404,9 @@ export function useSurahVerses({
           wordLang: resolvedWordLang,
           perPage,
         });
-      const nextPages = builtPages;
+      const nextPages = recoveredTranslationsRef.current
+        ? mergeRecoveredTranslationPages(builtPages, recoveredTranslationsRef.current, resolvedTranslationIds)
+        : builtPages;
 
       if (Object.keys(nextPages).length === 0) return;
 
@@ -1567,7 +1595,7 @@ export function useSurahVerses({
     if (
       !isCompleteOfflineVerseSet({
         offlineVerses,
-        translationIds: resolvedTranslationIds,
+        translationIds: allowPartialTranslations ? [] : resolvedTranslationIds,
         expectedVerseCount: verseCount,
         requireTajweedGlyphs: false,
         requireWordTranslations: includeWordTranslations,
@@ -1576,6 +1604,9 @@ export function useSurahVerses({
       return false;
     }
 
+    setMissingTranslationIds(resolvedTranslationIds.filter((id) =>
+      offlineVerses.some((verse) => !verse.translations.some((item) => item.translationId === id && item.text.trim()))
+    ));
     dataSourceRef.current = 'offline';
     const nextPages = buildOfflinePagesByNumber({
       offlineVerses,
@@ -1603,6 +1634,7 @@ export function useSurahVerses({
     setErrorMessage(null);
     return true;
   }, [
+    allowPartialTranslations,
     chapterNumber,
     enabled,
     includeWordTranslations,
@@ -1830,6 +1862,7 @@ export function useSurahVerses({
         setPendingPageCount(0);
         setErrorMessage(null);
         setOfflineNotInstalled(false);
+        setMissingTranslationIds([]);
         setIsLoadingMore(false);
         if (mode === 'initial') setIsLoading(false);
         if (mode === 'refresh') setIsRefreshing(false);
@@ -1948,6 +1981,16 @@ export function useSurahVerses({
     setIsLoadingMore(Boolean(!isLoading && !isRefreshing && pendingPageCount > 0));
   }, [isLoading, isRefreshing, pendingPageCount]);
 
+  const applyRecoveredTranslations = React.useCallback((recovery: ReaderTranslationRecovery) => {
+    if (recovery.surahId !== chapterNumber || recovery.selectionKey !== translationsKey) return;
+    recoveredTranslationsRef.current = recovery;
+    setPagesByNumber((previous) => {
+      const next = mergeRecoveredTranslationPages(previous, recovery, resolvedTranslationIds);
+      pagesByNumberRef.current = next;
+      return next;
+    });
+  }, [chapterNumber, resolvedTranslationIds, translationsKey]);
+
   const refresh = React.useCallback(() => {
     void loadInitialWindow('refresh');
   }, [loadInitialWindow]);
@@ -1981,6 +2024,8 @@ export function useSurahVerses({
     isLoadingMore,
     errorMessage,
     offlineNotInstalled,
+    missingTranslationIds,
+    applyRecoveredTranslations,
     refresh,
     retry,
     loadMore,

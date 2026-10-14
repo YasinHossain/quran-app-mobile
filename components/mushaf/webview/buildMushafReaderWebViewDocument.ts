@@ -68,7 +68,8 @@ function normalizeShellPageNumbers(pageNumbers: number[] | undefined, totalPages
 function buildPageShells(
   pageNumbers: number[],
   estimatedPageHeight: number,
-  compactPageLines: boolean
+  compactPageLines: boolean,
+  initialPageNumber: number
 ): string {
   const pageMinHeight = Math.max(280, Math.round(estimatedPageHeight));
   const pageShells: string[] = [];
@@ -76,7 +77,9 @@ function buildPageShells(
   for (const pageNumber of pageNumbers) {
     const juzNumber = getJuzByPage(pageNumber);
     pageShells.push(`
-      <article class="reader-page loading" data-page-number="${pageNumber}" data-juz-number="${juzNumber}">
+      <article class="reader-page loading${
+        Math.abs(pageNumber - initialPageNumber) <= 1 ? ' keep-rendered' : ''
+      }" data-page-number="${pageNumber}" data-juz-number="${juzNumber}">
         <div class="page-content"${compactPageLines ? '' : ` style="min-height: ${pageMinHeight}px;"`}>
           <div class="standard-view"></div>
           <div class="reflow-view"></div>
@@ -251,6 +254,7 @@ function buildShellDocumentHtml({
   focusTopInsetPx,
   highlightVerseKey,
   initialPageNumber,
+  initialPages,
   layout,
   pageNumbers,
   surahIntro,
@@ -263,6 +267,7 @@ function buildShellDocumentHtml({
   focusTopInsetPx: number;
   highlightVerseKey?: string | null;
   initialPageNumber: number;
+  initialPages: MushafPageData[];
   layout: MushafReaderWebViewLayoutPayload;
   pageNumbers?: number[] | undefined;
   surahIntro?: MushafReaderSurahIntro | undefined;
@@ -331,7 +336,7 @@ function buildShellDocumentHtml({
     : firstShellPageNumber;
 
   return `<!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="awaiting-initial-position">
   <head>
     <meta charset="utf-8" />
     <meta
@@ -485,6 +490,16 @@ function buildShellDocumentHtml({
       .reader-page {
         width: 100%;
         overflow: hidden;
+        /* Off-screen pages skip layout. Each page font added to the document otherwise
+           re-laid out and re-shaped every rendered page, so pre-rendering a long Surah stalled. */
+        content-visibility: auto;
+        contain-intrinsic-block-size: auto var(--loading-page-min-height);
+      }
+
+      /* A jump target and its neighbors render in the same frame as the jump; with
+         content-visibility: auto they would otherwise paint blank for a few frames. */
+      .reader-page.keep-rendered {
+        content-visibility: visible;
       }
 
       .reader-page + .reader-page {
@@ -716,12 +731,18 @@ function buildShellDocumentHtml({
         font-weight: 600;
         text-transform: uppercase;
       }
+
+      /* The document reveals itself once the opening page is positioned, without waiting for a
+         React Native round trip while the reader screen is still mounting. */
+      html.awaiting-initial-position #app {
+        visibility: hidden;
+      }
     </style>
   </head>
   <body>
     <main id="app" aria-label="Mushaf pages">
       ${buildSurahIntroHtml(surahIntro)}
-      ${buildPageShells(normalizedPageNumbers, estimatedPageHeight, compactPageLines)}
+      ${buildPageShells(normalizedPageNumbers, estimatedPageHeight, compactPageLines, normalizedInitialPageNumber)}
       ${buildSurahNavigationHtml(surahNavigation)}
     </main>
     <script>
@@ -754,7 +775,12 @@ function buildShellDocumentHtml({
         var loadedPageNumbers = new Set();
         var activeRenderTokens = Object.create(null);
         var qcfFontLoadPromises = new Map();
-        var qcfFontLoadQueue = Promise.resolve();
+        // Font loads run nearest-page-first so a scrub or jump target never waits behind pages
+        // queued on the way there.
+        var MAX_CONCURRENT_QCF_FONT_LOADS = 2;
+        var pendingQcfFontLoads = [];
+        var activeQcfFontLoadCount = 0;
+        var qcfFontPriorityPageNumber = null;
         var scrollRequestTimeoutId = null;
         var activePageRafId = null;
         var scrollActivityRafId = null;
@@ -969,12 +995,28 @@ function buildShellDocumentHtml({
           }
         }
 
+        function keepPagesRenderedAround(pageNumber) {
+          app.querySelectorAll('.reader-page.keep-rendered').forEach(function (root) {
+            if (Math.abs(Number(root.dataset.pageNumber) - pageNumber) > 1) {
+              root.classList.remove('keep-rendered');
+            }
+          });
+          for (var offset = -1; offset <= 1; offset += 1) {
+            var nearbyState = getPageState(pageNumber + offset);
+            if (nearbyState && nearbyState.root) {
+              nearbyState.root.classList.add('keep-rendered');
+            }
+          }
+        }
+
         function scrollToPage(pageNumber) {
           var state = getPageState(pageNumber);
           if (!state || !state.root) {
             return false;
           }
 
+          setQcfFontPriorityPage(state.pageNumber);
+          keepPagesRenderedAround(state.pageNumber);
           window.scrollTo(0, Math.max(0, state.root.offsetTop));
           scheduleActivePageReport();
           return true;
@@ -1080,6 +1122,7 @@ function buildShellDocumentHtml({
             return;
           }
 
+          setQcfFontPriorityPage(activePageNumber);
           lastEmittedActivePageNumber = activePageNumber;
           lastEmittedActiveVerseKey = activeVerseKey;
           emit({
@@ -1120,6 +1163,20 @@ function buildShellDocumentHtml({
           scrollActivityRafId = requestAnimationFrame(emitScrollActivity);
         }
 
+        var INITIAL_REVEAL_FALLBACK_MS = 600;
+        var DOCUMENT_REVEAL_FALLBACK_MS = 2500;
+
+        function revealDocument() {
+          document.documentElement.classList.remove('awaiting-initial-position');
+        }
+
+        function scheduleInitialRevealFallback() {
+          setTimeout(revealDocument, INITIAL_REVEAL_FALLBACK_MS);
+        }
+
+        // Never leave the reader hidden if the opening page cannot render at all.
+        setTimeout(revealDocument, DOCUMENT_REVEAL_FALLBACK_MS);
+
         function scheduleInitialPositioned(pageNumber) {
           if (
             didEmitInitialPositioned ||
@@ -1138,6 +1195,7 @@ function buildShellDocumentHtml({
               }
 
               didEmitInitialPositioned = true;
+              revealDocument();
               emit({
                 type: 'reader-initial-positioned',
                 payload: {
@@ -1201,7 +1259,129 @@ function buildShellDocumentHtml({
           label.textContent = parts.join(' • ');
         }
 
-        async function loadQcfPageFontIfNeeded(rendererAssets) {
+        // Pages render one at a time, nearest to the reading position first. Rendering every
+        // injected page immediately made a jump or scrub target wait behind pages passed on the way.
+        var pendingPageRenders = new Map();
+        var PAGE_RENDER_QUEUE_TIMEOUT_MS = 3000;
+        // Pages away from the reading position wait for scrolling to pause, so pre-rendering the
+        // rest of the Surah never competes with a scroll that is in progress.
+        var SCROLL_IDLE_BEFORE_BACKGROUND_RENDER_MS = 250;
+        var lastScrollAt = 0;
+        var deferredPageRenderTimeoutId = null;
+        var isPageRenderRunning = false;
+
+        function takeNearestPendingPageRender() {
+          var anchor = Number.isFinite(qcfFontPriorityPageNumber)
+            ? qcfFontPriorityPageNumber
+            : INITIAL_PAGE_NUMBER;
+          var nearestPageNumber = null;
+          pendingPageRenders.forEach(function (_job, pageNumber) {
+            if (
+              nearestPageNumber === null ||
+              Math.abs(pageNumber - anchor) < Math.abs(nearestPageNumber - anchor)
+            ) {
+              nearestPageNumber = pageNumber;
+            }
+          });
+          if (nearestPageNumber === null) {
+            return null;
+          }
+          var job = pendingPageRenders.get(nearestPageNumber);
+          pendingPageRenders.delete(nearestPageNumber);
+          return job;
+        }
+
+        function pumpPageRenders() {
+          if (isPageRenderRunning || deferredPageRenderTimeoutId !== null) {
+            return;
+          }
+          var job = takeNearestPendingPageRender();
+          if (!job) {
+            return;
+          }
+
+          var anchor = Number.isFinite(qcfFontPriorityPageNumber)
+            ? qcfFontPriorityPageNumber
+            : INITIAL_PAGE_NUMBER;
+          var msSinceScroll = Date.now() - lastScrollAt;
+          if (
+            Math.abs(Number(job.pageData.pageNumber) - anchor) > 1 &&
+            msSinceScroll < SCROLL_IDLE_BEFORE_BACKGROUND_RENDER_MS
+          ) {
+            pendingPageRenders.set(Number(job.pageData.pageNumber), job);
+            deferredPageRenderTimeoutId = setTimeout(function () {
+              deferredPageRenderTimeoutId = null;
+              pumpPageRenders();
+            }, SCROLL_IDLE_BEFORE_BACKGROUND_RENDER_MS - msSinceScroll);
+            return;
+          }
+
+          isPageRenderRunning = true;
+          Promise.race([
+            renderPage(job.pageData, job.layout),
+            // A page whose font never settles must not stall every page queued after it.
+            new Promise(function (resolve) {
+              setTimeout(resolve, PAGE_RENDER_QUEUE_TIMEOUT_MS);
+            }),
+          ])
+            .catch(function (error) {
+              console.error('Failed to render mushaf page', error);
+            })
+            .finally(function () {
+              isPageRenderRunning = false;
+              pumpPageRenders();
+            });
+        }
+
+        function setQcfFontPriorityPage(pageNumber) {
+          if (Number.isFinite(pageNumber)) {
+            qcfFontPriorityPageNumber = pageNumber;
+          }
+        }
+
+        function pumpQcfFontLoads() {
+          while (
+            activeQcfFontLoadCount < MAX_CONCURRENT_QCF_FONT_LOADS &&
+            pendingQcfFontLoads.length > 0
+          ) {
+            var anchor = Number.isFinite(qcfFontPriorityPageNumber)
+              ? qcfFontPriorityPageNumber
+              : INITIAL_PAGE_NUMBER;
+            var nextIndex = 0;
+            for (var index = 1; index < pendingQcfFontLoads.length; index += 1) {
+              if (
+                Math.abs(pendingQcfFontLoads[index].pageNumber - anchor) <
+                Math.abs(pendingQcfFontLoads[nextIndex].pageNumber - anchor)
+              ) {
+                nextIndex = index;
+              }
+            }
+
+            var job = pendingQcfFontLoads.splice(nextIndex, 1)[0];
+            activeQcfFontLoadCount += 1;
+            Promise.resolve()
+              .then(job.run)
+              .then(job.resolve, job.reject)
+              .finally(function () {
+                activeQcfFontLoadCount -= 1;
+                pumpQcfFontLoads();
+              });
+          }
+        }
+
+        function scheduleQcfFontLoad(pageNumber, run) {
+          return new Promise(function (resolve, reject) {
+            pendingQcfFontLoads.push({
+              pageNumber: Number(pageNumber) || 0,
+              reject: reject,
+              resolve: resolve,
+              run: run,
+            });
+            pumpQcfFontLoads();
+          });
+        }
+
+        async function loadQcfPageFontIfNeeded(rendererAssets, pageNumber) {
           if (
             !rendererAssets ||
             !rendererAssets.pageFontFamily ||
@@ -1227,7 +1407,7 @@ function buildShellDocumentHtml({
             return existingLoadPromise;
           }
 
-          var loadPromise = qcfFontLoadQueue.then(async function () {
+          var loadPromise = scheduleQcfFontLoad(pageNumber, async function () {
             var loadedWhileQueued = Array.from(document.fonts || []).some(function (font) {
               return font.family === qcfFontFamily && font.status === 'loaded';
             });
@@ -1251,11 +1431,29 @@ function buildShellDocumentHtml({
               return qcfFontFamily;
             }
 
-            var fontUrl = String(qcfFontDataUri || qcfFontFileUri);
-            var escapedFontUrl = fontUrl.replace(/'/g, "\\\\'");
+            function toCssUrl(url) {
+              return "url('" + String(url).replace(/'/g, "\\\\'") + "')";
+            }
+
+            // The pack's font file is read directly by the WebView. If that ever fails, React
+            // Native re-sends this page with the font embedded as a data URI.
+            if (!qcfFontDataUri) {
+              for (var fileAttempt = 0; fileAttempt < 2; fileAttempt += 1) {
+                try {
+                  return await registerFontFace(toCssUrl(qcfFontFileUri));
+                } catch (error) {
+                  await new Promise(function (resolve) {
+                    setTimeout(resolve, 60);
+                  });
+                }
+              }
+              emit({ type: 'qcf-font-file-failed', payload: { pageNumber: pageNumber } });
+              return null;
+            }
+
             for (var attempt = 0; attempt < 3; attempt += 1) {
               try {
-                return await registerFontFace("url('" + escapedFontUrl + "')");
+                return await registerFontFace(toCssUrl(qcfFontDataUri));
               } catch (error) {
                 await new Promise(function (resolve) {
                   setTimeout(resolve, 100 * Math.pow(2, attempt));
@@ -1264,10 +1462,10 @@ function buildShellDocumentHtml({
             }
 
             try {
-              var response = await fetch(fontUrl, { cache: 'no-store' });
+              var response = await fetch(qcfFontDataUri, { cache: 'no-store' });
               var fontBuffer = await response.arrayBuffer();
               if (!fontBuffer || fontBuffer.byteLength === 0) {
-                throw new Error('Font file request returned no data');
+                throw new Error('Font data request returned no data');
               }
               return await registerFontFace(fontBuffer);
             } catch (error) {}
@@ -1276,9 +1474,6 @@ function buildShellDocumentHtml({
           });
 
           qcfFontLoadPromises.set(qcfFontFamily, loadPromise);
-          qcfFontLoadQueue = loadPromise.catch(function () {
-            return null;
-          });
 
           try {
             return await loadPromise;
@@ -1327,12 +1522,22 @@ function buildShellDocumentHtml({
             return 0;
           }
 
+          // Hidden while the page is in reflow mode; keep the last natural width.
+          if (state.standardView.getClientRects().length === 0) {
+            return state.requiredLineWidth || 0;
+          }
+
+          // Clear every fitted size, then read every line, then write the new sizes. Interleaving
+          // a write and a read per line forced a full page layout for each of the page's lines.
           var lineContents = Array.from(state.standardView.querySelectorAll('.line-content'));
-          var measuredWidth = lineContents.reduce(function (widest, lineContent) {
-            if (lineContent.getClientRects().length === 0) {
-              return widest;
-            }
+          lineContents.forEach(function (lineContent) {
             lineContent.style.removeProperty('font-size');
+          });
+
+          var lineMeasurements = lineContents.map(function (lineContent) {
+            if (lineContent.getClientRects().length === 0) {
+              return null;
+            }
             // Measure natural word widths, independent of justification and container clipping.
             // scrollWidth on a centered RTL line can omit overflow past its starting edge.
             var wordWidth = Array.from(lineContent.children).reduce(function (total, word) {
@@ -1340,14 +1545,25 @@ function buildShellDocumentHtml({
               return total + word.getBoundingClientRect().width +
                 (parseFloat(style.marginLeft) || 0) + (parseFloat(style.marginRight) || 0);
             }, 0);
+            return {
+              availableWidth: lineContent.clientWidth,
+              fontSize: parseFloat(window.getComputedStyle(lineContent).fontSize),
+              lineContent: lineContent,
+              wordWidth: wordWidth,
+            };
+          });
+
+          var measuredWidth = lineMeasurements.reduce(function (widest, measurement) {
+            if (!measurement) {
+              return widest;
+            }
             // Fit an overflowing row at its own font size instead of adding width (and
             // word spacing) to the entire page. Keep the natural width for reflow detection.
-            var availableWidth = lineContent.clientWidth;
-            if (availableWidth > 0 && wordWidth > availableWidth) {
-              var fontSize = parseFloat(window.getComputedStyle(lineContent).fontSize);
-              lineContent.style.fontSize = (fontSize * availableWidth / wordWidth) + 'px';
+            if (measurement.availableWidth > 0 && measurement.wordWidth > measurement.availableWidth) {
+              measurement.lineContent.style.fontSize =
+                (measurement.fontSize * measurement.availableWidth / measurement.wordWidth) + 'px';
             }
-            return Math.max(widest, wordWidth);
+            return Math.max(widest, measurement.wordWidth);
           }, 0);
 
           if (measuredWidth > 0) {
@@ -1386,9 +1602,11 @@ function buildShellDocumentHtml({
           }
 
           state.lastContainerWidth = containerWidth;
+          var wasReflow = state.root.classList.contains('reflow');
           state.reflowState = shouldUseReflow(state, layout);
           state.root.classList.toggle('reflow', state.reflowState);
-          if (!state.reflowState) {
+          // shouldUseReflow already fitted the visible standard lines unless this call revealed them.
+          if (!state.reflowState && wasReflow) {
             measureRequiredLineWidth(state);
           }
         }
@@ -1493,7 +1711,13 @@ function buildShellDocumentHtml({
                 wordNode.style.setProperty('font-palette', tajweedPalette);
               }
             }
-            wordNode.innerHTML = glyphCode;
+            // Pack glyph codes are literal characters. Parsing each one as HTML cost a full parser
+            // run per word; only entity-encoded codes need it.
+            if (glyphCode.indexOf('&') === -1) {
+              wordNode.textContent = glyphCode;
+            } else {
+              wordNode.innerHTML = glyphCode;
+            }
           } else {
             if (!qcfVersion && qcfFontFamily) {
               wordNode.style.fontFamily = "'" + String(qcfFontFamily).replace(/'/g, "\\\\'") + "', serif";
@@ -1860,7 +2084,7 @@ function buildShellDocumentHtml({
 
           clearPage(state);
           state.root.classList.add('loading');
-          var qcfFontFamily = await loadQcfPageFontIfNeeded(pageData.rendererAssets || {});
+          var qcfFontFamily = await loadQcfPageFontIfNeeded(pageData.rendererAssets || {}, pageNumber);
           if (activeRenderTokens[pageNumber] !== renderToken) {
             return;
           }
@@ -1892,6 +2116,9 @@ function buildShellDocumentHtml({
           updatePageFooter(state);
           state.root.classList.remove('loading');
           loadedPageNumbers.add(pageNumber);
+          if (pageNumber === INITIAL_PAGE_NUMBER) {
+            scheduleInitialRevealFallback();
+          }
           emitPageRendered(state);
           scheduleActivePageReport();
           scheduleActiveAudioWordScroll();
@@ -2169,6 +2396,7 @@ function buildShellDocumentHtml({
         });
 
         window.addEventListener('scroll', function () {
+          lastScrollAt = Date.now();
           scheduleNearPageRequest();
           scheduleActivePageReport();
           scheduleScrollActivityReport();
@@ -2205,10 +2433,14 @@ function buildShellDocumentHtml({
               if (state) {
                 state.lastLayout = payload.layout;
               }
-              renderPage(pageData, payload.layout).catch(function (error) {
-                console.error('Failed to render mushaf page', error);
-              });
+              if (pageData && pageData.pageNumber) {
+                pendingPageRenders.set(Number(pageData.pageNumber), {
+                  layout: payload.layout,
+                  pageData: pageData,
+                });
+              }
             });
+            pumpPageRenders();
           },
           scrollToPage: scrollToPage,
           setActiveAudioWord: setActiveAudioWord,
@@ -2224,6 +2456,14 @@ function buildShellDocumentHtml({
             });
           },
         };
+
+        var EMBEDDED_INITIAL_PAGES = ${serializeJson(initialPages)};
+        if (EMBEDDED_INITIAL_PAGES.length > 0) {
+          window.__MUSHAF_READER__.upsertPages({
+            layout: ${serializeJson(layout)},
+            pages: EMBEDDED_INITIAL_PAGES,
+          });
+        }
 
         emit({
           type: 'renderer-ready',
@@ -2244,6 +2484,7 @@ export function buildMushafReaderWebViewShellDocument({
   focusTopInsetPx,
   highlightVerseKey,
   initialPageNumber,
+  initialPages = [],
   mushafScaleStep,
   pageNumbers,
   packId,
@@ -2258,6 +2499,8 @@ export function buildMushafReaderWebViewShellDocument({
   focusTopInsetPx: number;
   highlightVerseKey?: string | null;
   initialPageNumber: number;
+  /** Already-loaded pages drawn as soon as the document parses, before any injection. */
+  initialPages?: MushafPageData[];
   mushafScaleStep: MushafScaleStep;
   pageNumbers?: number[] | undefined;
   packId: MushafPackId;
@@ -2300,7 +2543,7 @@ export function buildMushafReaderWebViewShellDocument({
       : 'no-navigation',
     highlightVerseKey ?? '',
   ].join(':');
-  const cached = shellDocumentCache.get(cacheKey);
+  const cached = initialPages.length === 0 ? shellDocumentCache.get(cacheKey) : undefined;
   if (cached) {
     return cached;
   }
@@ -2312,6 +2555,7 @@ export function buildMushafReaderWebViewShellDocument({
       focusTopInsetPx,
       highlightVerseKey,
       initialPageNumber,
+      initialPages,
       layout,
       pageNumbers,
       surahIntro,
@@ -2321,7 +2565,9 @@ export function buildMushafReaderWebViewShellDocument({
     }),
     layout,
   };
-  shellDocumentCache.set(cacheKey, shellDocument);
+  if (initialPages.length === 0) {
+    shellDocumentCache.set(cacheKey, shellDocument);
+  }
   return shellDocument;
 }
 

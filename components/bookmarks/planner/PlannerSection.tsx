@@ -1,7 +1,7 @@
-import { FlashList, type FlashListRef } from '@shopify/flash-list';
 import React from 'react';
 import {
   ActivityIndicator,
+  ScrollView,
   Text,
   View,
   type NativeScrollEvent,
@@ -20,7 +20,6 @@ import { PlannerEmptyState } from './PlannerEmptyState';
 import { PlannerHeader } from './PlannerHeader';
 import { buildPlannerGroupCardData } from './utils/buildPlannerGroupCard';
 import { buildChapterLookup, groupPlannerPlans } from './utils/planGrouping';
-import type { PlannerGroupCardData } from './utils/buildPlannerGroupCard';
 
 export interface PlannerDeleteRequest {
   planIds: string[];
@@ -56,10 +55,12 @@ export function PlannerSection({
   const palette = Colors[resolvedTheme];
   const { audioPlayerBarHeight } = useLayoutMetrics();
   const contentContainerStyle = React.useMemo(
-    () => ({ paddingHorizontal: 16, paddingBottom: 24 + audioPlayerBarHeight }),
+    () => ({ paddingHorizontal: 12, paddingBottom: 24 + audioPlayerBarHeight }),
     [audioPlayerBarHeight]
   );
-  const listRef = React.useRef<FlashListRef<PlannerGroupCardData> | null>(null);
+  // Plans are few and user-created. A plain ScrollView keeps cards in normal flow, so the cards
+  // below an expanding card move in the same UI-thread layout pass as its height animation.
+  const listRef = React.useRef<ScrollView | null>(null);
 
   const { chapters, isLoading: isChaptersLoading, errorMessage: chaptersError } = useChapters();
   const chapterLookup = React.useMemo(() => buildChapterLookup(chapters), [chapters]);
@@ -71,14 +72,14 @@ export function PlannerSection({
   React.useEffect(() => {
     if (!registerScrollToTop) return;
     registerScrollToTop(() => {
-      listRef.current?.scrollToOffset({ offset: 0, animated: true });
+      listRef.current?.scrollTo({ y: 0, animated: true });
     });
     return () => registerScrollToTop(null);
   }, [registerScrollToTop]);
 
   if (groupedCards.length === 0) {
     return (
-      <View className="flex-1 px-4" style={{ paddingBottom: 24 + audioPlayerBarHeight }}>
+      <View className="flex-1 px-3" style={{ paddingBottom: 24 + audioPlayerBarHeight }}>
         {topContent}
         <PlannerHeader onCreatePlan={onCreatePlan} />
         <View className="flex-1 items-center justify-center -mt-6">
@@ -89,38 +90,33 @@ export function PlannerSection({
   }
 
   return (
-    <FlashList<PlannerGroupCardData>
+    <ScrollView
       ref={listRef}
-      data={groupedCards}
-      keyExtractor={(item) => item.key}
       contentContainerStyle={contentContainerStyle}
-      ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
       onScroll={onScroll}
       onScrollBeginDrag={onScrollBeginDrag}
       onScrollEndDrag={onScrollEndDrag}
       onMomentumScrollEnd={onMomentumScrollEnd}
       scrollEventThrottle={scrollEventThrottle}
-      ListHeaderComponent={
-        <View>
-          {topContent}
-          <View className="pt-2 pb-3">
-            <PlannerHeader onCreatePlan={onCreatePlan} />
-            {isChaptersLoading ? (
-              <View className="mt-1 flex-row items-center gap-2">
-                <ActivityIndicator size="small" color={palette.muted} />
-                <Text className="text-xs text-muted dark:text-muted-dark">{t('loading_surah')}</Text>
-              </View>
-            ) : chaptersError ? (
-              <Text className="mt-1 text-xs text-muted dark:text-muted-dark">
-                {chaptersError}
-              </Text>
-            ) : null}
+    >
+      {topContent}
+      <View className="pt-2 pb-3">
+        <PlannerHeader onCreatePlan={onCreatePlan} />
+        {isChaptersLoading ? (
+          <View className="mt-1 flex-row items-center gap-2">
+            <ActivityIndicator size="small" color={palette.muted} />
+            <Text className="text-xs text-muted dark:text-muted-dark">{t('loading_surah')}</Text>
           </View>
-        </View>
-      }
-      renderItem={({ item: group }) => {
-        return (
+        ) : chaptersError ? (
+          <Text className="mt-1 text-xs text-muted dark:text-muted-dark">
+            {chaptersError}
+          </Text>
+        ) : null}
+      </View>
+      <View className="gap-3">
+        {groupedCards.map((group) => (
           <PlannerCard
+            key={group.key}
             surahId={group.surahId}
             plan={group.plan}
             {...(group.chapter ? { chapter: group.chapter } : {})}
@@ -135,8 +131,8 @@ export function PlannerSection({
               })
             }
           />
-        );
-      }}
-    />
+        ))}
+      </View>
+    </ScrollView>
   );
 }

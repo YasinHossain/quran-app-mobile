@@ -6,6 +6,10 @@ import {
 import { getNetworkSurahTranslationCached } from '@/lib/surah/surahTranslationNetworkCache';
 import { Platform } from 'react-native';
 
+import { findMushafOption } from '@/data/mushaf/options';
+import { prepareMushafVerseTarget } from '@/lib/mushaf/prepareMushafVerseTarget';
+import type { MushafPackId } from '@/types';
+
 const DEFAULT_SURAH_READER_WARMUP_TIMEOUT_MS = 320;
 
 function wait(ms: number): Promise<void> {
@@ -14,12 +18,46 @@ function wait(ms: number): Promise<void> {
   });
 }
 
+// Long enough for a page read once the pack index is warm (tens of ms), short enough that a cold
+// pack never visibly delays the tap.
+const MUSHAF_PAGE_WARMUP_TIMEOUT_MS = 150;
+
+/**
+ * Loads the opening Mushaf page into memory so the reader can embed it in its WebView document
+ * and draw it while the screen is still sliding in.
+ */
+async function warmMushafReaderPage(params: {
+  surahId: number;
+  verseNumber?: number;
+  settings: MushafWarmupSettings;
+}): Promise<void> {
+  const packId = params.settings.mushafId;
+  const mushafOption = packId ? findMushafOption(packId) : undefined;
+  if (!packId || mushafOption?.renderer !== 'webview') return;
+
+  await prepareMushafVerseTarget({
+    chapterId: params.surahId,
+    fallbackVersion: mushafOption.version,
+    packId,
+    verseKey: `${params.surahId}:${params.verseNumber ?? 1}`,
+  }).catch(() => null);
+}
+
+type MushafWarmupSettings = {
+  readingMode?: 'translations' | 'mushaf';
+  mushafId?: MushafPackId;
+};
+
 export async function warmSurahReaderBeforeNavigation(params: {
   surahId: number;
   verseNumber?: number;
-  settings: SurahPageCacheSettings;
+  settings: SurahPageCacheSettings & MushafWarmupSettings;
   timeoutMs?: number;
 }): Promise<void> {
+  if (params.settings.readingMode === 'mushaf') {
+    await Promise.race([warmMushafReaderPage(params), wait(MUSHAF_PAGE_WARMUP_TIMEOUT_MS)]);
+  }
+
   // Android's translation reader owns this query. Preloading here would recreate the full
   // Surah and word model in JS immediately before Kotlin reads the same SQLite rows.
   if (Platform.OS === 'android') return;

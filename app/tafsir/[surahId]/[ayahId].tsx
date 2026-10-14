@@ -25,6 +25,7 @@ import { getTafsirSnapIndex } from '@/lib/tafsir/paging';
 import { BookmarkModal } from '@/components/bookmarks/BookmarkModal';
 import { AppSearchHeader, ReaderOverlayHeader } from '@/components/navigation/AppHeader';
 import { useCollapsibleReaderHeader } from '@/components/navigation/useCollapsibleReaderHeader';
+import { useScreenTransitionSettled } from '@/components/navigation/useScreenTransitionSettled';
 import { useHeaderSearch } from '@/components/navigation/useHeaderSearch';
 import { ComprehensiveSearchDropdown } from '@/components/search/ComprehensiveSearchDropdown';
 import { HeaderActionButton } from '@/components/search/HeaderSearchBar';
@@ -1016,6 +1017,7 @@ export default function TafsirScreen(): React.JSX.Element {
   const { resolvedTheme, isDark } = useAppTheme();
   const palette = Colors[resolvedTheme];
   const readerHeader = useCollapsibleReaderHeader();
+  const isTransitionSettled = useScreenTransitionSettled();
   const { settings, effectiveShowByWords } = useSettings();
   const effectiveReaderSettings = React.useMemo(
     () => ({ ...settings, showByWords: effectiveShowByWords }),
@@ -1931,10 +1933,12 @@ export default function TafsirScreen(): React.JSX.Element {
           onScroll={handlePagerScroll}
           onScrollToIndexFailed={handleScrollToIndexFailed}
           initialScrollIndex={currentTargetIndex >= 0 ? currentTargetIndex : undefined}
-          initialNumToRender={3}
+          // Neighbouring verse pages are heavy; building them while the screen slides in dropped
+          // frames on budget phones. Render the visible page first and widen once it has settled.
+          initialNumToRender={1}
           maxToRenderPerBatch={3}
           updateCellsBatchingPeriod={50}
-          windowSize={5}
+          windowSize={isTransitionSettled ? 5 : 1}
           removeClippedSubviews={false}
           scrollEventThrottle={16}
           nestedScrollEnabled

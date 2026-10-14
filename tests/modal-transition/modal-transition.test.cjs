@@ -1,5 +1,5 @@
 const assert = require('node:assert/strict');
-const { readFileSync } = require('node:fs');
+const { existsSync, readdirSync, readFileSync } = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 const vm = require('node:vm');
@@ -435,18 +435,53 @@ test('direct tafsir manager open keeps unrelated settings work off the entrance 
   assert.match(settingsSource, /isActive=\{dataEnabled && subPanelLayer === 'tafsir'\}/);
 });
 
-function mountPortalOverlay(t, initialProps) {
+const NavigationContext = React.createContext(undefined);
+
+function createNavigationStub() {
+  const transitionEndListeners = new Set();
+  return {
+    addListener(type, callback) {
+      assert.equal(type, 'transitionEnd');
+      transitionEndListeners.add(callback);
+      return () => transitionEndListeners.delete(callback);
+    },
+    emitTransitionEnd() { act(() => [...transitionEndListeners].forEach((callback) => callback())); },
+  };
+}
+
+function mountPortalOverlay(t, initialProps, { navigation } = {}) {
   const portalSource = ts.transpileModule(
     readFileSync(path.join(__dirname, '../../components/motion/PortalOverlay.tsx'), 'utf8'),
     { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true, jsx: ts.JsxEmit.React } }
   ).outputText;
+  const hookSource = ts.transpileModule(
+    readFileSync(path.join(__dirname, '../../components/navigation/useScreenTransitionSettled.ts'), 'utf8'),
+    { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }
+  ).outputText;
   const idleCallbacks = new Map();
+  const timers = new Map();
   let nextIdle = 0;
+  let nextTimer = 0;
+  const timerGlobals = {
+    setTimeout(callback) { timers.set(++nextTimer, callback); return nextTimer; },
+    clearTimeout(id) { timers.delete(id); },
+  };
+  const hookExports = {};
+  vm.runInNewContext(hookSource, {
+    exports: hookExports,
+    require(name) {
+      if (name === 'react') return React;
+      if (name === 'expo-router/react-navigation') return { NavigationContext };
+      throw new Error(`Unexpected module: ${name}`);
+    },
+    ...timerGlobals,
+  });
   const exports = {};
   vm.runInNewContext(portalSource, {
     exports,
     require(name) {
       if (name === 'react') return React;
+      if (name === '@/components/navigation/useScreenTransitionSettled') return hookExports;
       if (name === 'react-native') return {
         BackHandler: { addEventListener: () => ({ remove() {} }) },
         Platform: { OS: 'android' },
@@ -463,14 +498,24 @@ function mountPortalOverlay(t, initialProps) {
   });
   let root;
   const element = (props) => React.createElement(
-    exports.PortalOverlay,
-    { onRequestClose() {}, ...props },
-    React.createElement('Content')
+    NavigationContext.Provider,
+    { value: navigation },
+    React.createElement(
+      exports.PortalOverlay,
+      { onRequestClose() {}, ...props },
+      React.createElement('Content')
+    )
   );
   act(() => { root = create(element(initialProps)); });
   t.after(() => act(() => root.unmount()));
   return {
     update(props) { act(() => root.update(element(props))); },
+    pendingIdleCount() { return idleCallbacks.size; },
+    runTimers() { act(() => {
+      const callbacks = [...timers.values()];
+      timers.clear();
+      callbacks.forEach((callback) => callback());
+    }); },
     runIdle() { act(() => {
       const callbacks = [...idleCallbacks.values()];
       idleCallbacks.clear();
@@ -488,6 +533,7 @@ test('kept-mounted overlays stay inert while closed and announce every reopen', 
   const overlay = mountPortalOverlay(t, { keepMounted: true, visible: false, onShow });
 
   assert.equal(overlay.overlay(), null);
+  overlay.runTimers();
   overlay.runIdle();
   overlay.layout();
   assert.equal(shown, 0);
@@ -503,6 +549,22 @@ test('kept-mounted overlays stay inert while closed and announce every reopen', 
     overlay.update({ keepMounted: true, visible: false, onShow });
     assert.equal(overlay.overlay().props.pointerEvents, 'none');
   }
+});
+
+test('kept-mounted overlays warm only after the host screen transition ends', (t) => {
+  // The JS thread idles while a native stack push slides; warming then mounted hidden sheets on
+  // the UI thread mid-transition and dropped frames on slower phones.
+  const navigation = createNavigationStub();
+  const overlay = mountPortalOverlay(t, { keepMounted: true, visible: false }, { navigation });
+
+  assert.equal(overlay.pendingIdleCount(), 0);
+  overlay.runIdle();
+  assert.equal(overlay.overlay(), null);
+
+  navigation.emitTransitionEnd();
+  assert.equal(overlay.pendingIdleCount(), 1);
+  overlay.runIdle();
+  assert.equal(overlay.overlay().props.pointerEvents, 'none');
 });
 
 test('regular overlays unmount when closed and wait for layout before announcing', (t) => {
@@ -588,4 +650,21 @@ test('hidden kept-mounted portals ignore owner re-renders until revealed', (t) =
 
   host.render({ children: label('reopened'), modal: true });
   assert.deepEqual(host.labels(), ['reopened']);
+});
+
+test('reader push overrides still shadow react-native-screens animation resources', () => {
+  // App resources only replace library resources with the same name; a rename upstream would
+  // silently restore the 200 ms accelerate_decelerate push.
+  const overrideDir = path.join(__dirname, '../../plugins/reader-push-transition/android/src/main/res/anim');
+  const libraryDir = path.join(__dirname, '../../node_modules/react-native-screens/android/src/main/res/base/anim');
+  const overrides = readdirSync(overrideDir);
+  assert.deepEqual(overrides.sort(), [
+    'rns_ios_from_right_background_open.xml',
+    'rns_ios_from_right_foreground_open.xml',
+  ]);
+  for (const name of overrides) {
+    assert.ok(existsSync(path.join(libraryDir, name)), `${name} missing upstream`);
+    // A <set> is started as-is; a bare <translate> is wrapped and loses its interpolator.
+    assert.match(readFileSync(path.join(overrideDir, name), 'utf8'), /<set[\s\S]*@interpolator\/reader_push_spring/);
+  }
 });

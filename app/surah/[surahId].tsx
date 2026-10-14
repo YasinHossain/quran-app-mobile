@@ -1,6 +1,6 @@
 import { FlashList, type FlashListRef } from '@shopify/flash-list';
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { ArrowLeft, Settings } from 'lucide-react-native';
+import { ArrowLeft, Settings, X } from 'lucide-react-native';
 import React from 'react';
 import { useReducedMotion } from 'react-native-reanimated';
 import {
@@ -30,7 +30,7 @@ import {
 } from '@/components/mushaf/MushafSingleDocumentReader';
 import type { MushafSelectionPayload } from '@/components/mushaf/mushafWordPayload';
 import { AppSearchHeader, ReaderOverlayHeader } from '@/components/navigation/AppHeader';
-import { useCollapsibleReaderHeader } from '@/components/navigation/useCollapsibleReaderHeader';
+import { HEADER_ANIMATION_DURATION, useCollapsibleReaderHeader } from '@/components/navigation/useCollapsibleReaderHeader';
 import { useHeaderSearch } from '@/components/navigation/useHeaderSearch';
 import { IndexScrubber, type IndexScrubberHandle } from '@/components/reader/IndexScrubber';
 import { ReaderBottomMessage } from '@/components/reader/ReaderBottomMessage';
@@ -67,8 +67,10 @@ import { SUGGESTED_MUSHAF_ID, findMushafOption } from '@/data/mushaf/options';
 import { useChapters } from '@/hooks/useChapters';
 import { useMushafPageData } from '@/hooks/useMushafPageData';
 import { useSurahVerses, type SurahVerse } from '@/hooks/useSurahVerses';
+import { useReaderTranslationRecovery } from '@/hooks/useReaderTranslationRecovery';
 import { useTranslationResources } from '@/hooks/useTranslationResources';
 import {
+  peekPreparedMushafVerseTarget,
   prepareMushafVerseTarget,
   resolveActiveMushafVersion,
   type PreparedMushafVerseTarget as PreparedMushafTarget,
@@ -532,6 +534,8 @@ export default function SurahScreen(): React.JSX.Element {
     isLoadingMore,
     errorMessage,
     offlineNotInstalled,
+    missingTranslationIds: reactMissingTranslationIds,
+    applyRecoveredTranslations,
     refresh,
     retry,
   } = useSurahVerses({
@@ -546,6 +550,7 @@ export default function SurahScreen(): React.JSX.Element {
     tajweedTheme: resolvedTheme,
     initialVerseNumber: normalizedStartVerse,
     enabled: !isMushafView && !usesOfflineNativeReader,
+    allowPartialTranslations: true,
   });
 
   const verseCount = usesOfflineNativeReader
@@ -554,6 +559,43 @@ export default function SurahScreen(): React.JSX.Element {
   const hasLoadedContent = usesOfflineNativeReader
     ? nativeReaderStatus.state === 'ready'
     : reactHasLoadedContent;
+
+  const [nativeTranslationAvailability, setNativeTranslationAvailability] = React.useState<{
+    surahId: number; selectionKey: string; missingTranslationIds: number[];
+  } | null>(null);
+  const nativeMissingTranslationIds = React.useMemo(() =>
+    nativeTranslationAvailability?.surahId === chapterNumber &&
+    nativeTranslationAvailability.selectionKey === verseTranslationIds.join(',')
+      ? nativeTranslationAvailability.missingTranslationIds : [],
+    [chapterNumber, nativeTranslationAvailability, verseTranslationIds]
+  );
+  const translationRecovery = useReaderTranslationRecovery({
+    surahId: chapterNumber,
+    translationIds: verseTranslationIds,
+    missingTranslationIds: usesOfflineNativeReader ? nativeMissingTranslationIds : reactMissingTranslationIds,
+    verseCount,
+    enabled: !isMushafView && hasLoadedContent,
+  });
+  React.useEffect(() => {
+    if (!usesOfflineNativeReader && translationRecovery.recovery) {
+      applyRecoveredTranslations(translationRecovery.recovery);
+    }
+  }, [applyRecoveredTranslations, translationRecovery.recovery, usesOfflineNativeReader]);
+  const handleNativeTranslationAvailability = React.useCallback((event: NativeSyntheticEvent<{
+    surahId: number; selectionKey: string; missingTranslationIds: number[];
+  }>) => setNativeTranslationAvailability(event.nativeEvent), []);
+  const unavailableTranslationNames = translationRecovery.unavailableIds
+    .map((id) => translationsById.get(id)?.name ?? `Translation ${id}`).join(', ');
+  const showTranslationNotice = !isMushafView && hasLoadedContent &&
+    !translationRecovery.dismissed && translationRecovery.unavailableIds.length > 0 &&
+    translationRecovery.state !== 'loading';
+
+  React.useEffect(() => {
+    if (!showTranslationNotice || readerHeader.headerPointerEvents !== 'none') return;
+    // Let the existing header fade finish, then keep the notice dismissed when scrolling back up.
+    const timeout = setTimeout(translationRecovery.dismiss, HEADER_ANIMATION_DURATION);
+    return () => clearTimeout(timeout);
+  }, [readerHeader.headerPointerEvents, showTranslationNotice, translationRecovery.dismiss]);
 
   const verseNumbers = React.useMemo(
     () =>
@@ -577,6 +619,37 @@ export default function SurahScreen(): React.JSX.Element {
       ? preparedMushafTarget
       : null;
   const requestedMushafPage = Number.isFinite(startPage) && startPage > 0 ? Math.floor(startPage) : NaN;
+  // Links from Home, bookmarks, and search name a verse but not its Mushaf page. Resolve the page
+  // before the reader mounts; otherwise it opens at the Surah's first page and the target verse
+  // is never reached.
+  const mushafEntryVerseKey =
+    isMushafView &&
+    typeof normalizedStartVerse === 'number' &&
+    !Number.isFinite(requestedMushafPage) &&
+    Number.isFinite(chapterNumber) &&
+    chapterNumber > 0
+      ? `${Math.trunc(chapterNumber)}:${normalizedStartVerse}`
+      : null;
+  const [mushafEntryTarget, setMushafEntryTarget] = React.useState<{
+    verseKey: string;
+    pageNumber: number | null;
+  } | null>(() => {
+    // Navigation warmups usually resolved this already; using it now mounts the reader on the
+    // first render rather than after an async lookup.
+    if (mushafEntryVerseKey === null) return null;
+    const preparedTarget = peekPreparedMushafVerseTarget(selectedMushafId, mushafEntryVerseKey);
+    return preparedTarget
+      ? { verseKey: mushafEntryVerseKey, pageNumber: preparedTarget.pageNumber }
+      : null;
+  });
+  const resolvedMushafEntryTarget =
+    mushafEntryVerseKey !== null && mushafEntryTarget?.verseKey === mushafEntryVerseKey
+      ? mushafEntryTarget
+      : null;
+  const isResolvingMushafEntryTarget =
+    mushafEntryVerseKey !== null &&
+    resolvedMushafEntryTarget === null &&
+    selectedMushafOption?.renderer === 'webview';
   const initialMushafPageNumber = React.useMemo(
     () =>
       clampPageToRange(
@@ -584,10 +657,16 @@ export default function SurahScreen(): React.JSX.Element {
           ? activePreparedMushafTarget.pageNumber
           : Number.isFinite(requestedMushafPage)
           ? requestedMushafPage
-          : mushafPageRange?.firstPage ?? 1,
+          : resolvedMushafEntryTarget?.pageNumber ?? mushafPageRange?.firstPage ?? 1,
         mushafPageRange
       ),
-    [activePreparedMushafTarget, isMushafView, mushafPageRange, requestedMushafPage]
+    [
+      activePreparedMushafTarget,
+      isMushafView,
+      mushafPageRange,
+      requestedMushafPage,
+      resolvedMushafEntryTarget?.pageNumber,
+    ]
   );
   const mushafSurahPageNumbers = React.useMemo(
     () => buildPageRangeNumbers(mushafPageRange, FALLBACK_MUSHAF_TOTAL_PAGES),
@@ -613,6 +692,7 @@ export default function SurahScreen(): React.JSX.Element {
     expectedVersion: activePreparedMushafTarget?.version ?? selectedMushafVersion,
     enabled: Boolean(
       (isMushafView || activePreparedMushafTarget) &&
+        !isResolvingMushafEntryTarget &&
         isHydrated &&
         selectedMushafOption?.renderer === 'webview'
     ),
@@ -720,7 +800,18 @@ export default function SurahScreen(): React.JSX.Element {
   const handleMushafInitialPositioned = React.useCallback(() => {
     setPositionedMushafReaderKey(mushafReaderSessionKey);
     commitPendingMushafModeSwitch();
-  }, [commitPendingMushafModeSwitch, mushafReaderSessionKey]);
+    // Positioning on a target verse scrolls the WebView; keep the header visible on arrival.
+    if (mushafHighlightVerseKey) {
+      readerHeader.resetHeader();
+      readerHeader.suppressScroll(900);
+    }
+  }, [
+    commitPendingMushafModeSwitch,
+    mushafHighlightVerseKey,
+    mushafReaderSessionKey,
+    readerHeader.resetHeader,
+    readerHeader.suppressScroll,
+  ]);
 
   React.useEffect(
     () => () => {
@@ -1336,9 +1427,10 @@ export default function SurahScreen(): React.JSX.Element {
     () => ({ initialDrawBatchSize: TRANSLATION_INITIAL_DRAW_BATCH_SIZE }),
     []
   );
+  const hasRecoveredTranslations = Boolean(translationRecovery.recovery?.translationIds.length);
   const translationMaintainVisibleContentPosition = React.useMemo(
-    () => ({ disabled: true }),
-    []
+    () => ({ disabled: !hasRecoveredTranslations }),
+    [hasRecoveredTranslations]
   );
   const translationInitialScrollIndexParams = React.useMemo(
     () =>
@@ -1673,6 +1765,20 @@ export default function SurahScreen(): React.JSX.Element {
     [chapterNumber, mushafPageRange, selectedMushafId, selectedMushafVersion]
   );
   prepareMushafForVerseRef.current = prepareMushafForVerse;
+
+  // Declared after the per-Surah reset above so that reset cannot cancel this lookup on mount.
+  React.useEffect(() => {
+    if (mushafEntryVerseKey === null || selectedMushafOption?.renderer !== 'webview') return;
+
+    let cancelled = false;
+    void prepareMushafForVerse(mushafEntryVerseKey).then((target) => {
+      if (cancelled) return;
+      setMushafEntryTarget({ verseKey: mushafEntryVerseKey, pageNumber: target?.pageNumber ?? null });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [mushafEntryVerseKey, prepareMushafForVerse, selectedMushafOption?.renderer]);
 
   React.useEffect(() => {
     if (!isSettingsOpen) return;
@@ -2368,10 +2474,10 @@ export default function SurahScreen(): React.JSX.Element {
     Boolean(mushafPageRange) &&
     resolvedMushafRenderer === 'webview' &&
     !initialMushafPageProbe.errorMessage;
+  // The reader document stays hidden until it has positioned itself, so this surface only waits
+  // when translation content beneath it should remain visible meanwhile.
   const isMushafSurfaceVisible =
-    !shouldWaitForMushafPosition ||
-    isMushafReaderPositioned ||
-    (!hasLoadedContent && !availableInitialMushafPageData);
+    !shouldWaitForMushafPosition || isMushafReaderPositioned || !hasLoadedContent;
   const keepTranslationVisibleDuringMushafEntry =
     shouldWaitForMushafPosition && !isMushafReaderPositioned && hasLoadedContent;
   // Page data stays prefetched while Chromium is created only for an active or user-requested
@@ -2439,6 +2545,51 @@ export default function SurahScreen(): React.JSX.Element {
         />
       </ReaderOverlayHeader>
 
+      {showTranslationNotice ? (
+        // Separate from the measured header: this notice never changes reader content insets.
+        <ReaderOverlayHeader
+          pointerEvents={readerHeader.headerPointerEvents}
+          style={[{ top: readerHeader.headerHeight + 8 }, readerHeader.headerAnimatedStyle]}
+        >
+          <View
+            accessibilityElementsHidden={readerHeader.headerPointerEvents === 'none'}
+            importantForAccessibility={readerHeader.headerPointerEvents === 'none' ? 'no-hide-descendants' : 'auto'}
+            className="mx-4 rounded-lg border border-border bg-surface px-3 dark:border-border-dark dark:bg-surface-dark"
+          >
+            <View className="flex-row items-center justify-between gap-2">
+              <Text accessibilityLiveRegion="polite" className="flex-1 text-sm font-semibold text-foreground dark:text-foreground-dark">
+                {translationRecovery.state === 'offline' ? 'You’re offline' : 'Some translations couldn’t load'}
+              </Text>
+              <Pressable onPress={translationRecovery.dismiss} accessibilityRole="button"
+                accessibilityLabel="Dismiss translation notice" className="min-h-11 min-w-11 items-center justify-center">
+                <X size={18} color={palette.muted} />
+              </Pressable>
+            </View>
+            <Text numberOfLines={2} className="text-sm text-muted dark:text-muted-dark">
+              {unavailableTranslationNames}
+            </Text>
+            <Text className="text-sm text-muted dark:text-muted-dark">
+              {translationRecovery.state === 'offline'
+                ? `${translationRecovery.unavailableIds.length === 1 ? 'This translation isn’t' : 'These translations aren’t'} downloaded. `
+                : 'Temporarily unavailable. '}
+              {translationRecovery.unavailableIds.length === verseTranslationIds.length
+                ? 'You can keep reading the Arabic.' : 'Available content is shown below.'}
+            </Text>
+            <View className="flex-row flex-wrap gap-4">
+              <Pressable onPress={() => { setSettingsInitialPanel('translations'); setIsSettingsOpen(true); }}
+                accessibilityRole="button" className="min-h-11 justify-center py-2">
+                <Text className="text-sm font-semibold text-accent dark:text-accent-dark">Manage translations</Text>
+              </Pressable>
+              {translationRecovery.state === 'error' ? (
+                <Pressable onPress={translationRecovery.retry} accessibilityRole="button" className="min-h-11 justify-center py-2">
+                  <Text className="text-sm font-semibold text-accent dark:text-accent-dark">Retry</Text>
+                </Pressable>
+              ) : null}
+            </View>
+          </View>
+        </ReaderOverlayHeader>
+      ) : null}
+
       <View style={styles.contentStage}>
         {!isMushafView || keepTranslationVisibleDuringMushafEntry ? (
           <View
@@ -2497,6 +2648,8 @@ export default function SurahScreen(): React.JSX.Element {
                   ref={nativeSurahReaderRef}
                   style={styles.contentLayer}
                   readerState={nativeLightSurahReaderState}
+                  translationRecovery={translationRecovery.recovery}
+                  onTranslationAvailability={handleNativeTranslationAvailability}
                   activeVerseKey={audio.activeVerseKey}
                   activeWord={
                     wordQuickSheet.isOpen && wordQuickSheet.event
@@ -2561,6 +2714,7 @@ export default function SurahScreen(): React.JSX.Element {
                 extraData={listExtraData}
                 renderItem={renderVerseItem}
                 contentContainerStyle={listContentContainerStyle}
+                maintainVisibleContentPosition={hasRecoveredTranslations ? { minIndexForVisible: 0 } : undefined}
                 refreshing={isRefreshing}
                 onRefresh={refresh}
                 onScroll={handleSurahListScroll}
@@ -2674,7 +2828,7 @@ export default function SurahScreen(): React.JSX.Element {
               { opacity: isMushafView && isMushafSurfaceVisible ? 1 : 0 },
             ]}
           >
-            {!isHydrated ? null : !mushafPageRange ? (
+            {!isHydrated || isResolvingMushafEntryTarget ? null : !mushafPageRange ? (
               <MushafMessageState message="No mushaf pages found for this surah." />
             ) : resolvedMushafRenderer !== 'webview' ? (
               <MushafMessageState

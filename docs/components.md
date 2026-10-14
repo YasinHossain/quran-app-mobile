@@ -63,6 +63,7 @@ This document lists reusable UI components currently available in the codebase s
 | `ReaderOverlayHeader` | Absolute reader header shell used when vertical reading scroll should collapse the header. | `components/navigation/AppHeader.tsx` |
 | `useHeaderSearch` | Shared header search state/navigation hook for Home, Surah/Mushaf, and Tafsir, with explicit Translation and exact-verse Mushaf Go To destinations kept separate from current-mode-preserving result navigation. | `components/navigation/useHeaderSearch.ts` |
 | `useCollapsibleReaderHeader` | Native-driver hide/show behavior for reader headers based on vertical scroll direction. | `components/navigation/useCollapsibleReaderHeader.ts` |
+| `useScreenTransitionSettled` | True once the host screen's native stack push has finished (`transitionEnd`, 800 ms fallback). Gate optional offscreen work on it, such as warming hidden sheets or rendering neighbouring pager pages, so it doesn't mount mid-slide. | `components/navigation/useScreenTransitionSettled.ts` |
 
 ## Reader Data Hooks
 
@@ -87,7 +88,7 @@ This document lists reusable UI components currently available in the codebase s
 | --- | --- | --- |
 | `MushafNativePage` | Native Unicode mushaf renderer for offline text packs; renders page lines/words from local pack payloads with stepped `mushafScaleStep` sizing, selectable text, per-word press events, and no route-level chrome so the page route can present a text-only mushaf feed. | `components/mushaf/MushafNativePage.tsx` |
 | `MushafWebViewPage` | Local WebView mushaf renderer for exact/downloadable packs; ports the web stepped preset sizing, fit detection, centered RTL overflow reflow, resilient local QCF page-font loading with bounded recovery retries, and the selection/word-tap bridge while keeping the rendered surface free of extra cards, labels, and buttons. | `components/mushaf/MushafWebViewPage.tsx` |
-| `MushafSingleDocumentReader` | Single-surface QCF/WebView mushaf reader used by Surah, Juz, and Page Mushaf views; reports active page changes, scroll activity, selection, and canonical word taps (including surface text), highlights the current recitation word through an in-place WebView command, routes word taps to audio seeking while the player is visible, exposes imperative page jumps for scrubber navigation, supports hidden first-page preparation during Translation mode, delivers installed QCF page fonts to the WebView as cached data URIs with file-URL/retry fallback, and limits visible-mode background warming to the nearest pages. | `components/mushaf/MushafSingleDocumentReader.tsx` |
+| `MushafSingleDocumentReader` | Single-surface QCF/WebView mushaf reader used by Surah, Juz, and Page Mushaf views; reports active page changes, scroll activity, selection, and canonical word taps (including surface text), highlights the current recitation word through an in-place WebView command, routes word taps to audio seeking while the player is visible, exposes imperative page jumps for scrubber navigation, supports hidden first-page preparation during Translation mode, embeds an opening page already in memory into the WebView document so it draws without a React Native round trip, lets the WebView read installed QCF page fonts from their files (re-sending a page with an embedded data-URI font only if that fails), and pre-renders the rest of the Surah in the background. The WebView renders nearest-page-first, skips layout for off-screen pages (`content-visibility: auto`), pauses background pages while the reader scrolls, and reveals itself once positioned. | `components/mushaf/MushafSingleDocumentReader.tsx` |
 
 ## Reader Settings Components
 
@@ -189,7 +190,7 @@ This document lists reusable UI components currently available in the codebase s
 | `DeleteFolderModal` | Simple confirmation modal for deleting bookmark folders. | `components/bookmarks/DeleteFolderModal.tsx` |
 | `folderColor` | Shared folder color tokens + resolver used across folder UI (settings + cards). | `components/bookmarks/folderColor.ts` |
 | `PlannerSection` | Planner section list UI (header + empty + cards) used in Bookmarks → Planner. | `components/bookmarks/planner/PlannerSection.tsx` |
-| `PlannerCard` | Planner card (daily focus + stats + progress + continue/delete). | `components/bookmarks/planner/PlannerCard.tsx` |
+| `PlannerCard` | Planner card: anchored “Currently at” panel with continue/delete; tapping the header or chevron unfolds daily focus + stats beneath it with a UI-thread height reveal (planner list is a plain `ScrollView` so cards below move in the same layout pass). | `components/bookmarks/planner/PlannerCard.tsx` |
 | `PlannerHeader` | Planner section header with “Create Plan” action. | `components/bookmarks/planner/PlannerHeader.tsx` |
 | `PlannerEmptyState` | Empty-state UI shown when no plans exist. | `components/bookmarks/planner/PlannerEmptyState.tsx` |
 | `CreatePlannerModal` | Modal + form for creating planner plans (start/end surah + verse + estimated days). | `components/bookmarks/planner/CreatePlannerModal.tsx` |
