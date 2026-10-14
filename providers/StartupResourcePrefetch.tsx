@@ -1,9 +1,11 @@
+import Feather from '@expo/vector-icons/Feather';
 import React from 'react';
 
 import { useTranslationResources } from '@/hooks/useTranslationResources';
 import { primeOfflineSurahNavigationPage } from '@/lib/surah/offlineSurahPageCache';
 import { useSettings } from '@/providers/SettingsContext';
 import { loadLastReadFromStorage } from '@/providers/bookmarks/storage-utils';
+import { logger } from '@/src/core/infrastructure/monitoring/logger';
 
 export function StartupResourcePrefetch(): null {
   const { settings } = useSettings();
@@ -15,6 +17,15 @@ export function StartupResourcePrefetch(): null {
   }, []);
 
   useTranslationResources({ enabled, language: settings.contentLanguage });
+
+  // Resource-list rows draw their icons from this font. Until it loads, each icon renders
+  // empty and then pops in, so load it off the startup path, long before a list opens.
+  React.useEffect(() => {
+    if (!enabled) return;
+    Feather.loadFont().catch((error: unknown) => {
+      logger.warn('Failed to preload icon font', undefined, error as Error);
+    });
+  }, [enabled]);
 
   React.useEffect(() => {
     if (!enabled || !settings.tajweed) return;

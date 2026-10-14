@@ -1,4 +1,5 @@
-import { GripVertical, RotateCcw, X } from 'lucide-react-native';
+import Feather from '@expo/vector-icons/Feather';
+import { GripVertical, RotateCcw } from 'lucide-react-native';
 import React from 'react';
 import {
   Animated,
@@ -18,47 +19,16 @@ import { useUiTranslation } from '@/providers/UiLanguageContext';
 
 type BasicResource = { id: number; name: string };
 
-type SelectionListVariant = 'translation' | 'tafsir';
-
-interface VariantStyles {
-  headerClassName: string;
-  maxBadgeClassName: string;
-  containerClassName: string;
-  emptyTextClassName: string;
-  itemRowClassName: string;
-  removeButtonClassName: string;
-  emptyContentHeight: number;
-  itemHeight: number;
-  rowGap: number;
-}
-
-const VARIANT_STYLES: Record<SelectionListVariant, VariantStyles> = {
-  translation: {
-    headerClassName: 'flex-row items-center justify-between px-2 mb-3',
-    maxBadgeClassName: 'text-xs px-2.5 py-1 rounded-full font-medium',
-    containerClassName: 'p-3',
-    emptyTextClassName: 'text-center text-sm py-4 font-medium',
-    itemRowClassName:
-      'h-[54px] flex-row items-center justify-between p-3',
-    removeButtonClassName:
-      'p-1.5 rounded-full flex-shrink-0 ml-1',
-    emptyContentHeight: 54,
-    itemHeight: 54,
-    rowGap: 4,
-  },
-  tafsir: {
-    headerClassName: 'flex-row items-center justify-between px-1 mb-2',
-    maxBadgeClassName: 'text-xs px-2 py-1 rounded-full',
-    containerClassName: 'p-2',
-    emptyTextClassName: 'text-center text-sm py-2',
-    itemRowClassName:
-      'h-[46px] flex-row items-center justify-between p-2',
-    removeButtonClassName:
-      'p-1 rounded-full flex-shrink-0 ml-1',
-    emptyContentHeight: 38,
-    itemHeight: 46,
-    rowGap: 4,
-  },
+const SELECTION_STYLES = {
+  headerClassName: 'flex-row items-center justify-between px-2 mb-3',
+  maxBadgeClassName: 'text-xs px-2.5 py-1 rounded-full font-medium',
+  containerClassName: 'p-3',
+  emptyTextClassName: 'text-center text-sm py-4 font-medium',
+  itemRowClassName: 'h-[54px] flex-row items-center justify-between p-3',
+  removeButtonClassName: 'p-1.5 rounded-full flex-shrink-0 ml-1',
+  emptyContentHeight: 54,
+  itemHeight: 54,
+  rowGap: 4,
 };
 
 function clamp(value: number, min: number, max: number): number {
@@ -77,7 +47,7 @@ function ensureLayoutAnimationEnabled(): void {
   (UIManager as any).setLayoutAnimationEnabledExperimental?.(true);
 }
 
-export function configureSelectionLayoutAnimation(): void {
+function configureSelectionLayoutAnimation(): void {
   ensureLayoutAnimationEnabled();
   LayoutAnimation.configureNext({
     duration: 165,
@@ -111,9 +81,12 @@ function normalizeOrderedSelection(ids: number[]): number[] {
   return normalized;
 }
 
-function getSelectionContentHeight(selectionCount: number, styles: VariantStyles): number {
-  if (selectionCount <= 0) return styles.emptyContentHeight;
-  return selectionCount * styles.itemHeight + Math.max(0, selectionCount - 1) * styles.rowGap;
+function getSelectionContentHeight(selectionCount: number): number {
+  if (selectionCount <= 0) return SELECTION_STYLES.emptyContentHeight;
+  return (
+    selectionCount * SELECTION_STYLES.itemHeight +
+    Math.max(0, selectionCount - 1) * SELECTION_STYLES.rowGap
+  );
 }
 
 export function ReorderableSelectionList({
@@ -124,7 +97,6 @@ export function ReorderableSelectionList({
   onReset,
   maxSelections,
   emptyText,
-  variant,
   removeAccessibilityLabel,
   onDragStateChange,
 }: {
@@ -135,7 +107,6 @@ export function ReorderableSelectionList({
   onReset?: () => void;
   maxSelections: number;
   emptyText: string;
-  variant: SelectionListVariant;
   removeAccessibilityLabel?: string;
   onDragStateChange?: (dragging: boolean) => void;
 }): React.JSX.Element {
@@ -152,7 +123,7 @@ export function ReorderableSelectionList({
     ensureLayoutAnimationEnabled();
   }, []);
 
-  const styles = VARIANT_STYLES[variant];
+  const styles = SELECTION_STYLES;
   const [localOrder, setLocalOrder] = React.useState(() => normalizeOrderedSelection(orderedSelection));
   const localOrderRef = React.useRef(localOrder);
   const draggingIdRef = React.useRef<number | null>(null);
@@ -160,7 +131,7 @@ export function ReorderableSelectionList({
   const reorderOffsetRef = React.useRef(0);
   const dragTranslateY = React.useRef(new Animated.Value(0)).current;
   const contentHeight = React.useRef(
-    new Animated.Value(getSelectionContentHeight(localOrder.length, styles))
+    new Animated.Value(getSelectionContentHeight(localOrder.length))
   ).current;
   const [draggingId, setDraggingId] = React.useState<number | null>(null);
 
@@ -176,13 +147,13 @@ export function ReorderableSelectionList({
 
   React.useEffect(() => {
     Animated.timing(contentHeight, {
-      toValue: getSelectionContentHeight(localOrder.length, styles),
+      toValue: getSelectionContentHeight(localOrder.length),
       duration: 185,
       easing: Easing.out(Easing.cubic),
       isInteraction: false,
       useNativeDriver: false,
     }).start();
-  }, [contentHeight, localOrder.length, styles]);
+  }, [contentHeight, localOrder.length]);
 
   const resourceById = React.useMemo(() => {
     const map = new Map<number, BasicResource>();
@@ -337,7 +308,6 @@ export function ReorderableSelectionList({
                     removeButtonClassName={styles.removeButtonClassName}
                     removeAccessibilityLabel={removeAccessibilityLabel}
                     onRemove={onRemove}
-                    variant={variant}
                     backgroundColor={rowBackground}
                     borderColor={rowBorder}
                     mutedColor={palette.muted}
@@ -366,7 +336,6 @@ function SelectionListRow({
   removeButtonClassName,
   removeAccessibilityLabel,
   onRemove,
-  variant,
   backgroundColor,
   borderColor,
   mutedColor,
@@ -384,7 +353,6 @@ function SelectionListRow({
   removeButtonClassName: string;
   removeAccessibilityLabel?: string;
   onRemove: (id: number) => void;
-  variant: SelectionListVariant;
   backgroundColor: string;
   borderColor: string;
   mutedColor: string;
@@ -458,7 +426,7 @@ function SelectionListRow({
           className={[removeButtonClassName, 'h-7 w-7 items-center justify-center'].join(' ')}
           style={({ pressed }) => ({ opacity: isDragging ? 0.4 : pressed ? 0.7 : 1 })}
         >
-          <X color={mutedColor} size={variant === 'tafsir' ? 16 : 14} strokeWidth={2.25} />
+          <Feather name="x" color={mutedColor} size={14} />
         </Pressable>
       </View>
     </Animated.View>

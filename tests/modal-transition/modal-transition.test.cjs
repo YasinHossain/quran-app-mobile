@@ -373,7 +373,7 @@ test('drawer data work is deferred until its entrance completes', () => {
   assert.match(settingsSource, /initialNumToRender=\{2\}/);
 });
 
-test('translation panel starts immediately while other warmed-panel replacements wait for commit', () => {
+test('warmed resource panels slide in their own layers while other panels wait for commit', () => {
   const settingsSource = readFileSync(
     path.join(__dirname, '../../components/reader/settings/SettingsSidebarContent.tsx'),
     'utf8'
@@ -383,16 +383,25 @@ test('translation panel starts immediately while other warmed-panel replacements
     settingsSource.indexOf('const closePanel = React.useCallback')
   );
 
-  assert.match(
-    settingsSource,
-    /const renderedPanelType: SubPanelType = isSubPanel \? panel\.type : 'translations'/
-  );
-  assert.match(settingsSource, /\{isSubPanel \|\| dataEnabled \? \(/);
-  assert.match(openPanelSource, /setPanel\(\{ type: nextPanel \}\);[\s\S]*Animated\.spring\(navProgress/);
+  // The layer is chosen natively before setPanel, so a warm list never waits on a commit.
   assert.match(
     openPanelSource,
-    /if \(nextPanel === 'translations'\) \{[\s\S]*startAnimation\(\);[\s\S]*return;/
+    /selectLayer\(nextPanel\);\s*setPanel\(\{ type: nextPanel \}\);[\s\S]*Animated\.spring\(navProgress/
   );
+  assert.match(
+    openPanelSource,
+    /if \(getSubPanelLayer\(nextPanel\) !== 'other'\) \{[\s\S]*startAnimation\(\);[\s\S]*return;/
+  );
+  // Both resource lists stay warm offscreen in their own layers, headers included, so
+  // opening one swaps no title or list. Hiding one with opacity left its rows undrawn.
+  assert.match(settingsSource, /const shouldWarmResourceLists = dataEnabled && !hideRootWhenSubPanel;/);
+  assert.match(
+    settingsSource,
+    /const isTafsirLayerMounted =\s*subPanelLayer === 'tafsir' \|\| \(shouldWarmResourceLists && showTafsirSetting\)/
+  );
+  assert.match(settingsSource, /title=\{t\('tafsir_panel_title'\)\} onBack=\{goBack\}/);
+  assert.doesNotMatch(settingsSource, /opacity: 0,/);
+  assert.match(settingsSource, /Animated\.multiply\(navProgress, layerSelection\[layer\]\)/);
   assert.match(openPanelSource, /requestAnimationFrame\(\(\) => \{[\s\S]*startAnimation\(\)/);
 });
 
@@ -423,7 +432,7 @@ test('direct tafsir manager open keeps unrelated settings work off the entrance 
     settingsSource,
     /enabled: dataEnabled && \(panel\.type === 'root' \|\| panel\.type === 'mushaf'\)/
   );
-  assert.match(settingsSource, /isActive=\{dataEnabled && isTafsirVisible\}/);
+  assert.match(settingsSource, /isActive=\{dataEnabled && subPanelLayer === 'tafsir'\}/);
 });
 
 function mountPortalOverlay(t, initialProps) {
@@ -545,8 +554,26 @@ function mountOverlayPortalHost(t) {
       }
     },
     labels() { return root.root.findAllByType('Label').map((node) => node.props.text); },
+    appContent() {
+      return root.root.find((node) => node.type === 'View' && 'renderToHardwareTextureAndroid' in node.props).props;
+    },
   };
 }
+
+test('the app behind an overlay keeps one native parent across open and close', (t) => {
+  const host = mountOverlayPortalHost(t);
+  const label = (text) => React.createElement('Label', { text });
+
+  // Closed, the wrapper is layout-only. If Fabric could flatten it, every open and close
+  // would re-parent the whole app and re-record all reader text in one frame.
+  host.render({ children: label('closed'), frozen: true });
+  assert.equal(host.appContent().renderToHardwareTextureAndroid, false);
+  assert.equal(host.appContent().collapsable, false);
+
+  host.render({ children: label('open'), modal: true });
+  assert.equal(host.appContent().renderToHardwareTextureAndroid, true);
+  assert.equal(host.appContent().collapsable, false);
+});
 
 test('hidden kept-mounted portals ignore owner re-renders until revealed', (t) => {
   const host = mountOverlayPortalHost(t);

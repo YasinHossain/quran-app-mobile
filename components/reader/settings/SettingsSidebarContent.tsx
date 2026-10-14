@@ -63,6 +63,17 @@ type Panel =
 export type PanelType = Panel['type'];
 type SubPanelType = Exclude<PanelType, 'root'>;
 
+// The resource lists each keep their own layer (header included) warm offscreen;
+// every other sub-panel shares one layer whose content is built on open.
+type SubPanelLayer = 'translations' | 'tafsir' | 'other';
+const SUB_PANEL_LAYERS: SubPanelLayer[] = ['translations', 'tafsir', 'other'];
+
+function getSubPanelLayer(type: PanelType | undefined): SubPanelLayer | null {
+  if (!type || type === 'root') return null;
+  if (type === 'translations' || type === 'tafsir') return type;
+  return 'other';
+}
+
 const BYTES_PER_MEGABYTE = 1024 * 1024;
 const ARABIC_FONT_PREVIEW_TEXT = 'بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ';
 
@@ -319,14 +330,31 @@ export function SettingsSidebarContent({
   const fontSelectionRequestRef = React.useRef(0);
   const openPanelRafRef = React.useRef<number | null>(null);
   const navProgress = React.useRef(new Animated.Value(initialPanel && initialPanel !== 'root' ? 1 : 0)).current;
+  // Which sub-panel layer navProgress slides in (1) or leaves offscreen (0). Set natively
+  // before a slide starts, so a warm layer can move without waiting for a React commit.
+  const layerSelection = React.useRef<Record<SubPanelLayer, Animated.Value>>({
+    translations: new Animated.Value(getSubPanelLayer(initialPanel) === 'translations' ? 1 : 0),
+    tafsir: new Animated.Value(getSubPanelLayer(initialPanel) === 'tafsir' ? 1 : 0),
+    other: new Animated.Value(getSubPanelLayer(initialPanel) === 'other' ? 1 : 0),
+  }).current;
+  const selectLayer = React.useCallback(
+    (type: SubPanelType) => {
+      const target = getSubPanelLayer(type);
+      for (const layer of SUB_PANEL_LAYERS) {
+        layerSelection[layer].setValue(layer === target ? 1 : 0);
+      }
+    },
+    [layerSelection]
+  );
   const panelWidth = containerWidth ?? Math.min(390, Math.round(windowWidth * 0.92));
 
   React.useEffect(() => {
     if (!initialPanel || initialPanel === 'root') return;
     navProgress.stopAnimation();
+    selectLayer(initialPanel);
     navProgress.setValue(1);
     setPanel({ type: initialPanel });
-  }, [initialPanel, navProgress]);
+  }, [initialPanel, navProgress, selectLayer]);
 
   React.useEffect(() => {
     return () => {
@@ -485,6 +513,7 @@ export function SettingsSidebarContent({
       const token = ++animationTokenRef.current;
       navProgress.stopAnimation();
       navProgress.setValue(0);
+      selectLayer(nextPanel);
       setPanel({ type: nextPanel });
 
       const startAnimation = () => {
@@ -508,20 +537,21 @@ export function SettingsSidebarContent({
         openPanelRafRef.current = null;
       }
 
-      if (nextPanel === 'translations') {
-        // Translation is already mounted offscreen, so it can move immediately.
+      if (getSubPanelLayer(nextPanel) !== 'other') {
+        // Resource lists already sit offscreen in their own layer, header included,
+        // so nothing has to change onscreen before they move.
         startAnimation();
         return;
       }
 
-      // Other panel content replaces the warmed translation list. Wait for that
-      // commit before moving the sheet so the old list can never flash onscreen.
+      // The shared layer builds its content on open. Wait for that commit before
+      // moving it so a previous panel's content can never flash onscreen.
       openPanelRafRef.current = requestAnimationFrame(() => {
         openPanelRafRef.current = null;
         startAnimation();
       });
     },
-    [navProgress]
+    [navProgress, selectLayer]
   );
 
   const closePanel = React.useCallback(() => {
@@ -918,6 +948,7 @@ export function SettingsSidebarContent({
         }
         animationTokenRef.current += 1;
         navProgress.stopAnimation();
+        selectLayer('mushaf');
         navProgress.setValue(1);
         setPanel({ type: 'mushaf' });
         if (onOpenMushafManager) return;
@@ -925,7 +956,7 @@ export function SettingsSidebarContent({
       setActiveTab(nextTab);
       onTabChange?.(nextTab);
     },
-    [navProgress, onOpenMushafManager, onTabChange, panel.type, settings.mushafId]
+    [navProgress, onOpenMushafManager, onTabChange, panel.type, selectLayer, settings.mushafId]
   );
 
   React.useEffect(() => {
@@ -983,18 +1014,39 @@ export function SettingsSidebarContent({
   ) : null;
 
   const isSubPanel = panel.type !== 'root';
-  // Translation is the most common and heaviest subpanel. Mount it offscreen
-  // after the outer drawer animation, then reuse the same list on first open.
-  const renderedPanelType: SubPanelType = isSubPanel ? panel.type : 'translations';
+  const subPanelLayer = getSubPanelLayer(panel.type);
+  // Once the drawer settles, the resource lists mount offscreen in their own layers
+  // so their first open neither builds nor swaps anything. A direct mushaf manager
+  // open never shows the root, so it skips them.
+  const shouldWarmResourceLists = dataEnabled && !hideRootWhenSubPanel;
+  const isTranslationsLayerMounted = subPanelLayer === 'translations' || shouldWarmResourceLists;
+  const isTafsirLayerMounted =
+    subPanelLayer === 'tafsir' || (shouldWarmResourceLists && showTafsirSetting);
+  const otherPanelType =
+    subPanelLayer === 'other' && panel.type !== 'root' ? panel.type : null;
 
-  const subTranslateX = navProgress.interpolate({
-    inputRange: [0, 1],
-    outputRange: [panelWidth, 0],
-  });
-  const subOpacity = navProgress.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0.96, 1],
-  });
+  // Memoized so a re-render mid-slide keeps the native driver attached to the same nodes.
+  const layerStyles = React.useMemo(() => {
+    const build = (layer: SubPanelLayer) => {
+      const progress = Animated.multiply(navProgress, layerSelection[layer]);
+      return {
+        opacity: progress.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1] }),
+        transform: [
+          {
+            translateX: progress.interpolate({
+              inputRange: [0, 1],
+              outputRange: [panelWidth, 0],
+            }),
+          },
+        ],
+      };
+    };
+    return {
+      translations: build('translations'),
+      tafsir: build('tafsir'),
+      other: build('other'),
+    } satisfies Record<SubPanelLayer, unknown>;
+  }, [layerSelection, navProgress, panelWidth]);
   const rootTranslateX = navProgress.interpolate({
     inputRange: [0, 1],
     outputRange: [0, -22],
@@ -1004,48 +1056,58 @@ export function SettingsSidebarContent({
     outputRange: [1, 0.9],
   });
 
-  const subPanelTitle =
-    renderedPanelType === 'translations'
-      ? t('manage_translations')
-      : renderedPanelType === 'tafsir'
-        ? t('tafsir_panel_title')
-      : renderedPanelType === 'word-language'
-        ? t('word_by_word_language')
-      : renderedPanelType === 'arabic-font'
+  const otherPanelTitle =
+    otherPanelType === 'word-language'
+      ? t('word_by_word_language')
+      : otherPanelType === 'arabic-font'
         ? t('select_font_face')
-      : renderedPanelType === 'ui-language'
+      : otherPanelType === 'ui-language'
         ? t('language_setting')
       : t('mushaf');
 
-  const isTranslationsVisible = panel.type === 'translations';
-  const isTafsirVisible = panel.type === 'tafsir';
+  const renderSubPanelLayer = (layer: SubPanelLayer, content: React.ReactNode) => {
+    const isActive = subPanelLayer === layer;
+    return (
+      <Animated.View
+        key={layer}
+        accessibilityElementsHidden={!isActive}
+        importantForAccessibility={isActive ? 'auto' : 'no-hide-descendants'}
+        pointerEvents={isActive ? 'auto' : 'none'}
+        style={[styles.subPanel, { backgroundColor: palette.background }, layerStyles[layer]]}
+      >
+        {content}
+      </Animated.View>
+    );
+  };
 
-
-
-  const subPanel = (
+  const translationsPanel = (
     <View className="flex-1">
-      <SettingsPanelHeader title={subPanelTitle} onBack={goBack} onClose={onClose} />
+      <SettingsPanelHeader title={t('manage_translations')} onBack={goBack} onClose={onClose} />
+      <ManageTranslationsPanel
+        translations={translationRecords}
+        orderedSelection={settings.translationIds ?? []}
+        onChangeSelection={setTranslationIds}
+        isLoading={isTranslationResourcesLoading}
+        errorMessage={translationResourcesError}
+        onRefresh={refreshTranslationResources}
+        isActive={subPanelLayer === 'translations'}
+      />
+    </View>
+  );
+
+  const tafsirPanel = (
+    <View className="flex-1">
+      <SettingsPanelHeader title={t('tafsir_panel_title')} onBack={goBack} onClose={onClose} />
+      <TafsirSelectionPanel isActive={dataEnabled && subPanelLayer === 'tafsir'} />
+    </View>
+  );
+
+  const otherPanel = (
+    <View className="flex-1">
+      <SettingsPanelHeader title={otherPanelTitle} onBack={goBack} onClose={onClose} />
 
       <View className="flex-1">
-        {renderedPanelType === 'translations' ? (
-          <View style={{ flex: 1 }}>
-            <ManageTranslationsPanel
-              translations={translationRecords}
-              orderedSelection={settings.translationIds ?? []}
-              onChangeSelection={setTranslationIds}
-              isLoading={isTranslationResourcesLoading}
-              errorMessage={translationResourcesError}
-              onRefresh={refreshTranslationResources}
-              isActive={isTranslationsVisible}
-            />
-          </View>
-        ) : null}
-
-        {renderedPanelType === 'tafsir' ? (
-          <TafsirSelectionPanel isActive={dataEnabled && isTafsirVisible} />
-        ) : null}
-
-        {renderedPanelType === 'word-language' ? (
+        {otherPanelType === 'word-language' ? (
           <FlatList
             ListHeaderComponent={
               <Text className="px-4 pb-3 text-sm text-muted dark:text-muted-dark">
@@ -1078,7 +1140,7 @@ export function SettingsSidebarContent({
           />
         ) : null}
 
-        {renderedPanelType === 'arabic-font' ? (
+        {otherPanelType === 'arabic-font' ? (
           <FlatList
             data={arabicFontItems}
             keyExtractor={(item) => item.value}
@@ -1122,7 +1184,7 @@ export function SettingsSidebarContent({
           />
         ) : null}
 
-        {renderedPanelType === 'ui-language' ? (
+        {otherPanelType === 'ui-language' ? (
           <FlatList
             data={UI_LANGUAGE_ITEMS}
             keyExtractor={(item) => item.code}
@@ -1139,7 +1201,7 @@ export function SettingsSidebarContent({
           />
         ) : null}
 
-        {renderedPanelType === 'mushaf' ? (
+        {otherPanelType === 'mushaf' ? (
           <View style={{ flex: 1 }}>
             <FlatList
               data={mushafPackEntries}
@@ -1499,23 +1561,9 @@ export function SettingsSidebarContent({
         </Animated.View>
       ) : null}
 
-      {isSubPanel || dataEnabled ? (
-        <Animated.View
-          accessibilityElementsHidden={!isSubPanel}
-          importantForAccessibility={isSubPanel ? 'auto' : 'no-hide-descendants'}
-          pointerEvents={isSubPanel ? 'auto' : 'none'}
-          style={[
-            styles.subPanel,
-            {
-              backgroundColor: palette.background,
-              opacity: subOpacity,
-              transform: [{ translateX: subTranslateX }],
-            },
-          ]}
-        >
-          {subPanel}
-        </Animated.View>
-      ) : null}
+      {isTranslationsLayerMounted ? renderSubPanelLayer('translations', translationsPanel) : null}
+      {isTafsirLayerMounted ? renderSubPanelLayer('tafsir', tafsirPanel) : null}
+      {otherPanelType ? renderSubPanelLayer('other', otherPanel) : null}
 
       <ResourceConfirmModal
         visible={mushafDownloadTarget !== null}

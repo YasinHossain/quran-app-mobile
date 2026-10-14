@@ -1,4 +1,4 @@
-import { Download, Trash2 } from 'lucide-react-native';
+import Feather from '@expo/vector-icons/Feather';
 import React from 'react';
 import { ActivityIndicator, View } from 'react-native';
 
@@ -22,6 +22,8 @@ export function toProgressPercent(progress: DownloadProgress | undefined): numbe
   return 0;
 }
 
+// Repeated in every resource row, so it uses font glyphs: react-native-svg draws each
+// icon into its own bitmap on the UI thread, which dominated building a list on Android.
 export function ResourceDownloadAction({
   status,
   progress,
@@ -107,7 +109,7 @@ export function ResourceDownloadAction({
           borderWidth: 1,
         }}
       >
-        <Trash2 color={destructiveColor} size={16} strokeWidth={2.25} />
+        <Feather name="trash-2" color={destructiveColor} size={16} />
       </View>
     );
   }
@@ -117,7 +119,7 @@ export function ResourceDownloadAction({
       className="h-8 w-8 items-center justify-center"
       style={isSelected ? selectedDownloadSurface : neutralSurface}
     >
-      <Download color={isFailed ? destructiveColor : iconColor} size={16} strokeWidth={2.25} />
+      <Feather name="download" color={isFailed ? destructiveColor : iconColor} size={16} />
     </View>
   );
 }

@@ -109,14 +109,22 @@ function areItemsEqual(
   return true;
 }
 
+// Last index any instance loaded. Lists that opt in render from it instead of an empty
+// index, so installed rows do not flash their download icon before their own load.
+// It may be stale: isLoading stays true until this instance has loaded.
+let lastLoadedItems: DownloadIndexItemWithKey[] = [];
+
 export function useDownloadIndexItems({
   enabled = true,
   pollIntervalMs = 1000,
   pollWhileEnabled = false,
+  startFromLastLoad = false,
 }: {
   enabled?: boolean;
   pollIntervalMs?: number;
   pollWhileEnabled?: boolean;
+  /** Display the last loaded index until this instance loads (for status icons only). */
+  startFromLastLoad?: boolean;
 } = {}): {
   items: DownloadIndexItemWithKey[];
   itemsByKey: Map<DownloadKey, DownloadIndexItemWithKey>;
@@ -124,7 +132,9 @@ export function useDownloadIndexItems({
   errorMessage: string | null;
   refresh: () => Promise<void>;
 } {
-  const [items, setItems] = React.useState<DownloadIndexItemWithKey[]>([]);
+  const [items, setItems] = React.useState<DownloadIndexItemWithKey[]>(() =>
+    startFromLastLoad ? lastLoadedItems : []
+  );
   const [isLoading, setIsLoading] = React.useState(enabled);
   const [hasLoaded, setHasLoaded] = React.useState(false);
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
@@ -150,6 +160,7 @@ export function useDownloadIndexItems({
         const repository = container.getDownloadIndexRepository();
         const useCase = new ListDownloadIndexItemsUseCase(repository);
         const result = await useCase.execute();
+        lastLoadedItems = result;
         setItems((previous) => (areItemsEqual(previous, result) ? previous : result));
         setHasLoaded(true);
         setErrorMessage(null);

@@ -63,6 +63,10 @@ export function OverlayPortalProvider({ children }: { children: React.ReactNode 
           reader text), which budget GPUs cannot finish within a 90 Hz frame.
         */}
         <View
+          // Never flattened: while closed this wrapper is layout-only, so Fabric would drop
+          // it and re-parent the whole app into a new view on every open and close, which
+          // re-records all reader text (~90 ms per frame on the tafsir page on a budget phone).
+          collapsable={false}
           accessibilityElementsHidden={hasModalEntry}
           importantForAccessibility={hasModalEntry ? 'no-hide-descendants' : 'auto'}
           pointerEvents={hasModalEntry ? 'none' : 'auto'}
