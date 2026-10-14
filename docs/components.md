@@ -16,6 +16,8 @@ This document lists reusable UI components currently available in the codebase s
 | Utility | Description | File Path |
 | --- | --- | --- |
 | `useModalTransition` | Shared native-driver modal/sheet transition state used by dialogs, bottom sheets, and side drawers for consistent open/close timing. | `components/motion/modalTransition.ts` |
+| `BottomSheet` | The shell every bottom sheet uses: app-window portal, kept mounted while closed, dimmed backdrop, exact-height native-driver spring slide, and bottom safe area. Sheets supply only content. | `components/motion/BottomSheet.tsx` |
+| `PortalOverlay` | Full-screen overlay in the root portal instead of a separate Android `Modal` window. With `keepMounted`, the hidden surface is frozen so owner re-renders do not reconcile it. | `components/motion/PortalOverlay.tsx` |
 
 ## Home Screen Components
 

@@ -91,10 +91,9 @@ export class TranslationOfflineStore implements ITranslationOfflineStore {
       text: string;
     }>;
   }): Promise<void> {
-    const db = await getAppDbAsync();
     const batchSize = 100;
 
-    await db.withExclusiveTransactionAsync(async (txn) => {
+    await withAppDbWriteTransactionAsync(async (txn) => {
       for (let start = 0; start < params.verses.length; start += batchSize) {
         const batch = params.verses.slice(start, start + batchSize);
         const versePlaceholders = batch.map(() => '(?, ?, ?, ?, NULL)').join(', ');
@@ -189,14 +188,12 @@ export class TranslationOfflineStore implements ITranslationOfflineStore {
     verses: OfflineVerseRowInput[];
     translations: OfflineTranslationRowInput[];
   }): Promise<void> {
-    const db = await getAppDbAsync();
-
     const verses = params.verses ?? [];
     const translations = params.translations ?? [];
 
     if (verses.length === 0 && translations.length === 0) return;
 
-    await db.withExclusiveTransactionAsync(async (txn) => {
+    await withAppDbWriteTransactionAsync(async (txn) => {
       await upsertVerseAndTranslationRows(txn, verses, translations);
     });
   }
@@ -668,9 +665,7 @@ export class TranslationOfflineStore implements ITranslationOfflineStore {
   }
 
   async deleteTranslation(translationId: number): Promise<void> {
-    const db = await getAppDbAsync();
-
-    await db.withExclusiveTransactionAsync(async (txn) => {
+    await withAppDbWriteTransactionAsync(async (txn) => {
       await deleteTranslationRows(txn, translationId);
     });
   }

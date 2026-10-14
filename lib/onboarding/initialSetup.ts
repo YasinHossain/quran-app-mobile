@@ -83,7 +83,6 @@ const inFlightInstalls = new Map<number, Promise<boolean>>();
 
 export async function silentlyInstallInitialTranslationAsync(params: {
   language: UiLanguageCode;
-  wordLanguage?: string;
   onProgress?: (progress: InitialTranslationProgress) => void;
 }): Promise<boolean> {
   const translationId = INITIAL_TRANSLATION_BY_UI_LANGUAGE[params.language];
@@ -123,7 +122,7 @@ export async function silentlyInstallInitialTranslationAsync(params: {
         logger,
         container.getTranslationPackRepository()
       );
-      await useCase.execute(translationId, params.wordLanguage);
+      await useCase.execute(translationId);
       return (await index.get(content))?.status === 'installed';
     } catch (error) {
       // Initial setup is intentionally silent and makes exactly one best-effort attempt.
@@ -157,9 +156,7 @@ export function cancelInitialTranslationAsync(language: UiLanguageCode): void {
 
 export function preloadInitialTranslationAsync(params: {
   language: UiLanguageCode;
-  wordLanguage?: string;
   onProgress?: (progress: InitialTranslationProgress) => void;
 }): Promise<boolean> {
   return silentlyInstallInitialTranslationAsync(params);
 }
-

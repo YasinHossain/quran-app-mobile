@@ -4,6 +4,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { openDatabaseAsync } from 'expo-sqlite';
 
 import type { DownloadableContent } from '@/src/core/domain/entities/DownloadIndexItem';
+import { downloadConcurrencyLimiter } from '@/src/core/infrastructure/downloads/downloadConcurrency';
 import type { DownloadIndexRepository } from '@/src/core/infrastructure/repositories/DownloadIndexRepository';
 
 import { WordReferencePackFileStore } from './WordReferencePackFileStore';
@@ -128,19 +129,21 @@ export class WordReferencePackInstaller {
       }
       await this.fileStore.writeManifestAsync(staging, manifest);
       const databaseUri = `${staging}${manifest.databaseFile}`;
-      const download = FileSystem.createDownloadResumable(entry.databaseUrl, databaseUri, {}, (progress) => {
-        const expected = progress.totalBytesExpectedToWrite;
-        const percent = expected > 0 ? Math.max(0, Math.min(99, Math.round((progress.totalBytesWritten / expected) * 100))) : 0;
-        void this.downloadIndex.upsert(downloadContent, { status: 'downloading', progress: { kind: 'percent', percent } });
-      });
-      const cancel = (): void => { void download.cancelAsync().catch(() => undefined); };
-      controller.signal.addEventListener('abort', cancel, { once: true });
-      try {
-        const result = await download.downloadAsync();
-        if (!result?.uri) throw new Error('Dictionary download was canceled');
-      } finally {
-        controller.signal.removeEventListener('abort', cancel);
-      }
+      await downloadConcurrencyLimiter.run(async () => {
+        const download = FileSystem.createDownloadResumable(entry.databaseUrl, databaseUri, {}, (progress) => {
+          const expected = progress.totalBytesExpectedToWrite;
+          const percent = expected > 0 ? Math.max(0, Math.min(99, Math.round((progress.totalBytesWritten / expected) * 100))) : 0;
+          void this.downloadIndex.upsert(downloadContent, { status: 'downloading', progress: { kind: 'percent', percent } });
+        });
+        const cancel = (): void => { void download.cancelAsync().catch(() => undefined); };
+        controller.signal.addEventListener('abort', cancel, { once: true });
+        try {
+          const result = await download.downloadAsync();
+          if (!result?.uri) throw new Error('Dictionary download was canceled');
+        } finally {
+          controller.signal.removeEventListener('abort', cancel);
+        }
+      }, controller.signal);
       if (controller.signal.aborted) throw new Error('Dictionary download was canceled');
       const validated = await this.validateDirectoryAsync(entry.packId, entry.version, staging, manifest, true);
       const destination = await this.fileStore.promoteStagingDirectoryAsync(staging, entry.packId, entry.version);

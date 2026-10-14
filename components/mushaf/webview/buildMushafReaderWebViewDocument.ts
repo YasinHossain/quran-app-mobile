@@ -734,6 +734,7 @@ function buildShellDocumentHtml({
         var INITIAL_PAGE_NUMBER = ${normalizedInitialPageNumber};
         var HIGHLIGHT_VERSE_KEY = ${serializeJson(highlightVerseKey ?? '')};
         var FOCUS_TOP_INSET_PX = ${Math.max(0, Math.round(focusTopInsetPx))};
+        var TOP_CONTENT_PADDING_EXTRA_PX = ${surahIntro ? 0 : 12};
         var FIRST_SHELL_PAGE_NUMBER = ${firstShellPageNumber};
         var KEEP_SURAH_INTRO_VISIBLE = ${
           surahIntro &&
@@ -944,6 +945,27 @@ function buildShellDocumentHtml({
             if (Number.isFinite(pageNumber)) {
               getPageState(pageNumber);
             }
+          }
+        }
+
+        function setFocusTopInset(nextInsetPx) {
+          var normalizedInsetPx = Math.max(0, Math.round(Number(nextInsetPx) || 0));
+          FOCUS_TOP_INSET_PX = normalizedInsetPx;
+
+          var nextPaddingPx = Math.max(12, normalizedInsetPx + TOP_CONTENT_PADDING_EXTRA_PX);
+          var currentPaddingPx = parseFloat(window.getComputedStyle(app).paddingTop) || 0;
+          var deltaPx = nextPaddingPx - currentPaddingPx;
+          if (Math.abs(deltaPx) < 0.5) {
+            return;
+          }
+
+          // The native header overlays this document. When its measured height
+          // changes, update the reserved space in place (rebuilding the document
+          // would reload every glyph) and keep already-positioned text still.
+          var scrollTop = window.scrollY || document.documentElement.scrollTop || 0;
+          app.style.paddingTop = nextPaddingPx + 'px';
+          if (scrollTop > 0) {
+            window.scrollTo(0, Math.max(0, scrollTop + deltaPx));
           }
         }
 
@@ -1269,12 +1291,11 @@ function buildShellDocumentHtml({
 
         function requiresQcfPageFont(pageData) {
           var rendererAssets = pageData && pageData.rendererAssets;
-          return Boolean(
-            rendererAssets &&
-              rendererAssets.qcfVersion &&
-              rendererAssets.pageFontFamily &&
-              (rendererAssets.pageFontDataUri || rendererAssets.pageFontFileUri)
-          );
+          // QCF word codes are private-use glyphs and are never valid without
+          // their page font. Treat the declared QCF version as the requirement;
+          // missing asset metadata must remain a loading/error condition rather
+          // than silently opting into ordinary Arabic text.
+          return Boolean(rendererAssets && rendererAssets.qcfVersion);
         }
 
         function scheduleQcfFontRetry(state, pageData, layout) {
@@ -1413,6 +1434,13 @@ function buildShellDocumentHtml({
           var glyphCode = getGlyphCode(state.data, word);
           var shouldUseQcfGlyph = Boolean(qcfVersion && qcfFontFamily && glyphCode);
           var verseKey = resolveVerseKey(word);
+
+          if (qcfVersion && !shouldUseQcfGlyph) {
+            // Never substitute Unicode Arabic inside an exact QCF page. The
+            // page-level render gate handles a missing font; incomplete glyph
+            // data must not produce a plausible but incorrect Mushaf page.
+            return null;
+          }
 
           if (
             word.charType === 'end' &&
@@ -1840,13 +1868,12 @@ function buildShellDocumentHtml({
           var requiresQcfFont = requiresQcfPageFont(pageData);
           if (requiresQcfFont && !qcfFontFamily) {
             state.qcfFontRetryCount += 1;
-            if (state.qcfFontRetryCount <= 6) {
-              scheduleQcfFontRetry(state, pageData, layout);
-            }
-
-            if (state.qcfFontRetryCount <= 3) {
-              return;
-            }
+            scheduleQcfFontRetry(state, pageData, layout);
+            // An exact QCF page is encoded as font glyphs, so ordinary Arabic
+            // text is not a faithful fallback for its fixed line layout. Keep
+            // the page in its loading state and retry rather than displaying a
+            // plausible-looking but incorrect page.
+            return;
           } else {
             state.qcfFontRetryCount = 0;
             if (pageData.rendererAssets) {
@@ -2170,7 +2197,7 @@ function buildShellDocumentHtml({
               INITIAL_PAGE_NUMBER = payload.initialPageNumber;
             }
             if (typeof payload.focusTopInsetPx === 'number') {
-              FOCUS_TOP_INSET_PX = Math.max(0, Math.round(payload.focusTopInsetPx));
+              setFocusTopInset(payload.focusTopInsetPx);
             }
 
             payload.pages.forEach(function (pageData) {
@@ -2185,6 +2212,7 @@ function buildShellDocumentHtml({
           },
           scrollToPage: scrollToPage,
           setActiveAudioWord: setActiveAudioWord,
+          setFocusTopInset: setFocusTopInset,
           scrollToVerse: function (verseKey) {
             HIGHLIGHT_VERSE_KEY = typeof verseKey === 'string' ? verseKey.trim() : '';
             isArrivalHighlightVisible = Boolean(HIGHLIGHT_VERSE_KEY);

@@ -48,6 +48,7 @@ export type NativeSurahReaderSettings = {
   showByWords?: boolean;
   tajweed?: boolean;
   translationIds?: number[];
+  translationNames?: Array<{ id: number; name: string }>;
   translationFontSize?: number;
   showTranslationAttribution?: boolean;
   wordLang?: string;
@@ -86,12 +87,18 @@ export type NativeSurahReaderScrollEvent = {
   contentOffsetY: number;
 };
 
+export type NativeSurahReaderLoadErrorEvent = {
+  code: string;
+  message: string;
+};
+
 export type NativeSurahReaderActionPressEvent = {
   verseNumber: number;
   verseKey: string;
   verseApiId?: number;
   arabicText?: string;
   translationTexts?: string[];
+  translationItems?: NativeSurahReaderTranslationItem[];
 };
 
 export type NativeSurahReaderWordPressEvent = {
@@ -119,6 +126,7 @@ export type NativeSurahReaderProps = ViewProps & {
   onVerseActionPress?: (event: NativeSyntheticEvent<NativeSurahReaderActionPressEvent>) => void;
   onWordPress?: (event: NativeSyntheticEvent<NativeSurahReaderWordPressEvent>) => void;
   onScroll?: (event: NativeSyntheticEvent<NativeSurahReaderScrollEvent>) => void;
+  onLoadError?: (event: NativeSyntheticEvent<NativeSurahReaderLoadErrorEvent>) => void;
 };
 
 export type NativeSurahReaderHandle = {
@@ -128,10 +136,12 @@ export type NativeSurahReaderHandle = {
 export type NativeSurahReaderState = {
   surahId: number;
   targetVerse: number;
+  expectedVerseCount?: number;
   surahIntro?: NativeSurahReaderSurahIntro;
   // Immutable snapshot: replace the array when any verse, translation, word or glyph changes.
   // NativeSurahReader attaches its content revision at the native boundary.
-  verses: NativeSurahReaderVerse[];
+  // Omitted on Android's offline-native path. Retained for legacy/test hosts.
+  verses?: NativeSurahReaderVerse[];
   settings: NativeSurahReaderSettings;
   activeVerseKey?: string | null;
   activeWord?: NativeSurahReaderActiveWord | null;

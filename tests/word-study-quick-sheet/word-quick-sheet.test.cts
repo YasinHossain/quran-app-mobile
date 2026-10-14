@@ -193,9 +193,12 @@ test('quick sheet keeps numeric height constraints and the redesigned action hie
     join(process.cwd(), 'components/word-study/WordSegmentsCard.tsx'),
     'utf8'
   );
-  assert.match(source, /height: sheetHeight/);
-  assert.match(source, /minHeight: sheetHeight/);
-  assert.match(source, /maxHeight: sheetHeight/);
+  const bottomSheetSource = readFileSync(
+    join(process.cwd(), 'components/motion/BottomSheet.tsx'),
+    'utf8'
+  );
+  assert.match(source, /<BottomSheet[\s\S]*?height=\{sheetHeight\}/);
+  assert.match(bottomSheetSource, /\{ height, minHeight: height, maxHeight: height \}/);
   assert.match(source, /Math\.min\(510, windowHeight \* 0\.85, windowHeight - insets\.top - 12\)/);
   assert.match(source, /accessibilityLabel="Play word audio"/);
   assert.match(source, /layout="wrapped"/);

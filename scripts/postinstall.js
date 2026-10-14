@@ -69,6 +69,21 @@ function patchReactNativeGradlePluginFoojay(contents) {
   );
 }
 
+function patchBottomTabsReanimateOnRerender(contents) {
+  // The bottom-tab view starts tab transitions in an effect that depends on `descriptors`, which
+  // are recreated on every render. A re-render right after a tab press re-runs it after
+  // `previousRouteKeyRef` already points at the new tab, so the outgoing tab is treated as
+  // uninvolved and jumps to its hidden position with a zero-duration timing. That cut the
+  // outgoing slide off after a frame or two, so the tabs no longer moved together. Only animate
+  // when the focused tab actually changes; tab progress values start at their resting positions.
+  const marker = 'quran-app: animate tabs only on focus change';
+  if (contents.includes(marker)) return contents;
+  return contents.replace(
+    /(\n(\s*)const previousRouteKey = previousRouteKeyRef\.current;\n)/,
+    `$1$2// ${marker}\n$2if (previousRouteKey === focusedRouteKey) return;\n`
+  );
+}
+
 async function main() {
   const results = [];
 
@@ -88,6 +103,13 @@ async function main() {
     await patchFile(
       'node_modules/@react-native/gradle-plugin/settings.gradle.kts',
       patchReactNativeGradlePluginFoojay
+    )
+  );
+
+  results.push(
+    await patchFile(
+      'node_modules/expo-router/build/react-navigation/bottom-tabs/views/BottomTabView.js',
+      patchBottomTabsReanimateOnRerender
     )
   );
 

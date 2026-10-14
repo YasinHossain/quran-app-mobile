@@ -2,13 +2,18 @@ import { forwardRef, memo, useImperativeHandle, useMemo, useRef } from 'react';
 import { Platform, requireNativeComponent, StyleSheet, Text, View } from 'react-native';
 
 import { useNativeSurahReaderCommands } from './useNativeSurahReaderCommands';
-import type { NativeSurahReaderHandle, NativeSurahReaderProps } from './NativeSurahReader.types';
+import type {
+  NativeSurahReaderHandle,
+  NativeSurahReaderProps,
+  NativeSurahReaderState,
+} from './NativeSurahReader.types';
 
 export type {
   NativeSurahReaderActiveWord,
   NativeSurahReaderActionPressEvent,
   NativeSurahReaderHandle,
   NativeSurahReaderInitialPositionedEvent,
+  NativeSurahReaderLoadErrorEvent,
   NativeSurahReaderProps,
   NativeSurahReaderScrollEvent,
   NativeSurahReaderSettings,
@@ -23,9 +28,18 @@ export type {
   NativeSurahReaderVisibleVerseChangeEvent,
 } from './NativeSurahReader.types';
 
+type NativeReaderBridgeProps = Omit<NativeSurahReaderProps, 'readerState'> & {
+  readerState?: Omit<
+    NativeSurahReaderState,
+    'topInsetPx' | 'bottomInsetPx' | 'activeVerseKey' | 'activeWord'
+  > & { versesRevision?: string };
+  topInsetPx?: number;
+  bottomInsetPx?: number;
+};
+
 const AndroidNativeSurahReader =
   Platform.OS === 'android'
-    ? requireNativeComponent<NativeSurahReaderProps>('NativeSurahReader')
+    ? requireNativeComponent<NativeReaderBridgeProps>('NativeSurahReader')
     : null;
 
 // Scope revisions across reader mounts and module reloads. A revision identifies an immutable
@@ -37,20 +51,52 @@ const NativeSurahReaderComponent = forwardRef<NativeSurahReaderHandle, NativeSur
   function NativeSurahReader(props, ref) {
     const nativeRef = useRef<View>(null);
     const commands = useNativeSurahReaderCommands(nativeRef);
-    const verses = props.readerState?.verses;
+    const state = props.readerState;
+    const verses = state?.verses;
     const versesRevision = useMemo(
       () => `${verseRevisionSession}:${++nextVerseRevision}`,
       [verses]
     );
+    // Header measurement and playback must not invalidate native data or resend a legacy payload.
     const readerState = useMemo(
-      () => props.readerState && { ...props.readerState, versesRevision },
-      [props.readerState, versesRevision]
+      () =>
+        state && {
+          surahId: state.surahId,
+          targetVerse: state.targetVerse,
+          expectedVerseCount: state.expectedVerseCount,
+          surahIntro: state.surahIntro,
+          settings: state.settings,
+          theme: state.theme,
+          ...(state.verses ? { verses: state.verses, versesRevision } : {}),
+        },
+      [
+        state?.surahId,
+        state?.targetVerse,
+        state?.expectedVerseCount,
+        state?.surahIntro,
+        verses,
+        versesRevision,
+        state?.settings,
+        state?.theme,
+      ]
     );
 
     useImperativeHandle(ref, () => commands, [commands]);
 
     if (AndroidNativeSurahReader) {
-      return <AndroidNativeSurahReader ref={nativeRef} {...props} readerState={readerState} />;
+      return (
+        <AndroidNativeSurahReader
+          ref={nativeRef}
+          {...props}
+          readerState={readerState}
+          topInsetPx={state?.topInsetPx}
+          bottomInsetPx={state?.bottomInsetPx}
+          activeVerseKey={
+            props.activeVerseKey !== undefined ? props.activeVerseKey : state?.activeVerseKey
+          }
+          activeWord={props.activeWord !== undefined ? props.activeWord : state?.activeWord}
+        />
+      );
     }
 
     const { style } = props;

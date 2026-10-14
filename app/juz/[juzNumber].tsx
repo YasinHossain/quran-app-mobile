@@ -240,7 +240,7 @@ export default function JuzScreen(): React.JSX.Element {
     manageMushaf?: string | string[];
   }>();
   const router = useRouter();
-  const { settings, isHydrated, setReadingMode } = useSettings();
+  const { settings, effectiveShowByWords, isHydrated, setReadingMode } = useSettings();
   const { t } = useUiTranslation();
   const juzNumberParam = Array.isArray(params.juzNumber) ? params.juzNumber[0] : params.juzNumber;
   const startVerseParam = Array.isArray(params.startVerse) ? params.startVerse[0] : params.startVerse;
@@ -826,7 +826,7 @@ export default function JuzScreen(): React.JSX.Element {
       arabicFontSize: settings.arabicFontSize,
       translationFontSize: settings.translationFontSize,
       arabicFontFace: settings.arabicFontFace,
-      showByWords: settings.showByWords,
+      showByWords: effectiveShowByWords,
       audioActiveVerseKey: audio.activeVerseKey,
       audioIsVisible: audio.isVisible,
       pagesSignature,
@@ -838,7 +838,7 @@ export default function JuzScreen(): React.JSX.Element {
       pagesSignature,
       settings.arabicFontFace,
       settings.arabicFontSize,
-      settings.showByWords,
+      effectiveShowByWords,
       settings.translationFontSize,
       audio.activeVerseKey,
       audio.isVisible,
@@ -1064,7 +1064,7 @@ export default function JuzScreen(): React.JSX.Element {
   const handleSurahListScroll = React.useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
     readerHeader.handleScroll(event);
     verseScrubberRef.current?.show();
-  }, [readerHeader]);
+  }, [readerHeader.handleScroll]);
 
   const handleMushafActivePageChange = React.useCallback(
     (pageNumber: number) => {
@@ -1093,7 +1093,7 @@ export default function JuzScreen(): React.JSX.Element {
       return;
     }
     mushafPageScrubberRef.current?.show();
-  }, [readerHeader]);
+  }, [readerHeader.handleScrollOffset]);
 
   const handleMushafPageScrubStateChange = React.useCallback((isScrubbing: boolean) => {
     isMushafPageScrubbingRef.current = isScrubbing;
@@ -1227,7 +1227,7 @@ export default function JuzScreen(): React.JSX.Element {
             arabicFontSize={settings.arabicFontSize}
             arabicFontFace={settings.arabicFontFace}
             translationFontSize={settings.translationFontSize}
-            showByWords={settings.showByWords}
+            showByWords={effectiveShowByWords}
             onWordStudyPress={Platform.OS === 'android' ? wordQuickSheet.open : undefined}
             selectedStudyWordPosition={
               wordQuickSheet.isOpen && wordQuickSheet.event?.verseKey === verse.verse_key

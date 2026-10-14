@@ -3,12 +3,15 @@ package com.anonymous.quranappmobile
 import com.anonymous.quranappmobile.versespotlight.VerseSpotlightProcess
 import com.anonymous.quranappmobile.versespotlight.VerseSpotlightWidgetPackage
 
+import android.app.Activity
 import android.app.Application
 import android.content.res.Configuration
+import android.os.Bundle
 
 import com.anonymous.quranappmobile.nativesurahreader.NativeSurahReaderPackage
 import com.anonymous.quranappmobile.nativehomeindex.NativeHomeIndexPackage
 import com.facebook.react.PackageList
+import com.facebook.react.ReactActivity
 import com.facebook.react.ReactApplication
 import com.facebook.react.ReactNativeApplicationEntryPoint.loadReactNative
 import com.facebook.react.ReactPackage
@@ -44,6 +47,7 @@ class MainApplication : Application(), ReactApplication {
     }
     loadReactNative(this)
     ApplicationLifecycleDispatcher.onApplicationCreate(this)
+    registerActivityLifecycleCallbacks(OpaqueReactWindowCallbacks)
   }
 
   override fun onConfigurationChanged(newConfig: Configuration) {
@@ -51,4 +55,23 @@ class MainApplication : Application(), ReactApplication {
     if (VerseSpotlightProcess.isWidgetProcess(this)) return
     ApplicationLifecycleDispatcher.onConfigurationChanged(this, newConfig)
   }
+}
+
+/**
+ * The React root always paints the theme background over the whole window, so the window's own
+ * background is a hidden full-screen fill drawn every frame. Budget GPUs pay for each such layer
+ * on every animation frame, so drop it once the app window is showing. The launch splash is its
+ * own window/overlay, so startup is unaffected.
+ */
+private object OpaqueReactWindowCallbacks : Application.ActivityLifecycleCallbacks {
+  override fun onActivityResumed(activity: Activity) {
+    if (activity is ReactActivity) activity.window.setBackgroundDrawable(null)
+  }
+
+  override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) = Unit
+  override fun onActivityStarted(activity: Activity) = Unit
+  override fun onActivityPaused(activity: Activity) = Unit
+  override fun onActivityStopped(activity: Activity) = Unit
+  override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) = Unit
+  override fun onActivityDestroyed(activity: Activity) = Unit
 }

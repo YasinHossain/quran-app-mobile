@@ -129,7 +129,6 @@ internal class NativeHomeGridRowView(
       theme: NativeHomeIndexTheme,
   ) {
     ensureCardCount(columns)
-    setBackgroundColor(theme.backgroundColor)
     for (column in 0 until columns) {
       val card = cards[column]
       val item = items.getOrNull(startIndex + column)

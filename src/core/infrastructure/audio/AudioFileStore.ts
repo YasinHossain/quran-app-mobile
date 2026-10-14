@@ -1,5 +1,7 @@
 import * as FileSystem from 'expo-file-system/legacy';
 
+import { downloadConcurrencyLimiter } from '@/src/core/infrastructure/downloads/downloadConcurrency';
+
 import type { QdcAudioFile } from './qdcAudio';
 
 function normalizeId(value: number): number {
@@ -96,40 +98,42 @@ export class AudioFileStore {
 
     await FileSystem.makeDirectoryAsync(parentDirUri, { intermediates: true });
 
-    const downloadResumable = FileSystem.createDownloadResumable(
-      resolvedUrl,
-      fileUri,
-      {},
-      (data) => {
-        if (!onProgress) return;
-        const expected = data.totalBytesExpectedToWrite;
-        const percent =
-          expected > 0
-            ? Math.max(0, Math.min(100, (data.totalBytesWritten / expected) * 100))
-            : null;
-        onProgress({
-          totalBytesWritten: data.totalBytesWritten,
-          totalBytesExpectedToWrite: data.totalBytesExpectedToWrite,
-          percent,
-        });
+    return downloadConcurrencyLimiter.run(async () => {
+      const downloadResumable = FileSystem.createDownloadResumable(
+        resolvedUrl,
+        fileUri,
+        {},
+        (data) => {
+          if (!onProgress) return;
+          const expected = data.totalBytesExpectedToWrite;
+          const percent =
+            expected > 0
+              ? Math.max(0, Math.min(100, (data.totalBytesWritten / expected) * 100))
+              : null;
+          onProgress({
+            totalBytesWritten: data.totalBytesWritten,
+            totalBytesExpectedToWrite: data.totalBytesExpectedToWrite,
+            percent,
+          });
+        }
+      );
+
+      const cancelDownload = (): void => {
+        void downloadResumable.cancelAsync().catch(() => undefined);
+      };
+
+      signal?.addEventListener('abort', cancelDownload, { once: true });
+
+      try {
+        const result = await downloadResumable.downloadAsync();
+        if (!result?.uri) {
+          throw new Error('Download failed');
+        }
+        return result.uri;
+      } finally {
+        signal?.removeEventListener('abort', cancelDownload);
       }
-    );
-
-    const cancelDownload = (): void => {
-      void downloadResumable.cancelAsync().catch(() => undefined);
-    };
-
-    signal?.addEventListener('abort', cancelDownload, { once: true });
-
-    try {
-      const result = await downloadResumable.downloadAsync();
-      if (!result?.uri) {
-        throw new Error('Download failed');
-      }
-      return result.uri;
-    } finally {
-      signal?.removeEventListener('abort', cancelDownload);
-    }
+    }, signal);
   }
 
   async delete(): Promise<void> {

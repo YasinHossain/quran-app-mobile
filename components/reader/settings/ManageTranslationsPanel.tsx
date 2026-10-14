@@ -11,7 +11,6 @@ import {
 import Colors from '@/constants/Colors';
 import { HeaderSearchInput } from '@/components/search/HeaderSearchInput';
 import { useDownloadIndexItems } from '@/hooks/useDownloadIndexItems';
-import { useSettings } from '@/providers/SettingsContext';
 import { useAppTheme } from '@/providers/ThemeContext';
 import { useUiTranslation } from '@/providers/UiLanguageContext';
 import { DeleteTranslationUseCase } from '@/src/core/application/use-cases/DeleteTranslation';
@@ -235,7 +234,6 @@ export function ManageTranslationsPanel({
   isActive?: boolean;
 }): React.JSX.Element {
   const { resolvedTheme, isDark } = useAppTheme();
-  const { settings } = useSettings();
   const palette = Colors[resolvedTheme];
   const [isReordering, setIsReordering] = React.useState(false);
   const [searchTerm, setSearchTerm] = React.useState('');
@@ -360,7 +358,7 @@ export function ManageTranslationsPanel({
           container.getTranslationPackRepository()
         );
 
-        await useCase.execute(translationId, settings.wordLang);
+        await useCase.execute(translationId);
 
         const current = latestSelectionRef.current ?? [];
         if (
@@ -382,7 +380,7 @@ export function ManageTranslationsPanel({
         refreshIndex();
       }
     },
-    [busyTranslationIds, refreshIndex, scheduleSelectionCommit, setBusy, settings.wordLang]
+    [busyTranslationIds, refreshIndex, scheduleSelectionCommit, setBusy]
   );
 
   const deleteTranslation = React.useCallback(

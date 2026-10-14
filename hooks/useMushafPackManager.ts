@@ -50,10 +50,6 @@ function buildInstallKey(packId: MushafPackId, version: string): string {
   return `${packId}@${version}`;
 }
 
-function isHostedCatalogMissingError(error: unknown): boolean {
-  return error instanceof Error && /Failed to fetch mushaf pack catalog \(404\)/.test(error.message);
-}
-
 function getStatusLabel(args: {
   option: MushafOption;
   isSelected: boolean;
@@ -261,35 +257,24 @@ export function useMushafPackManager({
 
       try {
         const catalogUrl = getMushafPackCatalogUrl();
-        let didInstallHostedPack = false;
-
-        if (catalogUrl) {
-          try {
-            const catalogEntry = await container.getMushafPackCatalogClient().getPack(catalogUrl, {
-              packId: option.packId,
-              version: option.version,
-            });
-
-            if (catalogEntry) {
-              await installer.installHostedPackAsync({
-                catalogEntry,
-                activateOnInstall: true,
-              });
-              didInstallHostedPack = true;
-            }
-          } catch (error) {
-            const log = isHostedCatalogMissingError(error) ? logger.info : logger.warn;
-            log(
-              'Failed to install hosted mushaf pack; falling back to live API installer',
-              { packId: option.packId, version: option.version },
-              error as Error
-            );
-          }
+        if (!catalogUrl) {
+          throw new Error('Mushaf download host is not configured. API fallback is disabled.');
         }
 
-        if (!didInstallHostedPack) {
-          await installer.installDownloadablePackAsync(packId, { activateOnInstall: true });
+        const catalogEntry = await container.getMushafPackCatalogClient().getPack(catalogUrl, {
+          packId: option.packId,
+          version: option.version,
+        });
+        if (!catalogEntry) {
+          throw new Error(
+            `${option.name} is not available on the configured download host. API fallback is disabled.`
+          );
         }
+
+        await installer.installHostedPackAsync({
+          catalogEntry,
+          activateOnInstall: true,
+        });
       } finally {
         setBusy(installKey, false);
         await loadInstalls();

@@ -8,6 +8,7 @@ export const APP_DB_NAME = 'quran_app.db';
 
 let appDbPromise: Promise<SQLiteDatabase> | null = null;
 let appDbSync: SQLiteDatabase | null = null;
+let appDbWriteQueue: Promise<void> = Promise.resolve();
 
 export async function getAppDbAsync(): Promise<SQLiteDatabase> {
   if (!appDbPromise) {
@@ -35,9 +36,22 @@ export function getAppDbSync(): SQLiteDatabase {
 export async function withAppDbWriteTransactionAsync(
   task: (db: SQLiteDatabase) => Promise<void>
 ): Promise<void> {
+  const operation = appDbWriteQueue
+    .catch(() => undefined)
+    .then(async () => {
+      await runAppDbWriteTransactionAsync(task);
+    });
+  appDbWriteQueue = operation.catch(() => undefined);
+  await operation;
+}
+
+async function runAppDbWriteTransactionAsync(
+  task: (db: SQLiteDatabase) => Promise<void>
+): Promise<void> {
   // Expo's exclusive transaction opens its own connection. Connection-level
   // PRAGMAs on getAppDbAsync() do not carry over to it, so configure this
-  // writer before BEGIN, where a competing write would otherwise fail fast.
+  // writer before BEGIN. The process-wide queue also keeps native statement
+  // calls from overlapping when several downloads finish together.
   await getAppDbAsync();
   const db = await openDatabaseAsync(APP_DB_NAME, { useNewConnection: true });
   try {
@@ -69,6 +83,7 @@ export async function initializeAppDbAsync(): Promise<void> {
 }
 
 export async function closeAppDbAsync(): Promise<void> {
+  await appDbWriteQueue.catch(() => undefined);
   if (appDbPromise) {
     const db = await appDbPromise;
     appDbPromise = null;

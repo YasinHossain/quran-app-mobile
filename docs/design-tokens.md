@@ -71,6 +71,24 @@ loading/retry path when the requested content is unavailable locally.
 | `sheet` | 240 / 160 ms | `verticalSheetTransform`: slide from the bottom. |
 | `drawer` | 240 / 160 ms | `sideSheetTransform`: slide from the appropriate side. |
 | `popover` | 140 / 100 ms | Opacity only; keep the position attached to its anchor. |
+| Bottom tabs | 260 ms spring | `horizontalSlideSceneStyle`: pager-style slide; the incoming tab enters from its side of the tab bar (mirrored in RTL) while the outgoing one leaves. Scenes stay opaque and only translate, so a frame paints about one screen; visited tabs stay attached (`detachInactiveScreens={false}`) so switching back doesn't rebuild the screen's display lists. |
+
+Transitions are native-driver **springs**, not `Animated.timing`. On Android, React Native samples native timing animations from a precomputed 60 fps frame table, so on 90/120 Hz screens every second or third display frame repeats the previous position: the motion judders even on flagship phones. Springs are integrated against the real frame time and advance on every display frame. On a 90 Hz budget phone this raised a sheet entrance from ~14 to ~26 rendered frames and cut missed frame deadlines from 35–50% to 0–8%. `modalSpringConfig` derives the springs from the preset durations: entrances are critically damped (Material standard midpoint, visually complete at the preset duration, no overshoot); exits are light, overshoot-clamped springs that end exactly at the preset duration while still moving, like standard-accelerate. Use native springs for any other frequently seen native-driver motion too (the settings sidebar's sub-panel navigation uses them). Avoid Android `elevation` and rounded `overflow: 'hidden'` clips on content that slides with a panel; both are re-rendered every frame.
+
+Bottom sheets use `components/motion/BottomSheet.tsx` rather than assembling their own overlay, backdrop and transform, so every sheet shares one motion. It slides exactly the sheet's own height (measured while hidden), so movement starts on the first frame instead of travelling off-screen first.
+
+Keep work out of the transition window. The animation runs on the native driver, but React commits and native view mounting still compete with it on the UI thread:
+
+- Animated style helpers are cached per progress value. Never build interpolations inline in a way that creates new nodes each render; a new node forces a native re-attach mid-slide.
+- Avoid `ActivityIndicator` inside sheets. Creating Android's `ProgressBar` view took ~31 ms on the UI thread on a budget phone, stalling the slide; use a plain skeleton bar.
+- Bottom sheets don't clip with `overflow: 'hidden'`; the rounded clip path is re-rasterized every frame. Keep sheet content inside its padding instead.
+- Don't set state on open just to reset something; reset it in `onAfterClose` while the surface is hidden.
+
+While any portal overlay is presented (including its exit), `OverlayPortalProvider` renders the app behind it as a cached hardware texture (`renderToHardwareTextureAndroid`), so slide frames composite one texture instead of re-rendering all reader text underneath.
+
+GPU fill matters on budget phones, whose GPU stays at its lowest clock during short animations. Don't stack opaque full-screen backgrounds: the root layout and stack screen paint the theme background, so screens and native views under them (the Android surah reader, the native Home index and their `RecyclerView`s and rows; Home relies on the tab scene background) stay transparent, and the Android window background is removed once the React root is showing (`MainApplication.kt`). Check with Developer options → Debug GPU overdraw; the reader body should be blue, not red.
+
+Frequently opened, small surfaces (the Home drawer, verse actions) pass `keepMounted` to `PortalOverlay`: the surface is built once the screen is idle and stays mounted, hidden and inert, while closed, so opening only reveals it and starts the transform. On a budget Android phone this cut the verse sheet's first frame from ~40 ms to ~15 ms and removed a 65–100 ms pause before the drawer began moving. Don't use it for large or data-heavy surfaces such as the settings sidebar.
 
 Native modal windows enable Android hardware acceleration. Verse translation tooltips remain immediate, measured overlays so they do not add animation work to every rendered verse. Action sheets can use a zero-duration exit when handing off to another modal.
 

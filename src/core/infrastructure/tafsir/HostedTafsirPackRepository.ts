@@ -202,7 +202,11 @@ export class HostedTafsirPackRepository implements ITafsirPackRepository {
     }
 
     const resolved = await this.getResolvedPack(tafsirId);
-    if (!resolved) return false;
+    if (!resolved) {
+      throw new Error(
+        `Tafsir ${tafsirId} is not available on the configured download host. API fallback is disabled.`
+      );
+    }
 
     params.assertNotCanceled?.();
 

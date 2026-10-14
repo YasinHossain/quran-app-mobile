@@ -90,7 +90,6 @@ export default function WelcomeScreen(): React.JSX.Element {
 
     void preloadInitialTranslationAsync({
       language,
-      wordLanguage: settings.wordLang,
     });
 
     return () => {
@@ -100,7 +99,7 @@ export default function WelcomeScreen(): React.JSX.Element {
         cancelInitialTranslationAsync(language);
       }
     };
-  }, [isStarting, language, settings.wordLang]);
+  }, [isStarting, language]);
 
   const handleStart = React.useCallback(async () => {
     if (isStarting) return;
@@ -113,7 +112,6 @@ export default function WelcomeScreen(): React.JSX.Element {
       if (preferredTranslationId && preferredTranslationId !== 20) {
         const installPromise = silentlyInstallInitialTranslationAsync({
           language,
-          wordLanguage: settings.wordLang,
           onProgress: (progress) => {
             setDownloadPercent(progress.percent);
           },
@@ -156,6 +154,7 @@ export default function WelcomeScreen(): React.JSX.Element {
         // Remember the matching word language, but keep its optional pack out of first-run setup.
         // The reader settings prompt for that pack only if word-by-word is turned on.
         wordLang: getPreferredWordLanguageForUiLanguage(language),
+        showByWords: false,
         translationId: targetTranslationId,
         translationIds: [targetTranslationId],
         mushafId: undefined,
@@ -173,6 +172,7 @@ export default function WelcomeScreen(): React.JSX.Element {
         uiLanguage: language,
         contentLanguage: language,
         wordLang: getPreferredWordLanguageForUiLanguage(language),
+        showByWords: false,
         translationId: 20,
         translationIds: [20],
         mushafId: undefined,

@@ -92,7 +92,7 @@ export default function BookmarksScreen(): React.JSX.Element {
     [audioPlayerBarHeight]
   );
 
-  const { settings } = useSettings();
+  const { settings, effectiveShowByWords } = useSettings();
   const translationIds = React.useMemo(() => {
     const ids = Array.isArray(settings.translationIds)
       ? settings.translationIds
@@ -589,7 +589,7 @@ export default function BookmarksScreen(): React.JSX.Element {
                 arabicFontSize={settings.arabicFontSize}
                 arabicFontFace={settings.arabicFontFace}
                 translationFontSize={settings.translationFontSize}
-                showByWords={settings.showByWords}
+                showByWords={effectiveShowByWords}
                 onPress={() => navigateToVerse(verseKey)}
                 onOpenActions={() =>
                   openVerseActionsForBookmark(bookmark, {
@@ -656,7 +656,7 @@ export default function BookmarksScreen(): React.JSX.Element {
                 arabicFontSize={settings.arabicFontSize}
                 arabicFontFace={settings.arabicFontFace}
                 translationFontSize={settings.translationFontSize}
-                showByWords={settings.showByWords}
+                showByWords={effectiveShowByWords}
                 onPress={() => navigateToVerse(verseKey)}
                 onOpenActions={() =>
                   openVerseActionsForBookmark(bookmark, {

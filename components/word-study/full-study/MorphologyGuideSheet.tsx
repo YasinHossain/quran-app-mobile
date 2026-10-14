@@ -1,9 +1,6 @@
 import { ChevronDown, Info, X } from 'lucide-react-native';
 import React from 'react';
 import {
-  Animated,
-  Modal,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -11,9 +8,8 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { modalBackdropStyle, useModalTransition, verticalSheetTransform } from '@/components/motion/modalTransition';
+import { BottomSheet } from '@/components/motion/BottomSheet';
 import Colors from '@/constants/Colors';
 import { useAppTheme } from '@/providers/ThemeContext';
 
@@ -27,132 +23,81 @@ export function MorphologyGuideSheet({
   onClose: () => void;
 }): React.JSX.Element {
   const { height: windowHeight } = useWindowDimensions();
-  const { resolvedTheme, isDark } = useAppTheme();
+  const { resolvedTheme } = useAppTheme();
   const palette = Colors[resolvedTheme];
-  const { visible, progress, dismissEnabledRef, onModalShow } = useModalTransition(isOpen, {
-    preset: 'sheet',
-  });
-
   const maxSheetHeight = Math.max(0, Math.round(windowHeight * 0.9));
   const sheetHeight = Math.min(maxSheetHeight, Math.max(420, Math.round(windowHeight * 0.82)));
 
-  const handleOverlayPress = React.useCallback(() => {
-    if (!dismissEnabledRef.current) return;
-    onClose();
-  }, [dismissEnabledRef, onClose]);
-
   return (
-    <Modal
-      hardwareAccelerated
-      transparent
-      visible={visible}
-      animationType="none"
-      onShow={onModalShow}
-      onRequestClose={onClose}
-      statusBarTranslucent
-      {...(Platform.OS === 'ios' ? { presentationStyle: 'overFullScreen' as const } : {})}
+    <BottomSheet
+      isOpen={isOpen}
+      onClose={onClose}
+      height={sheetHeight}
+      accessibilityLabel="Understanding morphology terms"
+      backdropAccessibilityLabel="Close morphology guide"
     >
-      <View style={styles.root} className={isDark ? 'dark' : ''}>
+      <View style={[styles.handle, { backgroundColor: palette.border }]} />
+      <View style={[styles.header, { borderBottomColor: palette.border }]}>
+        <View style={[styles.headerIcon, { backgroundColor: palette.interactive }]}>
+          <Info color={palette.tint} size={20} strokeWidth={2.2} />
+        </View>
+        <View style={styles.headerCopy}>
+          <Text style={[styles.title, { color: palette.text }]}>Understanding morphology terms</Text>
+          <Text style={[styles.subtitle, { color: palette.muted }]}>A quick guide to the labels used in this analysis.</Text>
+        </View>
         <Pressable
-          accessibilityLabel="Close morphology guide"
           accessibilityRole="button"
-          style={StyleSheet.absoluteFill}
-          onPress={handleOverlayPress}
+          accessibilityLabel="Close morphology guide"
+          hitSlop={10}
+          onPress={onClose}
+          style={styles.closeButton}
         >
-          <Animated.View style={[styles.overlay, modalBackdropStyle(progress, isDark)]} />
+          <X color={palette.muted} size={20} strokeWidth={2.25} />
         </Pressable>
+      </View>
 
-        <Animated.View
-          accessibilityViewIsModal
-          accessibilityLabel="Understanding morphology terms"
-          style={[
-            styles.sheet,
-            {
-              height: sheetHeight,
-              minHeight: sheetHeight,
-              maxHeight: maxSheetHeight,
-              backgroundColor: isDark ? palette.background : palette.surface,
-              borderColor: palette.border,
-            },
-            verticalSheetTransform(progress, Math.max(460, sheetHeight)),
-          ]}
-        >
-          <SafeAreaView edges={['bottom']} style={styles.safeArea}>
-            <View style={[styles.handle, { backgroundColor: palette.border }]} />
-            <View style={[styles.header, { borderBottomColor: palette.border }]}>
-              <View style={[styles.headerIcon, { backgroundColor: palette.interactive }]}>
-                <Info color={palette.tint} size={20} strokeWidth={2.2} />
-              </View>
-              <View style={styles.headerCopy}>
-                <Text style={[styles.title, { color: palette.text }]}>Understanding morphology terms</Text>
-                <Text style={[styles.subtitle, { color: palette.muted }]}>A quick guide to the labels used in this analysis.</Text>
-              </View>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Close morphology guide"
-                hitSlop={10}
-                onPress={onClose}
-                style={styles.closeButton}
-              >
-                <X color={palette.muted} size={20} strokeWidth={2.25} />
-              </Pressable>
-            </View>
-
-            <ScrollView
-              style={styles.scroll}
-              contentContainerStyle={styles.content}
-              showsVerticalScrollIndicator={false}
-            >
-              {MORPHOLOGY_GUIDE_GROUPS.map((group) => (
-                <View key={group.key} style={styles.group}>
-                  <Text style={[styles.groupTitle, { color: palette.text }]}>{group.title}</Text>
-                  <View style={[styles.termList, { borderColor: palette.border, backgroundColor: palette.surfaceNavigation }]}>
-                    {group.terms.map((term, index) => (
-                      <View
-                        key={term.key}
-                        style={[
-                          styles.term,
-                          index < group.terms.length - 1
-                            ? { borderBottomColor: palette.border, borderBottomWidth: StyleSheet.hairlineWidth }
-                            : null,
-                        ]}
-                      >
-                        <Text style={[styles.termTitle, { color: palette.text }]}>
-                          {term.label} · {term.arabicTerm}
-                        </Text>
-                        <Text style={[styles.definition, { color: palette.muted }]}>{term.definition}</Text>
-                        {term.example ? (
-                          <Text style={[styles.example, { color: palette.tint }]}>{term.example}</Text>
-                        ) : null}
-                      </View>
-                    ))}
-                  </View>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+      >
+        {MORPHOLOGY_GUIDE_GROUPS.map((group) => (
+          <View key={group.key} style={styles.group}>
+            <Text style={[styles.groupTitle, { color: palette.text }]}>{group.title}</Text>
+            <View style={[styles.termList, { borderColor: palette.border, backgroundColor: palette.surfaceNavigation }]}>
+              {group.terms.map((term, index) => (
+                <View
+                  key={term.key}
+                  style={[
+                    styles.term,
+                    index < group.terms.length - 1
+                      ? { borderBottomColor: palette.border, borderBottomWidth: StyleSheet.hairlineWidth }
+                      : null,
+                  ]}
+                >
+                  <Text style={[styles.termTitle, { color: palette.text }]}>
+                    {term.label} · {term.arabicTerm}
+                  </Text>
+                  <Text style={[styles.definition, { color: palette.muted }]}>{term.definition}</Text>
+                  {term.example ? (
+                    <Text style={[styles.example, { color: palette.tint }]}>{term.example}</Text>
+                  ) : null}
                 </View>
               ))}
+            </View>
+          </View>
+        ))}
 
-              <View style={[styles.footer, { backgroundColor: palette.interactive }]}>
-                <ChevronDown color={palette.tint} size={18} strokeWidth={2.2} />
-                <Text style={[styles.footerText, { color: palette.muted }]}>Close this guide to continue studying the selected word.</Text>
-              </View>
-            </ScrollView>
-          </SafeAreaView>
-        </Animated.View>
-      </View>
-    </Modal>
+        <View style={[styles.footer, { backgroundColor: palette.interactive }]}>
+          <ChevronDown color={palette.tint} size={18} strokeWidth={2.2} />
+          <Text style={[styles.footerText, { color: palette.muted }]}>Close this guide to continue studying the selected word.</Text>
+        </View>
+      </ScrollView>
+    </BottomSheet>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, justifyContent: 'flex-end' },
-  overlay: { flex: 1 },
-  sheet: {
-    width: '100%',
-    borderTopLeftRadius: 26,
-    borderTopRightRadius: 26,
-    borderWidth: 1,
-    overflow: 'hidden',
-  },
-  safeArea: { flex: 1, width: '100%' },
   handle: { width: 38, height: 4, borderRadius: 2, alignSelf: 'center', marginTop: 8 },
   header: {
     minHeight: 78,

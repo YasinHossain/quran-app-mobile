@@ -1,5 +1,7 @@
 import * as FileSystem from 'expo-file-system/legacy';
 
+import { downloadConcurrencyLimiter } from '@/src/core/infrastructure/downloads/downloadConcurrency';
+
 export function normalizePositiveInt(value: number): number {
   if (!Number.isFinite(value)) return 0;
   const normalized = Math.trunc(value);
@@ -99,22 +101,24 @@ export async function downloadHostedPackFileAsync(
   const parentDirectory = fileUri.slice(0, fileUri.lastIndexOf('/') + 1);
   await FileSystem.makeDirectoryAsync(parentDirectory, { intermediates: true });
 
-  const download = FileSystem.createDownloadResumable(url, fileUri, {}, (progress) => {
-    if (!onProgress) return;
+  await downloadConcurrencyLimiter.run(async () => {
+    const download = FileSystem.createDownloadResumable(url, fileUri, {}, (progress) => {
+      if (!onProgress) return;
 
-    const expected = progress.totalBytesExpectedToWrite;
-    const percent =
-      expected > 0
-        ? Math.max(0, Math.min(100, (progress.totalBytesWritten / expected) * 100))
-        : null;
+      const expected = progress.totalBytesExpectedToWrite;
+      const percent =
+        expected > 0
+          ? Math.max(0, Math.min(100, (progress.totalBytesWritten / expected) * 100))
+          : null;
 
-    onProgress({ percent });
+      onProgress({ percent });
+    });
+
+    const result = await download.downloadAsync();
+    if (!result?.uri) {
+      throw new Error(`Failed to download ${url}`);
+    }
   });
-
-  const result = await download.downloadAsync();
-  if (!result?.uri) {
-    throw new Error(`Failed to download ${url}`);
-  }
 }
 
 export async function readHostedPackJsonFileAsync<T>(fileUri: string): Promise<T> {

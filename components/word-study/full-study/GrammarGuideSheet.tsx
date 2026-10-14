@@ -1,9 +1,6 @@
 import { BookOpen, Info, X } from 'lucide-react-native';
 import React from 'react';
 import {
-  Animated,
-  Modal,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -11,9 +8,8 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { modalBackdropStyle, useModalTransition, verticalSheetTransform } from '@/components/motion/modalTransition';
+import { BottomSheet } from '@/components/motion/BottomSheet';
 import Colors from '@/constants/Colors';
 import { useAppTheme } from '@/providers/ThemeContext';
 import { WORD_GRAMMAR_PACK_METADATA } from '@/src/core/infrastructure/word-grammar';
@@ -26,119 +22,69 @@ export function GrammarGuideSheet({
   onClose: () => void;
 }): React.JSX.Element {
   const { height: windowHeight } = useWindowDimensions();
-  const { resolvedTheme, isDark } = useAppTheme();
+  const { resolvedTheme } = useAppTheme();
   const palette = Colors[resolvedTheme];
-  const { visible, progress, dismissEnabledRef, onModalShow } = useModalTransition(isOpen, {
-    preset: 'sheet',
-  });
   const source = WORD_GRAMMAR_PACK_METADATA.manifest.source;
   const maxSheetHeight = Math.max(0, Math.round(windowHeight * 0.9));
   const sheetHeight = Math.min(maxSheetHeight, Math.max(360, Math.round(windowHeight * 0.58)));
 
-  const handleOverlayPress = React.useCallback(() => {
-    if (!dismissEnabledRef.current) return;
-    onClose();
-  }, [dismissEnabledRef, onClose]);
-
   return (
-    <Modal
-      hardwareAccelerated
-      transparent
-      visible={visible}
-      animationType="none"
-      onShow={onModalShow}
-      onRequestClose={onClose}
-      statusBarTranslucent
-      {...(Platform.OS === 'ios' ? { presentationStyle: 'overFullScreen' as const } : {})}
+    <BottomSheet
+      isOpen={isOpen}
+      onClose={onClose}
+      height={sheetHeight}
+      accessibilityLabel="About this grammar"
+      backdropAccessibilityLabel="Close grammar information"
     >
-      <View style={styles.root} className={isDark ? 'dark' : ''}>
+      <View style={[styles.handle, { backgroundColor: palette.border }]} />
+      <View style={[styles.header, { borderBottomColor: palette.border }]}>
+        <View style={[styles.headerIcon, { backgroundColor: palette.interactive }]}>
+          <Info color={palette.tint} size={20} strokeWidth={2.2} />
+        </View>
+        <View style={styles.headerCopy}>
+          <Text style={[styles.title, { color: palette.text }]}>About this grammar</Text>
+          <Text style={[styles.subtitle, { color: palette.muted }]}>How the selected word and ayah analysis are presented.</Text>
+        </View>
         <Pressable
-          accessibilityLabel="Close grammar information"
           accessibilityRole="button"
-          style={StyleSheet.absoluteFill}
-          onPress={handleOverlayPress}
+          accessibilityLabel="Close grammar information"
+          hitSlop={10}
+          onPress={onClose}
+          style={styles.closeButton}
         >
-          <Animated.View style={[styles.overlay, modalBackdropStyle(progress, isDark)]} />
+          <X color={palette.muted} size={20} strokeWidth={2.25} />
         </Pressable>
-
-        <Animated.View
-          accessibilityViewIsModal
-          accessibilityLabel="About this grammar"
-          style={[
-            styles.sheet,
-            {
-              height: sheetHeight,
-              minHeight: sheetHeight,
-              maxHeight: maxSheetHeight,
-              backgroundColor: isDark ? palette.background : palette.surface,
-              borderColor: palette.border,
-            },
-            verticalSheetTransform(progress, Math.max(440, sheetHeight)),
-          ]}
-        >
-          <SafeAreaView edges={['bottom']} style={styles.safeArea}>
-            <View style={[styles.handle, { backgroundColor: palette.border }]} />
-            <View style={[styles.header, { borderBottomColor: palette.border }]}>
-              <View style={[styles.headerIcon, { backgroundColor: palette.interactive }]}>
-                <Info color={palette.tint} size={20} strokeWidth={2.2} />
-              </View>
-              <View style={styles.headerCopy}>
-                <Text style={[styles.title, { color: palette.text }]}>About this grammar</Text>
-                <Text style={[styles.subtitle, { color: palette.muted }]}>How the selected word and ayah analysis are presented.</Text>
-              </View>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Close grammar information"
-                hitSlop={10}
-                onPress={onClose}
-                style={styles.closeButton}
-              >
-                <X color={palette.muted} size={20} strokeWidth={2.25} />
-              </Pressable>
-            </View>
-
-            <ScrollView
-              style={styles.scroll}
-              contentContainerStyle={styles.content}
-              showsVerticalScrollIndicator={false}
-            >
-              <View style={styles.group}>
-                <Text style={[styles.groupTitle, { color: palette.text }]}>What you’re reading</Text>
-                <Text style={[styles.body, { color: palette.muted }]}>
-                  Arabic i‘rab (إعراب) explains the grammatical role of the selected word in the context of this ayah.
-                </Text>
-                <Text style={[styles.body, { color: palette.muted }]}>
-                  A focused note appears when a source heading covers the selected word, including headings that group several words. Otherwise, use the complete verse grammar; no source text is inferred or rewritten.
-                </Text>
-              </View>
-
-              <View style={[styles.sourceCard, { backgroundColor: palette.interactive }]}>
-                <BookOpen color={palette.tint} size={21} strokeWidth={2.1} />
-                <View style={styles.sourceCopy}>
-                  <Text style={[styles.sourceLabel, { color: palette.muted }]}>GRAMMAR SOURCE</Text>
-                  <Text style={[styles.sourceTitle, { color: palette.text }]}>{source.title}</Text>
-                  <Text style={[styles.sourceMeta, { color: palette.muted }]}>Version {source.version} · {source.sourceId}</Text>
-                </View>
-              </View>
-            </ScrollView>
-          </SafeAreaView>
-        </Animated.View>
       </View>
-    </Modal>
+
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.group}>
+          <Text style={[styles.groupTitle, { color: palette.text }]}>What you’re reading</Text>
+          <Text style={[styles.body, { color: palette.muted }]}>
+            Arabic i‘rab (إعراب) explains the grammatical role of the selected word in the context of this ayah.
+          </Text>
+          <Text style={[styles.body, { color: palette.muted }]}>
+            A focused note appears when a source heading covers the selected word, including headings that group several words. Otherwise, use the complete verse grammar; no source text is inferred or rewritten.
+          </Text>
+        </View>
+
+        <View style={[styles.sourceCard, { backgroundColor: palette.interactive }]}>
+          <BookOpen color={palette.tint} size={21} strokeWidth={2.1} />
+          <View style={styles.sourceCopy}>
+            <Text style={[styles.sourceLabel, { color: palette.muted }]}>GRAMMAR SOURCE</Text>
+            <Text style={[styles.sourceTitle, { color: palette.text }]}>{source.title}</Text>
+            <Text style={[styles.sourceMeta, { color: palette.muted }]}>Version {source.version} · {source.sourceId}</Text>
+          </View>
+        </View>
+      </ScrollView>
+    </BottomSheet>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, justifyContent: 'flex-end' },
-  overlay: { flex: 1 },
-  sheet: {
-    width: '100%',
-    borderTopLeftRadius: 26,
-    borderTopRightRadius: 26,
-    borderWidth: 1,
-    overflow: 'hidden',
-  },
-  safeArea: { flex: 1, width: '100%' },
   handle: { width: 38, height: 4, borderRadius: 2, alignSelf: 'center', marginTop: 8 },
   header: {
     minHeight: 78,

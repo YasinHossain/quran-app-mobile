@@ -21,6 +21,7 @@ internal class NativeVerseAdapter(
   var contentLanguage: String? = null
   var translationFontSize: Float = 16f
   var translationIds: List<Int> = emptyList()
+  var translationNames: Map<Int, String> = emptyMap()
   var displayMode: String = DISPLAY_MODE_PLAIN
   var showByWords: Boolean = false
   var tajweed: Boolean = false

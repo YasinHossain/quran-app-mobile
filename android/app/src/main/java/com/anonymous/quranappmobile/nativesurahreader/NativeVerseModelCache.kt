@@ -6,6 +6,7 @@ internal data class NativeReaderSettings(
     val contentLanguage: String?,
     val translationFontSize: Float,
     val translationIds: List<Int>,
+    val translationNames: Map<Int, String> = emptyMap(),
     val displayMode: String,
     val showByWords: Boolean,
     val tajweed: Boolean,

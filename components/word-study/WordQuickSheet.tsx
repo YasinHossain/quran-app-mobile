@@ -8,8 +8,6 @@ import {
 } from 'lucide-react-native';
 import React from 'react';
 import {
-  ActivityIndicator,
-  Animated,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -17,10 +15,9 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { PortalOverlay } from '@/components/motion/PortalOverlay';
-import { modalBackdropStyle, modalMotion, useModalTransition, verticalSheetTransform } from '@/components/motion/modalTransition';
+import { BottomSheet } from '@/components/motion/BottomSheet';
 import Colors from '@/constants/Colors';
 import { useAppTheme } from '@/providers/ThemeContext';
 import type { WordAnalysis } from '@/src/core/domain/word-study';
@@ -61,7 +58,7 @@ export function WordQuickSheet({
   onPlayVerseFromHere: () => void;
   onOpenFullStudy: () => void;
 }): React.JSX.Element {
-  const { resolvedTheme, isDark } = useAppTheme();
+  const { resolvedTheme } = useAppTheme();
   const palette = Colors[resolvedTheme];
   const { height: windowHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -75,19 +72,6 @@ export function WordQuickSheet({
     }
   }, [isOpen]);
 
-  const { visible, progress, dismissEnabledRef, onModalShow } = useModalTransition(isOpen, {
-    preset: 'sheet',
-  });
-
-  const handleModalShow = React.useCallback(() => {
-    onModalShow();
-    onPresented();
-  }, [onModalShow, onPresented]);
-
-  const handleOverlayPress = React.useCallback(() => {
-    if (dismissEnabledRef.current) onClose();
-  }, [dismissEnabledRef, onClose]);
-
   const handleOpenFullStudy = React.useCallback(() => {
     if (isNavigatingRef.current) return;
     isNavigatingRef.current = true;
@@ -96,7 +80,6 @@ export function WordQuickSheet({
   }, [onClose, onOpenFullStudy]);
 
   const locationLabel = event ? `${event.verseKey}:${event.wordPosition}` : '';
-  const sheetBg = palette.background;
   const scrollRef = React.useRef<ScrollView>(null);
 
   React.useEffect(() => {
@@ -106,123 +89,102 @@ export function WordQuickSheet({
   }, [isOpen, locationLabel]);
 
   return (
-    <PortalOverlay
-      visible={visible}
-      onShow={handleModalShow}
-      onRequestClose={onClose}
+    <BottomSheet
+      isOpen={isOpen}
+      onClose={onClose}
+      height={sheetHeight}
+      backgroundColor={palette.background}
+      onShow={onPresented}
     >
-      <View style={styles.root}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={handleOverlayPress}>
-          <Animated.View style={[styles.overlay, modalBackdropStyle(progress, isDark)]} />
-        </Pressable>
-
-        <Animated.View
-          accessibilityViewIsModal
-          style={[
-            styles.sheet,
-            {
-              height: sheetHeight,
-              minHeight: sheetHeight,
-              maxHeight: sheetHeight,
-              backgroundColor: sheetBg,
-              borderColor: palette.border,
-            },
-            verticalSheetTransform(progress, sheetHeight),
-          ]}
+      <View style={[styles.header, { borderBottomColor: palette.border }]}>
+        <View style={styles.headerCopy}>
+          <Text numberOfLines={1} style={[styles.title, { color: palette.text }]}>
+            {surahName} · Word Study
+          </Text>
+          <Text style={[styles.location, { color: palette.tint }]}>{locationLabel}</Text>
+        </View>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Close Word Study"
+          hitSlop={10}
+          onPress={onClose}
+          style={({ pressed }) => [styles.iconButton, { opacity: pressed ? 0.65 : 1 }]}
         >
-          <SafeAreaView edges={['bottom']} style={[styles.safeArea, { backgroundColor: sheetBg }]}>
-            <View style={[styles.header, { borderBottomColor: palette.border }]}>
-              <View style={styles.headerCopy}>
-                <Text numberOfLines={1} style={[styles.title, { color: palette.text }]}>
-                  {surahName} · Word Study
-                </Text>
-                <Text style={[styles.location, { color: palette.tint }]}>{locationLabel}</Text>
-              </View>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Close Word Study"
-                hitSlop={10}
-                onPress={onClose}
-                style={({ pressed }) => [styles.iconButton, { opacity: pressed ? 0.65 : 1 }]}
-              >
-                <X color={palette.muted} size={20} strokeWidth={2.25} />
-              </Pressable>
-            </View>
-
-            <ScrollView
-              ref={scrollRef}
-              style={styles.scrollBody}
-              contentContainerStyle={styles.scrollContent}
-              showsVerticalScrollIndicator
-              bounces={false}
-              overScrollMode="never"
-            >
-              {loadState.status === 'loading' ? (
-                <WordQuickSheetSkeleton palette={palette} optimisticSurface={event?.surfaceText} />
-              ) : loadState.status === 'error' && loadState.needsDownload ? (
-                <CoreStudyPackDownloadPanel
-                  palette={palette}
-                  onInstalled={onRetry}
-                />
-              ) : loadState.status === 'error' ? (
-                <MessageState
-                  palette={palette}
-                  title="Couldn’t load Word Study"
-                  message={loadState.message}
-                  actionLabel="Retry"
-                  onAction={onRetry}
-                />
-              ) : loadState.status === 'missing' ? (
-                <MessageState
-                  palette={palette}
-                  title="Analysis unavailable"
-                  message={describeMissingReason(loadState.result.reason)}
-                  actionLabel="Retry"
-                  onAction={onRetry}
-                />
-              ) : (
-                <AnalysisContent
-                  analysis={loadState.analysis}
-                  palette={palette}
-                />
-              )}
-
-              <View style={[styles.actionsCard, { backgroundColor: palette.surfaceNavigation }]}>
-                <SecondaryAction
-                  icon={<Volume2 color={palette.tint} size={20} strokeWidth={2.2} />}
-                  label="Play"
-                  accessibilityLabel="Play word audio"
-                  onPress={onPlayWord}
-                  palette={palette}
-                />
-                <SecondaryAction
-                  icon={<Bookmark color={palette.muted} size={20} strokeWidth={2.2} />}
-                  label="Save"
-                  accessibilityLabel="Save word"
-                  palette={palette}
-                  disabled
-                />
-                <SecondaryAction
-                  icon={<Play color={palette.tint} size={20} strokeWidth={2.2} />}
-                  label="Continue"
-                  accessibilityLabel="Play verse from this word"
-                  onPress={onPlayVerseFromHere}
-                  palette={palette}
-                />
-                <SecondaryAction
-                  icon={<BookOpenText color={palette.tint} size={20} strokeWidth={2.2} />}
-                  label="More"
-                  accessibilityLabel={`Open full word study for ${locationLabel}`}
-                  onPress={handleOpenFullStudy}
-                  palette={palette}
-                  last
-                />
-              </View>
-            </ScrollView>
-          </SafeAreaView>
-        </Animated.View>
+          <X color={palette.muted} size={20} strokeWidth={2.25} />
+        </Pressable>
       </View>
-    </PortalOverlay>
+
+      <ScrollView
+        ref={scrollRef}
+        style={styles.scrollBody}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator
+        bounces={false}
+        overScrollMode="never"
+      >
+        {loadState.status === 'loading' ? (
+          <WordQuickSheetSkeleton palette={palette} optimisticSurface={event?.surfaceText} />
+        ) : loadState.status === 'error' && loadState.needsDownload ? (
+          <CoreStudyPackDownloadPanel
+            palette={palette}
+            onInstalled={onRetry}
+          />
+        ) : loadState.status === 'error' ? (
+          <MessageState
+            palette={palette}
+            title="Couldn’t load Word Study"
+            message={loadState.message}
+            actionLabel="Retry"
+            onAction={onRetry}
+          />
+        ) : loadState.status === 'missing' ? (
+          <MessageState
+            palette={palette}
+            title="Analysis unavailable"
+            message={describeMissingReason(loadState.result.reason)}
+            actionLabel="Retry"
+            onAction={onRetry}
+          />
+        ) : (
+          <AnalysisContent
+            analysis={loadState.analysis}
+            palette={palette}
+          />
+        )}
+
+        <View style={[styles.actionsCard, { backgroundColor: palette.surfaceNavigation }]}>
+          <SecondaryAction
+            icon={<Volume2 color={palette.tint} size={20} strokeWidth={2.2} />}
+            label="Play"
+            accessibilityLabel="Play word audio"
+            onPress={onPlayWord}
+            palette={palette}
+          />
+          <SecondaryAction
+            icon={<Bookmark color={palette.muted} size={20} strokeWidth={2.2} />}
+            label="Save"
+            accessibilityLabel="Save word"
+            palette={palette}
+            disabled
+          />
+          <SecondaryAction
+            icon={<Play color={palette.tint} size={20} strokeWidth={2.2} />}
+            label="Continue"
+            accessibilityLabel="Play verse from this word"
+            onPress={onPlayVerseFromHere}
+            palette={palette}
+          />
+          <SecondaryAction
+            icon={<BookOpenText color={palette.tint} size={20} strokeWidth={2.2} />}
+            label="More"
+            accessibilityLabel={`Open full word study for ${locationLabel}`}
+            onPress={handleOpenFullStudy}
+            palette={palette}
+            last
+          />
+        </View>
+      </ScrollView>
+    </BottomSheet>
   );
 }
 
@@ -266,7 +228,11 @@ function AnalysisContent({
                   ) : null}
                 </>
               ) : (
-                <ActivityIndicator accessibilityLabel="Loading word meaning" color={palette.tint} />
+                // A plain bar, not ActivityIndicator: creating Android's ProgressBar view took
+                // ~31 ms on the UI thread on a budget phone, stalling the sheet's slide.
+                <View accessible accessibilityLabel="Loading word meaning">
+                  <SkeletonBar width="75%" height={22} palette={palette} />
+                </View>
               )}
             </View>
           </View>
@@ -468,18 +434,6 @@ function SkeletonBar({
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, justifyContent: 'flex-end' },
-  overlay: { flex: 1 },
-  sheet: {
-    width: '100%',
-    maxWidth: 640,
-    alignSelf: 'center',
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    overflow: 'hidden',
-  },
-  safeArea: { flex: 1 },
   header: { minHeight: 68, paddingHorizontal: 20, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: 'row', alignItems: 'center', gap: 12 },
   headerCopy: { flex: 1, gap: 3 },
   title: { fontSize: 16, fontWeight: '700' },

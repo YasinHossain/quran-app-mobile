@@ -1,17 +1,8 @@
 import { SlidersHorizontal, Trash2, X } from 'lucide-react-native';
 import React from 'react';
-import {
-  Animated,
-  Pressable,
-  StyleSheet,
-  Text,
-  useWindowDimensions,
-  View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Pressable, Text, useWindowDimensions, View } from 'react-native';
 
-import { modalBackdropStyle, modalMotion, useModalTransition, verticalSheetTransform } from '@/components/motion/modalTransition';
-import { PortalOverlay } from '@/components/motion/PortalOverlay';
+import { BottomSheet } from '@/components/motion/BottomSheet';
 import Colors from '@/constants/Colors';
 import { useAppTheme } from '@/providers/ThemeContext';
 import { useUiTranslation } from '@/providers/UiLanguageContext';
@@ -40,33 +31,23 @@ export function FolderActionsSheet({
   const [instantClose, setInstantClose] = React.useState(false);
 
   React.useEffect(() => {
-    if (isOpen) {
-      pendingActionRef.current = null;
-      setInstantClose(false);
-    }
+    if (isOpen) pendingActionRef.current = null;
   }, [isOpen]);
 
-  const { visible, progress, dismissEnabledRef, onModalShow } = useModalTransition(isOpen, {
-    preset: 'sheet',
-    closeDuration: instantClose ? 0 : modalMotion.sheet.closeDuration,
-    onAfterClose: () => {
-      if (pendingActionRef.current) {
-        const action = pendingActionRef.current;
-        pendingActionRef.current = null;
-        requestAnimationFrame(() => {
-          action();
-        });
-      }
-      onAfterClose?.();
-    },
-  });
+  // Reset after the sheet is hidden, so opening never triggers a re-render mid-slide.
+  const handleAfterClose = React.useCallback(() => {
+    setInstantClose(false);
+    const action = pendingActionRef.current;
+    if (action) {
+      pendingActionRef.current = null;
+      requestAnimationFrame(() => {
+        action();
+      });
+    }
+    onAfterClose?.();
+  }, [onAfterClose]);
 
   const maxSheetHeight = Math.max(0, Math.round(windowHeight * 0.56));
-
-  const handleOverlayPress = React.useCallback(() => {
-    if (!dismissEnabledRef.current) return;
-    onClose();
-  }, [dismissEnabledRef, onClose]);
 
   const handleDeferredAction = React.useCallback(
     (fn: () => void) => {
@@ -78,80 +59,61 @@ export function FolderActionsSheet({
   );
 
   return (
-    <PortalOverlay
-      visible={visible}
-      onShow={onModalShow}
-      onRequestClose={onClose}
+    <BottomSheet
+      isOpen={isOpen}
+      onClose={onClose}
+      maxHeight={maxSheetHeight}
+      closeDuration={instantClose ? 0 : undefined}
+      onAfterClose={handleAfterClose}
     >
-      <View className={isDark ? 'dark' : ''} style={styles.root}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={handleOverlayPress}>
-          <Animated.View style={[styles.overlay, modalBackdropStyle(progress, isDark)]} />
-        </Pressable>
+      <View className={isDark ? 'dark' : ''}>
+        <View className="flex-row items-center justify-between px-4 pt-4 pb-2">
+          <View className="flex-1 pr-3">
+            <Text
+              numberOfLines={1}
+              className="text-base font-semibold text-foreground dark:text-foreground-dark"
+            >
+              {folderName}
+            </Text>
+            <Text className="text-xs text-muted dark:text-muted-dark">{t('folder_options')}</Text>
+          </View>
+          <Pressable
+            onPress={onClose}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel={t('close')}
+            style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
+            className="p-2 rounded-full"
+          >
+            <X size={18} strokeWidth={2.25} color={palette.muted} />
+          </Pressable>
+        </View>
 
-        <Animated.View
-          style={[
-            styles.sheet,
-            {
-              maxHeight: maxSheetHeight,
-              backgroundColor: isDark ? palette.background : palette.surface,
-              borderColor: palette.border,
-            },
-            verticalSheetTransform(progress, Math.max(260, Math.round(windowHeight * 0.38))),
-          ]}
-          className="border"
-        >
-          <SafeAreaView edges={['bottom']} style={styles.safeArea}>
-            <View className={isDark ? 'dark' : ''} style={styles.inner}>
-              <View className="flex-row items-center justify-between px-4 pt-4 pb-2">
-                <View className="flex-1 pr-3">
-                  <Text
-                    numberOfLines={1}
-                    className="text-base font-semibold text-foreground dark:text-foreground-dark"
-                  >
-                    {folderName}
-                  </Text>
-                  <Text className="text-xs text-muted dark:text-muted-dark">{t('folder_options')}</Text>
-                </View>
-                <Pressable
-                  onPress={onClose}
-                  hitSlop={10}
-                  accessibilityRole="button"
-                  accessibilityLabel={t('close')}
-                  style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
-                  className="p-2 rounded-full"
-                >
-                  <X size={18} strokeWidth={2.25} color={palette.muted} />
-                </Pressable>
-              </View>
-
-              <View className="px-4 pt-2 pb-4">
-                <View>
-                  <ActionRow
-                    icon={<SlidersHorizontal color={palette.muted} size={20} strokeWidth={2.25} />}
-                    label={t('edit_folder')}
-                    onPress={() => handleDeferredAction(onEdit)}
-                    accessibilityLabel={t('edit_folder')}
-                  />
-                  <ActionRow
-                    icon={
-                      <Trash2
-                        color={isDark ? '#F87171' : '#DC2626'}
-                        size={20}
-                        strokeWidth={2.25}
-                      />
-                    }
-                    label={t('delete_folder')}
-                    onPress={() => handleDeferredAction(onDelete)}
-                    accessibilityLabel={t('delete_folder')}
-                    destructive
-                  />
-                </View>
-              </View>
-            </View>
-          </SafeAreaView>
-        </Animated.View>
+        <View className="px-4 pt-2 pb-4">
+          <View>
+            <ActionRow
+              icon={<SlidersHorizontal color={palette.muted} size={20} strokeWidth={2.25} />}
+              label={t('edit_folder')}
+              onPress={() => handleDeferredAction(onEdit)}
+              accessibilityLabel={t('edit_folder')}
+            />
+            <ActionRow
+              icon={
+                <Trash2
+                  color={isDark ? '#F87171' : '#DC2626'}
+                  size={20}
+                  strokeWidth={2.25}
+                />
+              }
+              label={t('delete_folder')}
+              onPress={() => handleDeferredAction(onDelete)}
+              accessibilityLabel={t('delete_folder')}
+              destructive
+            />
+          </View>
+        </View>
       </View>
-    </PortalOverlay>
+    </BottomSheet>
   );
 }
 
@@ -191,25 +153,3 @@ function ActionRow({
     </Pressable>
   );
 }
-
-const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  overlay: {
-    flex: 1,
-  },
-  sheet: {
-    width: '100%',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    overflow: 'hidden',
-  },
-  safeArea: {
-    width: '100%',
-  },
-  inner: {
-    width: '100%',
-  },
-});

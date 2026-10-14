@@ -27,6 +27,10 @@ import { useAppTheme } from '@/providers/ThemeContext';
 import { getDownloadKey } from '@/src/core/domain/entities/DownloadIndexItem';
 import { getQdcAudioFile } from '@/src/core/infrastructure/audio/qdcAudio';
 import { container } from '@/src/core/infrastructure/di/container';
+import {
+  mapWithConcurrency,
+  MAX_CONCURRENT_DOWNLOADS,
+} from '@/src/core/infrastructure/downloads/downloadConcurrency';
 import type { Chapter } from '@/types';
 
 type DownloadRange = {
@@ -340,9 +344,8 @@ export function AudioDownloadModal({
     const failures: Array<{ surahId: number; message: string }> = [];
 
     try {
-      for (let index = 0; index < surahIds.length; index += 1) {
-        const surahId = surahIds[index];
-
+      let completed = 0;
+      await mapWithConcurrency(surahIds, MAX_CONCURRENT_DOWNLOADS, async (surahId) => {
         try {
           const chapter = chapterLookup[surahId];
           const startVerseNumber = normalizedSelection
@@ -387,9 +390,10 @@ export function AudioDownloadModal({
             message: error instanceof Error ? error.message : String(error),
           });
         } finally {
-          setQueueProgress({ completed: index + 1, total: surahIds.length });
+          completed += 1;
+          setQueueProgress({ completed, total: surahIds.length });
         }
-      }
+      });
     } finally {
       setDownloadBusy(false);
       refreshDownloadIndex();

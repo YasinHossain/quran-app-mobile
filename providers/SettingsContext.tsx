@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useEffect, useMemo } from 'react';
 
 import { useDownloadIndexItems } from '@/hooks/useDownloadIndexItems';
+import { normalizeWordLanguageCode } from '@/lib/i18n/wordLanguages';
+import { resolveWordByWordAvailability } from '@/lib/reader/wordByWordAvailability';
 import { syncAndroidVerseSpotlightWidget } from '@/lib/verse-spotlight/androidWidgetSync';
 import { usePersistentSettings } from '@/providers/hooks/usePersistentSettings';
 import { ARABIC_FONTS } from '@/providers/settingsStorage';
@@ -65,6 +67,7 @@ const createSetters = (
 
 interface SettingsContextType {
   settings: Settings;
+  effectiveShowByWords: boolean;
   isHydrated: boolean;
   arabicFonts: { name: string; value: string; category: string }[];
   setSettings: (settings: Settings) => void;
@@ -93,6 +96,7 @@ export const SettingsProvider = ({ children }: { children: React.ReactNode }): R
   const setters = useMemo(() => createSetters(dispatch), [dispatch]);
   const selectedTafsirIds = settings.tafsirIds ?? [];
   const selectedTafsirIdsKey = useMemo(() => selectedTafsirIds.join(','), [selectedTafsirIds]);
+  const selectedWordLanguageCode = normalizeWordLanguageCode(settings.wordLang);
   const [verifiedTafsirSelectionKey, setVerifiedTafsirSelectionKey] = React.useState('');
   const requestedTranslationId = Array.isArray(settings.translationIds)
     ? (settings.translationIds[0] ?? null)
@@ -103,13 +107,33 @@ export const SettingsProvider = ({ children }: { children: React.ReactNode }): R
     errorMessage: downloadIndexErrorMessage,
     refresh: refreshDownloadIndex,
   } = useDownloadIndexItems({
-    enabled: isHydrated && selectedTafsirIds.length > 0,
+    enabled: isHydrated && (selectedTafsirIds.length > 0 || settings.showByWords),
     pollIntervalMs: 0,
+  });
+  const selectedWordPack = downloadItemsByKey.get(getDownloadKey({
+    kind: 'word-translation',
+    languageCode: selectedWordLanguageCode,
+  }));
+  const wordByWordAvailability = resolveWordByWordAvailability({
+    requested: settings.showByWords,
+    isLoading: isDownloadIndexLoading,
+    hasIndexError: Boolean(downloadIndexErrorMessage),
+    packStatus: selectedWordPack?.status,
   });
 
   useEffect(() => {
     void loadArabicSupportFontsAsync(settings.arabicFontFace);
   }, [settings.arabicFontFace]);
+
+  useEffect(() => {
+    if (!isHydrated) return;
+    if (!wordByWordAvailability.shouldDisablePersistedPreference) return;
+    dispatch({ type: 'SET_SHOW_BY_WORDS', value: false });
+  }, [
+    dispatch,
+    isHydrated,
+    wordByWordAvailability.shouldDisablePersistedPreference,
+  ]);
 
   useEffect(() => {
     if (!isHydrated) return;
@@ -183,11 +207,12 @@ export const SettingsProvider = ({ children }: { children: React.ReactNode }): R
   const contextValue = useMemo<SettingsContextType>(
     () => ({
       settings,
+      effectiveShowByWords: wordByWordAvailability.effectiveEnabled,
       isHydrated,
       arabicFonts: [...ARABIC_FONTS],
       ...setters,
     }),
-    [settings, setters, isHydrated]
+    [settings, setters, isHydrated, wordByWordAvailability.effectiveEnabled]
   );
 
   return <SettingsContext.Provider value={contextValue}>{children}</SettingsContext.Provider>;

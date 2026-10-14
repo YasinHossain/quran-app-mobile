@@ -1,10 +1,7 @@
 import { BookOpen, ExternalLink, Info, X } from 'lucide-react-native';
 import React from 'react';
 import {
-  Animated,
   Linking,
-  Modal,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -12,9 +9,8 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { modalBackdropStyle, useModalTransition, verticalSheetTransform } from '@/components/motion/modalTransition';
+import { BottomSheet } from '@/components/motion/BottomSheet';
 import Colors from '@/constants/Colors';
 import { useAppTheme } from '@/providers/ThemeContext';
 import type { DictionarySource } from '@/src/core/domain/word-study';
@@ -29,133 +25,94 @@ export function DictionaryGuideSheet({
   source?: DictionarySource;
 }): React.JSX.Element {
   const { height: windowHeight } = useWindowDimensions();
-  const { resolvedTheme, isDark } = useAppTheme();
+  const { resolvedTheme } = useAppTheme();
   const palette = Colors[resolvedTheme];
-  const { visible, progress, dismissEnabledRef, onModalShow } = useModalTransition(isOpen, {
-    preset: 'sheet',
-  });
   const maxSheetHeight = Math.max(0, Math.round(windowHeight * 0.9));
   const sheetHeight = Math.min(maxSheetHeight, Math.max(480, Math.round(windowHeight * 0.78)));
 
-  const handleOverlayPress = React.useCallback(() => {
-    if (dismissEnabledRef.current) onClose();
-  }, [dismissEnabledRef, onClose]);
-
   return (
-    <Modal
-      hardwareAccelerated
-      transparent
-      visible={visible}
-      animationType="none"
-      onShow={onModalShow}
-      onRequestClose={onClose}
-      statusBarTranslucent
-      {...(Platform.OS === 'ios' ? { presentationStyle: 'overFullScreen' as const } : {})}
+    <BottomSheet
+      isOpen={isOpen}
+      onClose={onClose}
+      height={sheetHeight}
+      accessibilityLabel="About dictionary results"
+      backdropAccessibilityLabel="Close dictionary information"
     >
-      <View style={styles.root} className={isDark ? 'dark' : ''}>
+      <View style={[styles.handle, { backgroundColor: palette.border }]} />
+      <View style={[styles.header, { borderBottomColor: palette.border }]}>
+        <View style={[styles.headerIcon, { backgroundColor: palette.interactive }]}>
+          <Info color={palette.tint} size={20} strokeWidth={2.2} />
+        </View>
+        <View style={styles.headerCopy}>
+          <Text style={[styles.title, { color: palette.text }]}>About dictionary results</Text>
+          <Text style={[styles.subtitle, { color: palette.muted }]}>How the selected word, lemma, and root are connected.</Text>
+        </View>
         <Pressable
-          accessibilityLabel="Close dictionary information"
           accessibilityRole="button"
-          style={StyleSheet.absoluteFill}
-          onPress={handleOverlayPress}
+          accessibilityLabel="Close dictionary information"
+          hitSlop={10}
+          onPress={onClose}
+          style={styles.closeButton}
         >
-          <Animated.View style={[styles.overlay, modalBackdropStyle(progress, isDark)]} />
+          <X color={palette.muted} size={20} strokeWidth={2.25} />
         </Pressable>
-
-        <Animated.View
-          accessibilityViewIsModal
-          accessibilityLabel="About dictionary results"
-          style={[
-            styles.sheet,
-            {
-              height: sheetHeight,
-              minHeight: sheetHeight,
-              maxHeight: maxSheetHeight,
-              backgroundColor: isDark ? palette.background : palette.surface,
-              borderColor: palette.border,
-            },
-            verticalSheetTransform(progress, Math.max(500, sheetHeight)),
-          ]}
-        >
-          <SafeAreaView edges={['bottom']} style={styles.safeArea}>
-            <View style={[styles.handle, { backgroundColor: palette.border }]} />
-            <View style={[styles.header, { borderBottomColor: palette.border }]}>
-              <View style={[styles.headerIcon, { backgroundColor: palette.interactive }]}>
-                <Info color={palette.tint} size={20} strokeWidth={2.2} />
-              </View>
-              <View style={styles.headerCopy}>
-                <Text style={[styles.title, { color: palette.text }]}>About dictionary results</Text>
-                <Text style={[styles.subtitle, { color: palette.muted }]}>How the selected word, lemma, and root are connected.</Text>
-              </View>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Close dictionary information"
-                hitSlop={10}
-                onPress={onClose}
-                style={styles.closeButton}
-              >
-                <X color={palette.muted} size={20} strokeWidth={2.25} />
-              </Pressable>
-            </View>
-
-            <ScrollView
-              style={styles.scroll}
-              contentContainerStyle={styles.content}
-              showsVerticalScrollIndicator={false}
-            >
-              <View style={[styles.pathCard, { backgroundColor: palette.interactive }]}>
-                <PathStep label="Selected Quran word" detail="The form encountered in this ayah" palette={palette} />
-                <PathConnector color={palette.border} />
-                <PathStep label="Lemma" detail="The dictionary form of the selected word" palette={palette} />
-                <PathConnector color={palette.border} />
-                <PathStep label="Root" detail="The broader Arabic word family" palette={palette} />
-                <PathConnector color={palette.border} />
-                <PathStep label="Related headwords" detail="Other dictionary entries under that root" palette={palette} />
-              </View>
-
-              <GuideGroup
-                title="Best match for this word"
-                body="An exact lemma match is the closest dictionary headword available. A headword can still contain several senses, so it is not automatically the meaning intended in this ayah."
-                palette={palette}
-              />
-              <GuideGroup
-                title="Root dictionary entry"
-                body="The root entry describes the broad semantic family. When no exact lemma is available, it is shown as a useful fallback—not as an exact contextual definition."
-                palette={palette}
-              />
-              <GuideGroup
-                title="Related dictionary headwords"
-                body="These are sibling and derived entries organized under the same root by the selected dictionary. They are different from the Quran occurrence family shown in the Occurrences tab."
-                palette={palette}
-              />
-              <GuideGroup
-                title="Choosing a source"
-                body="Lane is a detailed classical Arabic reference. Hans Wehr is a more concise reference for modern written Arabic. Their organization and coverage differ, so one source may have an exact headword when the other does not."
-                palette={palette}
-              />
-
-              {source ? (
-                <Pressable
-                  accessibilityRole="link"
-                  accessibilityLabel={`Open source page for ${source.title}`}
-                  onPress={() => void Linking.openURL(source.url)}
-                  style={[styles.sourceCard, { borderColor: palette.border, backgroundColor: palette.surfaceNavigation }]}
-                >
-                  <BookOpen color={palette.tint} size={21} strokeWidth={2.1} />
-                  <View style={styles.sourceCopy}>
-                    <Text style={[styles.sourceLabel, { color: palette.tint }]}>SELECTED SOURCE</Text>
-                    <Text style={[styles.sourceTitle, { color: palette.text }]}>{source.title}</Text>
-                    <Text style={[styles.sourceMeta, { color: palette.muted }]}>English · version {source.version}</Text>
-                    <Text style={[styles.sourceAttribution, { color: palette.muted }]}>{source.attribution}</Text>
-                  </View>
-                  <ExternalLink color={palette.tint} size={18} />
-                </Pressable>
-              ) : null}
-            </ScrollView>
-          </SafeAreaView>
-        </Animated.View>
       </View>
-    </Modal>
+
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={[styles.pathCard, { backgroundColor: palette.interactive }]}>
+          <PathStep label="Selected Quran word" detail="The form encountered in this ayah" palette={palette} />
+          <PathConnector color={palette.border} />
+          <PathStep label="Lemma" detail="The dictionary form of the selected word" palette={palette} />
+          <PathConnector color={palette.border} />
+          <PathStep label="Root" detail="The broader Arabic word family" palette={palette} />
+          <PathConnector color={palette.border} />
+          <PathStep label="Related headwords" detail="Other dictionary entries under that root" palette={palette} />
+        </View>
+
+        <GuideGroup
+          title="Best match for this word"
+          body="An exact lemma match is the closest dictionary headword available. A headword can still contain several senses, so it is not automatically the meaning intended in this ayah."
+          palette={palette}
+        />
+        <GuideGroup
+          title="Root dictionary entry"
+          body="The root entry describes the broad semantic family. When no exact lemma is available, it is shown as a useful fallback—not as an exact contextual definition."
+          palette={palette}
+        />
+        <GuideGroup
+          title="Related dictionary headwords"
+          body="These are sibling and derived entries organized under the same root by the selected dictionary. They are different from the Quran occurrence family shown in the Occurrences tab."
+          palette={palette}
+        />
+        <GuideGroup
+          title="Choosing a source"
+          body="Lane is a detailed classical Arabic reference. Hans Wehr is a more concise reference for modern written Arabic. Their organization and coverage differ, so one source may have an exact headword when the other does not."
+          palette={palette}
+        />
+
+        {source ? (
+          <Pressable
+            accessibilityRole="link"
+            accessibilityLabel={`Open source page for ${source.title}`}
+            onPress={() => void Linking.openURL(source.url)}
+            style={[styles.sourceCard, { borderColor: palette.border, backgroundColor: palette.surfaceNavigation }]}
+          >
+            <BookOpen color={palette.tint} size={21} strokeWidth={2.1} />
+            <View style={styles.sourceCopy}>
+              <Text style={[styles.sourceLabel, { color: palette.tint }]}>SELECTED SOURCE</Text>
+              <Text style={[styles.sourceTitle, { color: palette.text }]}>{source.title}</Text>
+              <Text style={[styles.sourceMeta, { color: palette.muted }]}>English · version {source.version}</Text>
+              <Text style={[styles.sourceAttribution, { color: palette.muted }]}>{source.attribution}</Text>
+            </View>
+            <ExternalLink color={palette.tint} size={18} />
+          </Pressable>
+        ) : null}
+      </ScrollView>
+    </BottomSheet>
   );
 }
 

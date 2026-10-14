@@ -224,7 +224,11 @@ export class HostedTranslationPackRepository implements ITranslationPackReposito
     }
 
     const resolved = await this.getResolvedPack(translationId);
-    if (!resolved) return false;
+    if (!resolved) {
+      throw new Error(
+        `Translation ${translationId} is not available on the configured download host. API fallback is disabled.`
+      );
+    }
 
     params.assertNotCanceled?.();
 

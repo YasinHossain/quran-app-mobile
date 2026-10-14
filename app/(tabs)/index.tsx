@@ -221,6 +221,7 @@ function HomeSearchHeader({
           </HeaderActionButton>
 
           <PortalOverlay
+            keepMounted
             visible={visible}
             onShow={onModalShow}
             onRequestClose={closeMenu}
@@ -236,8 +237,8 @@ function HomeSearchHeader({
               </Pressable>
 
               <Animated.View
-                renderToHardwareTextureAndroid
-                shouldRasterizeIOS
+                renderToHardwareTextureAndroid={visible}
+                shouldRasterizeIOS={visible}
                 style={[
                   styles.menuSheet,
                   {
@@ -935,7 +936,8 @@ export default function ReadScreen(): React.JSX.Element {
   );
 
   return (
-    <View className="flex-1" style={{ backgroundColor: palette.background }}>
+    // The tab scene already paints the page background.
+    <View className="flex-1">
       <HomeSearchHeader
         headerSearchInputRef={headerSearch.inputRef}
         headerSearchQuery={headerSearch.query}
@@ -947,10 +949,7 @@ export default function ReadScreen(): React.JSX.Element {
         }}
       />
 
-      <View
-        className="flex-1"
-        style={{ backgroundColor: palette.background }}
-      >
+      <View className="flex-1">
         {Platform.OS === 'android' ? (
           <NativeHomeIndex
             ref={nativeListRef}

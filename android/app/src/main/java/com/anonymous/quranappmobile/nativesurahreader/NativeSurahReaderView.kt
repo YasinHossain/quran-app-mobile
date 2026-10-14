@@ -13,6 +13,8 @@ import com.facebook.react.bridge.WritableMap
 import com.facebook.react.uimanager.ThemedReactContext
 import com.facebook.react.uimanager.UIManagerHelper
 import com.facebook.react.uimanager.events.EventDispatcher
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 
 class NativeSurahReaderView(private val reactContext: ThemedReactContext) : FrameLayout(reactContext) {
   private data class ScrollAnchor(
@@ -27,6 +29,7 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
 
   private val verses = mutableListOf<NativeVerse>()
   private val verseModelCache = NativeVerseModelCache()
+  private val repository = NativeSurahReaderRepository(reactContext)
   private val layoutManager = LinearLayoutManager(reactContext)
   private var currentWordPressSource: String = "translation"
   private val adapter =
@@ -44,6 +47,20 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
                       "translationTexts",
                       Arguments.createArray().apply {
                         verse.translationItems.forEach { pushString(it.text) }
+                      },
+                  )
+                  putArray(
+                      "translationItems",
+                      Arguments.createArray().apply {
+                        verse.translationItems.forEach { item ->
+                          pushMap(
+                              Arguments.createMap().apply {
+                                item.resourceId?.let { putInt("resourceId", it) }
+                                item.resourceName?.let { putString("resourceName", it) }
+                                putString("text", item.text)
+                              },
+                          )
+                        }
                       },
                   )
                 },
@@ -79,7 +96,8 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
         clipToPadding = false
         isVerticalScrollBarEnabled = false
         overScrollMode = View.OVER_SCROLL_NEVER
-        setBackgroundColor(Color.rgb(248, 250, 252))
+        // No background here or on the reader view: the React screen behind already paints the
+        // same theme color, and each extra full-screen fill costs GPU time on every frame.
         addOnScrollListener(
             object : RecyclerView.OnScrollListener() {
               override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
@@ -111,6 +129,12 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
   private var isActiveAudioRedrawScheduled = false
   private var pendingActiveAudioFollowVerseKey: String? = null
   private var isActiveAudioFollowScheduled = false
+  private var nativeLoadGeneration = 0
+  private var nativeLoadKey: String? = null
+  private var isDisposed = false
+  private var latestOfflineSettings: NativeReaderSettings? = null
+  private var latestOfflineTheme: NativeReaderTheme? = null
+  private var latestOfflineSurahIntro: NativeSurahIntro? = null
 
   init {
     recyclerView.alpha = 0f
@@ -146,17 +170,28 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
   fun setReaderState(readerState: ReadableMap?) {
     if (readerState == null) return
 
+    if (!readerState.hasKey("verses")) {
+      setOfflineReaderState(readerState)
+      return
+    }
+
     val nextSurahId = readerState.getDoubleIfPresent("surahId")?.toInt()?.takeIf { it > 0 } ?: surahId
     val nextTargetVerse =
         readerState.getDoubleIfPresent("targetVerse")?.toInt()?.takeIf { it > 0 } ?: 1
     val nextSettings = parseSettings(readerState.getMapIfPresent("settings"))
     val nextTheme = NativeReaderTheme.fromReadableMap(readerState.getMapIfPresent("theme"))
     val nextTopInsetPx =
-        readerState.getDoubleIfPresent("topInsetPx")?.toInt()?.coerceAtLeast(0) ?: 0
+        readerState.getDoubleIfPresent("topInsetPx")?.toInt()?.coerceAtLeast(0) ?: topInsetPx
     val nextBottomInsetPx =
-        readerState.getDoubleIfPresent("bottomInsetPx")?.toInt()?.coerceAtLeast(0) ?: 0
+        readerState.getDoubleIfPresent("bottomInsetPx")?.toInt()?.coerceAtLeast(0) ?: bottomInsetPx
+    // Insets and audio may arrive as independent props, in either order within a React update.
+    // An omitted field must preserve those values; explicit null still clears the highlight.
     val nextActiveVerseKey =
-        readerState.getStringIfPresent("activeVerseKey")?.takeIf { it.isNotBlank() }
+        if (readerState.hasKey("activeVerseKey")) {
+          readerState.getStringIfPresent("activeVerseKey")?.takeIf { it.isNotBlank() }
+        } else {
+          adapter.activeVerseKey
+        }
     val nextActiveWord =
         if (readerState.hasKey("activeWord")) {
           readerState.getMapIfPresent("activeWord")?.toNativeActiveWord()
@@ -190,6 +225,7 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
                 nextSettings.contentLanguage.orEmpty(),
                 nextSettings.translationFontSize,
                 nextSettings.translationIds.joinToString(","),
+                nextSettings.translationNames,
                 nextSettings.showByWords,
                 nextSettings.tajweed,
                 nextSettings.audioWordSyncEnabled,
@@ -258,6 +294,128 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
     )
   }
 
+  private fun setOfflineReaderState(readerState: ReadableMap) {
+    val nextSurahId = readerState.getDoubleIfPresent("surahId")?.toInt()?.takeIf { it > 0 } ?: return
+    val nextTargetVerse =
+        readerState.getDoubleIfPresent("targetVerse")?.toInt()?.takeIf { it > 0 } ?: 1
+    val expectedVerseCount =
+        readerState.getDoubleIfPresent("expectedVerseCount")?.toInt()?.coerceAtLeast(0) ?: 0
+    val nextSettings = parseSettings(readerState.getMapIfPresent("settings"))
+    val nextTheme = NativeReaderTheme.fromReadableMap(readerState.getMapIfPresent("theme"))
+    val nextSurahIntro = readerState.getMapIfPresent("surahIntro")?.toNativeSurahIntro()
+    latestOfflineSettings = nextSettings
+    latestOfflineTheme = nextTheme
+    latestOfflineSurahIntro = nextSurahIntro
+    val nextLoadKey =
+        listOf(
+                nextSurahId,
+                expectedVerseCount,
+                nextSettings.translationIds.joinToString(","),
+                nextSettings.translationNames.toSortedMap(),
+                nextSettings.wordLang.orEmpty(),
+                nextSettings.showByWords,
+            )
+            .joinToString(":")
+
+    hasReceivedSettings = true
+    hasReceivedTheme = true
+    val existingLoadKey = nativeLoadKey
+    if (existingLoadKey == nextLoadKey) {
+      if (verses.isNotEmpty()) {
+        applyMountedReaderState(
+            nextSurahId,
+            nextSettings,
+            nextTheme,
+            nextSurahIntro,
+            verses.toList(),
+            topInsetPx,
+            bottomInsetPx,
+        )
+      } else {
+        applySettings(nextSettings)
+        adapter.surahIntro = nextSurahIntro
+        adapter.theme = nextTheme
+      }
+      return
+    }
+
+    nativeLoadKey = nextLoadKey
+    val generation = ++nativeLoadGeneration
+    val visibleVerse =
+        layoutManager.findFirstVisibleItemPosition().let { position ->
+          val index = adapter.verseIndexForAdapterPosition(position)
+          verses.getOrNull(index)?.verseNumber
+        }
+    val placementTarget = visibleVerse ?: nextTargetVerse
+
+    hasReceivedVerses = false
+    hasDispatchedInitialReady = false
+    hasDispatchedInitialPositioned = false
+    isInitialContentVisible = false
+    lastVisibleVerseKey = null
+    recyclerView.alpha = 0f
+    applyReaderModel(
+        nextSurahId,
+        nextSettings,
+        nextTheme,
+        nextSurahIntro,
+        emptyList(),
+        topInsetPx,
+        bottomInsetPx,
+    )
+    adapter.notifyDataSetChanged()
+
+    val request =
+        NativeSurahLoadRequest(
+            surahId = nextSurahId,
+            expectedVerseCount = expectedVerseCount,
+            translationIds = nextSettings.translationIds,
+            translationNames = nextSettings.translationNames,
+            wordLang = nextSettings.wordLang ?: "en",
+            requireWordTranslations = nextSettings.showByWords,
+        )
+    databaseExecutor.execute {
+      val result = repository.load(request)
+      post {
+        if (isDisposed || generation != nativeLoadGeneration || nativeLoadKey != nextLoadKey) {
+          return@post
+        }
+        when (result) {
+          is NativeSurahLoadResult.Success -> {
+            val currentSettings = latestOfflineSettings ?: nextSettings
+            val currentTheme = latestOfflineTheme ?: nextTheme
+            val currentSurahIntro = latestOfflineSurahIntro
+            hasReceivedVerses = true
+            applyInitialReaderState(
+                nextSurahId,
+                placementTarget,
+                currentSettings,
+                currentTheme,
+                currentSurahIntro,
+                result.verses,
+                topInsetPx,
+                bottomInsetPx,
+            )
+          }
+          is NativeSurahLoadResult.Failure -> {
+            dispatchEvent(
+                EVENT_LOAD_ERROR,
+                Arguments.createMap().apply {
+                  putString("code", result.code)
+                  putString("message", result.message)
+                },
+            )
+          }
+        }
+      }
+    }
+  }
+
+  fun dispose() {
+    isDisposed = true
+    nativeLoadGeneration += 1
+  }
+
   fun setSurahIntro(incomingSurahIntro: ReadableMap?) {
     adapter.surahIntro = incomingSurahIntro?.toNativeSurahIntro()
     adapter.notifyDataSetChanged()
@@ -284,6 +442,7 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
         adapter.contentLanguage == nextSettings.contentLanguage &&
         adapter.translationFontSize == nextSettings.translationFontSize &&
         adapter.translationIds == nextSettings.translationIds &&
+        adapter.translationNames == nextSettings.translationNames &&
         adapter.displayMode == nextSettings.displayMode &&
         adapter.showByWords == nextSettings.showByWords &&
         adapter.tajweed == nextSettings.tajweed &&
@@ -333,13 +492,11 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
   }
 
   fun setTopInsetPx(topInsetPx: Float) {
-    this.topInsetPx = topInsetPx.toInt().coerceAtLeast(0)
-    applyRecyclerPadding()
+    applyReaderInsets(topInsetPx.toInt().coerceAtLeast(0), bottomInsetPx)
   }
 
   fun setBottomInsetPx(bottomInsetPx: Float) {
-    this.bottomInsetPx = bottomInsetPx.toInt().coerceAtLeast(0)
-    applyRecyclerPadding()
+    applyReaderInsets(topInsetPx, bottomInsetPx.toInt().coerceAtLeast(0))
   }
 
   fun setTheme(theme: ReadableMap?) {
@@ -349,8 +506,6 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
       completeInitialPlacementIfReady()
       return
     }
-    setBackgroundColor(readerTheme.backgroundColor)
-    recyclerView.setBackgroundColor(readerTheme.backgroundColor)
     fastScroller.setColors(
         readerTheme.backgroundColor,
         readerTheme.textColor,
@@ -456,8 +611,6 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
     surahId = nextSurahId
     adapter.surahId = nextSurahId
     applySettings(nextSettings)
-    setBackgroundColor(nextTheme.backgroundColor)
-    recyclerView.setBackgroundColor(nextTheme.backgroundColor)
     fastScroller.setColors(
         nextTheme.backgroundColor,
         nextTheme.textColor,
@@ -839,6 +992,7 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
     val nextTranslationFontSize =
         settings?.getDoubleIfPresent("translationFontSize")?.toFloat() ?: 16f
     val nextTranslationIds = parsePositiveIntList(settings?.getArrayIfPresent("translationIds"))
+    val nextTranslationNames = parseTranslationNames(settings?.getArrayIfPresent("translationNames"))
     val nextShowByWords = settings?.getBooleanIfPresent("showByWords") ?: false
     val nextAudioWordSyncEnabled =
         settings?.getBooleanIfPresent("audioWordSyncEnabled") ?: false
@@ -864,6 +1018,7 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
         contentLanguage = nextContentLanguage,
         translationFontSize = nextTranslationFontSize,
         translationIds = nextTranslationIds,
+        translationNames = nextTranslationNames,
         displayMode = nextDisplayMode,
         showByWords = nextShowByWords,
         tajweed = nextTajweed,
@@ -881,6 +1036,7 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
     adapter.contentLanguage = settings.contentLanguage
     adapter.translationFontSize = settings.translationFontSize
     adapter.translationIds = settings.translationIds
+    adapter.translationNames = settings.translationNames
     adapter.displayMode = settings.displayMode
     adapter.showByWords = settings.showByWords
     adapter.tajweed = settings.tajweed
@@ -905,6 +1061,18 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
       }
     }
     return ids
+  }
+
+  private fun parseTranslationNames(incoming: ReadableArray?): Map<Int, String> {
+    if (incoming == null) return emptyMap()
+    val names = linkedMapOf<Int, String>()
+    for (index in 0 until incoming.size()) {
+      val item = incoming.getMap(index) ?: continue
+      val id = item.getDoubleIfPresent("id")?.toInt()?.takeIf { it > 0 } ?: continue
+      val name = item.getStringIfPresent("name")?.trim()?.takeIf { it.isNotBlank() } ?: continue
+      names[id] = name
+    }
+    return names
   }
 
   private fun parseVerses(incomingVerses: ReadableArray?): List<NativeVerse> {
@@ -967,5 +1135,7 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
     const val EVENT_VERSE_ACTION_PRESS = "topVerseActionPress"
     const val EVENT_WORD_PRESS = "topWordPress"
     const val EVENT_SCROLL = "topScroll"
+    const val EVENT_LOAD_ERROR = "topLoadError"
+    private val databaseExecutor: ExecutorService = Executors.newFixedThreadPool(2)
   }
 }

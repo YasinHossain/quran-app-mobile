@@ -158,7 +158,7 @@ export function useNativeSurahReaderEvents({
           : undefined;
       const translationTexts =
         loadedVerse?.translationTexts ?? event.nativeEvent.translationTexts ?? [];
-      const translationItems = loadedVerse?.translationItems;
+      const translationItems = loadedVerse?.translationItems ?? event.nativeEvent.translationItems;
       openVerseActions({
         verseKey: event.nativeEvent.verseKey,
         verseApiId: event.nativeEvent.verseApiId ?? loadedVerse?.id,

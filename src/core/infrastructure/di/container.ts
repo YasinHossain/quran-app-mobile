@@ -1,11 +1,13 @@
 import { DownloadIndexRepository } from '@/src/core/infrastructure/repositories/DownloadIndexRepository';
 import { TranslationOfflineStore } from '@/src/core/infrastructure/offline/TranslationOfflineStore';
 import { TafsirOfflineStore } from '@/src/core/infrastructure/offline/TafsirOfflineStore';
-import { QuranComTranslationDownloadRepository } from '@/src/core/infrastructure/repositories/QuranComTranslationDownloadRepository';
-import { QuranComTafsirDownloadRepository } from '@/src/core/infrastructure/repositories/QuranComTafsirDownloadRepository';
 import { TafsirRepository } from '@/src/core/infrastructure/repositories/TafsirRepository';
 import { QuranComChapterVerseKeysRepository } from '@/src/core/infrastructure/repositories/QuranComChapterVerseKeysRepository';
 import { AudioDownloadManager } from '@/src/core/infrastructure/audio/AudioDownloadManager';
+import {
+  HostedOnlyTafsirDownloadRepository,
+  HostedOnlyTranslationDownloadRepository,
+} from '@/src/core/infrastructure/downloads/HostedOnlyDownloadRepositories';
 import { MushafPackInstallRegistry } from '@/src/core/infrastructure/mushaf/MushafPackInstallRegistry';
 import { MushafPackCatalogClient } from '@/src/core/infrastructure/mushaf/MushafPackCatalogClient';
 import { MushafPackFileStore } from '@/src/core/infrastructure/mushaf/MushafPackFileStore';
@@ -53,8 +55,8 @@ const downloadIndexRepository = new DownloadIndexRepository();
 const tafsirRepository = new TafsirRepository();
 const translationOfflineStore = new TranslationOfflineStore();
 const tafsirOfflineStore = new TafsirOfflineStore();
-const translationDownloadRepository = new QuranComTranslationDownloadRepository();
-const tafsirDownloadRepository = new QuranComTafsirDownloadRepository();
+const translationDownloadRepository = new HostedOnlyTranslationDownloadRepository();
+const tafsirDownloadRepository = new HostedOnlyTafsirDownloadRepository();
 const translationPackRepository = new HostedTranslationPackRepository(translationOfflineStore, logger);
 const wordTranslationPackRepository = new HostedWordTranslationPackRepository(
   translationOfflineStore,
@@ -121,9 +123,9 @@ export const container = {
   getTafsirRepository: (): TafsirRepository => tafsirRepository,
   getTranslationOfflineStore: (): TranslationOfflineStore => translationOfflineStore,
   getTafsirOfflineStore: (): TafsirOfflineStore => tafsirOfflineStore,
-  getTranslationDownloadRepository: (): QuranComTranslationDownloadRepository =>
+  getTranslationDownloadRepository: (): HostedOnlyTranslationDownloadRepository =>
     translationDownloadRepository,
-  getTafsirDownloadRepository: (): QuranComTafsirDownloadRepository => tafsirDownloadRepository,
+  getTafsirDownloadRepository: (): HostedOnlyTafsirDownloadRepository => tafsirDownloadRepository,
   getTranslationPackRepository: (): HostedTranslationPackRepository => translationPackRepository,
   getWordTranslationPackRepository: (): HostedWordTranslationPackRepository =>
     wordTranslationPackRepository,

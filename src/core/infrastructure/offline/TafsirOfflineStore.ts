@@ -1,4 +1,4 @@
-import { getAppDbAsync } from '@/src/core/infrastructure/db';
+import { withAppDbWriteTransactionAsync } from '@/src/core/infrastructure/db';
 
 import type {
   ITafsirOfflineStore,
@@ -30,9 +30,7 @@ export class TafsirOfflineStore implements ITafsirOfflineStore {
     const normalizedRows = normalizeRows(rows);
     if (normalizedRows.length === 0) return;
 
-    const db = await getAppDbAsync();
-
-    await db.withTransactionAsync(async () => {
+    await withAppDbWriteTransactionAsync(async (db) => {
       const upsertStmt = await db.prepareAsync(`
         INSERT INTO offline_tafsir(tafsir_id, verse_key, html)
         VALUES (?, ?, ?)
@@ -57,7 +55,8 @@ export class TafsirOfflineStore implements ITafsirOfflineStore {
       throw new Error('tafsirId must be a positive integer');
     }
 
-    const db = await getAppDbAsync();
-    await db.runAsync('DELETE FROM offline_tafsir WHERE tafsir_id = ?', [normalizedTafsirId]);
+    await withAppDbWriteTransactionAsync(async (db) => {
+      await db.runAsync('DELETE FROM offline_tafsir WHERE tafsir_id = ?', [normalizedTafsirId]);
+    });
   }
 }

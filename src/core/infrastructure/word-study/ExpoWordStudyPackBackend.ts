@@ -3,6 +3,8 @@ import { File } from 'expo-file-system';
 import * as FileSystem from 'expo-file-system/legacy';
 import { openDatabaseAsync } from 'expo-sqlite';
 
+import { downloadConcurrencyLimiter } from '@/src/core/infrastructure/downloads/downloadConcurrency';
+
 import type {
   ValidatedInstalledWordStudyPack,
   WordStudyPackLifecycleBackend,
@@ -112,29 +114,31 @@ export class ExpoWordStudyPackBackend implements WordStudyPackLifecycleBackend {
       assertCatalogMatchesManifest(entry, manifest);
       await this.fileStore.writeManifestAsync(staging, manifest);
       if (signal?.aborted) throw new Error('Word-study pack update was cancelled');
-      const download = FileSystem.createDownloadResumable(
-        entry.databaseUrl,
-        `${staging}${manifest.databaseFile}`,
-        {},
-        (progress) => {
-          const expected = progress.totalBytesExpectedToWrite;
-          if (expected > 0) {
-            onProgress?.(
-              Math.max(0, Math.min(99, Math.round((progress.totalBytesWritten / expected) * 100)))
-            );
+      await downloadConcurrencyLimiter.run(async () => {
+        const download = FileSystem.createDownloadResumable(
+          entry.databaseUrl,
+          `${staging}${manifest.databaseFile}`,
+          {},
+          (progress) => {
+            const expected = progress.totalBytesExpectedToWrite;
+            if (expected > 0) {
+              onProgress?.(
+                Math.max(0, Math.min(99, Math.round((progress.totalBytesWritten / expected) * 100)))
+              );
+            }
           }
+        );
+        const cancel = (): void => {
+          void download.cancelAsync().catch(() => undefined);
+        };
+        signal?.addEventListener('abort', cancel, { once: true });
+        try {
+          const result = await download.downloadAsync();
+          if (!result?.uri) throw new Error('Word Study Essentials download was canceled');
+        } finally {
+          signal?.removeEventListener('abort', cancel);
         }
-      );
-      const cancel = (): void => {
-        void download.cancelAsync().catch(() => undefined);
-      };
-      signal?.addEventListener('abort', cancel, { once: true });
-      try {
-        const result = await download.downloadAsync();
-        if (!result?.uri) throw new Error('Word Study Essentials download was canceled');
-      } finally {
-        signal?.removeEventListener('abort', cancel);
-      }
+      }, signal);
       if (signal?.aborted) throw new Error('Word-study pack update was cancelled');
       await this.validateDirectoryAsync(entry.packId, entry.version, staging, manifest, true);
       const destination = await this.fileStore.promoteStagingDirectoryAsync(

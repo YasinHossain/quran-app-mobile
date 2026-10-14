@@ -38,6 +38,7 @@ import {
 } from '../../components/word-study/full-study/ayahContextSelectorModel';
 import {
   OCCURRENCE_PAGE_SIZE,
+  appendOccurrencePage,
   buildOccurrenceQuery,
   buildOccurrenceReaderParams,
   buildRootFamilyLemmaQuery,
@@ -499,6 +500,34 @@ test('occurrence queries remain fixed-size and reader navigation retains the exa
   });
 });
 
+test('viewing more occurrences appends the next batch without duplicating locations', () => {
+  const first = WORD_STUDY_CONTRACT_OCCURRENCE_PAGE;
+  const repeated = first.items[0]!;
+  const additional = {
+    ...repeated,
+    location: toWordStudyLocation({ surah: 4, ayah: 1, wordPosition: 1 }),
+  };
+  const combined = appendOccurrencePage(first, {
+    query: { ...first.query, cursor: first.pageInfo.nextCursor },
+    items: [repeated, additional],
+    pageInfo: {
+      limit: 10,
+      hasNextPage: false,
+      totalCount: first.pageInfo.totalCount,
+    },
+  });
+
+  assert.deepEqual(
+    combined.items.map((occurrence) => occurrence.location.locationKey),
+    [...first.items.map((occurrence) => occurrence.location.locationKey), '4:1:1']
+  );
+  assert.equal(combined.pageInfo.hasNextPage, false);
+  assert.equal(
+    getOccurrencePageLabel(undefined, combined.items.length, combined.pageInfo.totalCount),
+    '1–2 of 2'
+  );
+});
+
 test('occurrence ayah context gives every RTL word its own style run and trailing separator', () => {
   const occurrence = WORD_STUDY_CONTRACT_OCCURRENCE_PAGE.items[0]!;
   const runs = getOccurrenceAyahContextRuns(occurrence);
@@ -729,13 +758,8 @@ test('morphology guide is a scrollable, dismissible, explicitly height-constrain
     'utf8'
   );
   assert.match(source, /useWindowDimensions\(\)/);
-  assert.match(source, /height: sheetHeight/);
-  assert.match(source, /minHeight: sheetHeight/);
-  assert.match(source, /maxHeight: maxSheetHeight/);
-  assert.match(source, /<Modal/);
-  assert.match(source, /onRequestClose=\{onClose\}/);
+  assert.match(source, /<BottomSheet[\s\S]*?onClose=\{onClose\}[\s\S]*?height=\{sheetHeight\}/);
   assert.match(source, /<ScrollView/);
-  assert.match(source, /accessibilityViewIsModal/);
   assert.match(source, /accessibilityLabel="Understanding morphology terms"/);
   assert.match(source, /MORPHOLOGY_GUIDE_GROUPS\.map/);
 });
@@ -957,7 +981,7 @@ test('dictionary UI prioritizes the best match and moves guidance into an inform
   assert.match(guide, /Root dictionary entry/);
   assert.match(guide, /Lane is a detailed classical Arabic reference/);
   assert.match(guide, /source\.attribution/);
-  assert.match(guide, /height: sheetHeight/);
+  assert.match(guide, /height=\{sheetHeight\}/);
 });
 
 test('dictionary pack metadata is immediate while install actions wait for local status', () => {
@@ -1031,7 +1055,7 @@ test('occurrence explorer cancels stale queries, keeps page size bounded, and av
   assert.match(source, /minHeight: resultsHeightFloor/);
   assert.match(source, /requestAnimationFrame/);
   assert.match(source, /onRequestScrollToFilters\?\./);
-  assert.match(source, /const selectScope[\s\S]*?setCursorHistory\(\[\]\);\s*\}, \[\]\);/);
+  assert.match(source, /const selectScope[\s\S]*?setCursor\(undefined\);\s*\}, \[\]\);/);
   assert.match(
     source,
     /filterNavigationRequestId[\s\S]*?scrollToFilters\(\);[\s\S]*?const selectCounter[\s\S]*?selectScope\(counterKey\);\s*setFilterNavigationRequestId/
@@ -1040,6 +1064,10 @@ test('occurrence explorer cancels stale queries, keeps page size bounded, and av
   assert.match(source, /const selectRootFamilyLemma[\s\S]*?setFilterNavigationRequestId/);
   assert.match(source, /current\.status === 'ready'[\s\S]*?refreshing: true/);
   assert.match(source, /accessibilityState=\{\{ busy: isPageRefreshing \}\}/);
+  assert.match(source, /appendOccurrencePage\(current\.page, page\)/);
+  assert.match(source, /label="View more"/);
+  assert.doesNotMatch(source, /label="Previous page"|label="Next page"/);
+  assert.match(source, /loadMoreRow: \{[\s\S]*?justifyContent: 'flex-end'/);
   assert.match(source, /ayahContextUthmani/);
   assert.match(source, /Open in reader/);
   assert.doesNotMatch(source, />Reset</);

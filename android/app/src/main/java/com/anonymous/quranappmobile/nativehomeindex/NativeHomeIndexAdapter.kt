@@ -33,7 +33,7 @@ internal class NativeHomeIndexAdapter(
 
   override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
     when (holder) {
-      is HeaderSpacerHolder -> holder.bind(headerHeightPx, theme.backgroundColor)
+      is HeaderSpacerHolder -> holder.bind(headerHeightPx)
       is RowHolder -> holder.bind(items, (position - 1) * columns, columns, theme)
     }
   }
@@ -53,8 +53,8 @@ internal class NativeHomeIndexAdapter(
 }
 
 private class HeaderSpacerHolder(private val spacer: View) : RecyclerView.ViewHolder(spacer) {
-  fun bind(heightPx: Int, backgroundColor: Int) {
-    spacer.setBackgroundColor(backgroundColor)
+  fun bind(heightPx: Int) {
+    spacer.background = null
     spacer.layoutParams = RecyclerView.LayoutParams(
         ViewGroup.LayoutParams.MATCH_PARENT,
         heightPx.coerceAtLeast(0),

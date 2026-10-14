@@ -38,9 +38,9 @@ const cardShadow = {
       shadowRadius: 6,
       shadowOffset: { width: 0, height: 2 },
     },
-    android: {
-      elevation: 1,
-    },
+    // No Android elevation: the bordered cards slide in with the settings panel, and HWUI
+    // re-renders every card's shadow on each frame of that slide.
+    android: {},
   }),
 };
 
@@ -178,8 +178,9 @@ export function MushafPackOptionCard({
         <View
           className="rounded-md justify-center items-center"
           style={{
+            // The contained image stays inside the padding, so no rounded clip is needed; clipping
+            // would be re-rasterized for every card on each frame of the panel slide.
             backgroundColor: palette.background,
-            overflow: 'hidden',
             paddingHorizontal: 8,
             paddingVertical: 4,
             minHeight: 88,

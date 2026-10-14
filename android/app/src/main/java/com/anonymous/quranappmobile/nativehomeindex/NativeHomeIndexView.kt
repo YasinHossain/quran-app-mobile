@@ -52,7 +52,8 @@ class NativeHomeIndexView(private val reactContext: ThemedReactContext) : FrameL
     isNestedScrollingEnabled = true
     setHasFixedSize(false)
     setItemViewCacheSize(8)
-    setBackgroundColor(theme.backgroundColor)
+    // Transparent: the React screen behind paints the page color. Stacked full-screen fills cost
+    // GPU time on every frame of scrolling and screen transitions.
     addOnScrollListener(object : RecyclerView.OnScrollListener() {
       override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
         updateHeaderOverlay()
@@ -137,7 +138,6 @@ class NativeHomeIndexView(private val reactContext: ThemedReactContext) : FrameL
     if (theme == next) return
     theme = next
     adapter.theme = next
-    recyclerView.setBackgroundColor(next.backgroundColor)
     fastScroller.setTheme(next)
     adapter.notifyItemRangeChanged(0, adapter.itemCount)
     layoutRecyclerViewNow()

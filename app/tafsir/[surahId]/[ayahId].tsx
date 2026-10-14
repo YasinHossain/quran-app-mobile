@@ -1016,7 +1016,11 @@ export default function TafsirScreen(): React.JSX.Element {
   const { resolvedTheme, isDark } = useAppTheme();
   const palette = Colors[resolvedTheme];
   const readerHeader = useCollapsibleReaderHeader();
-  const { settings } = useSettings();
+  const { settings, effectiveShowByWords } = useSettings();
+  const effectiveReaderSettings = React.useMemo(
+    () => ({ ...settings, showByWords: effectiveShowByWords }),
+    [effectiveShowByWords, settings]
+  );
   const audio = useAudioPlayer();
   const { isPinned } = useBookmarks();
   const { chapters } = useChapters();
@@ -1150,8 +1154,8 @@ export default function TafsirScreen(): React.JSX.Element {
     chapterNumber: currentSurahId ?? Number.NaN,
     translationIds,
     wordLang: settings.wordLang,
-    includeWords: Boolean(settings.showByWords || settings.tajweed),
-    includeWordTranslations: Boolean(settings.showByWords),
+    includeWords: Boolean(effectiveShowByWords || settings.tajweed),
+    includeWordTranslations: effectiveShowByWords,
     tajweed: Boolean(settings.tajweed),
     tajweedTextColor: palette.text,
     tajweedTheme: resolvedTheme,
@@ -1765,7 +1769,7 @@ export default function TafsirScreen(): React.JSX.Element {
           currentSurahVerseErrorMessage={currentSurahVerseErrorMessage}
           isCurrentSurahVersesLoading={isCurrentSurahVersesLoading}
           getCurrentSurahVerseByNumber={getCurrentSurahVerseByNumber}
-          settings={settings}
+          settings={effectiveReaderSettings}
           verseRenderSignal={verseRenderSignal}
           openVerseActions={openVerseActions}
           pageScrollRefsRef={pageScrollRefsRef}
@@ -1798,7 +1802,7 @@ export default function TafsirScreen(): React.JSX.Element {
       currentSurahVerseErrorMessage,
       isCurrentSurahVersesLoading,
       getCurrentSurahVerseByNumber,
-      settings,
+      effectiveReaderSettings,
       verseRenderSignal,
       openVerseActions,
       readerHeader,
@@ -1827,7 +1831,7 @@ export default function TafsirScreen(): React.JSX.Element {
       verseRenderSignal,
       arabicFontFace: settings.arabicFontFace,
       arabicFontSize: settings.arabicFontSize,
-      showByWords: settings.showByWords,
+      showByWords: effectiveShowByWords,
       tafsirFontSize: settings.tafsirFontSize,
       translationFontSize: settings.translationFontSize,
     }),
@@ -1842,7 +1846,7 @@ export default function TafsirScreen(): React.JSX.Element {
       isCurrentSurahVersesLoading,
       settings.arabicFontFace,
       settings.arabicFontSize,
-      settings.showByWords,
+      effectiveShowByWords,
       settings.tafsirFontSize,
       settings.translationFontSize,
       showTranslationAttribution,

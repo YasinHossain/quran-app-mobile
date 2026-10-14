@@ -10,15 +10,20 @@ const RESET_SCROLL_SUPPRESSION_MS = 450;
 const MIN_TOP_VISIBLE_LOCK_DISTANCE = 32;
 const HEADER_ANIMATION_DURATION = 300;
 
-const TOGGLE_SCROLL_SUPPRESSION_MS = 150;
+// Ignore offsets produced while the header is moving. Allowing a reversal before
+// the animation settles makes slow scrolling visibly oscillate.
+const TOGGLE_SCROLL_SUPPRESSION_MS = HEADER_ANIMATION_DURATION + 60;
 // Minimum time (ms) before allowing a hide↔show reversal.
 // Prevents FlashList view-recycling offset spikes from toggling the header.
-const DIRECTION_COMMIT_MS = 180;
+const DIRECTION_COMMIT_MS = HEADER_ANIMATION_DURATION + 150;
 // Raw offset jumps larger than this in a single scroll event are treated as
 // FlashList recycling artifacts and skipped for direction tracking.
 const RECYCLING_SPIKE_THRESHOLD = 250;
 
-export function useCollapsibleReaderHeader({ animateContent = false }: { animateContent?: boolean } = {}) {
+// The header is an overlay: reader content must never move or resize with it.
+// Scroll surfaces reserve `headerHeight` as top padding instead. Moving or resizing
+// a Mushaf WebView here makes the page jump under the user's finger.
+export function useCollapsibleReaderHeader() {
   const insets = useSafeAreaInsets();
   const estimatedHeight = (insets.top || 0) + 64;
   const [headerHeight, setHeaderHeight] = React.useState(estimatedHeight);
@@ -26,9 +31,6 @@ export function useCollapsibleReaderHeader({ animateContent = false }: { animate
     'box-none'
   );
   const hiddenProgress = React.useRef(new Animated.Value(0)).current;
-  // The header transform runs on the native driver. The Surah mushaf reader still
-  // needs its separate layout animation to fill the space released by the header.
-  const contentProgress = React.useRef(new Animated.Value(0)).current;
   const lastScrollOffsetRef = React.useRef(0);
   const smoothedOffsetRef = React.useRef(0);
   const directionalScrollDistanceRef = React.useRef(0);
@@ -55,21 +57,13 @@ export function useCollapsibleReaderHeader({ animateContent = false }: { animate
       Animated.timing(hiddenProgress, {
         toValue: hidden ? 1 : 0,
         duration: HEADER_ANIMATION_DURATION,
-        easing: Easing.inOut(Easing.cubic),
+        easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
       }).start();
-      if (animateContent) {
-        Animated.timing(contentProgress, {
-          toValue: hidden ? 1 : 0,
-          duration: HEADER_ANIMATION_DURATION,
-          easing: Easing.inOut(Easing.cubic),
-          useNativeDriver: false,
-        }).start();
-      }
       setHeaderPointerEvents(hidden ? 'none' : 'box-none');
       suppressScrollUntilRef.current = Date.now() + TOGGLE_SCROLL_SUPPRESSION_MS;
     },
-    [animateContent, contentProgress, hiddenProgress]
+    [hiddenProgress]
   );
 
   const handleHeaderLayout = React.useCallback((event: { nativeEvent: { layout: { height: number } } }) => {
@@ -103,7 +97,7 @@ export function useCollapsibleReaderHeader({ animateContent = false }: { animate
         smoothedOffsetRef.current = normalizedOffset;
       }
       const previousSmoothed = smoothedOffsetRef.current;
-      const SMOOTHING_FACTOR = 0.35;
+      const SMOOTHING_FACTOR = 0.25;
       smoothedOffsetRef.current = previousSmoothed + (normalizedOffset - previousSmoothed) * SMOOTHING_FACTOR;
       
       const delta = smoothedOffsetRef.current - previousSmoothed;
@@ -131,13 +125,17 @@ export function useCollapsibleReaderHeader({ animateContent = false }: { animate
       const timeSinceDirectionChange = now - lastDirectionChangeTimeRef.current;
       const commitGuardActive =
         lastDirectionChangeTimeRef.current > 0 && timeSinceDirectionChange < DIRECTION_COMMIT_MS;
+      if (commitGuardActive) {
+        directionalScrollDistanceRef.current = 0;
+        return;
+      }
 
       if (delta > SCROLL_DELTA_THRESHOLD) {
         directionalScrollDistanceRef.current =
           directionalScrollDistanceRef.current > 0
             ? directionalScrollDistanceRef.current + delta
             : delta;
-        if (directionalScrollDistanceRef.current >= HIDE_SCROLL_DISTANCE && !commitGuardActive) {
+        if (directionalScrollDistanceRef.current >= HIDE_SCROLL_DISTANCE) {
           setHidden(true);
         }
       } else if (delta < -SCROLL_DELTA_THRESHOLD) {
@@ -145,7 +143,7 @@ export function useCollapsibleReaderHeader({ animateContent = false }: { animate
           directionalScrollDistanceRef.current < 0
             ? directionalScrollDistanceRef.current + delta
             : delta;
-        if (Math.abs(directionalScrollDistanceRef.current) >= SHOW_SCROLL_DISTANCE && !commitGuardActive) {
+        if (Math.abs(directionalScrollDistanceRef.current) >= SHOW_SCROLL_DISTANCE) {
           setHidden(false);
         }
       }
@@ -170,8 +168,6 @@ export function useCollapsibleReaderHeader({ animateContent = false }: { animate
     }
     hiddenProgress.stopAnimation();
     hiddenProgress.setValue(0);
-    contentProgress.stopAnimation();
-    contentProgress.setValue(0);
     isHiddenRef.current = false;
     setHeaderPointerEvents('box-none');
     isTopLockedRef.current = true;
@@ -180,7 +176,7 @@ export function useCollapsibleReaderHeader({ animateContent = false }: { animate
     directionalScrollDistanceRef.current = 0;
     lastDirectionChangeTimeRef.current = 0;
     suppressScrollUntilRef.current = Date.now() + RESET_SCROLL_SUPPRESSION_MS;
-  }, [contentProgress, hiddenProgress]);
+  }, [hiddenProgress]);
 
   const opacity = React.useMemo(
     () =>
@@ -208,24 +204,6 @@ export function useCollapsibleReaderHeader({ animateContent = false }: { animate
     [opacity, translateY]
   );
 
-  const contentAnimatedStyle = React.useMemo(
-    () => ({
-      marginBottom: contentProgress.interpolate({
-        inputRange: [0, 1],
-        outputRange: [0, -headerHeight],
-      }),
-      transform: [
-        {
-          translateY: contentProgress.interpolate({
-            inputRange: [0, 1],
-            outputRange: [0, -headerHeight],
-          }),
-        },
-      ],
-    }),
-    [contentProgress, headerHeight]
-  );
-
   const suppressScroll = React.useCallback((durationMs: number) => {
     suppressScrollUntilRef.current = Date.now() + durationMs;
     directionalScrollDistanceRef.current = 0;
@@ -235,7 +213,6 @@ export function useCollapsibleReaderHeader({ animateContent = false }: { animate
     handleHeaderLayout,
     handleScroll,
     handleScrollOffset,
-    contentAnimatedStyle,
     headerAnimatedStyle,
     headerHeight,
     headerPointerEvents,
@@ -248,7 +225,6 @@ export function useCollapsibleReaderHeader({ animateContent = false }: { animate
     handleHeaderLayout,
     handleScroll,
     handleScrollOffset,
-    contentAnimatedStyle,
     headerAnimatedStyle,
     headerHeight,
     headerPointerEvents,

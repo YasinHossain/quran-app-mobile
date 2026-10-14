@@ -1,6 +1,6 @@
 import React from 'react';
 import { Animated, StyleSheet, View, useWindowDimensions } from 'react-native';
-import { WebView } from 'react-native-webview';
+import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 import * as FileSystem from 'expo-file-system/legacy';
 
 import {
@@ -113,12 +113,79 @@ type ReaderMessage =
       payload?: unknown;
     };
 
+type MushafWebViewSurfaceProps = {
+  allowingReadAccessToURL?: string;
+  backgroundColor: string;
+  html: string;
+  onLoadEnd: () => void;
+  onLoadStart: () => void;
+  onMessage: (event: WebViewMessageEvent) => void;
+  sessionKey: string;
+};
+
+const MUSHAF_ORIGIN_WHITELIST = ['*'];
+
+/**
+ * Keep the native WebView subtree out of ordinary reader rerenders. On Android,
+ * applying an HTML source again calls loadDataWithBaseURL even when the document
+ * text is unchanged, briefly clearing every rendered Mushaf glyph.
+ */
+const MushafWebViewSurface = React.memo(
+  React.forwardRef<WebView, MushafWebViewSurfaceProps>(function MushafWebViewSurface(
+    {
+      allowingReadAccessToURL,
+      backgroundColor,
+      html,
+      onLoadEnd,
+      onLoadStart,
+      onMessage,
+      sessionKey,
+    },
+    ref
+  ): React.JSX.Element {
+    const source = React.useMemo(
+      () => ({
+        html,
+        ...(allowingReadAccessToURL ? { baseUrl: allowingReadAccessToURL } : {}),
+      }),
+      [allowingReadAccessToURL, html]
+    );
+
+    return (
+      <WebView
+        key={sessionKey}
+        ref={ref}
+        originWhitelist={MUSHAF_ORIGIN_WHITELIST}
+        source={source}
+        scrollEnabled
+        nestedScrollEnabled
+        javaScriptEnabled
+        domStorageEnabled
+        setSupportMultipleWindows={false}
+        allowFileAccess
+        allowFileAccessFromFileURLs
+        allowUniversalAccessFromFileURLs
+        {...(allowingReadAccessToURL ? { allowingReadAccessToURL } : {})}
+        showsHorizontalScrollIndicator={false}
+        showsVerticalScrollIndicator={false}
+        bounces={false}
+        automaticallyAdjustContentInsets={false}
+        onLoadStart={onLoadStart}
+        onLoadEnd={onLoadEnd}
+        onMessage={onMessage}
+        style={[styles.webView, { backgroundColor }]}
+      />
+    );
+  })
+);
+
 const BACKGROUND_WARM_BATCH_SIZE = 2;
 const BACKGROUND_WARM_BATCH_DELAY_MS = 180;
 const BACKGROUND_WARM_START_DELAY_MS = 220;
 const MAX_BACKGROUND_WARM_PAGE_COUNT = 4;
 const QCF_FONT_DATA_URI_CACHE_MAX_ENTRIES = 12;
 const qcfFontDataUriCache = new Map<string, Promise<string | null>>();
+let qcfFontDataUriReadQueue: Promise<void> = Promise.resolve();
 
 function getFontMimeType(fileUri: string): string {
   const normalizedUri = fileUri.split('?')[0]?.toLowerCase() ?? '';
@@ -136,15 +203,42 @@ function getQcfFontDataUri(fileUri: string): Promise<string | null> {
     return cached;
   }
 
-  const loadPromise = FileSystem.readAsStringAsync(fileUri, {
-    encoding: FileSystem.EncodingType.Base64,
-  })
-    .then((base64) =>
-      base64 ? `data:${getFontMimeType(fileUri)};base64,${base64}` : null
-    )
-    .catch(() => null);
+  // Page fonts are separate files for exact QCF mushafs. Reading several large
+  // font files concurrently can intermittently fail on lower-memory Android
+  // devices, so serialize the native reads and retry transient failures.
+  const loadPromise = qcfFontDataUriReadQueue.then(async () => {
+    const retryDelaysMs = [0, 80, 240];
+
+    for (let attempt = 0; attempt < retryDelaysMs.length; attempt += 1) {
+      const delayMs = retryDelaysMs[attempt] ?? 0;
+      if (delayMs > 0) {
+        await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
+      }
+
+      try {
+        const base64 = await FileSystem.readAsStringAsync(fileUri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        if (base64) {
+          return `data:${getFontMimeType(fileUri)};base64,${base64}`;
+        }
+      } catch {
+        // Retry below. The installed-pack validation owns permanent file errors.
+      }
+    }
+
+    return null;
+  });
+  qcfFontDataUriReadQueue = loadPromise.then(() => undefined);
 
   qcfFontDataUriCache.set(fileUri, loadPromise);
+  void loadPromise.then((dataUri) => {
+    // Never retain a transient read failure as the cached result. A later page
+    // injection can then retry instead of remaining stuck on the file URL path.
+    if (dataUri === null && qcfFontDataUriCache.get(fileUri) === loadPromise) {
+      qcfFontDataUriCache.delete(fileUri);
+    }
+  });
   while (qcfFontDataUriCache.size > QCF_FONT_DATA_URI_CACHE_MAX_ENTRIES) {
     const oldestKey = qcfFontDataUriCache.keys().next().value;
     if (typeof oldestKey !== 'string') break;
@@ -343,9 +437,6 @@ export const MushafSingleDocumentReader = React.forwardRef<
   const pageLoadRetryCountsRef = React.useRef(new Map<number, number>());
   const loadPagesRef = React.useRef<((pageNumbers: number[], reason: string) => void) | null>(null);
   const activeAudioVerseLoadRef = React.useRef<string | null>(null);
-  const firstPackDirectoryUriRef = React.useRef<string | null>(
-    initialPageData?.rendererAssets?.packDirectoryUri ?? null
-  );
   const allowedPageNumbers = React.useMemo(
     () => normalizeAllowedPageNumbers(pageNumbers, totalPages),
     [pageNumbers, totalPages]
@@ -362,12 +453,17 @@ export const MushafSingleDocumentReader = React.forwardRef<
       }),
     [height, initialPageData?.pack.lines, mushafScaleStep, packId, width]
   );
+  // The top inset tracks the overlay header, whose measured height can settle
+  // after the reader mounts. It is synced into the live document instead of
+  // rebuilding the HTML, which would reload the WebView and blank every page.
+  const focusTopInsetPxRef = React.useRef(focusTopInsetPx);
+  focusTopInsetPxRef.current = focusTopInsetPx;
   const shellDocument = React.useMemo(
     () =>
       buildMushafReaderWebViewShellDocument({
         compactPageLines,
         estimatedPageHeight,
-        focusTopInsetPx,
+        focusTopInsetPx: focusTopInsetPxRef.current,
         highlightVerseKey,
         initialPageNumber,
         mushafScaleStep,
@@ -381,7 +477,6 @@ export const MushafSingleDocumentReader = React.forwardRef<
       }),
     [
       estimatedPageHeight,
-      focusTopInsetPx,
       height,
       highlightVerseKey,
       initialPageNumber,
@@ -395,6 +490,64 @@ export const MushafSingleDocumentReader = React.forwardRef<
       totalPages,
     ]
   );
+  const webViewSessionKey = React.useMemo(
+    () =>
+      [
+        'mushaf-reader',
+        packId,
+        expectedVersion,
+        mushafScaleStep,
+        resolvedTheme,
+        filterChapterId ?? '',
+        initialPageNumber,
+        totalPages,
+        Math.round(width),
+        Math.round(height),
+        compactPageLines ? 'compact' : 'full',
+        pageNumbers?.join(',') ?? 'all',
+        surahIntro
+          ? [
+              surahIntro.chapterId,
+              surahIntro.infoLabel,
+              surahIntro.isMakkah ? 'makkah' : 'madinah',
+              surahIntro.showBismillah ? 'bismillah' : 'no-bismillah',
+              surahIntro.surahName,
+            ].join('|')
+          : 'no-intro',
+        surahNavigation?.previousSurahName ?? '',
+        surahNavigation?.nextSurahName ?? '',
+        highlightVerseKey ?? '',
+      ].join(':'),
+    [
+      compactPageLines,
+      expectedVersion,
+      filterChapterId,
+      height,
+      highlightVerseKey,
+      initialPageNumber,
+      mushafScaleStep,
+      packId,
+      pageNumbers,
+      resolvedTheme,
+      surahIntro,
+      surahNavigation?.nextSurahName,
+      surahNavigation?.previousSurahName,
+      totalPages,
+      width,
+    ]
+  );
+  const webViewSessionAssetsRef = React.useRef<{
+    key: string;
+    packDirectoryUri?: string;
+  } | null>(null);
+  if (webViewSessionAssetsRef.current?.key !== webViewSessionKey) {
+    webViewSessionAssetsRef.current = {
+      key: webViewSessionKey,
+      ...(initialPageData?.rendererAssets?.packDirectoryUri
+        ? { packDirectoryUri: initialPageData.rendererAssets.packDirectoryUri }
+        : {}),
+    };
+  }
 
   const injectPages = React.useCallback(
     (pages: MushafPageData[]) => {
@@ -464,6 +617,29 @@ export const MushafSingleDocumentReader = React.forwardRef<
     syncActiveAudioWord();
   }, [syncActiveAudioWord]);
 
+  const syncFocusTopInset = React.useCallback(() => {
+    if (!isReaderReadyRef.current) {
+      return;
+    }
+
+    const insetPx = Math.max(0, Math.round(focusTopInsetPx));
+    webViewRef.current?.injectJavaScript(`
+      (function () {
+        if (
+          window.__MUSHAF_READER__ &&
+          typeof window.__MUSHAF_READER__.setFocusTopInset === 'function'
+        ) {
+          window.__MUSHAF_READER__.setFocusTopInset(${insetPx});
+        }
+      })();
+      true;
+    `);
+  }, [focusTopInsetPx]);
+
+  React.useEffect(() => {
+    syncFocusTopInset();
+  }, [syncFocusTopInset]);
+
   const scrollToPage = React.useCallback(
     (pageNumber: number) => {
       if (!Number.isFinite(pageNumber)) {
@@ -501,9 +677,6 @@ export const MushafSingleDocumentReader = React.forwardRef<
   const rememberPageData = React.useCallback((pageData: MushafPageData): void => {
     pageDataByNumberRef.current.set(pageData.pageNumber, pageData);
     requestedPageNumbersRef.current.add(pageData.pageNumber);
-    if (!firstPackDirectoryUriRef.current && pageData.rendererAssets?.packDirectoryUri) {
-      firstPackDirectoryUriRef.current = pageData.rendererAssets.packDirectoryUri;
-    }
   }, []);
 
   const loadPages = React.useCallback(
@@ -736,8 +909,6 @@ export const MushafSingleDocumentReader = React.forwardRef<
     loadingPageNumbersRef.current = new Set();
     pageLoadRetryCountsRef.current = new Map();
     activeAudioVerseLoadRef.current = null;
-    firstPackDirectoryUriRef.current = initialPageData?.rendererAssets?.packDirectoryUri ?? null;
-
     if (
       initialPageData?.pack.packId === packId &&
       initialPageData.pack.version.trim() === expectedVersion.trim()
@@ -883,6 +1054,7 @@ export const MushafSingleDocumentReader = React.forwardRef<
       switch (parsed.type) {
         case 'renderer-ready': {
           isReaderReadyRef.current = true;
+          syncFocusTopInset();
           syncActiveAudioWord();
           const loadedPages = Array.from(pageDataByNumberRef.current.values());
           injectPages(loadedPages);
@@ -997,64 +1169,57 @@ export const MushafSingleDocumentReader = React.forwardRef<
       revealReader,
       startBackgroundWarm,
       syncActiveAudioWord,
+      syncFocusTopInset,
     ]
   );
+  const handleLoadStart = React.useCallback(() => {
+    isReaderReadyRef.current = false;
+    hasInitialPaintRef.current = false;
+    readerOpacity.setValue(0);
+  }, [readerOpacity]);
+  const handleLoadEnd = React.useCallback(() => {
+    webViewRef.current?.injectJavaScript(`
+      (function announceRendererReady(attempt) {
+        if (
+          window.__MUSHAF_READER__ &&
+          window.ReactNativeWebView
+        ) {
+          window.ReactNativeWebView.postMessage(JSON.stringify({
+            type: 'renderer-ready',
+            payload: { ready: true, source: 'native-load-end' }
+          }));
+          return;
+        }
+        if (attempt < 4) {
+          setTimeout(function () {
+            announceRendererReady(attempt + 1);
+          }, 120);
+        }
+      })(0);
+      true;
+    `);
+  }, []);
+  const handleMessageRef = React.useRef(handleMessage);
+  handleMessageRef.current = handleMessage;
+  const handleWebViewMessage = React.useCallback(
+    (event: WebViewMessageEvent) => handleMessageRef.current(event.nativeEvent.data),
+    []
+  );
 
-  const packDirectoryUri = firstPackDirectoryUriRef.current ?? undefined;
+  const packDirectoryUri = webViewSessionAssetsRef.current?.packDirectoryUri;
 
   return (
     <View style={[styles.container, { backgroundColor: readerBackgroundColor }]}>
       <Animated.View style={[styles.webViewShell, { opacity: readerOpacity }]}>
-        <WebView
-          key={`mushaf-reader:${packId}:${expectedVersion}:${mushafScaleStep}:${resolvedTheme}:${filterChapterId ?? ''}:${initialPageNumber}:${totalPages}:${Math.round(width)}:${Math.round(height)}:${Math.round(focusTopInsetPx)}:${surahNavigation?.previousSurahName ?? ''}:${surahNavigation?.nextSurahName ?? ''}:${highlightVerseKey ?? ''}`}
+        <MushafWebViewSurface
           ref={webViewRef}
-          originWhitelist={['*']}
-          source={{
-            html: shellDocument.html,
-            ...(packDirectoryUri ? { baseUrl: packDirectoryUri } : {}),
-          }}
-          scrollEnabled
-          nestedScrollEnabled
-          javaScriptEnabled
-          domStorageEnabled
-          setSupportMultipleWindows={false}
-          allowFileAccess
-          allowFileAccessFromFileURLs
-          allowUniversalAccessFromFileURLs
-          {...(packDirectoryUri ? { allowingReadAccessToURL: packDirectoryUri } : {})}
-          showsHorizontalScrollIndicator={false}
-          showsVerticalScrollIndicator={false}
-          bounces={false}
-          automaticallyAdjustContentInsets={false}
-          onLoadStart={() => {
-            isReaderReadyRef.current = false;
-            hasInitialPaintRef.current = false;
-            readerOpacity.setValue(0);
-          }}
-          onLoadEnd={() => {
-            webViewRef.current?.injectJavaScript(`
-              (function announceRendererReady(attempt) {
-                if (
-                  window.__MUSHAF_READER__ &&
-                  window.ReactNativeWebView
-                ) {
-                  window.ReactNativeWebView.postMessage(JSON.stringify({
-                    type: 'renderer-ready',
-                    payload: { ready: true, source: 'native-load-end' }
-                  }));
-                  return;
-                }
-                if (attempt < 4) {
-                  setTimeout(function () {
-                    announceRendererReady(attempt + 1);
-                  }, 120);
-                }
-              })(0);
-              true;
-            `);
-          }}
-          onMessage={(event) => handleMessage(event.nativeEvent.data)}
-          style={[styles.webView, { backgroundColor: readerBackgroundColor }]}
+          allowingReadAccessToURL={packDirectoryUri}
+          backgroundColor={readerBackgroundColor}
+          html={shellDocument.html}
+          onLoadEnd={handleLoadEnd}
+          onLoadStart={handleLoadStart}
+          onMessage={handleWebViewMessage}
+          sessionKey={webViewSessionKey}
         />
       </Animated.View>
     </View>

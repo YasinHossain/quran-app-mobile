@@ -28,7 +28,13 @@ class NativeSurahReaderViewManager : SimpleViewManager<NativeSurahReaderView>() 
             mutableMapOf("registrationName" to "onVerseActionPress"),
         NativeSurahReaderView.EVENT_WORD_PRESS to mutableMapOf("registrationName" to "onWordPress"),
         NativeSurahReaderView.EVENT_SCROLL to mutableMapOf("registrationName" to "onScroll"),
+        NativeSurahReaderView.EVENT_LOAD_ERROR to mutableMapOf("registrationName" to "onLoadError"),
     )
+  }
+
+  override fun onDropViewInstance(view: NativeSurahReaderView) {
+    view.dispose()
+    super.onDropViewInstance(view)
   }
 
   override fun receiveCommand(

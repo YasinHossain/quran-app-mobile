@@ -1,5 +1,5 @@
 import React from 'react';
-import { Animated, Easing } from 'react-native';
+import { Animated } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
 
 export const modalMotion = {
@@ -13,23 +13,78 @@ export const modalMotion = {
   drawer: { openDuration: 240, closeDuration: 160 },
   popover: { openDuration: 140, closeDuration: 100 },
   dialogTranslateY: 12,
-  openEasing: Easing.bezier(0.16, 1, 0.3, 1),
-  closeEasing: Easing.bezier(0.16, 1, 0.3, 1),
 } as const;
+
+/**
+ * Native-driver timing animations are not used for modal motion. React Native's Android
+ * `FrameBasedAnimationDriver` samples them from a precomputed 60 fps frame table, so on 90/120 Hz
+ * screens every second or third display frame repeats the previous position and the motion
+ * judders even on flagship phones. Native springs are integrated against the real frame time, so
+ * they advance on every display frame.
+ *
+ * Entrances use a critically damped spring whose midpoint matches the Material 3 standard curve
+ * and which comes to rest without overshoot. Exits use a light, overshoot-clamped spring that
+ * leaves at speed, like standard-accelerate, and ends exactly at the preset duration.
+ */
+const OPEN_SPRING_TIME_CONSTANT = 6.6;
+const CLOSE_SPRING_DAMPING_RATIO = 0.3;
+const CLOSE_SPRING_TIME_CONSTANT = 1.966;
+const REST_DISPLACEMENT = 0.002;
+
+export function modalSpringConfig(direction: 'open' | 'close', durationMs: number) {
+  const seconds = Math.max(1, durationMs) / 1000;
+  const isOpen = direction === 'open';
+  const naturalFrequency = (isOpen ? OPEN_SPRING_TIME_CONSTANT : CLOSE_SPRING_TIME_CONSTANT) / seconds;
+  const dampingRatio = isOpen ? 1 : CLOSE_SPRING_DAMPING_RATIO;
+  return {
+    mass: 1,
+    stiffness: naturalFrequency * naturalFrequency,
+    damping: 2 * dampingRatio * naturalFrequency,
+    overshootClamping: true,
+    restDisplacementThreshold: REST_DISPLACEMENT,
+    restSpeedThreshold: naturalFrequency * 0.0025,
+  };
+}
+
+/**
+ * Animated interpolations are graph nodes. Creating a new one during a render makes React Native
+ * detach the previous node from the native view and attach a replacement, which can drop or
+ * snap frames when a surface re-renders mid-transition (for example when its data arrives).
+ * Cache them per progress value so every render reuses the node that is already animating.
+ */
+const animatedStyleCache = new WeakMap<Animated.Value, Map<string, object>>();
+
+function cachedAnimatedStyle<T extends object>(
+  progress: Animated.Value,
+  key: string,
+  create: () => T
+): T {
+  let styles = animatedStyleCache.get(progress);
+  if (!styles) {
+    styles = new Map();
+    animatedStyleCache.set(progress, styles);
+  }
+  let style = styles.get(key) as T | undefined;
+  if (!style) {
+    style = create();
+    styles.set(key, style);
+  }
+  return style;
+}
 
 /**
  * Backdrops should support the surface motion without flashing the whole screen.
  * The panel keeps its responsive easing while the dim layer starts more gently.
  */
 export function modalBackdropStyle(progress: Animated.Value, isDark: boolean) {
-  return {
+  return cachedAnimatedStyle(progress, `backdrop:${isDark ? 'dark' : 'light'}`, () => ({
     backgroundColor: isDark ? modalMotion.backdropColor.dark : modalMotion.backdropColor.light,
     opacity: progress.interpolate({
       inputRange: [0, 0.5, 1],
       outputRange: [0, 0.28, 1],
       extrapolate: 'clamp',
     }),
-  };
+  }));
 }
 
 type UseModalTransitionOptions = {
@@ -101,10 +156,9 @@ export function useModalTransition(
       return;
     }
 
-    Animated.timing(progress, {
+    Animated.spring(progress, {
       toValue: 1,
-      duration: optionsRef.current.openDuration,
-      easing: modalMotion.openEasing,
+      ...modalSpringConfig('open', optionsRef.current.openDuration),
       isInteraction: false,
       useNativeDriver: true,
     }).start(({ finished }) => {
@@ -163,10 +217,9 @@ export function useModalTransition(
       return;
     }
 
-    Animated.timing(progress, {
+    Animated.spring(progress, {
       toValue: 0,
-      duration: optionsRef.current.closeDuration,
-      easing: modalMotion.closeEasing,
+      ...modalSpringConfig('close', optionsRef.current.closeDuration),
       isInteraction: false,
       useNativeDriver: true,
     }).start(({ finished }) => {
@@ -179,7 +232,7 @@ export function useModalTransition(
 
 // Lightweight motion for content-heavy dialogs: fade and a short lift, without zoom.
 export function dialogTransform(progress: Animated.Value) {
-  return {
+  return cachedAnimatedStyle(progress, 'dialog', () => ({
     opacity: progress,
     transform: [
       {
@@ -189,7 +242,26 @@ export function dialogTransform(progress: Animated.Value) {
         }),
       },
     ],
-  };
+  }));
+}
+
+/**
+ * Pager-style slide for switching bottom tabs. `progress` is -1 for a tab before the active one,
+ * 0 for the active tab and 1 for a tab after it, so the incoming tab slides in from its side while
+ * the outgoing one slides away. Both scenes stay opaque and only translate, so a frame paints
+ * about one screen of pixels; off-screen tabs are not drawn. Pass a negative `distance` for RTL.
+ */
+export function horizontalSlideSceneStyle(progress: Animated.Value, distance: number) {
+  return cachedAnimatedStyle(progress, `slide-x:${distance}`, () => ({
+    transform: [
+      {
+        translateX: progress.interpolate({
+          inputRange: [-1, 0, 1],
+          outputRange: [-distance, 0, distance],
+        }),
+      },
+    ],
+  }));
 }
 
 export function verticalSheetTransform(
@@ -198,7 +270,7 @@ export function verticalSheetTransform(
 ): {
   transform: Array<{ translateY: Animated.AnimatedInterpolation<number> }>;
 } {
-  return {
+  return cachedAnimatedStyle(progress, `vertical:${hiddenTranslateY}`, () => ({
     transform: [
       {
         translateY: progress.interpolate({
@@ -207,7 +279,7 @@ export function verticalSheetTransform(
         }),
       },
     ],
-  };
+  }));
 }
 
 export function sideSheetTransform(
@@ -216,7 +288,7 @@ export function sideSheetTransform(
 ): {
   transform: Array<{ translateX: Animated.AnimatedInterpolation<number> }>;
 } {
-  return {
+  return cachedAnimatedStyle(progress, `side:${hiddenTranslateX}`, () => ({
     transform: [
       {
         translateX: progress.interpolate({
@@ -225,5 +297,5 @@ export function sideSheetTransform(
         }),
       },
     ],
-  };
+  }));
 }

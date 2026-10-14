@@ -8,8 +8,10 @@ const DEFAULT_OUTPUT_DIR = path.join(__dirname, '..', 'dist', 'mushaf-packs');
 const DEFAULT_CACHE_DIR = path.join(__dirname, '..', 'dist', '.mushaf-pack-cache');
 const ASSETS_FONT_DIR = path.join(__dirname, '..', 'assets', 'fonts');
 const REQUEST_DELAY_MS = 80;
-const PAGE_FETCH_CONCURRENCY = 6;
-const FONT_FETCH_CONCURRENCY = 8;
+const REQUEST_TIMEOUT_MS = 30_000;
+const MAX_REQUEST_ATTEMPTS = 5;
+const PAGE_FETCH_CONCURRENCY = 5;
+const FONT_FETCH_CONCURRENCY = 5;
 const PAGE_WORD_FIELDS = [
   'verse_key',
   'verse_id',
@@ -168,34 +170,53 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function requestBuffer(url) {
+function requestBufferOnce(url) {
   return new Promise((resolve, reject) => {
-    https
-      .get(
-        url,
-        {
-          headers: {
-            accept: '*/*',
-            'x-client': 'quran-app-mobile-mushaf-pack-generator',
-          },
+    const request = https.get(
+      url,
+      {
+        headers: {
+          accept: '*/*',
+          'x-client': 'quran-app-mobile-mushaf-pack-generator',
         },
-        (response) => {
-          const chunks = [];
-          response.on('data', (chunk) => chunks.push(chunk));
-          response.on('end', () => {
-            const body = Buffer.concat(chunks);
-            if ((response.statusCode ?? 500) >= 400) {
-              reject(
-                new Error(`Request failed for ${url}: ${response.statusCode}\n${body.toString('utf8', 0, 400)}`)
-              );
-              return;
-            }
-            resolve(body);
-          });
-        }
-      )
-      .on('error', reject);
+      },
+      (response) => {
+        const chunks = [];
+        response.on('data', (chunk) => chunks.push(chunk));
+        response.on('end', () => {
+          const body = Buffer.concat(chunks);
+          if ((response.statusCode ?? 500) >= 400) {
+            reject(
+              new Error(`Request failed for ${url}: ${response.statusCode}\n${body.toString('utf8', 0, 400)}`)
+            );
+            return;
+          }
+          resolve(body);
+        });
+      }
+    );
+
+    request.setTimeout(REQUEST_TIMEOUT_MS, () => {
+      request.destroy(new Error(`Request timed out for ${url}`));
+    });
+    request.on('error', reject);
   });
+}
+
+async function requestBuffer(url) {
+  let lastError;
+  for (let attempt = 1; attempt <= MAX_REQUEST_ATTEMPTS; attempt += 1) {
+    try {
+      return await requestBufferOnce(url);
+    } catch (error) {
+      lastError = error;
+      if (attempt >= MAX_REQUEST_ATTEMPTS) break;
+      const delayMs = Math.min(4_000, 500 * 2 ** (attempt - 1));
+      console.warn(`  Request attempt ${attempt}/${MAX_REQUEST_ATTEMPTS} failed; retrying in ${delayMs} ms`);
+      await sleep(delayMs);
+    }
+  }
+  throw lastError;
 }
 
 async function fetchJson(url) {

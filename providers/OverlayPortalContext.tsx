@@ -57,10 +57,16 @@ export function OverlayPortalProvider({ children }: { children: React.ReactNode 
   return (
     <OverlayPortalContext.Provider value={contextValue}>
       <View style={styles.root}>
+        {/*
+          While an overlay is presented (including its exit), cache the app behind it as one GPU
+          texture. Otherwise every animation frame re-renders the whole screen underneath (all
+          reader text), which budget GPUs cannot finish within a 90 Hz frame.
+        */}
         <View
           accessibilityElementsHidden={hasModalEntry}
           importantForAccessibility={hasModalEntry ? 'no-hide-descendants' : 'auto'}
           pointerEvents={hasModalEntry ? 'none' : 'auto'}
+          renderToHardwareTextureAndroid={hasModalEntry}
           style={styles.content}
         >
           {children}
@@ -83,24 +89,37 @@ export function OverlayPortalProvider({ children }: { children: React.ReactNode 
 export function OverlayPortal({
   children,
   modal = false,
+  frozen = false,
 }: {
   children: React.ReactNode;
   modal?: boolean;
+  /**
+   * Keep showing the last content pushed to the host. A hidden, kept-mounted surface uses this
+   * so its owner's re-renders (for example a reader updating while scrolling) do not reconcile
+   * an invisible subtree. The first frozen render still pushes once, so the hidden state lands.
+   */
+  frozen?: boolean;
 }): React.JSX.Element | null {
   const context = React.useContext(OverlayPortalContext);
   const id = React.useId();
+  const pushedFrozenRef = React.useRef(false);
 
   // Flush portal content before the next paint. This keeps transient surfaces such
   // as drawers and action sheets in the app's existing window, without adding an
   // extra blank frame while a native Modal window is being presented.
   React.useLayoutEffect(() => {
     if (!context) return;
+    if (frozen && pushedFrozenRef.current) return;
+    pushedFrozenRef.current = frozen;
     context.mount(id, children, modal);
-  }, [children, context, id, modal]);
+  }, [children, context, frozen, id, modal]);
 
   React.useLayoutEffect(() => {
     if (!context) return;
-    return () => context.unmount(id);
+    return () => {
+      pushedFrozenRef.current = false;
+      context.unmount(id);
+    };
   }, [context, id]);
 
   return null;

@@ -2,7 +2,6 @@ import {
   ArrowUpRight,
   Check,
   ChevronDown,
-  ChevronLeft,
   ChevronRight,
   ChevronUp,
   RotateCw,
@@ -38,6 +37,7 @@ import { container } from '@/src/core/infrastructure/di/container';
 import { resolveQuranTextFontFamily } from '@/src/core/infrastructure/fonts/resolveQuranTextFont';
 
 import {
+  appendOccurrencePage,
   buildOccurrenceQuery,
   buildRootFamilyLemmaQuery,
   getOccurrenceCounters,
@@ -96,7 +96,6 @@ export function OccurrenceExplorer({
   );
   const [scope, setScope] = React.useState<WordOccurrenceScope>('surface');
   const [cursor, setCursor] = React.useState<string | undefined>();
-  const [cursorHistory, setCursorHistory] = React.useState<Array<string | undefined>>([]);
   const [surfaceCount, setSurfaceCount] = React.useState<number | undefined>();
   const [unavailableScopeMessage, setUnavailableScopeMessage] = React.useState<string | null>(null);
   const [rootFamilyExpanded, setRootFamilyExpanded] = React.useState(true);
@@ -130,7 +129,6 @@ export function OccurrenceExplorer({
       : { status: 'loading' });
     setScope('surface');
     setCursor(undefined);
-    setCursorHistory([]);
     setSurfaceCount(undefined);
     setRootFamilyExpanded(true);
     setLemmaOverride(null);
@@ -150,7 +148,6 @@ export function OccurrenceExplorer({
     setLemmaOverride(null);
     setScope(requestedScope.scope);
     setCursor(undefined);
-    setCursorHistory([]);
   }, [filters, requestedScope]);
 
   React.useEffect(() => {
@@ -231,7 +228,14 @@ export function OccurrenceExplorer({
     const cached = pageCacheRef.current.get(queryKey);
     if (cached) {
       if (effectiveScope === 'surface') setSurfaceCount(cached.pageInfo.totalCount);
-      setPageState({ status: 'ready', page: cached, refreshing: false });
+      setPageState((current) => ({
+        status: 'ready',
+        page:
+          cursor && current.status === 'ready'
+            ? appendOccurrencePage(current.page, cached)
+            : cached,
+        refreshing: false,
+      }));
       return;
     }
     setPageState((current) =>
@@ -248,7 +252,14 @@ export function OccurrenceExplorer({
         if (controller.signal.aborted || requestId !== requestIdRef.current) return;
         pageCacheRef.current.set(queryKey, page);
         if (effectiveScope === 'surface') setSurfaceCount(page.pageInfo.totalCount);
-        setPageState({ status: 'ready', page, refreshing: false });
+        setPageState((current) => ({
+          status: 'ready',
+          page:
+            cursor && current.status === 'ready'
+              ? appendOccurrencePage(current.page, page)
+              : page,
+          refreshing: false,
+        }));
       })
       .catch((error: unknown) => {
         if (
@@ -350,7 +361,6 @@ export function OccurrenceExplorer({
     setLemmaOverride(null);
     setScope(nextScope);
     setCursor(undefined);
-    setCursorHistory([]);
   }, []);
 
   const selectCounter = React.useCallback((counterKey: 'surface' | 'lemma' | 'root' | 'root-lemma-family') => {
@@ -370,7 +380,6 @@ export function OccurrenceExplorer({
     setLemmaOverride(lemma);
     setScope('lemma');
     setCursor(undefined);
-    setCursorHistory([]);
     setFilterNavigationRequestId((requestId) => requestId + 1);
   }, []);
 
@@ -378,17 +387,8 @@ export function OccurrenceExplorer({
     setRootFamilyExpanded((value) => !value);
   }, []);
 
-  const showNextPage = React.useCallback((nextCursor: string) => {
-    setCursorHistory((history) => [...history, cursor]);
+  const showMoreOccurrences = React.useCallback((nextCursor: string) => {
     setCursor(nextCursor);
-  }, [cursor]);
-
-  const showPreviousPage = React.useCallback(() => {
-    setCursorHistory((history) => {
-      const previousCursor = history.at(-1);
-      setCursor(previousCursor);
-      return history.slice(0, -1);
-    });
   }, []);
 
   const counters = getOccurrenceCounters(analysis, surfaceCount);
@@ -573,7 +573,7 @@ export function OccurrenceExplorer({
             style={styles.pageStatusRow}
           >
             <Text style={[styles.pageLabel, { color: palette.muted }]}>
-              {getOccurrencePageLabel(cursor, readyPage.items.length, readyPage.pageInfo.totalCount)} · {lemmaOverride ? `${lemmaOverride.arabic} lemma` : effectiveScope} results
+              {getOccurrencePageLabel(undefined, readyPage.items.length, readyPage.pageInfo.totalCount)} · {lemmaOverride ? `${lemmaOverride.arabic} lemma` : effectiveScope} results
             </Text>
             {isPageRefreshing ? (
               <ActivityIndicator color={palette.tint} size="small" />
@@ -612,23 +612,18 @@ export function OccurrenceExplorer({
               />
             ))}
           </View>
-          <View style={styles.pagination}>
-            <PageButton
-              label="Previous page"
-              icon={<ChevronLeft color={cursorHistory.length && !isPageRefreshing ? palette.tint : palette.muted} size={18} />}
-              disabled={!cursorHistory.length || isPageRefreshing}
-              onPress={showPreviousPage}
-              palette={palette}
-            />
-            <PageButton
-              label="Next page"
-              icon={<ChevronRight color={readyPage.pageInfo.nextCursor && !isPageRefreshing ? palette.tint : palette.muted} size={18} />}
-              disabled={!readyPage.pageInfo.nextCursor || isPageRefreshing}
-              onPress={() => readyPage.pageInfo.nextCursor && showNextPage(readyPage.pageInfo.nextCursor)}
-              palette={palette}
-              iconAfter
-            />
-          </View>
+          {readyPage.pageInfo.nextCursor ? (
+            <View style={styles.loadMoreRow}>
+              <PageButton
+                label="View more"
+                icon={<ChevronRight color={isPageRefreshing ? palette.muted : palette.tint} size={18} />}
+                disabled={isPageRefreshing}
+                onPress={() => showMoreOccurrences(readyPage.pageInfo.nextCursor!)}
+                palette={palette}
+                iconAfter
+              />
+            </View>
+          ) : null}
         </>
       ) : (
         <View style={[styles.stateCard, { borderColor: palette.border, backgroundColor: palette.surfaceNavigation }]}>
@@ -996,7 +991,7 @@ const styles = StyleSheet.create({
   ayahContext: { fontFamily: 'UthmanicHafs1Ver18', fontSize: 19, lineHeight: 31, writingDirection: 'rtl', textAlign: 'right' },
   openRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   openText: { fontSize: 12, lineHeight: 17, fontWeight: '700' },
-  pagination: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  loadMoreRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end' },
   pageButton: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 4 },
   pageButtonText: { fontSize: 13, lineHeight: 18, fontWeight: '700' },
 });

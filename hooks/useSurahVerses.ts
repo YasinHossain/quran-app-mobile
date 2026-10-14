@@ -228,25 +228,41 @@ function hasCompleteRequestedTranslations(
   });
 }
 
-function offlineVerseHasTajweedGlyphMetadata(verse: OfflineVerseWithTranslations): boolean {
-  if (!verse.wordsJson) return false;
+// Validation and normalization visit the same immutable offline rows multiple times on entry.
+// Share their decoded words; weak keys keep their lifetime tied to the existing offline cache.
+const parsedOfflineWords = new WeakMap<
+  OfflineVerseWithTranslations,
+  { json: string; words: VerseWord[] | undefined }
+>();
 
+function getOfflineVerseWords(verse: OfflineVerseWithTranslations): VerseWord[] | undefined {
+  const json = verse.wordsJson;
+  if (!json) return undefined;
+  const cached = parsedOfflineWords.get(verse);
+  if (cached?.json === json) return cached.words;
+
+  let words: VerseWord[] | undefined;
   try {
-    const words = JSON.parse(verse.wordsJson) as VerseWord[];
-    return (
-      Array.isArray(words) &&
-      words.some(
-        (word) =>
-          typeof word?.codeV2 === 'string' &&
-          word.codeV2.trim().length > 0 &&
-          typeof word.pageNumber === 'number' &&
-          Number.isFinite(word.pageNumber) &&
-          word.pageNumber > 0
-      )
-    );
+    const parsed = JSON.parse(json);
+    if (Array.isArray(parsed)) words = parsed;
   } catch {
-    return false;
+    // Missing/malformed data must still fail readiness checks and use the existing fallback.
   }
+  parsedOfflineWords.set(verse, { json, words });
+  return words;
+}
+
+function offlineVerseHasTajweedGlyphMetadata(verse: OfflineVerseWithTranslations): boolean {
+  return Boolean(
+    getOfflineVerseWords(verse)?.some(
+      (word) =>
+        typeof word?.codeV2 === 'string' &&
+        word.codeV2.trim().length > 0 &&
+        typeof word.pageNumber === 'number' &&
+        Number.isFinite(word.pageNumber) &&
+        word.pageNumber > 0
+    )
+  );
 }
 
 function hasCompleteTajweedGlyphMetadata(
@@ -259,21 +275,13 @@ function hasCompleteTajweedGlyphMetadata(
 }
 
 function offlineVerseHasWordTranslations(verse: OfflineVerseWithTranslations): boolean {
-  if (!verse.wordsJson) return false;
-
-  try {
-    const words = JSON.parse(verse.wordsJson) as VerseWord[];
-    return (
-      Array.isArray(words) &&
-      words.some(
-        (word) =>
-          typeof word?.translationText === 'string' &&
-          word.translationText.trim().length > 0
-      )
-    );
-  } catch {
-    return false;
-  }
+  return Boolean(
+    getOfflineVerseWords(verse)?.some(
+      (word) =>
+        typeof word?.translationText === 'string' &&
+        word.translationText.trim().length > 0
+    )
+  );
 }
 
 function hasCompleteWordTranslations(
@@ -372,14 +380,7 @@ function normalizeOfflineVersePageData(
     }));
 
     const shouldParseWords = options.includeWords || options.includeTajweedGlyphs;
-    let words: VerseWord[] | undefined;
-    if (shouldParseWords && verse.wordsJson) {
-      try {
-        words = JSON.parse(verse.wordsJson);
-      } catch {
-        words = undefined;
-      }
-    }
+    let words = shouldParseWords ? getOfflineVerseWords(verse) : undefined;
 
     if (shouldParseWords && (!Array.isArray(words) || words.length === 0)) {
       words = getBundledVerseWords(verse.verseKey);

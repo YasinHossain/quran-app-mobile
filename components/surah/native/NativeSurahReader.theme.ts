@@ -16,6 +16,7 @@ export function buildNativeLightSurahReaderSettings(params: {
   tajweed: boolean;
   showTranslationAttribution: boolean;
   translationIds: number[];
+  translationNames?: Array<{ id: number; name: string }>;
   translationFontSize: number;
   wordLang?: string;
 }): NativeSurahReaderSettings {
@@ -36,6 +37,7 @@ export function buildNativeLightSurahReaderSettings(params: {
     tajweed: params.tajweed,
     showTranslationAttribution: params.showTranslationAttribution,
     translationIds: params.translationIds,
+    translationNames: params.translationNames,
     translationFontSize: params.translationFontSize,
     wordLang: params.wordLang?.trim().toLowerCase(),
   };

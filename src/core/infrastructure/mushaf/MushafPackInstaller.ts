@@ -19,6 +19,8 @@ import type {
   MushafWord,
 } from '@/types';
 
+import { downloadConcurrencyLimiter } from '@/src/core/infrastructure/downloads/downloadConcurrency';
+
 import {
   QCF_MADANI_V1_PACK,
   getDownloadableMushafPackDefinition,
@@ -656,31 +658,33 @@ async function downloadFileAsync(
   const parentDirectory = fileUri.slice(0, fileUri.lastIndexOf('/') + 1);
   await FileSystem.makeDirectoryAsync(parentDirectory, { intermediates: true });
 
-  const download = FileSystem.createDownloadResumable(url, fileUri, {}, (progress) => {
-    if (!onProgress) return;
+  await downloadConcurrencyLimiter.run(async () => {
+    const download = FileSystem.createDownloadResumable(url, fileUri, {}, (progress) => {
+      if (!onProgress) return;
 
-    const expected = progress.totalBytesExpectedToWrite;
-    const percent =
-      expected > 0
-        ? Math.max(0, Math.min(100, (progress.totalBytesWritten / expected) * 100))
-        : null;
+      const expected = progress.totalBytesExpectedToWrite;
+      const percent =
+        expected > 0
+          ? Math.max(0, Math.min(100, (progress.totalBytesWritten / expected) * 100))
+          : null;
 
-    onProgress({ percent });
-  });
-  const cancelDownload = (): void => {
-    void download.cancelAsync().catch(() => undefined);
-  };
+      onProgress({ percent });
+    });
+    const cancelDownload = (): void => {
+      void download.cancelAsync().catch(() => undefined);
+    };
 
-  signal?.addEventListener('abort', cancelDownload, { once: true });
+    signal?.addEventListener('abort', cancelDownload, { once: true });
 
-  try {
-    const result = await download.downloadAsync();
-    if (!result?.uri) {
-      throw new Error(`Failed to download ${url}`);
+    try {
+      const result = await download.downloadAsync();
+      if (!result?.uri) {
+        throw new Error(`Failed to download ${url}`);
+      }
+    } finally {
+      signal?.removeEventListener('abort', cancelDownload);
     }
-  } finally {
-    signal?.removeEventListener('abort', cancelDownload);
-  }
+  }, signal);
 }
 
 async function convertInstalledPayloadToPageAddressableFormatAsync(

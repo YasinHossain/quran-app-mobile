@@ -74,7 +74,6 @@ export function useVerseAudioWordSync(chapterId?: number | null): VerseAudioWord
     updateInterval: 250,
     downloadFirst: false,
   });
-  const wordAudioSourceRef = React.useRef<string | null>(null);
   const wordAudioRequestRef = React.useRef(0);
 
   React.useEffect(
@@ -287,10 +286,9 @@ export function useVerseAudioWordSync(chapterId?: number | null): VerseAudioWord
       void (async () => {
         try {
           wordPlayer.pause();
-          if (wordAudioSourceRef.current !== source) {
-            wordAudioSourceRef.current = source;
-            wordPlayer.replace(source);
-          }
+          // Replacing the source resets native players out of their completed state. Seeking a
+          // finished short clip back to zero is not enough to make every platform replay it.
+          wordPlayer.replace(source);
 
           const startedAt = Date.now();
           while (!wordPlayer.isLoaded) {

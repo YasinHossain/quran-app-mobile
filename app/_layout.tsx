@@ -51,7 +51,10 @@ export const unstable_settings = {
   initialRouteName: '(tabs)',
 };
 
-// Prevent the splash screen from auto-hiding before asset loading is complete.
+// Keep the native splash opaque until the first app tree is ready, then remove it
+// in one frame. Expo's default 400 ms fade briefly blends the splash and Home,
+// which makes cold starts look like the two screens are flickering against each other.
+SplashScreen.setOptions({ fade: false, duration: 0 });
 void SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
@@ -184,9 +187,14 @@ function RootLayoutNav() {
   const router = useRouter();
   const pathname = usePathname();
   const { hasCompletedWelcome } = useWelcome();
-  const readerScreenAnimation = reduceMotion || Platform.OS === 'android'
+  // Android's native-stack 'default' is a 450 ms slide/fade on API 33+, which made opening a
+  // reader feel sluggish. 'ios_from_right' is a 200 ms native parallax slide driven entirely by
+  // the platform, so it adds no JS work while the reader mounts.
+  const readerScreenAnimation = reduceMotion
     ? 'none'
-    : 'default';
+    : Platform.OS === 'android'
+      ? 'ios_from_right'
+      : 'default';
 
   useEffect(() => {
     if (!hasCompletedWelcome && pathname !== '/welcome') {
@@ -209,7 +217,11 @@ function RootLayoutNav() {
             initialRouteName={hasCompletedWelcome ? '(tabs)' : 'welcome'}
             screenOptions={{ headerShown: false, contentStyle: { backgroundColor: palette.background } }}
           >
-            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            <Stack.Screen
+              name="(tabs)"
+              // The tab scene paints Home's opaque background, so skip the stack's duplicate fill.
+              options={{ headerShown: false, contentStyle: { backgroundColor: 'transparent' } }}
+            />
             <Stack.Screen
               name="surah/[surahId]"
               options={{ animation: readerScreenAnimation }}

@@ -1,5 +1,6 @@
 import type {
   Lemma,
+  PaginatedWordOccurrences,
   WordAnalysis,
   WordOccurrence,
   WordOccurrenceQuery,
@@ -7,9 +8,29 @@ import type {
 } from '../../../src/core/domain/word-study';
 import type { ContextualMeaningPresentation } from './contextualMeaningModel';
 
-// Each result lays out a full Arabic ayah. Keep native text layout bounded
-// on budget devices; the existing pager exposes every remaining occurrence.
+// Each result lays out a full Arabic ayah. Keep each database read bounded on
+// budget devices; the occurrence explorer appends further batches on demand.
 export const OCCURRENCE_PAGE_SIZE = 10;
+
+export function appendOccurrencePage(
+  current: PaginatedWordOccurrences,
+  next: PaginatedWordOccurrences
+): PaginatedWordOccurrences {
+  const seenLocationKeys = new Set(
+    current.items.map((occurrence) => occurrence.location.locationKey)
+  );
+
+  return {
+    query: current.query,
+    items: [
+      ...current.items,
+      ...next.items.filter(
+        (occurrence) => !seenLocationKeys.has(occurrence.location.locationKey)
+      ),
+    ],
+    pageInfo: next.pageInfo,
+  };
+}
 
 export type OccurrenceCounter = {
   key: 'surface' | 'lemma' | 'root' | 'root-lemma-family';

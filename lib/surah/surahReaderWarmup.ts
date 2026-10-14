@@ -4,6 +4,7 @@ import {
   type SurahPageCacheSettings,
 } from '@/lib/surah/offlineSurahPageCache';
 import { getNetworkSurahTranslationCached } from '@/lib/surah/surahTranslationNetworkCache';
+import { Platform } from 'react-native';
 
 const DEFAULT_SURAH_READER_WARMUP_TIMEOUT_MS = 320;
 
@@ -19,6 +20,10 @@ export async function warmSurahReaderBeforeNavigation(params: {
   settings: SurahPageCacheSettings;
   timeoutMs?: number;
 }): Promise<void> {
+  // Android's translation reader owns this query. Preloading here would recreate the full
+  // Surah and word model in JS immediately before Kotlin reads the same SQLite rows.
+  if (Platform.OS === 'android') return;
+
   const timeoutMs = Math.max(0, params.timeoutMs ?? DEFAULT_SURAH_READER_WARMUP_TIMEOUT_MS);
   const shouldWarmLightNetworkSurah = !params.settings.tajweed && !params.settings.showByWords;
   const startedAt = Date.now();

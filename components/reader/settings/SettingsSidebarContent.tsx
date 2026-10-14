@@ -1,10 +1,11 @@
 import { BookOpenText, ChevronRight, Database, Globe, Type, Wand2, X, Download } from 'lucide-react-native';
 import React from 'react';
 import { router } from 'expo-router';
-import { Alert, Animated, Easing, FlatList, Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Alert, Animated, FlatList, Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
 import { TAJWEED_MUSHAF_ID, findMushafOption } from '@/data/mushaf/options';
 import Colors from '@/constants/Colors';
+import { modalSpringConfig } from '@/components/motion/modalTransition';
 import { MushafPackOptionCard } from '@/components/reader/settings/MushafPackOptionCard';
 import { clearOfflineSurahPageCache } from '@/lib/surah/offlineSurahPageCache';
 import { useTafsirResources } from '@/hooks/useTafsirResources';
@@ -489,10 +490,11 @@ export function SettingsSidebarContent({
       const startAnimation = () => {
         if (animationTokenRef.current !== token) return;
         navProgress.stopAnimation();
-        Animated.timing(navProgress, {
+        // Native timing animations are sampled at 60 fps on Android and judder on 90/120 Hz
+        // screens; the shared decelerating spring advances on every display frame.
+        Animated.spring(navProgress, {
           toValue: 1,
-          duration: 200,
-          easing: Easing.out(Easing.cubic),
+          ...modalSpringConfig('open', 200),
           isInteraction: false,
           useNativeDriver: true,
         }).start(({ finished }) => {
@@ -532,10 +534,10 @@ export function SettingsSidebarContent({
     const startAnimation = () => {
       if (animationTokenRef.current !== token) return;
       navProgress.stopAnimation();
-      Animated.timing(navProgress, {
+      // Going back slides the root panel in, so it decelerates like an entrance.
+      Animated.spring(navProgress, {
         toValue: 0,
-        duration: 160,
-        easing: Easing.out(Easing.cubic),
+        ...modalSpringConfig('open', 160),
         isInteraction: false,
         useNativeDriver: true,
       }).start(({ finished }) => {

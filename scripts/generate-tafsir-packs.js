@@ -6,6 +6,8 @@ const https = require('https');
 const TOTAL_SURAHS = 114;
 const PER_PAGE = 300;
 const REQUEST_DELAY_MS = 200;
+const REQUEST_TIMEOUT_MS = 30_000;
+const MAX_REQUEST_ATTEMPTS = 5;
 const API_BASE_URL = 'https://api.quran.com/api/v4';
 const DEFAULT_OUTPUT_DIR = path.join(__dirname, '..', 'dist', 'tafsir-packs');
 
@@ -57,41 +59,62 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function fetchJson(url) {
+function fetchJsonOnce(url) {
   return new Promise((resolve, reject) => {
-    https
-      .get(
-        url,
-        {
-          headers: {
-            accept: 'application/json',
-            'x-client': 'quran-app-mobile-tafsir-pack-generator',
-          },
+    const request = https.get(
+      url,
+      {
+        headers: {
+          accept: 'application/json',
+          'x-client': 'quran-app-mobile-tafsir-pack-generator',
         },
-        (response) => {
-          let body = '';
-          response.setEncoding('utf8');
-          response.on('data', (chunk) => {
-            body += chunk;
-          });
-          response.on('end', () => {
-            if ((response.statusCode ?? 500) >= 400) {
-              reject(
-                new Error(`Request failed for ${url}: ${response.statusCode}\n${body.slice(0, 400)}`)
-              );
-              return;
-            }
+      },
+      (response) => {
+        let body = '';
+        response.setEncoding('utf8');
+        response.on('data', (chunk) => {
+          body += chunk;
+        });
+        response.on('end', () => {
+          if ((response.statusCode ?? 500) >= 400) {
+            reject(
+              new Error(`Request failed for ${url}: ${response.statusCode}\n${body.slice(0, 400)}`)
+            );
+            return;
+          }
 
-            try {
-              resolve(JSON.parse(body));
-            } catch (error) {
-              reject(error);
-            }
-          });
-        }
-      )
-      .on('error', reject);
+          try {
+            resolve(JSON.parse(body));
+          } catch (error) {
+            reject(error);
+          }
+        });
+      }
+    );
+
+    request.setTimeout(REQUEST_TIMEOUT_MS, () => {
+      request.destroy(new Error(`Request timed out for ${url}`));
+    });
+    request.on('error', reject);
   });
+}
+
+async function fetchJson(url) {
+  let lastError;
+
+  for (let attempt = 1; attempt <= MAX_REQUEST_ATTEMPTS; attempt += 1) {
+    try {
+      return await fetchJsonOnce(url);
+    } catch (error) {
+      lastError = error;
+      if (attempt >= MAX_REQUEST_ATTEMPTS) break;
+      const delayMs = Math.min(4_000, 500 * 2 ** (attempt - 1));
+      console.warn(`  Request attempt ${attempt}/${MAX_REQUEST_ATTEMPTS} failed; retrying in ${delayMs} ms`);
+      await sleep(delayMs);
+    }
+  }
+
+  throw lastError;
 }
 
 function buildApiUrl(pathname, searchParams) {
@@ -117,12 +140,28 @@ function toCatalogUrl(relativePath, baseUrl) {
 }
 
 async function loadTafsirResources() {
-  const response = await fetchJson(
-    buildApiUrl('/resources/tafsirs', {
-      per_page: '200',
-      page: '1',
-    })
-  );
+  let response;
+  try {
+    response = await fetchJson(
+      buildApiUrl('/resources/tafsirs', {
+        per_page: '200',
+        page: '1',
+      })
+    );
+  } catch (error) {
+    const localPath = path.join(__dirname, '..', 'src', 'data', 'tafsirs.json');
+    if (!fs.existsSync(localPath)) throw error;
+    console.warn('Unable to refresh tafsir metadata; using src/data/tafsirs.json');
+    const localResources = JSON.parse(fs.readFileSync(localPath, 'utf8'));
+    response = {
+      tafsirs: localResources.map((tafsir) => ({
+        id: tafsir.id,
+        name: tafsir.name,
+        author_name: tafsir.author_name ?? tafsir.authorName,
+        language_name: tafsir.language_name ?? tafsir.languageName ?? tafsir.lang,
+      })),
+    };
+  }
 
   const byId = new Map();
   for (const tafsir of response.tafsirs ?? []) {
@@ -192,6 +231,67 @@ function readExistingCatalog(outputDir) {
   } catch (_error) {
     return { generatedAt: undefined, packs: [] };
   }
+}
+
+function readCompletedPack({ tafsirId, version, outputDir, baseUrl }) {
+  const relativeDir = path.join('tafsirs', String(tafsirId), version);
+  const absoluteDir = path.join(outputDir, relativeDir);
+  const manifestPath = path.join(absoluteDir, 'manifest.json');
+  const payloadPath = path.join(absoluteDir, 'payload.json');
+  if (!fs.existsSync(manifestPath) || !fs.existsSync(payloadPath)) return null;
+
+  try {
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+    const payload = JSON.parse(fs.readFileSync(payloadPath, 'utf8'));
+    const payloadChecksum = computeMd5(payloadPath);
+    const payloadSizeBytes = fs.statSync(payloadPath).size;
+    if (
+      manifest.tafsirId !== tafsirId ||
+      manifest.version !== version ||
+      manifest.payloadChecksum !== payloadChecksum ||
+      manifest.payloadSizeBytes !== payloadSizeBytes ||
+      !Array.isArray(payload.verses) ||
+      payload.verses.length !== manifest.totalVerses
+    ) {
+      return null;
+    }
+
+    return {
+      tafsirId,
+      name: manifest.name,
+      authorName: manifest.authorName,
+      languageName: manifest.languageName,
+      version,
+      downloadUrl: toCatalogUrl(
+        path.posix.join(relativeDir.replace(/\\/g, '/'), 'payload.json'),
+        baseUrl
+      ),
+      checksum: payloadChecksum,
+      sizeBytes: payloadSizeBytes,
+      totalVerses: payload.verses.length,
+      manifestUrl: toCatalogUrl(
+        path.posix.join(relativeDir.replace(/\\/g, '/'), 'manifest.json'),
+        baseUrl
+      ),
+      manifestChecksum: computeMd5(manifestPath),
+      manifestSizeBytes: fs.statSync(manifestPath).size,
+    };
+  } catch (_error) {
+    return null;
+  }
+}
+
+function writeCatalog(outputDir, entries) {
+  const catalog = {
+    generatedAt: new Date().toISOString(),
+    packs: Array.from(entries).sort((left, right) => {
+      if (left.languageName !== right.languageName) {
+        return String(left.languageName).localeCompare(String(right.languageName));
+      }
+      return Number(left.tafsirId) - Number(right.tafsirId);
+    }),
+  };
+  writeJsonFile(path.join(outputDir, 'catalog.json'), catalog, true);
 }
 
 async function generatePack({
@@ -272,40 +372,33 @@ async function main() {
 
   const existingCatalog = readExistingCatalog(options.outputDir);
   const resourceById = await loadTafsirResources();
-  const generatedEntries = [];
-
-  for (const tafsirId of options.tafsirIds) {
-    const entry = await generatePack({
-      tafsirId,
-      version: options.version,
-      outputDir: options.outputDir,
-      baseUrl: options.baseUrl,
-      resourceById,
-    });
-    generatedEntries.push(entry);
-  }
-
   const mergedByKey = new Map();
   for (const existing of existingCatalog.packs) {
     const key = `${existing.tafsirId}:${existing.version}`;
     mergedByKey.set(key, existing);
   }
-  for (const entry of generatedEntries) {
+
+  for (const tafsirId of options.tafsirIds) {
+    const completed = readCompletedPack({
+      tafsirId,
+      version: options.version,
+      outputDir: options.outputDir,
+      baseUrl: options.baseUrl,
+    });
+    const entry =
+      completed ??
+      (await generatePack({
+        tafsirId,
+        version: options.version,
+        outputDir: options.outputDir,
+        baseUrl: options.baseUrl,
+        resourceById,
+      }));
+    if (completed) console.log(`Reusing verified tafsir pack ${tafsirId}`);
     const key = `${entry.tafsirId}:${entry.version}`;
     mergedByKey.set(key, entry);
+    writeCatalog(options.outputDir, mergedByKey.values());
   }
-
-  const catalog = {
-    generatedAt: new Date().toISOString(),
-    packs: Array.from(mergedByKey.values()).sort((left, right) => {
-      if (left.languageName !== right.languageName) {
-        return String(left.languageName).localeCompare(String(right.languageName));
-      }
-      return Number(left.tafsirId) - Number(right.tafsirId);
-    }),
-  };
-
-  writeJsonFile(path.join(options.outputDir, 'catalog.json'), catalog, true);
 
   console.log(`Wrote catalog: ${path.join(options.outputDir, 'catalog.json')}`);
 }

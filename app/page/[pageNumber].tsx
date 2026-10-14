@@ -189,7 +189,7 @@ export default function PageScreen(): React.JSX.Element {
   const { resolvedTheme } = useAppTheme();
   const palette = Colors[resolvedTheme];
   const readerHeader = useCollapsibleReaderHeader();
-  const { settings, isHydrated, setReadingMode } = useSettings();
+  const { settings, effectiveShowByWords, isHydrated, setReadingMode } = useSettings();
   const requestedMushafView = settings.readingMode === 'mushaf';
   const isMushafView = requestedMushafView && Boolean(settings.mushafId);
   const headerSearch = useHeaderSearch({ preserveMushafView: isMushafView, replace: true });
@@ -253,6 +253,11 @@ export default function PageScreen(): React.JSX.Element {
     availableInitialMushafPageData?.pack.version ?? selectedMushafVersion;
   const mushafTotalPages =
     availableInitialMushafPageData?.pack.totalPages ?? FALLBACK_MUSHAF_TOTAL_PAGES;
+  const mushafPageNumbers = React.useMemo(() => [pageNumber], [pageNumber]);
+  const mushafBackgroundPageNumbers = React.useMemo(
+    () => [pageNumber - 1, pageNumber, pageNumber + 1],
+    [pageNumber]
+  );
   const mushafSelectionMetadataRef = React.useRef<MushafSelectionPayload | null>(null);
 
   const chapterNamesById = React.useMemo(
@@ -480,7 +485,7 @@ export default function PageScreen(): React.JSX.Element {
         readerHeader.handleScrollOffset(scrollY);
       }
     },
-    [readerHeader]
+    [readerHeader.handleScrollOffset]
   );
 
   const listExtraData = React.useMemo(
@@ -488,7 +493,7 @@ export default function PageScreen(): React.JSX.Element {
       arabicFontSize: settings.arabicFontSize,
       translationFontSize: settings.translationFontSize,
       arabicFontFace: settings.arabicFontFace,
-      showByWords: settings.showByWords,
+      showByWords: effectiveShowByWords,
       audioActiveVerseKey: audio.activeVerseKey,
       audioIsVisible: audio.isVisible,
       verseAudioWordSync,
@@ -497,7 +502,7 @@ export default function PageScreen(): React.JSX.Element {
     [
       settings.arabicFontFace,
       settings.arabicFontSize,
-      settings.showByWords,
+      effectiveShowByWords,
       settings.translationFontSize,
       audio.activeVerseKey,
       audio.isVisible,
@@ -653,7 +658,7 @@ export default function PageScreen(): React.JSX.Element {
   const handleSurahListScroll = React.useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
     readerHeader.handleScroll(event);
     verseScrubberRef.current?.show();
-  }, [readerHeader]);
+  }, [readerHeader.handleScroll]);
 
   const activeVersePinned = React.useMemo(() => {
     if (!activeVerse) return false;
@@ -733,7 +738,7 @@ export default function PageScreen(): React.JSX.Element {
             arabicFontSize={settings.arabicFontSize}
             arabicFontFace={settings.arabicFontFace}
             translationFontSize={settings.translationFontSize}
-            showByWords={settings.showByWords}
+            showByWords={effectiveShowByWords}
             onWordStudyPress={Platform.OS === 'android' ? wordQuickSheet.open : undefined}
             selectedStudyWordPosition={
               wordQuickSheet.isOpen && wordQuickSheet.event?.verseKey === verse.verse_key
@@ -823,7 +828,7 @@ export default function PageScreen(): React.JSX.Element {
             ) : (
               <MushafSingleDocumentReader
                 activeAudioWord={verseAudioWordSync.activeWord}
-                backgroundPageNumbers={[pageNumber - 1, pageNumber, pageNumber + 1]}
+                backgroundPageNumbers={mushafBackgroundPageNumbers}
                 chapterNamesById={chapterNamesById}
                 compactPageLines
                 expectedVersion={activeMushafVersion}
@@ -836,7 +841,7 @@ export default function PageScreen(): React.JSX.Element {
                 onScrollActivity={handleMushafScrollActivity}
                 onVersePress={handleMushafVersePress}
                 onWordSeek={verseAudioWordSync.seekToWord}
-                pageNumbers={[pageNumber]}
+                pageNumbers={mushafPageNumbers}
                 packId={selectedMushafId}
                 totalPages={mushafTotalPages}
                 wordSeekEnabled={audio.isVisible}

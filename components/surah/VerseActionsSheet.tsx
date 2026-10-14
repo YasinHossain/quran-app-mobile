@@ -9,23 +9,9 @@ import {
   X,
 } from 'lucide-react-native';
 import React from 'react';
-import {
-  Animated,
-  Pressable,
-  StyleSheet,
-  Text,
-  useWindowDimensions,
-  View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import {
-  modalBackdropStyle,
-  modalMotion,
-  useModalTransition,
-  verticalSheetTransform,
-} from '@/components/motion/modalTransition';
-import { PortalOverlay } from '@/components/motion/PortalOverlay';
+import { BottomSheet } from '@/components/motion/BottomSheet';
 import Colors from '@/constants/Colors';
 import { useAppTheme } from '@/providers/ThemeContext';
 import { useUiTranslation } from '@/providers/UiLanguageContext';
@@ -64,33 +50,24 @@ export function VerseActionsSheet({
   const { resolvedTheme, isDark } = useAppTheme();
   const palette = Colors[resolvedTheme];
   const { t, localizeDigits } = useUiTranslation();
-  const { height: windowHeight } = useWindowDimensions();
   const PlayPauseIcon = isPlaying ? Pause : Play;
   const pendingActionRef = React.useRef<(() => void) | null>(null);
   const [instantClose, setInstantClose] = React.useState(false);
 
   React.useEffect(() => {
-    if (isOpen) {
-      pendingActionRef.current = null;
-      setInstantClose(false);
-    }
+    if (isOpen) pendingActionRef.current = null;
   }, [isOpen]);
 
-  const { visible, progress, dismissEnabledRef, onModalShow } = useModalTransition(isOpen, {
-    preset: 'sheet',
-    closeDuration: instantClose ? 0 : modalMotion.sheet.closeDuration,
-    onAfterClose: () => {
-      if (pendingActionRef.current) {
-        const action = pendingActionRef.current;
-        pendingActionRef.current = null;
-        requestAnimationFrame(() => {
-          action();
-        });
-      }
-    },
-  });
-
-  const hiddenTranslateY = Math.max(500, Math.round(windowHeight * 0.65));
+  // Reset after the sheet is hidden, so opening never triggers a re-render mid-slide.
+  const handleAfterClose = React.useCallback(() => {
+    setInstantClose(false);
+    const action = pendingActionRef.current;
+    if (!action) return;
+    pendingActionRef.current = null;
+    requestAnimationFrame(() => {
+      action();
+    });
+  }, []);
 
   const handleImmediateAction = React.useCallback(
     (fn?: () => void) => {
@@ -126,108 +103,83 @@ export function VerseActionsSheet({
     [onClose]
   );
 
-  const handleOverlayPress = React.useCallback(() => {
-    if (!dismissEnabledRef.current) return;
-    onClose();
-  }, [dismissEnabledRef, onClose]);
-
   const [surahIdStr] = (verseKey || '').split(':');
   const surahId = Number(surahIdStr);
   const surahName = surahId ? t('surah_names.' + surahId, { fallback: title }) : title;
   const localizedVerseKey = localizeDigits(verseKey);
-  const sheetBg = isDark ? palette.background : palette.surface;
 
   return (
-    <PortalOverlay
-      visible={visible}
-      onShow={onModalShow}
-      onRequestClose={onClose}
+    <BottomSheet
+      isOpen={isOpen}
+      onClose={onClose}
+      maxWidth={600}
+      closeDuration={instantClose ? 0 : undefined}
+      onAfterClose={handleAfterClose}
     >
-      <View className={isDark ? 'dark' : ''} style={styles.root}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={handleOverlayPress}>
-          <Animated.View style={[styles.overlay, modalBackdropStyle(progress, isDark)]} />
-        </Pressable>
+      <View className={isDark ? 'dark' : ''}>
+        <View className="flex-row items-center justify-between border-b border-border/30 px-6 py-4 dark:border-border-dark/20">
+          <Text
+            numberOfLines={2}
+            className="flex-1 text-lg font-semibold text-foreground dark:text-foreground-dark mr-3"
+          >
+            {surahName} {localizedVerseKey}
+          </Text>
+          <Pressable
+            onPress={onClose}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel={t('close', { fallback: 'Close' })}
+            style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
+          >
+            <X color={palette.muted} size={20} strokeWidth={2.25} />
+          </Pressable>
+        </View>
 
-        <Animated.View
-          style={[
-            styles.sheet,
-            {
-              maxHeight: Math.max(0, Math.round(windowHeight * 0.9)),
-              backgroundColor: sheetBg,
-              borderColor: palette.border,
-            },
-            verticalSheetTransform(progress, hiddenTranslateY),
-          ]}
-          className="rounded-t-3xl"
-        >
-          <SafeAreaView edges={['bottom']} style={{ backgroundColor: sheetBg }}>
-            <View className={isDark ? 'dark' : ''}>
-              <View className="flex-row items-center justify-between border-b border-border/30 px-6 py-4 dark:border-border-dark/20">
-                <Text
-                  numberOfLines={2}
-                  className="flex-1 text-lg font-semibold text-foreground dark:text-foreground-dark mr-3"
-                >
-                  {surahName} {localizedVerseKey}
-                </Text>
-                <Pressable
-                  onPress={onClose}
-                  hitSlop={10}
-                  accessibilityRole="button"
-                  accessibilityLabel={t('close', { fallback: 'Close' })}
-                  style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
-                >
-                  <X color={palette.muted} size={20} strokeWidth={2.25} />
-                </Pressable>
-              </View>
-
-              <View className="px-4 pt-4 pb-2">
-                <View className="gap-2">
-                  <ActionRow
-                    icon={<PlayPauseIcon color={palette.muted} size={22} strokeWidth={2.25} />}
-                    label={isPlaying ? t('pause_audio', { fallback: 'Pause audio' }) : t('play_audio', { fallback: 'Play audio' })}
-                    onPress={() => handleImmediateAction(onPlayPause)}
-                    disabled={!onPlayPause}
-                  />
-                  {showViewTafsir ? (
-                    <ActionRow
-                      icon={<BookOpenText color={palette.muted} size={22} strokeWidth={2.25} />}
-                      label={t('view_tafsir', { fallback: 'View Tafsir' })}
-                      onPress={() => handleNavigationAction(onOpenTafsir)}
-                      disabled={!onOpenTafsir}
-                    />
-                  ) : null}
-                  <ActionRow
-                    icon={<Bookmark color={palette.muted} size={22} strokeWidth={2.25} />}
-                    label={showRemove ? t('remove_bookmark', { fallback: 'Remove Bookmark' }) : t('pin_or_bookmark', { fallback: 'Pin or Bookmark' })}
-                    onPress={() => handleDeferredAction(onBookmark)}
-                    active={isBookmarked || showRemove}
-                    disabled={!onBookmark}
-                  />
-                  <ActionRow
-                    icon={<Calendar color={palette.muted} size={22} strokeWidth={2.25} />}
-                    label={t('add_to_plan', { fallback: 'Add to Plan' })}
-                    onPress={() => handleDeferredAction(onAddToPlan)}
-                    disabled={!onAddToPlan}
-                  />
-                  <ActionRow
-                    icon={<Copy color={palette.muted} size={22} strokeWidth={2.25} />}
-                    label={t('copy_verse', { fallback: 'Copy Verse' })}
-                    onPress={() => handleDeferredAction(onCopy)}
-                    disabled={!onCopy}
-                  />
-                  <ActionRow
-                    icon={<Share2 color={palette.muted} size={22} strokeWidth={2.25} />}
-                    label={t('share', { fallback: 'Share' })}
-                    onPress={() => handleDeferredAction(onShare)}
-                    disabled={!onShare}
-                  />
-                </View>
-              </View>
-            </View>
-          </SafeAreaView>
-        </Animated.View>
+        <View className="px-4 pt-4 pb-2">
+          <View className="gap-2">
+            <ActionRow
+              icon={<PlayPauseIcon color={palette.muted} size={22} strokeWidth={2.25} />}
+              label={isPlaying ? t('pause_audio', { fallback: 'Pause audio' }) : t('play_audio', { fallback: 'Play audio' })}
+              onPress={() => handleImmediateAction(onPlayPause)}
+              disabled={!onPlayPause}
+            />
+            {showViewTafsir ? (
+              <ActionRow
+                icon={<BookOpenText color={palette.muted} size={22} strokeWidth={2.25} />}
+                label={t('view_tafsir', { fallback: 'View Tafsir' })}
+                onPress={() => handleNavigationAction(onOpenTafsir)}
+                disabled={!onOpenTafsir}
+              />
+            ) : null}
+            <ActionRow
+              icon={<Bookmark color={palette.muted} size={22} strokeWidth={2.25} />}
+              label={showRemove ? t('remove_bookmark', { fallback: 'Remove Bookmark' }) : t('pin_or_bookmark', { fallback: 'Pin or Bookmark' })}
+              onPress={() => handleDeferredAction(onBookmark)}
+              active={isBookmarked || showRemove}
+              disabled={!onBookmark}
+            />
+            <ActionRow
+              icon={<Calendar color={palette.muted} size={22} strokeWidth={2.25} />}
+              label={t('add_to_plan', { fallback: 'Add to Plan' })}
+              onPress={() => handleDeferredAction(onAddToPlan)}
+              disabled={!onAddToPlan}
+            />
+            <ActionRow
+              icon={<Copy color={palette.muted} size={22} strokeWidth={2.25} />}
+              label={t('copy_verse', { fallback: 'Copy Verse' })}
+              onPress={() => handleDeferredAction(onCopy)}
+              disabled={!onCopy}
+            />
+            <ActionRow
+              icon={<Share2 color={palette.muted} size={22} strokeWidth={2.25} />}
+              label={t('share', { fallback: 'Share' })}
+              onPress={() => handleDeferredAction(onShare)}
+              disabled={!onShare}
+            />
+          </View>
+        </View>
       </View>
-    </PortalOverlay>
+    </BottomSheet>
   );
 }
 
@@ -267,22 +219,6 @@ function ActionRow({
 }
 
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  overlay: {
-    flex: 1,
-  },
-  sheet: {
-    width: '100%',
-    maxWidth: 600,
-    alignSelf: 'center',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    overflow: 'hidden',
-  },
   actionText: {
     fontSize: 17,
     lineHeight: 24,
