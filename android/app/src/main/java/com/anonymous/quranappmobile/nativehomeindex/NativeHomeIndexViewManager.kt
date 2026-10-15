@@ -14,6 +14,10 @@ class NativeHomeIndexViewManager : ViewGroupManager<NativeHomeIndexView>() {
   override fun addView(parent: NativeHomeIndexView, child: View, index: Int) =
       parent.addReactHeaderChild(child, index)
 
+  // The React header scrolls with the list's spacer row. Without this, every header re-layout
+  // (a Recent/Quick links card changing height) makes Fabric snap it back to y=0 over the rows.
+  override fun needsCustomLayoutForChildren(): Boolean = true
+
   override fun getChildCount(parent: NativeHomeIndexView): Int = parent.reactHeaderChildCount()
   override fun getChildAt(parent: NativeHomeIndexView, index: Int): View = parent.reactHeaderChildAt(index)
   override fun removeViewAt(parent: NativeHomeIndexView, index: Int) = parent.removeReactHeaderChildAt(index)

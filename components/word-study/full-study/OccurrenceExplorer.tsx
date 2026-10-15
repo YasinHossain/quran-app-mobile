@@ -595,22 +595,24 @@ export function OccurrenceExplorer({
                 : null,
             ]}
           >
-            {readyPage.items.map((occurrence) => (
-              <MemoizedOccurrenceResult
-                key={occurrence.location.locationKey}
-                occurrence={occurrence}
-                meaning={
-                  occurrenceMeanings.status === 'ready'
-                    ? occurrenceMeanings.presentationsByLocationKey.get(
-                        occurrence.location.locationKey
-                      )
-                    : undefined
-                }
-                meaningLoading={occurrenceMeanings.status === 'loading'}
-                palette={palette}
-                onOpenReader={onOpenReader}
-              />
-            ))}
+            {readyPage.items.map((occurrence) => {
+              const meaning =
+                occurrenceMeanings.status === 'ready'
+                  ? occurrenceMeanings.presentationsByLocationKey.get(
+                      occurrence.location.locationKey
+                    )
+                  : undefined;
+              return (
+                <MemoizedOccurrenceResult
+                  key={occurrence.location.locationKey}
+                  occurrence={occurrence}
+                  meaning={meaning}
+                  meaningLoading={!meaning}
+                  palette={palette}
+                  onOpenReader={onOpenReader}
+                />
+              );
+            })}
           </View>
           {readyPage.pageInfo.nextCursor ? (
             <View style={styles.loadMoreRow}>

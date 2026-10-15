@@ -8,7 +8,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 internal data class NativeSurahLoadRequest(
-    val surahId: Int,
+    val verseRange: NativeVerseRange,
     val expectedVerseCount: Int,
     val translationIds: List<Int>,
     val translationNames: Map<Int, String>,
@@ -51,7 +51,7 @@ internal class NativeSurahReaderRepository(private val context: Context) {
     } catch (_: RuntimeException) {
       NativeSurahLoadResult.Failure(
           code = "database_read_failed",
-          message = "The offline Surah data could not be read.",
+          message = "The offline Quran data could not be read.",
       )
     } finally {
       database.close()
@@ -65,7 +65,20 @@ internal class NativeSurahReaderRepository(private val context: Context) {
     val translationIds = request.translationIds.distinct().filter { it > 0 }
     val arguments = mutableListOf(request.wordLang)
     arguments.addAll(translationIds.map(Int::toString))
-    arguments.add(request.surahId.toString())
+    val range = request.verseRange
+    arguments.addAll(
+        listOf(
+                range.startSurah,
+                range.endSurah,
+                range.startSurah,
+                range.startSurah,
+                range.startAyah,
+                range.endSurah,
+                range.endSurah,
+                range.endAyah,
+            )
+            .map(Int::toString),
+    )
 
     val translationJoin =
         if (translationIds.isEmpty()) {
@@ -90,6 +103,7 @@ internal class NativeSurahReaderRepository(private val context: Context) {
             """
             SELECT
               v.verse_key AS verse_key,
+              v.surah AS surah,
               v.ayah AS ayah,
               v.arabic_uthmani AS arabic_uthmani,
               wt.words_json AS words_json,
@@ -99,8 +113,10 @@ internal class NativeSurahReaderRepository(private val context: Context) {
               ON wt.verse_key = v.verse_key
               AND wt.language_code = ?
             $translationJoin
-            WHERE v.surah = ?
-            ORDER BY v.ayah ASC, translation_id ASC;
+            WHERE v.surah BETWEEN ? AND ?
+              AND (v.surah > ? OR (v.surah = ? AND v.ayah >= ?))
+              AND (v.surah < ? OR (v.surah = ? AND v.ayah <= ?))
+            ORDER BY v.surah ASC, v.ayah ASC, translation_id ASC;
             """.trimIndent(),
             arguments.toTypedArray(),
         )
@@ -108,6 +124,7 @@ internal class NativeSurahReaderRepository(private val context: Context) {
     cursor.use {
       val builders = linkedMapOf<String, VerseBuilder>()
       val verseKeyColumn = it.getColumnIndexOrThrow("verse_key")
+      val surahColumn = it.getColumnIndexOrThrow("surah")
       val ayahColumn = it.getColumnIndexOrThrow("ayah")
       val arabicColumn = it.getColumnIndexOrThrow("arabic_uthmani")
       val wordsColumn = it.getColumnIndexOrThrow("words_json")
@@ -116,13 +133,15 @@ internal class NativeSurahReaderRepository(private val context: Context) {
 
       while (it.moveToNext()) {
         val verseKey = it.getString(verseKeyColumn)?.trim().orEmpty()
+        val surahNumber = it.getInt(surahColumn)
         val verseNumber = it.getInt(ayahColumn)
-        if (verseKey.isBlank() || verseNumber <= 0) continue
+        if (verseKey.isBlank() || surahNumber <= 0 || verseNumber <= 0) continue
 
         val builder =
             builders.getOrPut(verseKey) {
               VerseBuilder(
                   verseKey = verseKey,
+                  surahNumber = surahNumber,
                   verseNumber = verseNumber,
                   arabicText = it.getString(arabicColumn)?.trim().orEmpty(),
                   wordsJson = it.stringOrNull(wordsColumn),
@@ -140,13 +159,13 @@ internal class NativeSurahReaderRepository(private val context: Context) {
       if (builders.isEmpty()) {
         return NativeSurahLoadResult.Failure(
             code = "surah_not_downloaded",
-            message = "This Surah is not available in the offline database.",
+            message = "These verses are not available in the offline database.",
         )
       }
       if (request.expectedVerseCount > 0 && builders.size != request.expectedVerseCount) {
         return NativeSurahLoadResult.Failure(
             code = "incomplete_surah",
-            message = "The offline Surah data is incomplete.",
+            message = "The offline Quran data is incomplete.",
         )
       }
 
@@ -156,16 +175,18 @@ internal class NativeSurahReaderRepository(private val context: Context) {
         if (builder.arabicText.isBlank()) {
           return NativeSurahLoadResult.Failure(
               code = "incomplete_surah",
-              message = "The offline Surah text is incomplete.",
+              message = "The offline Quran text is incomplete.",
           )
         }
 
 
+        // The word language is only a preference until its pack is installed. Plain rows render
+        // the full Arabic text without word data, so only word-by-word reading requires the pack.
         val words = parseWords(builder.wordsJson, request.requireWordTranslations)
-        if (words.isEmpty()) {
+        if (words.isEmpty() && request.requireWordTranslations) {
           return NativeSurahLoadResult.Failure(
               code = "words_not_downloaded",
-              message = "The selected word-by-word language is not downloaded for this Surah.",
+              message = "The selected word-by-word language is not downloaded for these verses.",
           )
         }
 
@@ -173,6 +194,7 @@ internal class NativeSurahReaderRepository(private val context: Context) {
             NativeVerse(
                 verseKey = builder.verseKey,
                 verseNumber = builder.verseNumber,
+                surahNumber = builder.surahNumber,
                 verseApiId = null,
                 arabicText = builder.arabicText,
                 words = words,
@@ -290,6 +312,7 @@ internal class NativeSurahReaderRepository(private val context: Context) {
 
   private data class VerseBuilder(
       val verseKey: String,
+      val surahNumber: Int,
       val verseNumber: Int,
       val arabicText: String,
       val wordsJson: String?,

@@ -24,6 +24,7 @@ import { AppSearchHeader, ReaderOverlayHeader } from '@/components/navigation/Ap
 import { useCollapsibleReaderHeader } from '@/components/navigation/useCollapsibleReaderHeader';
 import { useHeaderSearch } from '@/components/navigation/useHeaderSearch';
 import { HeaderActionButton } from '@/components/search/HeaderSearchBar';
+import { NativePassageReader } from '@/components/reader/NativePassageReader';
 import { ReaderBottomMessage } from '@/components/reader/ReaderBottomMessage';
 import { SettingsSidebar } from '@/components/reader/settings/SettingsSidebar';
 import type { PanelType } from '@/components/reader/settings/SettingsSidebarContent';
@@ -42,6 +43,9 @@ import { SUGGESTED_MUSHAF_ID, findMushafOption } from '@/data/mushaf/options';
 import { useChapters } from '@/hooks/useChapters';
 import { useMushafPageData } from '@/hooks/useMushafPageData';
 import { usePageVerses } from '@/hooks/usePageVerses';
+import { copyTextToClipboard } from '@/lib/clipboard';
+import { getPagePassage } from '@/lib/reader/readerPassage';
+import { formatVerseText } from '@/lib/verse/formatVerseText';
 import { preloadOfflineTafsirWindow } from '@/lib/tafsir/tafsirCache';
 import { useTranslationResources } from '@/hooks/useTranslationResources';
 import { primeVerseDetailsCache } from '@/lib/verse/verseDetailsCache';
@@ -51,6 +55,7 @@ import { useAudioPlayer } from '@/providers/AudioPlayerContext';
 import { useLayoutMetrics } from '@/providers/LayoutMetricsContext';
 import { useSettings } from '@/providers/SettingsContext';
 import { useAppTheme } from '@/providers/ThemeContext';
+import { useUiTranslation } from '@/providers/UiLanguageContext';
 import { container } from '@/src/core/infrastructure/di/container';
 
 import type { Bookmark, MushafPackId } from '@/types';
@@ -184,6 +189,7 @@ export default function PageScreen(): React.JSX.Element {
     verseApiId?: number;
     arabicText: string;
     translationTexts: string[];
+    translationItems?: Array<{ text: string; resourceId?: number; resourceName?: string }>;
   } | null>(null);
 
   const { resolvedTheme } = useAppTheme();
@@ -192,6 +198,10 @@ export default function PageScreen(): React.JSX.Element {
   const { settings, effectiveShowByWords, isHydrated, setReadingMode } = useSettings();
   const requestedMushafView = settings.readingMode === 'mushaf';
   const isMushafView = requestedMushafView && Boolean(settings.mushafId);
+  // Android reads the page straight from the offline database in the Kotlin reader, like a Surah.
+  const usesNativePassageReader = Platform.OS === 'android' && !isMushafView;
+  const passage = React.useMemo(() => getPagePassage(pageNumber), [pageNumber]);
+  const { t } = useUiTranslation();
   const headerSearch = useHeaderSearch({ preserveMushafView: isMushafView, replace: true });
   const { chapters } = useChapters();
   const audio = useAudioPlayer();
@@ -332,7 +342,7 @@ export default function PageScreen(): React.JSX.Element {
     pageNumber,
     translationIds,
     wordLang: settings.wordLang,
-    enabled: !isMushafView,
+    enabled: !isMushafView && !usesNativePassageReader,
   });
 
   const [visibleVerseNumber, setVisibleVerseNumber] = React.useState(1);
@@ -384,12 +394,17 @@ export default function PageScreen(): React.JSX.Element {
       verseApiId?: number;
       arabicText: string;
       translationTexts: string[];
+      translationItems?: Array<{ text: string; resourceId?: number; resourceName?: string }>;
     }) => {
       setActiveVerse(params);
       setIsVerseActionsOpen(true);
     },
     []
   );
+
+  const handlePassageVisibleVerseChange = React.useCallback((verseKey: string) => {
+    visibleVerseKeyRef.current = verseKey;
+  }, []);
 
   const closeVerseActions = React.useCallback(() => {
     setIsVerseActionsOpen(false);
@@ -575,6 +590,24 @@ export default function PageScreen(): React.JSX.Element {
     setIsAddToPlannerOpen(true);
   }, [activeVerse?.arabicText, activeVerse?.translationTexts, activeVerse?.verseKey]);
 
+  const handleCopy = React.useCallback(async () => {
+    if (!activeVerse) return;
+    const parsed = parseVerseKeyNumbers(activeVerse.verseKey);
+    const surahName = parsed ? (chapterNamesById.get(parsed.surahId) ?? '') : '';
+    const textToCopy = formatVerseText({
+      surahName,
+      verseKey: activeVerse.verseKey,
+      arabicText: activeVerse.arabicText,
+      translationTexts: activeVerse.translationTexts,
+      translationItems: activeVerse.translationItems,
+      translationsById,
+    });
+    await copyTextToClipboard(
+      textToCopy,
+      t('verse_copied', { fallback: 'Verse copied to clipboard' })
+    );
+  }, [activeVerse, chapterNamesById, t, translationsById]);
+
   const handleShare = React.useCallback(async () => {
     if (!activeVerse) return;
     const parsed = parseVerseKeyNumbers(activeVerse.verseKey);
@@ -751,6 +784,7 @@ export default function PageScreen(): React.JSX.Element {
                 verseApiId: verse.id,
                 arabicText: verse.text_uthmani ?? '',
                 translationTexts,
+                translationItems,
               })
             }
           />
@@ -850,7 +884,27 @@ export default function PageScreen(): React.JSX.Element {
           </View>
         ) : (
         <View style={styles.contentLayer} pointerEvents="auto">
-          {!hasLoadedContent && offlineNotInstalled ? (
+          {usesNativePassageReader && passage ? (
+            <NativePassageReader
+              key={pageNumber}
+              passage={passage}
+              topInset={readerHeader.headerHeight}
+              bottomInset={audioPlayerBarHeight}
+              activeWord={
+                wordQuickSheet.isOpen && wordQuickSheet.event
+                  ? {
+                      verseKey: wordQuickSheet.event.verseKey,
+                      wordPosition: wordQuickSheet.event.wordPosition,
+                      wordId: wordQuickSheet.event.wordId,
+                    }
+                  : verseAudioWordSync.activeWord
+              }
+              onOpenVerseActions={openVerseActions}
+              onOpenWordStudy={wordQuickSheet.open}
+              onScrollOffset={readerHeader.handleScrollOffset}
+              onVisibleVerseChange={handlePassageVisibleVerseChange}
+            />
+          ) : !hasLoadedContent && offlineNotInstalled ? (
             <View className="flex-1 px-4" style={{ paddingTop: readerHeader.headerHeight + 16 }}>
               <View className="mt-2 gap-3">
                 <Text className="text-sm text-muted dark:text-muted-dark">
@@ -943,7 +997,7 @@ export default function PageScreen(): React.JSX.Element {
               ListHeaderComponent={<PageHeaderCard pageNumber={pageNumber} surahRange={surahRange} />}
             />
           )}
-          {hasLoadedContent && verseKeys.length > 1 ? (
+          {!usesNativePassageReader && hasLoadedContent && verseKeys.length > 1 ? (
             <VerseScrubber
               ref={verseScrubberRef}
               bottomInset={audioPlayerBarHeight}
@@ -980,6 +1034,7 @@ export default function PageScreen(): React.JSX.Element {
         onBookmark={handleBookmark}
         onOpenTafsir={handleOpenTafsir}
         onAddToPlan={handleAddToPlan}
+        onCopy={handleCopy}
         onShare={handleShare}
       />
 

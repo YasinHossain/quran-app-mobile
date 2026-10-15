@@ -10,6 +10,7 @@ import {
   TextInput,
   View,
   type GestureResponderEvent,
+  type LayoutChangeEvent,
   useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -144,7 +145,7 @@ function getHomeItemType(item: HomeListRow): HomeListRow['type'] {
   return item.type;
 }
 
-function HomeSearchHeader({
+const HomeSearchHeader = React.memo(function HomeSearchHeader({
   headerSearchInputRef,
   headerSearchQuery,
   onQueryChange,
@@ -157,7 +158,7 @@ function HomeSearchHeader({
   onQueryChange: (value: string) => void;
   onFocus: () => void;
   onSubmit: () => void;
-  onLayout?: (event: any) => void;
+  onLayout?: (event: LayoutChangeEvent) => void;
 }): React.JSX.Element {
   const insets = useSafeAreaInsets();
   const [isMenuOpen, setIsMenuOpen] = React.useState(false);
@@ -346,7 +347,7 @@ function HomeSearchHeader({
       }
     />
   );
-}
+});
 
 const HomeIntro = React.memo(function HomeIntro({
   isSpotlightVisible,
@@ -381,7 +382,7 @@ const HomeIntro = React.memo(function HomeIntro({
   );
 });
 
-function HomeTabsBar({
+const HomeTabsBar = React.memo(function HomeTabsBar({
   activeTab,
   containerWidth,
   onHeightChange,
@@ -430,7 +431,7 @@ function HomeTabsBar({
       </View>
     </View>
   );
-}
+});
 
 function HomeListMessage({
   message,
@@ -526,6 +527,16 @@ export default function ReadScreen(): React.JSX.Element {
   const { settings } = useSettings();
   const [searchHeaderHeight, setSearchHeaderHeight] = React.useState(0);
   const headerSearch = useHeaderSearch();
+  const { setIsOpen: setHeaderSearchOpen, navigateToSearch } = headerSearch;
+  // Stable header callbacks let the memoized header skip Home's layout-driven re-renders.
+  const handleHeaderSearchFocus = React.useCallback(
+    () => setHeaderSearchOpen(true),
+    [setHeaderSearchOpen]
+  );
+  const handleHeaderSearchSubmit = React.useCallback(() => navigateToSearch(), [navigateToSearch]);
+  const handleSearchHeaderLayout = React.useCallback((event: LayoutChangeEvent) => {
+    setSearchHeaderHeight(event.nativeEvent.layout.height);
+  }, []);
   const listRef = React.useRef<FlashListRef<HomeListRow> | null>(null);
   const nativeListRef = React.useRef<NativeHomeIndexHandle | null>(null);
   useScrollToTop(Platform.OS === 'android' ? nativeListRef : listRef);
@@ -942,11 +953,9 @@ export default function ReadScreen(): React.JSX.Element {
         headerSearchInputRef={headerSearch.inputRef}
         headerSearchQuery={headerSearch.query}
         onQueryChange={headerSearch.updateQuery}
-        onFocus={() => headerSearch.setIsOpen(true)}
-        onSubmit={() => headerSearch.navigateToSearch()}
-        onLayout={(event) => {
-          setSearchHeaderHeight(event.nativeEvent.layout.height);
-        }}
+        onFocus={handleHeaderSearchFocus}
+        onSubmit={handleHeaderSearchSubmit}
+        onLayout={handleSearchHeaderLayout}
       />
 
       <View className="flex-1">

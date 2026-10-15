@@ -12,6 +12,7 @@
     "android:device": "node scripts/android-physical-device.js install-debug",
     "dev:android:device": "node scripts/android-physical-device.js dev",
     "perf:android:device": "node scripts/android-physical-device.js install-release",
+    "perf:android:baseline-profile": "python3 scripts/perf/android-baseline-profile.py",
     "metro": "node scripts/prepare-expo-start.js && expo start",
     "emulator": "node scripts/start-android-emulator.js",
     "setup:emulator:budget": "node scripts/setup-android-budget-avd.js",

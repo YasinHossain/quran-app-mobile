@@ -201,5 +201,32 @@ For this app, prioritize:
 
 Use Android Studio System Trace/Profiler or Perfetto to diagnose a failed
 scenario. The in-app development performance monitor is a hint, not the final
-measurement. Formal cold/warm/hot startup and Baseline Profile work belongs in
-the Phase 4 Macrobenchmark setup described in `docs/android-performance.md`.
+measurement.
+
+## Cold start and the Baseline Profile
+
+`adb shell am start -W -n com.anonymous.quranappmobile/.MainActivity` reports
+`TotalTime` when Home's first frame replaces the splash, because the splash stays
+up until the JS tree commits. Check `adb shell dumpsys battery` first: an
+unplugged phone at a few percent was throttled about 4x. Numbers drift about
+100 ms between sessions, so compare builds by alternating saved APKs
+(`adb install -r`) in one session.
+
+`android/app/src/main/baseline-prof.txt` lists the classes and methods that run
+from launch to Home. AGP compiles it into the APK, so Play installs, and
+sideloaded installs after background dexopt, start with that code already
+compiled instead of interpreted. On the SM-M145F (2026-10-15) it cut cold start
+from ~1.55 s to ~1.19 s. Regenerate it after large startup changes: install a
+release build with `npm run perf:android:device`, then run
+`npm run perf:android:baseline-profile` (Android 13+, keeps app data).
+
+To measure a build the way users get it, apply only the profile embedded in the
+APK before timing:
+
+```bash
+P=com.anonymous.quranappmobile
+adb shell cmd package compile --reset $P
+adb shell am broadcast -a androidx.profileinstaller.action.INSTALL_PROFILE \
+  $P/androidx.profileinstaller.ProfileInstallReceiver
+adb shell cmd package compile -f -m speed-profile $P
+```

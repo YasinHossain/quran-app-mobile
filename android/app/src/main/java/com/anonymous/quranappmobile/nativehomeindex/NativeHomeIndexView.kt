@@ -7,6 +7,7 @@ import android.view.View
 import android.view.ViewConfiguration
 import android.widget.FrameLayout
 import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.LinearSmoothScroller
 import androidx.recyclerview.widget.RecyclerView
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.ReadableMap
@@ -116,6 +117,8 @@ class NativeHomeIndexView(private val reactContext: ThemedReactContext) : FrameL
     if (adapter.headerHeightPx == px) return
     adapter.headerHeightPx = px
     adapter.notifyItemChanged(0)
+    // Resize the spacer now; otherwise the rows keep the old offset under the resized header.
+    layoutRecyclerViewNow()
     updateHeaderOverlay()
   }
 
@@ -186,8 +189,29 @@ class NativeHomeIndexView(private val reactContext: ThemedReactContext) : FrameL
   }
 
   fun scrollToTop(animated: Boolean) {
-    if (animated) recyclerView.smoothScrollToPosition(0)
-    else layoutManager.scrollToPositionWithOffset(0, 0)
+    recyclerView.stopScroll()
+    val spacer = layoutManager.findViewByPosition(0)
+    if (spacer != null && spacer.top >= 0) return
+
+    if (!animated) {
+      layoutManager.scrollToPositionWithOffset(0, 0)
+      layoutRecyclerViewNow()
+      updateHeaderOverlay()
+      return
+    }
+
+    // Keep the animation short from deep in the page list.
+    if (layoutManager.findFirstVisibleItemPosition() > SCROLL_TO_TOP_JUMP_ROWS) {
+      layoutManager.scrollToPositionWithOffset(SCROLL_TO_TOP_JUMP_ROWS, 0)
+      layoutRecyclerViewNow()
+    }
+    // smoothScrollToPosition(0) snaps the tall spacer's bottom to the viewport's bottom while it
+    // is on screen, which scrolls Home down instead of up. Always align its top.
+    layoutManager.startSmoothScroll(
+        object : LinearSmoothScroller(reactContext) {
+          override fun getVerticalSnapPreference(): Int = SNAP_TO_START
+        }.apply { targetPosition = 0 }
+    )
   }
 
   override fun onInterceptTouchEvent(event: MotionEvent): Boolean {
@@ -327,6 +351,9 @@ class NativeHomeIndexView(private val reactContext: ThemedReactContext) : FrameL
         child.layout(0, headerTop, headerWidth, headerTop + headerHeight)
       }
     }
+    // Before the list's first layout there is no spacer row yet. That is not "scrolled past the
+    // header": reporting it flips Home's spotlight off and back on, re-rendering Home twice at launch.
+    if (spacer == null && layoutManager.childCount == 0) return
     val nextVisible = spacer != null && spacer.bottom > recyclerView.paddingTop
     if (nextVisible == headerVisible) return
     headerVisible = nextVisible
@@ -364,6 +391,7 @@ class NativeHomeIndexView(private val reactContext: ThemedReactContext) : FrameL
   private fun dp(value: Int): Int = (value * density + 0.5f).toInt()
 
   companion object {
+    private const val SCROLL_TO_TOP_JUMP_ROWS = 12
     const val EVENT_ITEM_PRESS = "topItemPress"
     const val EVENT_TAB_PRESS = "topTabPress"
     const val EVENT_HEADER_VISIBILITY_CHANGE = "topHeaderVisibilityChange"

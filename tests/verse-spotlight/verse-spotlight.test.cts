@@ -646,7 +646,7 @@ test('Home component wires focus/resume, clean presentation, accessible swipes, 
   const homeSource = require('node:fs').readFileSync('app/(tabs)/index.tsx', 'utf8') as string;
 
   assert.match(homeSource, /<HomeVerseSpotlight(?:\s[^>]*)?\/>/);
-  assert.match(source, /useFocusEffect/);
+  assert.match(source, /useIsFocused\(\)/);
   assert.match(source, /AppState\.addEventListener/);
   assert.match(source, /useReducedMotion/);
   assert.match(source, /<FlatList/);

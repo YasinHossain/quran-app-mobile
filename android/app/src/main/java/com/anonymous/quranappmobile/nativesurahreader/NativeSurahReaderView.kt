@@ -3,6 +3,7 @@ package com.anonymous.quranappmobile.nativesurahreader
 import android.graphics.Color
 import android.view.View
 import android.widget.FrameLayout
+import androidx.recyclerview.widget.DefaultItemAnimator
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.LinearSmoothScroller
 import androidx.recyclerview.widget.RecyclerView
@@ -87,6 +88,11 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
   private val fastScroller =
       NativeVerseFastScrollerView(reactContext) { verseIndex ->
         requestFastScrollToVerseIndex(verseIndex)
+      }.apply {
+        // A Juz or Page spans Surahs, so its scrubber names the verse rather than a position.
+        labelForIndex = { index ->
+          verses.getOrNull(index)?.takeIf { adapter.scopeBanner != null }?.verseKey
+        }
       }
   private val recyclerView =
       RecyclerView(reactContext).apply {
@@ -113,7 +119,7 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
   private var topInsetPx: Int = 0
   private var bottomInsetPx: Int = 0
   private var lastVisibleVerseKey: String? = null
-  private var pendingTargetVerse: Int? = null
+  private var pendingTargetVerseKey: String? = null
   private var hasReceivedSettings = false
   private var hasReceivedTheme = false
   private var hasReceivedVerses = false
@@ -135,7 +141,8 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
   private var translationRecovery: ReadableMap? = null
   private var latestOfflineSettings: NativeReaderSettings? = null
   private var latestOfflineTheme: NativeReaderTheme? = null
-  private var latestOfflineSurahIntro: NativeSurahIntro? = null
+  private var latestOfflineSurahIntros: Map<Int, NativeSurahIntro> = emptyMap()
+  private var latestOfflineScopeBanner: NativeScopeBanner? = null
 
   init {
     recyclerView.alpha = 0f
@@ -146,8 +153,6 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
   fun setSurahId(surahId: Int) {
     if (this.surahId == surahId) return
     this.surahId = surahId
-    adapter.surahId = surahId
-    adapter.notifyDataSetChanged()
   }
 
   fun setTargetVerse(targetVerse: Int) {
@@ -156,7 +161,7 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
     }
 
     if (targetVerse == 1) {
-      pendingTargetVerse = null
+      pendingTargetVerseKey = null
       post {
         layoutManager.scrollToPositionWithOffset(0, 0)
         dispatchVisibleVerseEvent(force = true)
@@ -164,8 +169,9 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
       return
     }
 
-    pendingTargetVerse = targetVerse
-    post { scrollToVerse(targetVerse, false) }
+    val targetVerseKey = "$surahId:$targetVerse"
+    pendingTargetVerseKey = targetVerseKey
+    post { scrollToVerseKey(targetVerseKey, false) }
   }
 
   fun setReaderState(readerState: ReadableMap?) {
@@ -177,8 +183,7 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
     }
 
     val nextSurahId = readerState.getDoubleIfPresent("surahId")?.toInt()?.takeIf { it > 0 } ?: surahId
-    val nextTargetVerse =
-        readerState.getDoubleIfPresent("targetVerse")?.toInt()?.takeIf { it > 0 } ?: 1
+    val nextTargetVerseKey = parseTargetVerseKey(readerState, nextSurahId)
     val nextSettings = parseSettings(readerState.getMapIfPresent("settings"))
     val nextTheme = NativeReaderTheme.fromReadableMap(readerState.getMapIfPresent("theme"))
     val nextTopInsetPx =
@@ -199,7 +204,8 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
         } else {
           adapter.activeWord
         }
-    val nextSurahIntro = readerState.getMapIfPresent("surahIntro")?.toNativeSurahIntro()
+    val nextSurahIntros = readerState.toNativeSurahIntros()
+    val nextScopeBanner = readerState.getMapIfPresent("scopeBanner")?.toNativeScopeBanner()
     val nextVerseRevision = readerState.getStringIfPresent("versesRevision")?.takeIf { it.isNotBlank() }
     val nextVerseModel = verseModelCache.resolve(
         nextVerseRevision?.let {
@@ -210,11 +216,11 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
     val nextSessionKey =
         listOf(
                 nextSurahId,
-                nextTargetVerse,
+                nextTargetVerseKey,
                 nextVerses.size,
                 nextVerses.firstOrNull()?.verseKey.orEmpty(),
                 nextVerses.lastOrNull()?.verseKey.orEmpty(),
-                nextSurahIntro?.chapterId ?: 0,
+                nextSurahIntros.keys.joinToString(","),
             )
             .joinToString(":")
     val nextRenderKey =
@@ -235,7 +241,8 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
                 nextTheme.hashCode(),
                 nextVerseRevision.orEmpty(),
                 nextVerseModel.contentHash,
-                nextSurahIntro,
+                nextSurahIntros,
+                nextScopeBanner,
             )
             .joinToString(":")
 
@@ -273,10 +280,11 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
     if (shouldApplyInitialState) {
       applyInitialReaderState(
           nextSurahId,
-          nextTargetVerse,
+          nextTargetVerseKey,
           nextSettings,
           nextTheme,
-          nextSurahIntro,
+          nextSurahIntros,
+          nextScopeBanner,
           nextVerses,
           nextTopInsetPx,
           nextBottomInsetPx,
@@ -288,28 +296,47 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
         nextSurahId,
         nextSettings,
         nextTheme,
-        nextSurahIntro,
+        nextSurahIntros,
+        nextScopeBanner,
         nextVerses,
         nextTopInsetPx,
         nextBottomInsetPx,
     )
   }
 
+  /** Range readers name their target by verse key; Surah readers may still pass a verse number. */
+  private fun parseTargetVerseKey(readerState: ReadableMap, readerSurahId: Int): String? {
+    readerState.getStringIfPresent("targetVerseKey")?.trim()?.takeIf { it.isNotBlank() }?.let {
+      return it
+    }
+    val targetVerse = readerState.getDoubleIfPresent("targetVerse")?.toInt()?.takeIf { it > 1 }
+    return targetVerse?.let { "$readerSurahId:$it" }
+  }
+
   private fun setOfflineReaderState(readerState: ReadableMap) {
-    val nextSurahId = readerState.getDoubleIfPresent("surahId")?.toInt()?.takeIf { it > 0 } ?: return
-    val nextTargetVerse =
-        readerState.getDoubleIfPresent("targetVerse")?.toInt()?.takeIf { it > 0 } ?: 1
+    val nextVerseRange =
+        readerState.getMapIfPresent("verseRange")?.toNativeVerseRange()
+            ?: readerState.getDoubleIfPresent("surahId")?.toInt()?.takeIf { it > 0 }?.let {
+              NativeVerseRange.forSurah(it)
+            }
+            ?: return
+    val nextSurahId =
+        readerState.getDoubleIfPresent("surahId")?.toInt()?.takeIf { it > 0 }
+            ?: nextVerseRange.startSurah
+    val nextTargetVerseKey = parseTargetVerseKey(readerState, nextSurahId)
     val expectedVerseCount =
         readerState.getDoubleIfPresent("expectedVerseCount")?.toInt()?.coerceAtLeast(0) ?: 0
     val nextSettings = parseSettings(readerState.getMapIfPresent("settings"))
     val nextTheme = NativeReaderTheme.fromReadableMap(readerState.getMapIfPresent("theme"))
-    val nextSurahIntro = readerState.getMapIfPresent("surahIntro")?.toNativeSurahIntro()
+    val nextSurahIntros = readerState.toNativeSurahIntros()
+    val nextScopeBanner = readerState.getMapIfPresent("scopeBanner")?.toNativeScopeBanner()
     latestOfflineSettings = nextSettings
     latestOfflineTheme = nextTheme
-    latestOfflineSurahIntro = nextSurahIntro
+    latestOfflineSurahIntros = nextSurahIntros
+    latestOfflineScopeBanner = nextScopeBanner
     val nextLoadKey =
         listOf(
-                nextSurahId,
+                nextVerseRange.cacheKey,
                 expectedVerseCount,
                 nextSettings.translationIds.joinToString(","),
                 nextSettings.translationNames.toSortedMap(),
@@ -327,14 +354,17 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
             nextSurahId,
             nextSettings,
             nextTheme,
-            nextSurahIntro,
+            nextSurahIntros,
+            nextScopeBanner,
             verses.toList(),
             topInsetPx,
             bottomInsetPx,
         )
       } else {
         applySettings(nextSettings)
-        adapter.surahIntro = nextSurahIntro
+        adapter.surahIntros = nextSurahIntros
+        adapter.scopeBanner = nextScopeBanner
+        adapter.rebuildRows()
         adapter.theme = nextTheme
       }
       return
@@ -342,12 +372,13 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
 
     nativeLoadKey = nextLoadKey
     val generation = ++nativeLoadGeneration
-    val visibleVerse =
+    // Reloads for a new translation selection keep the reader's place; first loads use the target.
+    val visibleVerseKey =
         layoutManager.findFirstVisibleItemPosition().let { position ->
           val index = adapter.verseIndexForAdapterPosition(position)
-          verses.getOrNull(index)?.verseNumber
+          verses.getOrNull(index)?.verseKey
         }
-    val placementTarget = visibleVerse ?: nextTargetVerse
+    val placementTarget = visibleVerseKey ?: nextTargetVerseKey
 
     hasReceivedVerses = false
     hasDispatchedInitialReady = false
@@ -359,7 +390,8 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
         nextSurahId,
         nextSettings,
         nextTheme,
-        nextSurahIntro,
+        nextSurahIntros,
+        nextScopeBanner,
         emptyList(),
         topInsetPx,
         bottomInsetPx,
@@ -368,7 +400,7 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
 
     val request =
         NativeSurahLoadRequest(
-            surahId = nextSurahId,
+            verseRange = nextVerseRange,
             expectedVerseCount = expectedVerseCount,
             translationIds = nextSettings.translationIds,
             translationNames = nextSettings.translationNames,
@@ -385,14 +417,14 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
           is NativeSurahLoadResult.Success -> {
             val currentSettings = latestOfflineSettings ?: nextSettings
             val currentTheme = latestOfflineTheme ?: nextTheme
-            val currentSurahIntro = latestOfflineSurahIntro
             hasReceivedVerses = true
             applyInitialReaderState(
                 nextSurahId,
                 placementTarget,
                 currentSettings,
                 currentTheme,
-                currentSurahIntro,
+                latestOfflineSurahIntros,
+                latestOfflineScopeBanner,
                 result.verses,
                 topInsetPx,
                 bottomInsetPx,
@@ -448,13 +480,60 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
       }
     }
     val next = mergeRecoveredTranslations(verses, settings.translationIds, recovered)
-    if (next.indices.all { next[it] === verses[it] }) return
+    val changedVerseKeys =
+        next.indices.filter { next[it] !== verses[it] }.mapTo(HashSet()) { next[it].verseKey }
+    if (changedVerseKeys.isEmpty()) return
+    if (!isInitialContentVisible || recyclerView.scrollState != RecyclerView.SCROLL_STATE_IDLE) {
+      verses.clear()
+      verses.addAll(next)
+      adapter.notifyItemRangeChanged(0, adapter.itemCount)
+      requestImmediateRecyclerRefresh()
+      return
+    }
+    val recoveredIds = recovered.values.flatten().mapNotNullTo(HashSet()) { it.resourceId }
+    revealRecoveredTranslations(next, changedVerseKeys, recoveredIds)
+  }
+
+  /**
+   * Online translations land after the reader is already visible. Apply them in one layout pass
+   * pinned to the row being read, then let rows glide to their taller positions while the new text
+   * fades in. The item animator exists only for this update, so scrolling keeps its no-animator path.
+   */
+  private fun revealRecoveredTranslations(
+      next: List<NativeVerse>,
+      changedVerseKeys: Set<String>,
+      recoveredIds: Set<Int>,
+  ) {
     val anchor = captureScrollAnchor()
+    val animator =
+        DefaultItemAnimator().apply {
+          supportsChangeAnimations = false
+          moveDuration = TRANSLATION_REVEAL_DURATION_MS
+        }
+    recyclerView.itemAnimator = animator
     verses.clear()
     verses.addAll(next)
     adapter.notifyItemRangeChanged(0, adapter.itemCount)
-    requestImmediateRecyclerRefresh()
-    restoreScrollAnchor(anchor)
+    anchor?.let {
+      val position = findAdapterPositionByItemId(it.itemId)
+      if (position >= 0) {
+        layoutManager.scrollToPositionWithOffset(position, it.offsetTop - recyclerView.paddingTop)
+      }
+    }
+    layoutRecyclerViewNow()
+    for (childIndex in 0 until recyclerView.childCount) {
+      val holder = recyclerView.getChildViewHolder(recyclerView.getChildAt(childIndex))
+      (holder as? NativeVerseViewHolder)?.fadeInTranslations(
+          changedVerseKeys,
+          recoveredIds,
+          TRANSLATION_REVEAL_DURATION_MS,
+      )
+    }
+    // Detach on the next frame: clearing the animator from its own finished callback re-enters it.
+    animator.isRunning {
+      recyclerView.post { if (recyclerView.itemAnimator === animator) recyclerView.itemAnimator = null }
+    }
+    post { dispatchVisibleVerseEvent(force = true) }
   }
 
   fun dispose() {
@@ -463,7 +542,9 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
   }
 
   fun setSurahIntro(incomingSurahIntro: ReadableMap?) {
-    adapter.surahIntro = incomingSurahIntro?.toNativeSurahIntro()
+    adapter.surahIntros =
+        incomingSurahIntro?.toNativeSurahIntro()?.let { mapOf(it.chapterId to it) } ?: emptyMap()
+    adapter.rebuildRows()
     adapter.notifyDataSetChanged()
     completeInitialPlacementIfReady()
   }
@@ -475,6 +556,7 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
     hasReceivedVerses = true
     lastVisibleVerseKey = null
     verses.addAll(parseVerses(incomingVerses))
+    adapter.rebuildRows()
     adapter.notifyDataSetChanged()
     completeInitialPlacementIfReady()
   }
@@ -564,12 +646,16 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
   }
 
   fun scrollToVerse(verseNumber: Int, animated: Boolean) {
-    val index = verses.indexOfFirst { it.verseNumber == verseNumber }
+    scrollToVerseKey("$surahId:$verseNumber", animated)
+  }
+
+  fun scrollToVerseKey(verseKey: String, animated: Boolean) {
+    val index = verses.indexOfFirst { it.verseKey == verseKey }
     if (index < 0) {
       return
     }
-    if (pendingTargetVerse == verseNumber) {
-      pendingTargetVerse = null
+    if (pendingTargetVerseKey == verseKey) {
+      pendingTargetVerseKey = null
     }
 
     if (animated) {
@@ -583,10 +669,11 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
 
   private fun applyInitialReaderState(
       nextSurahId: Int,
-      nextTargetVerse: Int,
+      nextTargetVerseKey: String?,
       nextSettings: NativeReaderSettings,
       nextTheme: NativeReaderTheme,
-      nextSurahIntro: NativeSurahIntro?,
+      nextSurahIntros: Map<Int, NativeSurahIntro>,
+      nextScopeBanner: NativeScopeBanner?,
       nextVerses: List<NativeVerse>,
       nextTopInsetPx: Int,
       nextBottomInsetPx: Int,
@@ -601,41 +688,44 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
         nextSurahId,
         nextSettings,
         nextTheme,
-        nextSurahIntro,
+        nextSurahIntros,
+        nextScopeBanner,
         nextVerses,
         nextTopInsetPx,
         nextBottomInsetPx,
     )
 
-    pendingTargetVerse = nextTargetVerse.takeIf { it > 1 }
+    pendingTargetVerseKey = nextTargetVerseKey?.takeIf { it != verses.firstOrNull()?.verseKey }
     adapter.notifyDataSetChanged()
-    completeInitialPlacement(nextTargetVerse)
+    completeInitialPlacement(nextTargetVerseKey)
   }
 
   private fun applyMountedReaderState(
       nextSurahId: Int,
       nextSettings: NativeReaderSettings,
       nextTheme: NativeReaderTheme,
-      nextSurahIntro: NativeSurahIntro?,
+      nextSurahIntros: Map<Int, NativeSurahIntro>,
+      nextScopeBanner: NativeScopeBanner?,
       nextVerses: List<NativeVerse>,
       nextTopInsetPx: Int,
       nextBottomInsetPx: Int,
   ) {
     val anchor = captureScrollAnchor()
-    val hasSameItemSet = hasSameAdapterItemSet(nextSurahId, nextSurahIntro, nextVerses)
+    val previousItemIds = adapterItemIds()
 
     applyReaderModel(
         nextSurahId,
         nextSettings,
         nextTheme,
-        nextSurahIntro,
+        nextSurahIntros,
+        nextScopeBanner,
         nextVerses,
         nextTopInsetPx,
         nextBottomInsetPx,
     )
 
     val nextItemCount = adapter.itemCount
-    if (hasSameItemSet && nextItemCount > 0) {
+    if (nextItemCount > 0 && previousItemIds.contentEquals(adapterItemIds())) {
       adapter.notifyItemRangeChanged(0, nextItemCount)
     } else {
       adapter.notifyDataSetChanged()
@@ -649,13 +739,13 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
       nextSurahId: Int,
       nextSettings: NativeReaderSettings,
       nextTheme: NativeReaderTheme,
-      nextSurahIntro: NativeSurahIntro?,
+      nextSurahIntros: Map<Int, NativeSurahIntro>,
+      nextScopeBanner: NativeScopeBanner?,
       nextVerses: List<NativeVerse>,
       nextTopInsetPx: Int,
       nextBottomInsetPx: Int,
   ) {
     surahId = nextSurahId
-    adapter.surahId = nextSurahId
     applySettings(nextSettings)
     fastScroller.setColors(
         nextTheme.backgroundColor,
@@ -663,42 +753,32 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
         nextTheme.tintColor,
     )
     adapter.theme = nextTheme
-    adapter.surahIntro = nextSurahIntro
+    adapter.surahIntros = nextSurahIntros
+    adapter.scopeBanner = nextScopeBanner
     verses.clear()
     verses.addAll(nextVerses)
+    adapter.rebuildRows()
     topInsetPx = nextTopInsetPx
     bottomInsetPx = nextBottomInsetPx
     applyRecyclerPadding()
   }
 
-  private fun hasSameAdapterItemSet(
-      nextSurahId: Int,
-      nextSurahIntro: NativeSurahIntro?,
-      nextVerses: List<NativeVerse>,
-  ): Boolean {
-    val currentIntroCount = if (adapter.surahIntro != null) 1 else 0
-    val nextIntroCount = if (nextSurahIntro != null) 1 else 0
-    if (currentIntroCount != nextIntroCount) return false
-    if (verses.size != nextVerses.size) return false
-    if (adapter.surahIntro != null && nextSurahIntro != null) {
-      val currentIntroId = Long.MIN_VALUE + surahId
-      val nextIntroId = Long.MIN_VALUE + nextSurahId
-      if (currentIntroId != nextIntroId) return false
-    }
+  private fun adapterItemIds(): LongArray =
+      LongArray(adapter.itemCount) { position -> adapter.getItemId(position) }
 
-    return verses.indices.all { index ->
-      verses[index].stableId(surahId) == nextVerses[index].stableId(nextSurahId)
-    }
-  }
-
+  /**
+   * Anchors the first row below the header inset. Rows scrolled behind the translucent header can
+   * change height without moving the verse the reader is actually looking at.
+   */
   private fun captureScrollAnchor(): ScrollAnchor? {
-    val firstPosition = layoutManager.findFirstVisibleItemPosition()
-    if (firstPosition < 0 || firstPosition >= adapter.itemCount) return null
-    val child = layoutManager.findViewByPosition(firstPosition)
-    return ScrollAnchor(
-        itemId = adapter.getItemId(firstPosition),
-        offsetTop = child?.top ?: recyclerView.paddingTop,
-    )
+    for (childIndex in 0 until recyclerView.childCount) {
+      val child = recyclerView.getChildAt(childIndex)
+      if (child.bottom <= recyclerView.paddingTop) continue
+      val position = recyclerView.getChildAdapterPosition(child)
+      if (position == RecyclerView.NO_POSITION || position >= adapter.itemCount) continue
+      return ScrollAnchor(itemId = adapter.getItemId(position), offsetTop = child.top)
+    }
+    return null
   }
 
   private fun restoreScrollAnchor(anchor: ScrollAnchor?) {
@@ -930,14 +1010,14 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
   private fun completeInitialPlacementIfReady() {
     if (!hasReceivedVerses || !hasReceivedSettings || !hasReceivedTheme) return
 
-    completeInitialPlacement(pendingTargetVerse ?: 1)
+    completeInitialPlacement(pendingTargetVerseKey)
   }
 
-  private fun completeInitialPlacement(targetVerse: Int) {
+  private fun completeInitialPlacement(targetVerseKey: String?) {
     val placementGeneration = ++initialPlacementGeneration
     // Queue the requested adapter position before returning from the prop/state update. This makes
     // the target, rather than the intro row, RecyclerView's very first native layout anchor.
-    val placement = positionInitialTarget(targetVerse) ?: return
+    val placement = positionInitialTarget(targetVerseKey) ?: return
     recyclerView.requestLayout()
 
     post {
@@ -992,18 +1072,16 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
     }
   }
 
-  private fun positionInitialTarget(targetVerse: Int): InitialPlacement? {
+  private fun positionInitialTarget(targetVerseKey: String?): InitialPlacement? {
     if (verses.isEmpty()) return null
-    val targetIndex = verses.indexOfFirst { it.verseNumber == targetVerse }.takeIf { it >= 0 } ?: 0
-    val adapterPosition =
-        if (targetVerse <= 1 && adapter.surahIntro != null) {
-          0
-        } else {
-          adapter.adapterPositionForVerseIndex(targetIndex)
-        }
+    val targetIndex =
+        targetVerseKey?.let { key -> verses.indexOfFirst { it.verseKey == key } }?.takeIf { it >= 0 }
+            ?: 0
+    // Opening at the first verse shows whatever leads it (banner, Surah intro).
+    val adapterPosition = if (targetIndex == 0) 0 else adapter.adapterPositionForVerseIndex(targetIndex)
     layoutManager.scrollToPositionWithOffset(adapterPosition, 0)
-    if (pendingTargetVerse == targetVerse) {
-      pendingTargetVerse = null
+    if (pendingTargetVerseKey == targetVerseKey) {
+      pendingTargetVerseKey = null
     }
     return InitialPlacement(
         adapterPosition = adapterPosition,
@@ -1183,6 +1261,7 @@ class NativeSurahReaderView(private val reactContext: ThemedReactContext) : Fram
     const val EVENT_WORD_PRESS = "topWordPress"
     const val EVENT_SCROLL = "topScroll"
     const val EVENT_LOAD_ERROR = "topLoadError"
+    private const val TRANSLATION_REVEAL_DURATION_MS = 220L
     private val databaseExecutor: ExecutorService = Executors.newFixedThreadPool(2)
   }
 }

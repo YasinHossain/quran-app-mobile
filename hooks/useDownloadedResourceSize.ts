@@ -25,8 +25,12 @@ export function useDownloadedResourceSize(
     () => installedItems.map((item) => item.key).sort().join('|'),
     [installedItems]
   );
-  const [sizeBytes, setSizeBytes] = React.useState<number | null>(null);
-  const [isLoading, setIsLoading] = React.useState(true);
+  // With nothing installed (including before the drawer requests the index) the answer is known,
+  // so start settled instead of re-rendering the header right after launch.
+  const [sizeBytes, setSizeBytes] = React.useState<number | null>(() =>
+    installedItems.length === 0 ? 0 : null
+  );
+  const [isLoading, setIsLoading] = React.useState(() => installedItems.length > 0);
 
   React.useEffect(() => {
     let isCurrent = true;

@@ -10,6 +10,7 @@ internal data class NativeVerse(
     val words: List<NativeWord>,
     val tajweedGlyphRuns: List<NativeTajweedGlyphRun>,
     val translationItems: List<NativeTranslationItem>,
+    val surahNumber: Int = verseKey.substringBefore(':').toIntOrNull() ?: 0,
 )
 
 internal data class NativeWord(
@@ -48,8 +49,8 @@ internal data class NativeSurahIntro(
     val surahName: String,
 )
 
-internal fun NativeVerse.stableId(surahId: Int): Long {
-  return verseApiId?.toLong() ?: (surahId * 1000L + verseNumber)
+internal fun NativeVerse.stableId(): Long {
+  return verseApiId?.toLong() ?: (surahNumber * 1000L + verseNumber)
 }
 
 internal fun ReadableMap.toNativeSurahIntro(): NativeSurahIntro? {

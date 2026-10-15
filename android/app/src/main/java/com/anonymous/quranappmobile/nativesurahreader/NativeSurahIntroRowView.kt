@@ -13,6 +13,7 @@ import android.view.Gravity
 import android.view.View
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.core.view.ViewCompat
 import androidx.core.widget.TextViewCompat
 
 internal class NativeSurahIntroRowView(context: Context) : LinearLayout(context) {
@@ -47,6 +48,8 @@ internal class NativeSurahIntroRowView(context: Context) : LinearLayout(context)
   init {
     orientation = VERTICAL
     setPadding(0, 0, 0, 0)
+    // Lets screen readers jump between Surahs inside a Juz or Page.
+    ViewCompat.setAccessibilityHeading(titleView, true)
 
     val content =
         LinearLayout(context).apply {
@@ -97,7 +100,9 @@ internal class NativeSurahIntroRowView(context: Context) : LinearLayout(context)
     )
   }
 
-  fun bind(intro: NativeSurahIntro, theme: NativeReaderTheme) {
+  fun bind(intro: NativeSurahIntro, theme: NativeReaderTheme, isLeading: Boolean = true) {
+    // Mid-passage intros (a new Surah inside a Juz or Page) need room after the previous verse.
+    setPadding(0, if (isLeading) 0 else dp(28), 0, 0)
     titleView.text = intro.surahName
     titleView.setTextColor(theme.textColor)
     metadataView.text = intro.infoLabel

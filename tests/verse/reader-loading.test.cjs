@@ -630,3 +630,87 @@ test('other Surah hook consumers keep their existing online translation loading 
   assert.equal(reader.current.hasLoadedContent, false, 'partial translations require the reader to opt in');
   assert.ok(loaded.requests.length > 0, 'other consumers must still request their selected online translations');
 });
+
+function loadReaderPassage() {
+  const transpile = (file) => ts.transpileModule(readFileSync(path.join(__dirname, file), 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true },
+  }).outputText;
+  const pageRanges = {};
+  vm.runInNewContext(transpile('../../src/data/quranPageVerseRanges.ts'), { exports: pageRanges });
+  const exports = {};
+  vm.runInNewContext(transpile('../../lib/reader/readerPassage.ts'), {
+    exports,
+    require(name) {
+      if (name === '../../src/data/juz.json') return juzData;
+      if (name === '../../src/data/quranPageVerseRanges') return pageRanges;
+      throw new Error(`Unexpected module: ${name}`);
+    },
+  });
+  return exports;
+}
+
+test('Juz and Page passages resolve to exact verse ranges across Surah boundaries', () => {
+  const { getJuzPassage, getPagePassage, countPassageVerses, getPassageSurahIds,
+    passageContainsVerseKey, formatPassageSpan } = loadReaderPassage();
+  const juz3 = getJuzPassage(3);
+  assert.deepEqual(
+    [juz3.startSurah, juz3.startAyah, juz3.endSurah, juz3.endAyah], [2, 253, 3, 92]
+  );
+  assert.equal(countPassageVerses(juz3, chapters), 34 + 92);
+  assert.deepEqual([...getPassageSurahIds(juz3)], [2, 3]);
+  assert.equal(passageContainsVerseKey(juz3, '2:252'), false);
+  assert.equal(passageContainsVerseKey(juz3, '2:253'), true);
+  assert.equal(passageContainsVerseKey(juz3, '3:92'), true);
+  assert.equal(passageContainsVerseKey(juz3, '3:93'), false);
+  const name = (id) => ({ 2: 'Al-Baqarah', 3: 'Ali Imran' })[id];
+  assert.equal(formatPassageSpan(juz3, name), 'Al-Baqarah 253 – Ali Imran 92');
+
+  const page2 = getPagePassage(2);
+  assert.deepEqual([page2.startSurah, page2.startAyah, page2.endSurah, page2.endAyah], [2, 1, 2, 5]);
+  assert.equal(countPassageVerses(page2, chapters), 5);
+  assert.equal(formatPassageSpan(page2, name), 'Al-Baqarah 1 – 5');
+  assert.equal(getPagePassage(605), null);
+  assert.equal(countPassageVerses(getJuzPassage(30), chapters), 0, 'unknown chapters skip the count check');
+});
+
+test('offline-native reader forwards a Juz range, target and banner to the native view', async (t) => {
+  const exports = {};
+  const source = ts.transpileModule(
+    readFileSync(path.join(__dirname, '../../components/surah/native/NativeSurahReader.tsx'), 'utf8'),
+    { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX } }
+  ).outputText;
+  vm.runInNewContext(source, {
+    exports,
+    require(name) {
+      if (name === 'react') return React;
+      if (name === 'react/jsx-runtime') return require(name);
+      if (name === 'react-native') return {
+        Platform: { OS: 'android' }, StyleSheet: { create: (styles) => styles },
+        requireNativeComponent: () => 'NativeReaderHost',
+      };
+      if (name === './useNativeSurahReaderCommands') {
+        return { useNativeSurahReaderCommands: () => ({ scrollToVerse() {} }) };
+      }
+      throw new Error(`Unexpected module: ${name}`);
+    },
+  });
+  const Reader = exports.NativeSurahReader;
+  const intro = { chapterId: 3, infoLabel: '200 Verses', isMakkah: false, showBismillah: true, surahName: 'Ali Imran' };
+  const state = {
+    surahId: 2, targetVerse: 1,
+    verseRange: { startSurah: 2, startAyah: 253, endSurah: 3, endAyah: 92 },
+    targetVerseKey: '3:1', expectedVerseCount: 126, surahIntros: [intro],
+    scopeBanner: { title: 'Juz 3', subtitle: 'Al-Baqarah 253 – Ali Imran 92' },
+    settings: { translationIds: [20] }, theme: {}, topInsetPx: 300, bottomInsetPx: 24,
+  };
+  let root;
+  await act(async () => { root = create(React.createElement(Reader, { readerState: state })); });
+  t.after(async () => { await act(async () => root.unmount()); });
+  const payload = root.root.findByType('NativeReaderHost').props.readerState;
+  assert.deepEqual(payload.verseRange, state.verseRange);
+  assert.equal(payload.targetVerseKey, '3:1');
+  assert.equal(payload.expectedVerseCount, 126);
+  assert.deepEqual(payload.surahIntros, [intro]);
+  assert.deepEqual(payload.scopeBanner, state.scopeBanner);
+  assert.equal(Object.hasOwn(payload, 'verses'), false);
+});

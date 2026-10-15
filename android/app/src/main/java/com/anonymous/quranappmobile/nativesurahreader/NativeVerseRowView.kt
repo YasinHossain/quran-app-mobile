@@ -252,6 +252,7 @@ internal class NativeVerseRowView(
       val itemLayout =
           LinearLayout(context).apply {
             orientation = VERTICAL
+            tag = item.resourceId
             if (index > 0) {
               setPadding(0, dp(18), 0, 0)
             }
@@ -308,6 +309,19 @@ internal class NativeVerseRowView(
     )
     arabicView.invalidate()
     invalidate()
+  }
+
+  /** Fades in translations that arrived online after this verse was already on screen. */
+  fun fadeInTranslations(verseKeys: Set<String>, resourceIds: Set<Int>, durationMs: Long) {
+    val verseKey = boundVerse?.verseKey ?: return
+    if (verseKey !in verseKeys) return
+    for (index in 0 until translationContainer.childCount) {
+      val itemLayout = translationContainer.getChildAt(index)
+      val resourceId = itemLayout.tag as? Int ?: continue
+      if (resourceId !in resourceIds) continue
+      itemLayout.alpha = 0f
+      itemLayout.animate().alpha(1f).setDuration(durationMs).withLayer().start()
+    }
   }
 
   fun updateWordPressEnabled(enabled: Boolean) {

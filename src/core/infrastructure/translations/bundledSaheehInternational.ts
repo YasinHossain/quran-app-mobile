@@ -1,5 +1,3 @@
-import payloadJson from '../../../../dist/translation-packs/translations/20/2026-04-23/payload.json';
-
 import type { TranslationPackPayload, TranslationPackPayloadVerse } from '@/types';
 import { container } from '@/src/core/infrastructure/di/container';
 import { logger } from '@/src/core/infrastructure/monitoring/logger';
@@ -8,9 +6,20 @@ export const BUNDLED_SAHEEH_TRANSLATION_ID = 20;
 export const BUNDLED_SAHEEH_VERSION = '2026-04-23';
 
 const EXPECTED_VERSE_COUNT = 6236;
-const payload = payloadJson as TranslationPackPayload;
+
+let payload: TranslationPackPayload | null = null;
+
+// The 2 MB payload is only needed to seed SQLite once and as a reader fallback, so load it on
+// first use instead of materializing it on every launch.
+function getPayload(): TranslationPackPayload {
+  payload ??= require(
+    '../../../../dist/translation-packs/translations/20/2026-04-23/payload.json'
+  ) as TranslationPackPayload;
+  return payload;
+}
 
 function validatePayload(): TranslationPackPayloadVerse[] {
+  const payload = getPayload();
   if (
     payload.translationId !== BUNDLED_SAHEEH_TRANSLATION_ID ||
     payload.version !== BUNDLED_SAHEEH_VERSION ||
@@ -68,5 +77,5 @@ export async function bootstrapBundledSaheehInternationalAsync(): Promise<void> 
 }
 
 export function getBundledSaheehVerses(): readonly TranslationPackPayloadVerse[] {
-  return payload.verses;
+  return getPayload().verses;
 }

@@ -31,6 +31,7 @@ import {
   type MushafSingleDocumentVersePress,
 } from '@/components/mushaf/MushafSingleDocumentReader';
 import type { MushafSelectionPayload } from '@/components/mushaf/mushafWordPayload';
+import { NativePassageReader } from '@/components/reader/NativePassageReader';
 import { ReaderBottomMessage } from '@/components/reader/ReaderBottomMessage';
 import { SettingsSidebar } from '@/components/reader/settings/SettingsSidebar';
 import type { PanelType } from '@/components/reader/settings/SettingsSidebarContent';
@@ -51,6 +52,7 @@ import { useChapters } from '@/hooks/useChapters';
 import { useMushafPageData } from '@/hooks/useMushafPageData';
 import { useJuzVerses, getJuzVerseKeys } from '@/hooks/useJuzVerses';
 import { getOfflineJuzCached } from '@/lib/juz/offlineJuzPageCache';
+import { getJuzPassage } from '@/lib/reader/readerPassage';
 import { preloadOfflineTafsirWindow } from '@/lib/tafsir/tafsirCache';
 import { useTranslationResources } from '@/hooks/useTranslationResources';
 import { primeVerseDetailsCache } from '@/lib/verse/verseDetailsCache';
@@ -253,6 +255,9 @@ export default function JuzScreen(): React.JSX.Element {
   const juzNumber = juzNumberParam ? Number(juzNumberParam) : 1;
   const requestedMushafView = viewParam ? viewParam === 'mushaf' : settings.readingMode === 'mushaf';
   const isMushafView = requestedMushafView && Boolean(settings.mushafId);
+  // Android reads the Juz straight from the offline database in the Kotlin reader, like a Surah.
+  const usesNativePassageReader = Platform.OS === 'android' && !isMushafView;
+  const passage = React.useMemo(() => getJuzPassage(juzNumber), [juzNumber]);
   const startVerse = startVerseParam ? Number(startVerseParam) : NaN;
   const startPage = startPageParam ? Number(startPageParam) : NaN;
 
@@ -416,7 +421,7 @@ export default function JuzScreen(): React.JSX.Element {
     juzNumber,
     translationIds: verseTranslationIds,
     wordLang: settings.wordLang,
-    enabled: !isMushafView,
+    enabled: !isMushafView && !usesNativePassageReader,
   });
 
   const mushafPageRange = React.useMemo(() => getJuzPageRange(juzNumber), [juzNumber]);
@@ -558,6 +563,14 @@ export default function JuzScreen(): React.JSX.Element {
     },
     []
   );
+
+  const handlePassageVisibleVerseChange = React.useCallback((verseKey: string) => {
+    visibleVerseKeyRef.current = verseKey;
+  }, []);
+
+  const clearPendingTranslationVerseKey = React.useCallback(() => {
+    setPendingTranslationVerseKey(null);
+  }, []);
 
   const closeVerseActions = React.useCallback(() => {
     setIsVerseActionsOpen(false);
@@ -1240,6 +1253,7 @@ export default function JuzScreen(): React.JSX.Element {
                 verseApiId: verse.id,
                 arabicText: verse.text_uthmani ?? '',
                 translationTexts,
+                translationItems,
               })
             }
           />
@@ -1325,7 +1339,29 @@ export default function JuzScreen(): React.JSX.Element {
       <View style={styles.contentStage}>
         {!isMushafView ? (
           <View style={styles.contentLayer} pointerEvents="auto">
-            {!hasLoadedContent && offlineNotInstalled ? (
+            {usesNativePassageReader && passage ? (
+              <NativePassageReader
+                key={juzNumber}
+                passage={passage}
+                targetVerseKey={pendingTranslationVerseKey}
+                topInset={readerHeader.headerHeight}
+                bottomInset={audioPlayerBarHeight}
+                activeWord={
+                  wordQuickSheet.isOpen && wordQuickSheet.event
+                    ? {
+                        verseKey: wordQuickSheet.event.verseKey,
+                        wordPosition: wordQuickSheet.event.wordPosition,
+                        wordId: wordQuickSheet.event.wordId,
+                      }
+                    : verseAudioWordSync.activeWord
+                }
+                onOpenVerseActions={openVerseActions}
+                onOpenWordStudy={wordQuickSheet.open}
+                onScrollOffset={readerHeader.handleScrollOffset}
+                onVisibleVerseChange={handlePassageVisibleVerseChange}
+                onInitialPositioned={clearPendingTranslationVerseKey}
+              />
+            ) : !hasLoadedContent && offlineNotInstalled ? (
               <View className="flex-1 px-4" style={{ paddingTop: readerHeader.headerHeight + 16 }}>
                 <View className="mt-2 gap-3">
                   <Text className="text-sm text-muted dark:text-muted-dark">
@@ -1442,7 +1478,7 @@ export default function JuzScreen(): React.JSX.Element {
                 }
               />
             )}
-            {hasLoadedContent && verseKeys.length > 1 ? (
+            {!usesNativePassageReader && hasLoadedContent && verseKeys.length > 1 ? (
               <VerseScrubber
                 ref={verseScrubberRef}
                 bottomInset={audioPlayerBarHeight}
@@ -1536,6 +1572,7 @@ export default function JuzScreen(): React.JSX.Element {
         onBookmark={handleBookmark}
         onOpenTafsir={handleOpenTafsir}
         onAddToPlan={handleAddToPlan}
+        onCopy={handleCopy}
         onShare={handleShare}
       />
 

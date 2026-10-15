@@ -11,17 +11,35 @@ import {
   type ContextualMeaningPresentation,
 } from './contextualMeaningModel';
 
+/**
+ * `ready` maps only the locations whose verse lookups have resolved. A location
+ * missing from the map is still loading, so appended pages can load their own
+ * meanings without returning already-resolved rows to a loading state.
+ */
 export type ContextualMeaningsLoadState =
   | { status: 'loading'; languageName: string }
   | { status: 'ready'; presentationsByLocationKey: ReadonlyMap<string, ContextualMeaningPresentation> };
 
-type ResolvedBatch = {
-  key: string;
+type ResolvedVerses = {
+  /** Language and resource revision the cached lookups belong to. */
+  contextKey: string;
+  verseKeys: ReadonlySet<string>;
   selectedByVerseKey: ReadonlyMap<string, string>;
   englishByVerseKey: ReadonlyMap<string, string>;
-  selectedLookupFailed: boolean;
-  englishLookupFailed: boolean;
+  selectedFailedVerseKeys: ReadonlySet<string>;
+  englishFailedVerseKeys: ReadonlySet<string>;
 };
+
+function createEmptyResolvedVerses(contextKey: string): ResolvedVerses {
+  return {
+    contextKey,
+    verseKeys: new Set(),
+    selectedByVerseKey: new Map(),
+    englishByVerseKey: new Map(),
+    selectedFailedVerseKeys: new Set(),
+    englishFailedVerseKeys: new Set(),
+  };
+}
 
 export function useContextualMeanings(
   locations: readonly WordStudyLocation[],
@@ -42,74 +60,111 @@ export function useContextualMeanings(
   });
   const selectedDownload = itemsByKey.get(`word-translation:${selectedLanguageCode}`);
   const englishDownload = itemsByKey.get('word-translation:en');
-  const resourceRevision = [
+  const contextKey = [
+    selectedLanguageCode,
     selectedDownload?.status ?? 'unknown',
     selectedDownload?.updatedAt ?? 0,
     englishDownload?.status ?? 'unknown',
     englishDownload?.updatedAt ?? 0,
   ].join(':');
-  const requestKey = enabled && locationsKey
-    ? `${locationsKey}:${selectedLanguageCode}:${resourceRevision}`
-    : '';
-  const [resolved, setResolved] = React.useState<ResolvedBatch | null>(null);
+  const isContextReady = enabled && locations.length > 0 && isHydrated && !isDownloadIndexLoading;
+  const [resolved, setResolved] = React.useState<ResolvedVerses | null>(null);
+  const latestContextKeyRef = React.useRef(contextKey);
+  latestContextKeyRef.current = contextKey;
+
+  const resolvedForContext = resolved?.contextKey === contextKey ? resolved : null;
+  const missingVerseKeys = React.useMemo(
+    () => verseKeys.filter((verseKey) => !resolvedForContext?.verseKeys.has(verseKey)),
+    [resolvedForContext, verseKeys]
+  );
+  const missingVerseKeysKey = missingVerseKeys.join('|');
 
   React.useEffect(() => {
-    if (!requestKey || !isHydrated || isDownloadIndexLoading) return;
-    let cancelled = false;
+    if (!isContextReady || missingVerseKeys.length === 0) return;
     const store = container.getTranslationOfflineStore();
     const selectedPromise = selectedDownload?.status === 'installed'
-      ? store.getWordTranslationWordsJsonByVerseKeys(verseKeys, selectedLanguageCode)
+      ? store.getWordTranslationWordsJsonByVerseKeys(missingVerseKeys, selectedLanguageCode)
       : Promise.resolve(new Map<string, string>());
     const englishPromise = selectedLanguageCode !== 'en' && englishDownload?.status === 'installed'
-      ? store.getWordTranslationWordsJsonByVerseKeys(verseKeys, 'en')
+      ? store.getWordTranslationWordsJsonByVerseKeys(missingVerseKeys, 'en')
       : Promise.resolve(new Map<string, string>());
 
+    // Results stay valid while the language and resources are unchanged, so a
+    // lookup that finishes after another page was appended is still merged.
     void Promise.allSettled([selectedPromise, englishPromise]).then(
       ([selectedResult, englishResult]) => {
-        if (cancelled) return;
-        setResolved({
-          key: requestKey,
-          selectedByVerseKey:
-            selectedResult.status === 'fulfilled' ? selectedResult.value : new Map(),
-          englishByVerseKey:
-            englishResult.status === 'fulfilled' ? englishResult.value : new Map(),
-          selectedLookupFailed: selectedResult.status === 'rejected',
-          englishLookupFailed: englishResult.status === 'rejected',
+        if (latestContextKeyRef.current !== contextKey) return;
+        setResolved((previous) => {
+          const base = previous?.contextKey === contextKey
+            ? previous
+            : createEmptyResolvedVerses(contextKey);
+          const selectedByVerseKey = new Map(base.selectedByVerseKey);
+          const englishByVerseKey = new Map(base.englishByVerseKey);
+          const selectedFailedVerseKeys = new Set(base.selectedFailedVerseKeys);
+          const englishFailedVerseKeys = new Set(base.englishFailedVerseKeys);
+          for (const verseKey of missingVerseKeys) {
+            if (selectedResult.status === 'fulfilled') {
+              const wordsJson = selectedResult.value.get(verseKey);
+              if (wordsJson !== undefined) selectedByVerseKey.set(verseKey, wordsJson);
+              selectedFailedVerseKeys.delete(verseKey);
+            } else {
+              selectedFailedVerseKeys.add(verseKey);
+            }
+            if (englishResult.status === 'fulfilled') {
+              const wordsJson = englishResult.value.get(verseKey);
+              if (wordsJson !== undefined) englishByVerseKey.set(verseKey, wordsJson);
+              englishFailedVerseKeys.delete(verseKey);
+            } else {
+              englishFailedVerseKeys.add(verseKey);
+            }
+          }
+          return {
+            contextKey,
+            verseKeys: new Set([...base.verseKeys, ...missingVerseKeys]),
+            selectedByVerseKey,
+            englishByVerseKey,
+            selectedFailedVerseKeys,
+            englishFailedVerseKeys,
+          };
         });
       }
     );
-    return () => {
-      cancelled = true;
-    };
+    // missingVerseKeysKey captures the contents of missingVerseKeys.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
+    contextKey,
     englishDownload?.status,
-    isDownloadIndexLoading,
-    isHydrated,
-    requestKey,
+    isContextReady,
+    missingVerseKeysKey,
     selectedDownload?.status,
     selectedLanguageCode,
-    verseKeys,
   ]);
 
-  const languageName = getWordLanguageName(selectedLanguageCode);
-  if (!requestKey || !isHydrated || isDownloadIndexLoading || resolved?.key !== requestKey) {
-    return { status: 'loading', languageName };
-  }
-
-  return {
-    status: 'ready',
-    presentationsByLocationKey: new Map(
-      locations.map((location) => [
+  const presentationsByLocationKey = React.useMemo(() => {
+    const presentations = new Map<string, ContextualMeaningPresentation>();
+    if (!resolvedForContext) return presentations;
+    for (const location of locations) {
+      if (!resolvedForContext.verseKeys.has(location.verseKey)) continue;
+      presentations.set(
         location.locationKey,
         resolveContextualMeaning({
           location,
           selectedLanguageCode,
-          selectedLanguageWordsJson: resolved.selectedByVerseKey.get(location.verseKey),
-          englishWordsJson: resolved.englishByVerseKey.get(location.verseKey),
-          selectedLookupFailed: resolved.selectedLookupFailed,
-          englishLookupFailed: resolved.englishLookupFailed,
-        }),
-      ])
-    ),
-  };
+          selectedLanguageWordsJson: resolvedForContext.selectedByVerseKey.get(location.verseKey),
+          englishWordsJson: resolvedForContext.englishByVerseKey.get(location.verseKey),
+          selectedLookupFailed: resolvedForContext.selectedFailedVerseKeys.has(location.verseKey),
+          englishLookupFailed: resolvedForContext.englishFailedVerseKeys.has(location.verseKey),
+        })
+      );
+    }
+    return presentations;
+    // The location keys contain the complete location coordinates used here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [locationsKey, resolvedForContext, selectedLanguageCode]);
+
+  if (!isContextReady) {
+    return { status: 'loading', languageName: getWordLanguageName(selectedLanguageCode) };
+  }
+
+  return { status: 'ready', presentationsByLocationKey };
 }

@@ -41,6 +41,20 @@ export type NativeSurahReaderSurahIntro = {
   surahName: string;
 };
 
+/** Inclusive Mushaf-order range for Juz and Page readers. */
+export type NativeSurahReaderVerseRange = {
+  startSurah: number;
+  startAyah: number;
+  endSurah: number;
+  endAyah: number;
+};
+
+/** Quiet label above a Juz or Page passage, e.g. "Juz 5" / "An-Nisa 24 – 147". */
+export type NativeSurahReaderScopeBanner = {
+  title: string;
+  subtitle?: string;
+};
+
 export type NativeSurahReaderSettings = {
   arabicFontFace?: string;
   arabicFontSize?: number;
@@ -137,7 +151,8 @@ export type NativeSurahReaderProps = ViewProps & {
 };
 
 export type NativeSurahReaderHandle = {
-  scrollToVerse: (verseNumber: number, animated?: boolean) => void;
+  /** A verse number in a Surah reader, or a verse key ("2:255") in any reader. */
+  scrollToVerse: (verse: number | string, animated?: boolean) => void;
 };
 
 export type NativeSurahReaderState = {
@@ -145,6 +160,13 @@ export type NativeSurahReaderState = {
   targetVerse: number;
   expectedVerseCount?: number;
   surahIntro?: NativeSurahReaderSurahIntro;
+  /** Juz/Page readers load this range instead of the whole `surahId`. */
+  verseRange?: NativeSurahReaderVerseRange;
+  /** Takes precedence over `targetVerse`; required to address verses in a multi-Surah range. */
+  targetVerseKey?: string;
+  /** Intro for each Surah in a range; shown only where that Surah's first verse appears. */
+  surahIntros?: NativeSurahReaderSurahIntro[];
+  scopeBanner?: NativeSurahReaderScopeBanner;
   // Immutable snapshot: replace the array when any verse, translation, word or glyph changes.
   // NativeSurahReader attaches its content revision at the native boundary.
   // Omitted on Android's offline-native path. Retained for legacy/test hosts.

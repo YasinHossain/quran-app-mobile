@@ -38,6 +38,13 @@ const BUILT_IN_CHAPTERS: Chapter[] = Array.isArray(bundledChapters)
   ? (bundledChapters as unknown[]).filter(isChapterLike)
   : [];
 
+// Storage normally holds a copy of the bundled list. Swapping in an equal array would rebuild
+// Home's chapter index and every chapter consumer right after launch, so keep the current one.
+const keepIfEqual = (current: Chapter[], next: Chapter[]): Chapter[] =>
+  current.length === next.length && JSON.stringify(current) === JSON.stringify(next)
+    ? current
+    : next;
+
 type ChaptersContextType = {
   chapters: Chapter[];
   isLoading: boolean;
@@ -63,7 +70,7 @@ export function ChaptersProvider({ children }: { children: React.ReactNode }): R
         if (!isMounted) return;
 
         if (cached.length > 0) {
-          setChapters(cached);
+          setChapters((current) => keepIfEqual(current, cached));
           return;
         }
 
@@ -87,7 +94,7 @@ export function ChaptersProvider({ children }: { children: React.ReactNode }): R
       try {
         const cached = await loadChaptersFromStorage();
         if (cached.length > 0) {
-          setChapters(cached);
+          setChapters((current) => keepIfEqual(current, cached));
           return;
         }
 

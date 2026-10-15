@@ -2,10 +2,8 @@ import { FlashList, type FlashListRef } from '@shopify/flash-list';
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { ArrowLeft, Settings, X } from 'lucide-react-native';
 import React from 'react';
-import { useReducedMotion } from 'react-native-reanimated';
 import {
   ActivityIndicator,
-  Animated,
   FlatList,
   InteractionManager,
   PixelRatio,
@@ -33,6 +31,7 @@ import { AppSearchHeader, ReaderOverlayHeader } from '@/components/navigation/Ap
 import { HEADER_ANIMATION_DURATION, useCollapsibleReaderHeader } from '@/components/navigation/useCollapsibleReaderHeader';
 import { useHeaderSearch } from '@/components/navigation/useHeaderSearch';
 import { IndexScrubber, type IndexScrubberHandle } from '@/components/reader/IndexScrubber';
+import { ReaderLoadingState } from '@/components/reader/ReaderLoadingState';
 import { ReaderBottomMessage } from '@/components/reader/ReaderBottomMessage';
 import { SettingsSidebar } from '@/components/reader/settings/SettingsSidebar';
 import type { PanelType } from '@/components/reader/settings/SettingsSidebarContent';
@@ -122,69 +121,6 @@ function VerseCardPlaceholder({ verseKey }: { verseKey: string }): React.JSX.Ele
           <View className="h-4 w-2/3 rounded-full bg-surface dark:bg-surface-dark" />
         </View>
       </View>
-    </View>
-  );
-}
-
-function TranslationReaderLoadingState(): React.JSX.Element {
-  const reduceMotion = useReducedMotion();
-  const pulseOpacity = React.useRef(new Animated.Value(1)).current;
-
-  React.useEffect(() => {
-    if (reduceMotion) {
-      pulseOpacity.setValue(1);
-      return;
-    }
-
-    const pulseAnimation = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulseOpacity, {
-          duration: 850,
-          toValue: 0.65,
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulseOpacity, {
-          duration: 850,
-          toValue: 1,
-          useNativeDriver: true,
-        }),
-      ])
-    );
-
-    pulseAnimation.start();
-    return () => pulseAnimation.stop();
-  }, [pulseOpacity, reduceMotion]);
-
-  return (
-    <View
-      accessibilityLabel="Preparing reader"
-      accessibilityRole="progressbar"
-      className="flex-1 px-4"
-    >
-      <Animated.View
-        accessibilityElementsHidden
-        className="pt-10"
-        importantForAccessibility="no-hide-descendants"
-        style={{ opacity: pulseOpacity }}
-      >
-        {[0, 1, 2].map((index) => (
-          <View
-            key={index}
-            className="border-b border-border/40 py-5 dark:border-border-dark/30"
-          >
-            <View className="mb-5 h-5 w-16 rounded-full bg-border/30 dark:bg-border-dark/30" />
-            <View className="mb-6 items-end gap-3">
-              <View className="h-10 w-4/5 rounded-xl bg-border/30 dark:bg-border-dark/30" />
-              <View className="h-10 w-3/5 rounded-xl bg-border/30 dark:bg-border-dark/30" />
-            </View>
-            <View className="gap-3">
-              <View className="h-4 rounded-full bg-border/30 dark:bg-border-dark/30" />
-              <View className="h-4 w-5/6 rounded-full bg-border/30 dark:bg-border-dark/30" />
-              <View className="h-4 w-2/3 rounded-full bg-border/30 dark:bg-border-dark/30" />
-            </View>
-          </View>
-        ))}
-      </Animated.View>
     </View>
   );
 }
@@ -2676,7 +2612,7 @@ export default function SurahScreen(): React.JSX.Element {
                       { backgroundColor: palette.background, paddingTop: readerHeader.headerHeight },
                     ]}
                   >
-                    <TranslationReaderLoadingState />
+                    <ReaderLoadingState />
                   </View>
                 ) : nativeReaderStatus.state === 'error' ? (
                   <View

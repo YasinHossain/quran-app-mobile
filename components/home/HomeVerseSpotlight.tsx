@@ -1,4 +1,4 @@
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useIsFocused, useRouter } from 'expo-router';
 import React from 'react';
 import {
   AppState,
@@ -195,7 +195,8 @@ export function HomeVerseSpotlight(
   const currentIndexRef = React.useRef(-1);
   const isMomentumScrollingRef = React.useRef(false);
 
-  const [isScreenFocused, setIsScreenFocused] = React.useState(false);
+  // Read focus during render: a focus-effect state starts false and re-renders the slide at launch.
+  const isScreenFocused = useIsFocused();
   const [isAppActive, setIsAppActive] = React.useState(AppState.currentState === 'active');
 
   const controller = React.useMemo(
@@ -222,13 +223,6 @@ export function HomeVerseSpotlight(
     if (!areSettingsHydrated) return;
     controller.setRequestedTranslationId(requestedTranslationId);
   }, [areSettingsHydrated, controller, requestedTranslationId]);
-
-  useFocusEffect(
-    React.useCallback(() => {
-      setIsScreenFocused(true);
-      return () => setIsScreenFocused(false);
-    }, [])
-  );
 
   React.useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextState) => {

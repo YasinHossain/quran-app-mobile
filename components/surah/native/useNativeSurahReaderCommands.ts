@@ -8,13 +8,13 @@ export function useNativeSurahReaderCommands(
 ): NativeSurahReaderHandle {
   return React.useMemo(
     () => ({
-      scrollToVerse(verseNumber: number, animated = false) {
+      scrollToVerse(verse: number | string, animated = false) {
         const nodeHandle = findNodeHandle(nativeRef.current);
         if (!nodeHandle) {
           return;
         }
 
-        UIManager.dispatchViewManagerCommand(nodeHandle, 'scrollToVerse', [verseNumber, animated]);
+        UIManager.dispatchViewManagerCommand(nodeHandle, 'scrollToVerse', [verse, animated]);
       },
     }),
     [nativeRef]

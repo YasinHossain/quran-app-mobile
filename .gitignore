@@ -65,6 +65,7 @@ scratch/android-debug/
 /android/app/src/*
 !/android/app/src/main/
 /android/app/src/main/*
+!/android/app/src/main/baseline-prof.txt
 !/android/app/src/main/java/
 /android/app/src/main/java/*
 !/android/app/src/main/java/com/

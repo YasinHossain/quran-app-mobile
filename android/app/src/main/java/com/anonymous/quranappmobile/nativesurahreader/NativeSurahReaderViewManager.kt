@@ -2,6 +2,7 @@ package com.anonymous.quranappmobile.nativesurahreader
 
 import com.facebook.react.bridge.ReadableArray
 import com.facebook.react.bridge.ReadableMap
+import com.facebook.react.bridge.ReadableType
 import com.facebook.react.uimanager.SimpleViewManager
 import com.facebook.react.uimanager.ThemedReactContext
 import com.facebook.react.uimanager.annotations.ReactProp
@@ -45,9 +46,14 @@ class NativeSurahReaderViewManager : SimpleViewManager<NativeSurahReaderView>() 
   ) {
     when (commandId) {
       COMMAND_SCROLL_TO_VERSE -> {
-        val verseNumber = args?.getInt(0) ?: return
+        if (args == null || args.size() == 0) return
         val animated = if (args.size() > 1) args.getBoolean(1) else false
-        view.scrollToVerse(verseNumber, animated)
+        // Range readers address verses by key ("2:255"); Surah readers may pass a verse number.
+        if (args.getType(0) == ReadableType.String) {
+          view.scrollToVerseKey(args.getString(0) ?: return, animated)
+        } else {
+          view.scrollToVerse(args.getInt(0), animated)
+        }
       }
     }
   }

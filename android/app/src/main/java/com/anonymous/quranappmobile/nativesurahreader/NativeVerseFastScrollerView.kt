@@ -46,6 +46,8 @@ internal class NativeVerseFastScrollerView(
   private var labelBackgroundColor = Color.argb(245, 255, 255, 255)
   private var labelBorderColor = Color.argb(36, 15, 23, 42)
   private var labelTextColor = Color.rgb(55, 65, 81)
+  /** Optional drag label for an index; null falls back to "position/count". */
+  var labelForIndex: ((Int) -> String?)? = null
   private var itemCount = 0
   private var currentIndex = 0
   private var topInset = 0
@@ -224,7 +226,7 @@ internal class NativeVerseFastScrollerView(
   }
 
   private fun drawVerseLabel(canvas: Canvas, actualThumbHeight: Float) {
-    val label = "${currentIndex + 1}/$itemCount"
+    val label = labelForIndex?.invoke(currentIndex) ?: "${currentIndex + 1}/$itemCount"
     val fontMetrics = labelPaint.fontMetrics
     val textHeight = fontMetrics.descent - fontMetrics.ascent
     val measuredWidth = labelPaint.measureText(label) + labelHorizontalPadding * 2f
