@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "translationId": 20,
+  "name": "Saheeh International",
+  "translatorName": "Saheeh International",
+  "languageName": "english",
+  "sourceVersion": "2026-04-23",
+  "sourceUrl": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=20&per_page=300",
+  "payloadPath": "dist/translation-packs/translations/20/2026-04-23/payload.json",
+  "payloadFormat": "translation-json-v1",
+  "checksum": {
+    "algorithm": "sha256",
+    "value": "417b1bce288140ceefba2b7e78d40d704f863bf157bcb57454abb1402e2d8c2a"
+  },
+  "sourceManifestChecksum": {
+    "algorithm": "md5",
+    "value": "47061a48865c07650a74b932ecf9c780"
+  },
+  "verseCount": 6236,
+  "firstVerseKey": "1:1",
+  "finalVerseKey": "114:6",
+  "rights": {
+    "status": "source-terms-govern-use",
+    "licenseIdentifier": null,
+    "attribution": "Saheeh International via Quran Foundation / Quran.com",
+    "termsUrl": "https://api-docs.quran.foundation/legal/developer-terms/",
+    "notice": "The upstream manifest does not declare a standalone translation license. Distribution must remain integral to the app experience and comply with the source terms; obtain separate permission if required."
+  }
+}

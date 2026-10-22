@@ -1,0 +1,551 @@
+import {
+  Check,
+  Folder,
+  Pin,
+  Plus,
+  X,
+} from 'lucide-react-native';
+import React from 'react';
+import {
+  Keyboard,
+  LayoutAnimation,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  UIManager,
+  View,
+} from 'react-native';
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+  FadeIn,
+  FadeOut,
+} from 'react-native-reanimated';
+import { SafeAreaView } from 'react-native-safe-area-context';
+
+import { Dialog } from '@/components/motion/Dialog';
+import { useValueWhileOpen } from '@/components/motion/modalTransition';
+import Colors from '@/constants/Colors';
+import { resolveFolderAccentColor } from '@/components/bookmarks/folderColor';
+import { useBookmarks } from '@/providers/BookmarkContext';
+import { useAppTheme } from '@/providers/ThemeContext';
+import { useUiTranslation } from '@/providers/UiLanguageContext';
+
+import type { Bookmark, Folder as BookmarkFolder } from '@/types';
+
+type BookmarkModalTab = 'pin' | 'bookmark';
+
+const isFabric = !!(globalThis as any).nativeFabricUIManager;
+if (
+  Platform.OS === 'android' &&
+  !isFabric &&
+  UIManager.setLayoutAnimationEnabledExperimental
+) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+
+
+function BookmarkModalTabToggle({
+  activeTab,
+  onTabChange,
+  palette,
+}: {
+  activeTab: BookmarkModalTab;
+  onTabChange: (tab: BookmarkModalTab) => void;
+  palette: any;
+}): React.JSX.Element {
+  const { t } = useUiTranslation();
+  const [measuredWidth, setMeasuredWidth] = React.useState(0);
+  const activeIndex = activeTab === 'pin' ? 0 : 1;
+  const indicatorPosition = useSharedValue(activeIndex);
+
+  React.useEffect(() => {
+    indicatorPosition.value = withSpring(activeIndex, {
+      damping: 22,
+      stiffness: 180,
+      mass: 0.55,
+    });
+  }, [activeIndex, indicatorPosition]);
+
+  const activeShadow =
+    Platform.OS === 'android'
+      ? { elevation: 2 }
+      : {
+          shadowColor: '#000',
+          shadowOpacity: 0.1,
+          shadowRadius: 4,
+          shadowOffset: { width: 0, height: 2 },
+        };
+
+  const animatedIndicatorStyle = useAnimatedStyle(() => {
+    if (measuredWidth === 0) return { opacity: 0 };
+    const tabWidth = (measuredWidth - 8) / 2;
+    return {
+      width: tabWidth,
+      // Reanimated keeps a key's last value when it is omitted, so undo the unmeasured opacity.
+      opacity: 1,
+      transform: [{ translateX: indicatorPosition.value * tabWidth }],
+    };
+  });
+
+  return (
+    <View
+      onLayout={(event) => {
+        const nextWidth = event.nativeEvent.layout.width;
+        setMeasuredWidth((currentWidth) =>
+          Math.abs(currentWidth - nextWidth) < 1 ? currentWidth : nextWidth
+        );
+      }}
+      className="relative flex-row items-center rounded-[24px] border p-1"
+      style={{
+        backgroundColor: palette.interactive,
+        borderColor: palette.border,
+      }}
+    >
+      <Animated.View
+        pointerEvents="none"
+        className="absolute bottom-1 left-1 top-1 rounded-full"
+        style={[
+          animatedIndicatorStyle,
+          activeShadow,
+          {
+            backgroundColor: palette.surfaceNavigation || palette.surface,
+          },
+        ]}
+      />
+      
+      <Pressable
+        onPress={() => onTabChange('pin')}
+        className="z-10 h-10 flex-1 items-center justify-center rounded-full px-2"
+        style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
+      >
+        <Text
+          numberOfLines={1}
+          style={{
+            color: activeTab === 'pin' ? palette.text : palette.muted,
+          }}
+          className="text-[13px] font-semibold text-center"
+        >
+          {t('pin_verse', { fallback: 'Pin Verse' })}
+        </Text>
+      </Pressable>
+
+      <Pressable
+        onPress={() => onTabChange('bookmark')}
+        className="z-10 h-10 flex-1 items-center justify-center rounded-full px-2"
+        style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
+      >
+        <Text
+          numberOfLines={1}
+          style={{
+            color: activeTab === 'bookmark' ? palette.text : palette.muted,
+          }}
+          className="text-[13px] font-semibold text-center"
+        >
+          {t('add_to_folder', { fallback: 'Add to Folder' })}
+        </Text>
+      </Pressable>
+    </View>
+  );
+}
+
+export function BookmarkModal({
+  isOpen,
+  onClose,
+  verseId,
+  verseKey = '',
+  metadata,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  verseId: string;
+  verseKey?: string;
+  metadata?: Partial<Bookmark>;
+}): React.JSX.Element {
+  const { resolvedTheme, isDark } = useAppTheme();
+  const palette = Colors[resolvedTheme];
+  const { t, localizeDigits } = useUiTranslation();
+  const { folders, createFolder, addBookmark, removeBookmark, isPinned, togglePinned } =
+    useBookmarks();
+
+  const [activeTab, setActiveTab] = React.useState<BookmarkModalTab>('pin');
+  const handleTabChange = React.useCallback((tab: BookmarkModalTab) => {
+    if (Platform.OS === 'ios' || (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental)) {
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    }
+    setActiveTab(tab);
+  }, []);
+  const [isCreatingFolder, setIsCreatingFolder] = React.useState(false);
+  const [newFolderName, setNewFolderName] = React.useState('');
+
+  // Tab content fades in on a tab switch, not while the dialog itself is entering.
+  const isOpenSettledRef = React.useRef(false);
+  const handleAfterOpen = React.useCallback(() => {
+    isOpenSettledRef.current = true;
+  }, []);
+  const handleAfterClose = React.useCallback(() => {
+    isOpenSettledRef.current = false;
+    setActiveTab('pin');
+    setIsCreatingFolder(false);
+    setNewFolderName('');
+  }, []);
+
+  const closeAndReset = React.useCallback(() => {
+    Keyboard.dismiss();
+    onClose();
+  }, [onClose]);
+
+  const resolvedVerseRef = useValueWhileOpen(isOpen, verseKey || verseId);
+  // Pinning closes the dialog; keep the action it showed instead of flipping to "Unpin" mid-exit.
+  const verseIsPinned = useValueWhileOpen(
+    isOpen,
+    isPinned(verseId) || (verseKey ? isPinned(verseKey) : false)
+  );
+
+  const handleTogglePinned = React.useCallback(() => {
+    togglePinned(verseId, { ...(metadata ?? {}), ...(verseKey ? { verseKey } : {}) });
+    closeAndReset();
+  }, [closeAndReset, metadata, togglePinned, verseId, verseKey]);
+
+  const handleCreateFolder = React.useCallback(() => {
+    const trimmed = newFolderName.trim();
+    if (!trimmed) return;
+    createFolder(trimmed);
+    setNewFolderName('');
+    setIsCreatingFolder(false);
+  }, [createFolder, newFolderName]);
+
+  const handleFolderSelect = React.useCallback(
+    (folder: BookmarkFolder) => {
+      const alreadySelected = folder.bookmarks.some(
+        (bookmark) => String(bookmark.verseId) === String(verseId)
+      );
+
+      if (alreadySelected) {
+        removeBookmark(verseId, folder.id);
+      } else {
+        addBookmark(verseId, folder.id, { ...(metadata ?? {}), ...(verseKey ? { verseKey } : {}) });
+      }
+    },
+    [addBookmark, metadata, removeBookmark, verseId, verseKey]
+  );
+
+  return (
+    <Dialog
+      // The verse actions sheet hands off to this dialog; building it on tap left a blank gap.
+      keepMounted
+      isOpen={isOpen}
+      onClose={closeAndReset}
+      onAfterOpen={handleAfterOpen}
+      onAfterClose={handleAfterClose}
+    >
+      <View style={styles.dialogSafeArea}>
+        <View className={isDark ? 'dark' : ''} style={styles.dialogInner}>
+          <View className="px-4 py-4 relative">
+            <View className="flex-row items-start justify-center">
+              <View className="items-center gap-1">
+                <Text className="text-xl font-semibold text-foreground dark:text-foreground-dark">
+                  {t('add_to_collections', { fallback: 'Add to Collections' })}
+                </Text>
+                {resolvedVerseRef ? (
+                  <Text className="text-sm text-muted dark:text-muted-dark">
+                    {t('surah_verse_key', {
+                      verseKey: localizeDigits(resolvedVerseRef),
+                      fallback: `Surah ${localizeDigits(resolvedVerseRef)}`,
+                    })}
+                  </Text>
+                ) : null}
+              </View>
+
+              <Pressable
+                onPress={closeAndReset}
+                hitSlop={10}
+                accessibilityRole="button"
+                accessibilityLabel={t('close', { fallback: 'Close' })}
+                className="absolute right-2 top-2 p-2 rounded-full"
+                style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
+              >
+                <X color={palette.muted} size={18} strokeWidth={2.25} />
+              </Pressable>
+            </View>
+
+            <View style={{ marginTop: 16 }}>
+              <BookmarkModalTabToggle
+                activeTab={activeTab}
+                onTabChange={handleTabChange}
+                palette={palette}
+              />
+            </View>
+          </View>
+
+          {activeTab === 'pin' ? (
+            <Animated.View
+              key="pin-tab"
+              entering={isOpenSettledRef.current ? FadeIn.duration(200) : undefined}
+              exiting={FadeOut.duration(150)}
+              style={styles.tabFill}
+            >
+              <ScrollView
+                style={styles.tabFill}
+                keyboardShouldPersistTaps="handled"
+                contentContainerStyle={[styles.scrollContent, styles.centerScrollContent]}
+              >
+                <View className="p-6 items-center justify-center gap-6">
+                  <View className="items-center gap-3">
+                    <View className="h-16 w-16 rounded-full bg-accent/10 items-center justify-center">
+                      <Pin
+                        size={32}
+                        strokeWidth={2.25}
+                        color={verseIsPinned ? palette.tint : palette.muted}
+                      />
+                    </View>
+
+                    <View className="items-center gap-2 px-2">
+                      <Text className="font-medium text-foreground dark:text-foreground-dark">
+                        {verseIsPinned
+                          ? t('pinned_verse_title', { fallback: 'Pinned verse' })
+                          : t('pin_this_verse_title', { fallback: 'Pin this verse' })}
+                      </Text>
+                      <Text className="text-sm text-muted dark:text-muted-dark text-center">
+                        {verseIsPinned
+                          ? t('pinned_verse_description', {
+                              verseRef: localizeDigits(resolvedVerseRef),
+                              fallback: `Verse ${resolvedVerseRef} is pinned to your pinned verses section.`,
+                            })
+                          : t('pin_this_verse_description', {
+                              verseRef: localizeDigits(resolvedVerseRef),
+                              fallback: `Pin verse ${resolvedVerseRef} for quick access from the pinned verses section of the bookmarks page.`,
+                            })}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <Pressable
+                    onPress={handleTogglePinned}
+                    accessibilityRole="button"
+                    accessibilityLabel={
+                      verseIsPinned
+                        ? t('unpin_verse', { fallback: 'Unpin verse' })
+                        : t('pin_verse_action', { fallback: 'Pin verse' })
+                    }
+                    className={[
+                      'px-6 py-3 rounded-lg',
+                      verseIsPinned ? 'bg-accent/10' : 'bg-accent',
+                    ].join(' ')}
+                    style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
+                  >
+                    <Text
+                      className={[
+                        'font-medium',
+                        verseIsPinned ? 'text-accent dark:text-accent-dark' : 'text-on-accent',
+                      ].join(' ')}
+                    >
+                      {verseIsPinned
+                        ? t('unpin_verse', { fallback: 'Unpin verse' })
+                        : t('pin_verse_action', { fallback: 'Pin verse' })}
+                    </Text>
+                  </Pressable>
+                </View>
+              </ScrollView>
+            </Animated.View>
+          ) : (
+            <Animated.View
+              key="bookmark-tab"
+              entering={isOpenSettledRef.current ? FadeIn.duration(200) : undefined}
+              exiting={FadeOut.duration(150)}
+              style={styles.tabFill}
+            >
+              <View style={styles.tabFill}>
+                <View className="px-4 py-4 border-b border-border dark:border-border-dark">
+                  {isCreatingFolder ? (
+                    <View className="flex-row items-center gap-2">
+                      <View className="flex-1 rounded-xl border border-border dark:border-border-dark bg-surface dark:bg-surface-dark px-3 py-2">
+                        <TextInput
+                          value={newFolderName}
+                          onChangeText={setNewFolderName}
+                          placeholder={t('bookmarks_folder_name_placeholder', {
+                            fallback: 'Folder name',
+                          })}
+                          placeholderTextColor={palette.muted}
+                          maxLength={30}
+                          autoFocus
+                          className="text-sm text-foreground dark:text-foreground-dark"
+                        />
+                      </View>
+
+                      <Pressable
+                        onPress={handleCreateFolder}
+                        disabled={!newFolderName.trim()}
+                        accessibilityRole="button"
+                        accessibilityLabel={t('bookmarks_create_folder', {
+                          fallback: 'Create Folder',
+                        })}
+                        className={[
+                          'h-10 w-10 items-center justify-center rounded-xl',
+                          newFolderName.trim()
+                            ? 'bg-interactive dark:bg-interactive-dark'
+                            : 'opacity-40',
+                        ].join(' ')}
+                        style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
+                      >
+                        <Check size={18} strokeWidth={2.25} color={palette.tint} />
+                      </Pressable>
+                    </View>
+                  ) : (
+                    <Pressable
+                      onPress={() => setIsCreatingFolder(true)}
+                      accessibilityRole="button"
+                      accessibilityLabel={t('bookmarks_create_folder', {
+                        fallback: 'Create Folder',
+                      })}
+                      className="w-full flex-row items-center justify-center gap-3 p-4 border-2 border-dashed border-border dark:border-border-dark rounded-xl"
+                      style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
+                    >
+                      <Plus size={20} strokeWidth={2.25} color={palette.muted} />
+                      <Text className="font-medium text-muted dark:text-muted-dark">
+                        {t('bookmarks_create_folder', { fallback: 'Create Folder' })}
+                      </Text>
+                    </Pressable>
+                  )}
+                </View>
+
+                <ScrollView
+                  style={styles.tabFill}
+                  keyboardShouldPersistTaps="handled"
+                  contentContainerStyle={styles.scrollContent}
+                >
+                  <View className="px-4 py-4">
+                    {folders.length === 0 ? (
+                      <View className="items-center py-8">
+                        <View className="h-16 w-16 rounded-full bg-interactive dark:bg-interactive-dark items-center justify-center mb-4">
+                          <Folder size={24} strokeWidth={2.25} color={palette.muted} />
+                        </View>
+                        <Text className="text-muted dark:text-muted-dark text-center">
+                          {t('bookmarks_no_folders_yet', {
+                            fallback: 'No folders yet. Create one to get started!',
+                          })}
+                        </Text>
+                      </View>
+                    ) : (
+                      <View className="gap-2">
+                        {folders.map((folder) => {
+                          const isSelected = folder.bookmarks.some(
+                            (bookmark) => String(bookmark.verseId) === String(verseId)
+                          );
+                          const bookmarkCount = folder.bookmarks?.length ?? 0;
+                          const countLabel =
+                            bookmarkCount === 1
+                              ? t('bookmarks_bookmark_count_single', {
+                                  count: bookmarkCount,
+                                  fallback: '1 Verse',
+                                })
+                              : t('bookmarks_bookmark_count_plural', {
+                                  count: bookmarkCount,
+                                  fallback: `${bookmarkCount} Verses`,
+                                });
+                          const accentColor = resolveFolderAccentColor(folder.color);
+
+                          return (
+                            <Pressable
+                              key={folder.id}
+                              onPress={() => handleFolderSelect(folder)}
+                              accessibilityRole="button"
+                              accessibilityLabel={folder.name}
+                              className={[
+                                'w-full flex-row items-center gap-4 px-4 py-3 rounded-lg border',
+                                isSelected
+                                  ? 'bg-accent border-accent'
+                                  : 'border-border/30 dark:border-border-dark/20 bg-interactive dark:bg-surface-navigation-dark',
+                              ].join(' ')}
+                              style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
+                            >
+                              <View
+                                style={{
+                                  width: 40,
+                                  height: 40,
+                                  borderRadius: 20,
+                                  backgroundColor: accentColor,
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  ...(isSelected ? { borderWidth: 2, borderColor: '#FFFFFF' } : {}),
+                                }}
+                              >
+                                <Folder
+                                  size={18}
+                                  strokeWidth={2.25}
+                                  color="#FFFFFF"
+                                />
+                              </View>
+
+                              <View className="flex-1 min-w-0">
+                                <Text
+                                  numberOfLines={1}
+                                  className={[
+                                    'font-medium',
+                                    isSelected
+                                      ? 'text-on-accent'
+                                      : 'text-foreground dark:text-foreground-dark',
+                                  ].join(' ')}
+                                >
+                                  {folder.name}
+                                </Text>
+                                <Text
+                                  className={[
+                                    'text-sm',
+                                    isSelected
+                                      ? 'text-on-accent/80'
+                                      : 'text-muted dark:text-muted-dark',
+                                  ].join(' ')}
+                                >
+                                  {countLabel}
+                                </Text>
+                              </View>
+
+                              {isSelected ? (
+                                <Check size={20} strokeWidth={2.25} color="#FFFFFF" />
+                              ) : null}
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+                    )}
+                  </View>
+                </ScrollView>
+              </View>
+            </Animated.View>
+          )}
+        </View>
+      </View>
+    </Dialog>
+  );
+}
+
+const styles = StyleSheet.create({
+  dialogSafeArea: {
+    flexShrink: 1,
+  },
+  dialogInner: {
+    flexShrink: 1,
+  },
+  tabFill: {
+    flexShrink: 1,
+    minHeight: 0,
+  },
+  scrollContent: {
+    paddingBottom: 0,
+  },
+  centerScrollContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
+  },
+  tabButton: {
+    flex: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 9999,
+  },
+});

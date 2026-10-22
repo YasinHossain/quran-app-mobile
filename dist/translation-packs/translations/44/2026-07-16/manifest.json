@@ -1,0 +1,15 @@
+{
+  "translationId": 44,
+  "name": "Grigore",
+  "authorName": "George Grigore",
+  "languageName": "Romanian",
+  "version": "2026-07-16",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "4f9e4187586713138c7c3f543e7867de",
+  "payloadSizeBytes": 2655301,
+  "totalVerses": 6236,
+  "generatedAt": "2026-07-16T11:35:15.643Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=44&per_page=300"
+}

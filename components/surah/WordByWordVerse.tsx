@@ -1,0 +1,352 @@
+import React from 'react';
+import { Pressable, Text, View, type ViewInstance } from 'react-native';
+
+import Colors from '@/constants/Colors';
+import { useAppTheme } from '@/providers/ThemeContext';
+import { getFontNaturalLineHeight } from '@/src/core/infrastructure/fonts/arabicFonts';
+import type { VerseWord } from '@/types';
+
+import type { RegisterWordHighlight } from './useVerseAudioWordSync';
+
+type WordPressBehavior = 'none' | 'study' | 'translation' | 'seek';
+type WordPressHandler = (params: {
+  word: VerseWord;
+  wordPosition: number;
+  measurement?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    pageX: number;
+    pageY: number;
+  };
+}) => void;
+
+const normalizeWordPosition = (word: VerseWord, fallback: number): number => {
+  const raw = word.position;
+  if (typeof raw === 'number' && Number.isFinite(raw)) {
+    const normalized = Math.trunc(raw);
+    if (normalized > 0) return normalized;
+  }
+  return fallback;
+};
+
+function InlineWordToken({
+  verseKey,
+  word,
+  fallbackPosition,
+  arabicFontFamily,
+  pressBehavior,
+  selectedWordPosition,
+  isLast,
+  textColor,
+  highlightColor,
+  onWordPress,
+  registerWordHighlight,
+}: {
+  verseKey: string | null;
+  word: VerseWord;
+  fallbackPosition: number;
+  arabicFontFamily: string;
+  pressBehavior: WordPressBehavior;
+  selectedWordPosition?: number;
+  isLast: boolean;
+  textColor: string;
+  highlightColor: string;
+  onWordPress?: WordPressHandler;
+  registerWordHighlight?: RegisterWordHighlight;
+}): React.JSX.Element {
+  const [isHighlighted, setHighlighted] = React.useState(false);
+  const wordPosition = React.useMemo(
+    () => normalizeWordPosition(word, fallbackPosition),
+    [fallbackPosition, word]
+  );
+
+  React.useEffect(() => {
+    if (!verseKey || !registerWordHighlight) return;
+    return registerWordHighlight({ verseKey, wordPosition, setHighlighted });
+  }, [registerWordHighlight, verseKey, wordPosition]);
+
+  const isPressable =
+    Boolean(onWordPress) && (pressBehavior === 'study' || pressBehavior === 'seek');
+
+  return (
+    <Text
+      accessibilityRole={isPressable ? 'button' : undefined}
+      accessibilityLabel={
+        pressBehavior === 'study'
+          ? `Open Word Study for ${word.uthmani}`
+          : pressBehavior === 'seek'
+            ? 'Seek audio to word'
+            : undefined
+      }
+      onPress={isPressable ? () => onWordPress?.({ word, wordPosition }) : undefined}
+      style={{
+        color:
+          isHighlighted || selectedWordPosition === wordPosition ? highlightColor : textColor,
+        fontFamily: arabicFontFamily,
+      }}
+    >
+      {word.uthmani}
+      {isLast ? '' : ' '}
+    </Text>
+  );
+}
+
+function WordToken({
+  verseKey,
+  word,
+  fallbackPosition,
+  arabicFontSize,
+  arabicFontFamily,
+  showTranslations,
+  pressBehavior,
+  selectedWordPosition,
+  textColor,
+  highlightColor,
+  mutedColor,
+  onWordPress,
+  registerWordHighlight,
+}: {
+  verseKey: string | null;
+  word: VerseWord;
+  fallbackPosition: number;
+  arabicFontSize: number;
+  arabicFontFamily: string;
+  showTranslations: boolean;
+  pressBehavior: WordPressBehavior;
+  selectedWordPosition?: number;
+  textColor: string;
+  highlightColor: string;
+  mutedColor: string;
+  onWordPress?: WordPressHandler;
+  registerWordHighlight?: RegisterWordHighlight | undefined;
+}): React.JSX.Element {
+  const [isHighlighted, setHighlighted] = React.useState(false);
+  const wordPosition = React.useMemo(
+    () => normalizeWordPosition(word, fallbackPosition),
+    [fallbackPosition, word]
+  );
+
+  React.useEffect(() => {
+    if (!verseKey) return;
+    if (!registerWordHighlight) return;
+    return registerWordHighlight({ verseKey, wordPosition, setHighlighted });
+  }, [registerWordHighlight, verseKey, wordPosition]);
+
+  // Single-line token at the font's natural height, like NativeWordLayoutView's token text.
+  const arabicLineHeight = Math.round(getFontNaturalLineHeight(arabicFontFamily, arabicFontSize));
+  const translationFontSize = Math.max(10, Math.round(arabicFontSize * 0.5));
+  const translationLineHeight = Math.max(
+    translationFontSize + 4,
+    Math.round(translationFontSize * 1.6)
+  );
+
+  const translationText = word.translationText?.trim();
+  const isPressable = (() => {
+    if (!onWordPress) return false;
+    if (pressBehavior === 'study') return true;
+    if (pressBehavior === 'seek') return true;
+    if (pressBehavior === 'translation') return Boolean(translationText);
+    return false;
+  })();
+
+  const wordHorizontalMargin = showTranslations ? 6 : 1;
+  const wordVerticalMargin = showTranslations ? 10 : 1;
+  const wrapperStyle = {
+    marginHorizontal: wordHorizontalMargin,
+    marginVertical: wordVerticalMargin,
+    paddingHorizontal: showTranslations ? 2 : 0,
+    alignItems: 'center' as const,
+  };
+
+  const content = (
+    <>
+      <Text
+        style={{
+          color:
+            isHighlighted || selectedWordPosition === wordPosition ? highlightColor : textColor,
+          fontSize: arabicFontSize,
+          lineHeight: arabicLineHeight,
+          fontFamily: arabicFontFamily,
+          writingDirection: 'rtl',
+          textAlign: 'center',
+          paddingHorizontal: 1,
+        }}
+      >
+        {word.uthmani}
+      </Text>
+
+      {showTranslations && translationText ? (
+        <Text
+          style={{
+            color: mutedColor,
+            marginTop: 2,
+            fontSize: translationFontSize,
+            lineHeight: translationLineHeight,
+            textAlign: 'center',
+            writingDirection: 'auto',
+          }}
+        >
+          {translationText}
+        </Text>
+      ) : null}
+    </>
+  );
+
+  const pressableRef = React.useRef<ViewInstance>(null);
+
+  const handlePress = React.useCallback(() => {
+    if (!onWordPress) return;
+    if (pressBehavior === 'translation' && pressableRef.current) {
+      pressableRef.current.measure((x, y, width, height, pageX, pageY) => {
+        onWordPress({
+          word,
+          wordPosition,
+          measurement: { x, y, width, height, pageX, pageY },
+        });
+      });
+    } else {
+      onWordPress({ word, wordPosition });
+    }
+  }, [onWordPress, pressBehavior, word, wordPosition]);
+
+  if (!isPressable) {
+    return <View style={wrapperStyle}>{content}</View>;
+  }
+
+  return (
+    <Pressable
+      ref={pressableRef}
+      onPress={handlePress}
+      accessibilityRole="button"
+      accessibilityLabel={
+        pressBehavior === 'study'
+          ? `Open Word Study for ${word.uthmani}`
+          : pressBehavior === 'seek'
+            ? 'Seek audio to word'
+            : 'Show word translation'
+      }
+      style={({ pressed }) => [{ opacity: pressed ? 0.65 : 1 }, wrapperStyle]}
+    >
+      {content}
+    </Pressable>
+  );
+}
+
+export function WordByWordVerse({
+  verseKey,
+  words,
+  arabicFontSize,
+  arabicFontFamily,
+  showTranslations,
+  pressBehavior = 'none',
+  selectedWordPosition,
+  onWordPress,
+  registerWordHighlight,
+}: {
+  verseKey?: string;
+  words: VerseWord[];
+  arabicFontSize: number;
+  arabicFontFamily: string;
+  showTranslations: boolean;
+  pressBehavior?: WordPressBehavior | undefined;
+  selectedWordPosition?: number;
+  onWordPress?:
+    | ((params: {
+        word: VerseWord;
+        wordPosition: number;
+        measurement?: {
+          x: number;
+          y: number;
+          width: number;
+          height: number;
+          pageX: number;
+          pageY: number;
+        };
+      }) => void)
+    | undefined;
+  registerWordHighlight?: RegisterWordHighlight | undefined;
+}): React.JSX.Element {
+  const { resolvedTheme } = useAppTheme();
+  const palette = Colors[resolvedTheme];
+  const filteredWords = React.useMemo(
+    () =>
+      (words ?? [])
+        .filter((word) => word.charTypeName !== 'end')
+        .filter((word) => Boolean(word.uthmani?.trim())),
+    [words]
+  );
+
+  const resolvedVerseKey = typeof verseKey === 'string' ? verseKey.trim() : '';
+
+  if (!showTranslations) {
+    // Natural line plus the 1dp top/bottom token padding of NativeWordLayoutView rows.
+    const arabicLineHeight = Math.round(
+      getFontNaturalLineHeight(arabicFontFamily, arabicFontSize) + 2
+    );
+
+    return (
+      <Text
+        accessibilityLabel="Ayah words"
+        style={{
+          width: '100%',
+          fontSize: arabicFontSize,
+          lineHeight: arabicLineHeight,
+          fontFamily: arabicFontFamily,
+          writingDirection: 'rtl',
+          textAlign: 'right',
+        }}
+      >
+        {filteredWords.map((word, index) => (
+          <InlineWordToken
+            key={word.id}
+            verseKey={resolvedVerseKey || null}
+            word={word}
+            fallbackPosition={index + 1}
+            arabicFontFamily={arabicFontFamily}
+            pressBehavior={pressBehavior}
+            selectedWordPosition={selectedWordPosition}
+            isLast={index === filteredWords.length - 1}
+            textColor={palette.text}
+            highlightColor={palette.tint}
+            onWordPress={onWordPress}
+            registerWordHighlight={registerWordHighlight}
+          />
+        ))}
+      </Text>
+    );
+  }
+
+  return (
+    <View
+      style={{
+        width: '100%',
+        flexDirection: 'row-reverse',
+        flexWrap: 'wrap',
+        // With `row-reverse`, `flex-start` anchors the line to the right (RTL),
+        // while `flex-end` anchors to the left (which looks wrong for Arabic).
+        justifyContent: 'flex-start',
+      }}
+    >
+      {filteredWords.map((word, index) => (
+        <WordToken
+          key={word.id}
+          verseKey={resolvedVerseKey || null}
+          word={word}
+          fallbackPosition={index + 1}
+          arabicFontSize={arabicFontSize}
+          arabicFontFamily={arabicFontFamily}
+          showTranslations={showTranslations}
+          pressBehavior={pressBehavior}
+          selectedWordPosition={selectedWordPosition}
+          textColor={palette.text}
+          highlightColor={palette.tint}
+          mutedColor={palette.muted}
+          onWordPress={onWordPress}
+          registerWordHighlight={registerWordHighlight}
+        />
+      ))}
+    </View>
+  );
+}

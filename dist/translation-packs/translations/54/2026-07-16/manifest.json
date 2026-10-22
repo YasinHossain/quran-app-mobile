@@ -1,0 +1,15 @@
+{
+  "translationId": 54,
+  "name": "Maulana Muhammad Junagarhi",
+  "authorName": "Maulana Muhammad Junagarhi",
+  "languageName": "urdu",
+  "version": "2026-07-16",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "a99110f4a3548f35821aa3026b7689a0",
+  "payloadSizeBytes": 3267517,
+  "totalVerses": 6236,
+  "generatedAt": "2026-07-16T11:36:50.392Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=54&per_page=300"
+}

@@ -1,0 +1,15 @@
+{
+  "translationId": 236,
+  "name": "Ramdane At Mansour",
+  "authorName": "Ramdane At Mansour",
+  "languageName": "Amazigh",
+  "version": "2026-07-16",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "793d612decc3fe9d2ee02c030f2293b5",
+  "payloadSizeBytes": 2450102,
+  "totalVerses": 6236,
+  "generatedAt": "2026-07-16T11:37:07.626Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=236&per_page=300"
+}

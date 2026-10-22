@@ -1,0 +1,15 @@
+{
+  "translationId": 125,
+  "name": "Shaykh Abu Rahimah Mikael Aykyuni",
+  "authorName": "Shaykh Abu Rahimah Mikael Aykyuni",
+  "languageName": "yoruba",
+  "version": "2026-07-16",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "2682e0952349af015bc9d950b9d7ffa5",
+  "payloadSizeBytes": 3296464,
+  "totalVerses": 6236,
+  "generatedAt": "2026-07-16T11:37:12.738Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=125&per_page=300"
+}

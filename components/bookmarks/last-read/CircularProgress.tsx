@@ -1,0 +1,76 @@
+import React from 'react';
+import { Text, View } from 'react-native';
+import Svg, { Circle } from 'react-native-svg';
+
+import Colors from '@/constants/Colors';
+import { useAppTheme } from '@/providers/ThemeContext';
+import { useUiTranslation } from '@/providers/UiLanguageContext';
+
+export function CircularProgress({
+  percentage,
+  size = 100,
+  strokeWidth = 10,
+  label = 'Completed',
+  showLabel = true,
+  trackColor,
+  progressColor,
+  center,
+}: {
+  percentage: number;
+  size?: number;
+  strokeWidth?: number;
+  label?: string;
+  showLabel?: boolean;
+  trackColor?: string;
+  progressColor?: string;
+  center?: React.ReactNode;
+}): React.JSX.Element {
+  const { resolvedTheme } = useAppTheme();
+  const { formatNumber } = useUiTranslation();
+  const palette = Colors[resolvedTheme];
+
+  const clamped = Math.max(0, Math.min(100, Number.isFinite(percentage) ? percentage : 0));
+  const radius = (size - strokeWidth) / 2;
+  const circumference = radius * 2 * Math.PI;
+  const strokeDasharray = `${circumference} ${circumference}`;
+  const strokeDashoffset = circumference - (clamped / 100) * circumference;
+
+  return (
+    <View style={{ width: size, height: size }} className="items-center justify-center">
+      <Svg width={size} height={size} style={{ transform: [{ rotate: '-90deg' }] }}>
+        <Circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          stroke={trackColor ?? palette.border}
+          strokeWidth={strokeWidth}
+          fill="transparent"
+          opacity={0.6}
+        />
+        <Circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          stroke={progressColor ?? palette.tint}
+          strokeWidth={strokeWidth}
+          fill="transparent"
+          strokeDasharray={strokeDasharray}
+          strokeDashoffset={strokeDashoffset}
+          strokeLinecap="round"
+        />
+      </Svg>
+
+      <View className="absolute inset-0 items-center justify-center">
+        {center ??
+          (showLabel ? (
+            <>
+              <Text className="text-base font-bold text-foreground dark:text-foreground-dark">
+                {formatNumber(Math.round(clamped))}%
+              </Text>
+              <Text className="text-[10px] font-medium text-muted dark:text-muted-dark">{label}</Text>
+            </>
+          ) : null)}
+      </View>
+    </View>
+  );
+}

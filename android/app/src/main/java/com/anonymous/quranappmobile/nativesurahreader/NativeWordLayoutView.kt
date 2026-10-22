@@ -1,0 +1,382 @@
+package com.anonymous.quranappmobile.nativesurahreader
+
+import android.content.Context
+import android.graphics.Paint
+import android.graphics.drawable.GradientDrawable
+import android.text.TextUtils
+import android.util.TypedValue
+import android.view.Gravity
+import android.view.View
+import android.view.ViewGroup
+import android.widget.LinearLayout
+import android.widget.TextView
+import kotlin.math.roundToInt
+
+internal class NativeWordLayoutView(context: Context) : ViewGroup(context) {
+  var onVerseLongPress: (() -> Boolean)? = null
+
+  init {
+    setOnLongClickListener { onVerseLongPress?.invoke() ?: false }
+  }
+
+  private var words: List<NativeWord> = emptyList()
+  private var arabicFontFace: String? = null
+  private var arabicFontSize: Float = 25f
+  private var theme: NativeReaderTheme = NativeReaderTheme.default()
+  private var showTranslations: Boolean = false
+  private var verse: NativeVerse? = null
+  private var activeWord: NativeActiveWord? = null
+  private var wordPressEnabled: Boolean = false
+  private var onWordPress: ((NativeVerse, NativeWord) -> Unit)? = null
+
+  // Half of the font's space width. Tokens carry it on each side so the gap between words matches
+  // the single-line text of the RN verse card, which uses real spaces.
+  private var wordSidePaddingPx = 0
+
+  fun bind(
+      words: List<NativeWord>,
+      verse: NativeVerse?,
+      arabicFontFace: String?,
+      arabicFontSize: Float,
+      showTranslations: Boolean,
+      wordPressEnabled: Boolean,
+      activeWord: NativeActiveWord?,
+      theme: NativeReaderTheme,
+      onWordPress: (NativeVerse, NativeWord) -> Unit,
+  ) {
+    val filteredWords =
+        words.filter { word ->
+          word.charTypeName != "end" && word.uthmani.trim().isNotEmpty()
+        }
+
+    this.words = filteredWords
+    this.arabicFontFace = arabicFontFace
+    this.arabicFontSize = arabicFontSize
+    this.showTranslations = showTranslations
+    this.verse = verse
+    this.activeWord = activeWord
+    this.wordPressEnabled = wordPressEnabled
+    this.theme = theme
+    this.onWordPress = onWordPress
+    contentDescription = filteredWords.joinToString(" ") { it.uthmani }
+    wordSidePaddingPx =
+        Paint()
+            .apply {
+              typeface = NativeArabicFontResolver.resolve(context, arabicFontFace, "")
+              textSize = sp(arabicFontSize)
+            }
+            .measureText(" ")
+            .div(2f)
+            .roundToInt()
+
+    removeAllViews()
+    filteredWords.forEach { word ->
+      addView(createTokenView(word))
+    }
+    if (filteredWords.isNotEmpty() && verse != null) {
+      addView(createEndOfAyahMarkerView(verse.verseNumber))
+    }
+    requestLayout()
+  }
+
+  fun updateActiveWord(activeWord: NativeActiveWord?) {
+    this.activeWord = activeWord
+    for (index in 0 until childCount) {
+      val token = getChildAt(index)
+      val word = token.tag as? NativeWord ?: continue
+      applyTokenHighlight(token, isActiveWord(word))
+      token.invalidate()
+    }
+    invalidate()
+  }
+
+  fun updateWordPressEnabled(enabled: Boolean) {
+    if (wordPressEnabled == enabled) return
+    wordPressEnabled = enabled
+    for (index in 0 until childCount) {
+      val token = getChildAt(index)
+      val word = token.tag as? NativeWord ?: continue
+      configureTokenPress(token, word)
+    }
+  }
+
+  override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+    val availableWidth =
+        (MeasureSpec.getSize(widthMeasureSpec) - paddingLeft - paddingRight).coerceAtLeast(0)
+    val childWidthSpec = MeasureSpec.makeMeasureSpec(availableWidth, MeasureSpec.AT_MOST)
+    val childHeightSpec = MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED)
+
+    var lineWidth = 0
+    var lineMaxBaseline = 0
+    var lineMaxBelowBaseline = 0
+    var totalHeight = paddingTop + paddingBottom
+    var maxLineWidth = 0
+
+    for (index in 0 until childCount) {
+      val child = getChildAt(index)
+      if (child.visibility == GONE) continue
+
+      measureChild(child, childWidthSpec, childHeightSpec)
+      val childWidth = child.measuredWidth
+      val childHeight = child.measuredHeight
+      val childBaseline = tokenBaseline(child)
+
+      if (lineWidth > 0 && lineWidth + childWidth > availableWidth) {
+        totalHeight += lineMaxBaseline + lineMaxBelowBaseline
+        maxLineWidth = maxOf(maxLineWidth, lineWidth)
+        lineWidth = 0
+        lineMaxBaseline = 0
+        lineMaxBelowBaseline = 0
+      }
+
+      lineWidth += childWidth
+      lineMaxBaseline = maxOf(lineMaxBaseline, childBaseline)
+      lineMaxBelowBaseline = maxOf(lineMaxBelowBaseline, childHeight - childBaseline)
+    }
+
+    if (childCount > 0) {
+      totalHeight += lineMaxBaseline + lineMaxBelowBaseline
+      maxLineWidth = maxOf(maxLineWidth, lineWidth)
+    }
+
+    val measuredWidth =
+        resolveSize(maxLineWidth + paddingLeft + paddingRight, widthMeasureSpec)
+    val measuredHeight = resolveSize(totalHeight, heightMeasureSpec)
+    setMeasuredDimension(measuredWidth, measuredHeight)
+  }
+
+  override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
+    val contentLeft = paddingLeft
+    val contentRight = width - paddingRight
+    val availableWidth = (contentRight - contentLeft).coerceAtLeast(0)
+
+    var y = paddingTop
+    val lineChildren = mutableListOf<View>()
+    var lineWidth = 0
+    var lineMaxBaseline = 0
+    var lineMaxBelowBaseline = 0
+
+    for (index in 0 until childCount) {
+      val child = getChildAt(index)
+      if (child.visibility == GONE) continue
+
+      val childWidth = child.measuredWidth.coerceAtMost(availableWidth)
+      val childHeight = child.measuredHeight
+      val childBaseline = tokenBaseline(child)
+
+      if (lineWidth > 0 && lineWidth + childWidth > availableWidth) {
+        layoutLine(lineChildren, contentRight, y, lineMaxBaseline)
+        y += lineMaxBaseline + lineMaxBelowBaseline
+        lineChildren.clear()
+        lineWidth = 0
+        lineMaxBaseline = 0
+        lineMaxBelowBaseline = 0
+      }
+
+      lineChildren.add(child)
+      lineWidth += childWidth
+      lineMaxBaseline = maxOf(lineMaxBaseline, childBaseline)
+      lineMaxBelowBaseline = maxOf(lineMaxBelowBaseline, childHeight - childBaseline)
+    }
+
+    if (lineChildren.isNotEmpty()) {
+      layoutLine(lineChildren, contentRight, y, lineMaxBaseline)
+    }
+  }
+
+  private fun layoutLine(
+      lineChildren: List<View>,
+      contentRight: Int,
+      lineTop: Int,
+      lineBaseline: Int,
+  ) {
+    var x = contentRight
+    lineChildren.forEach { child ->
+      val childWidth = child.measuredWidth
+      val childHeight = child.measuredHeight
+      val childTop = lineTop + lineBaseline - tokenBaseline(child)
+      child.layout(x - childWidth, childTop, x, childTop + childHeight)
+      x -= childWidth
+    }
+  }
+
+  /**
+   * Returns the Arabic TextView baseline in token-local coordinates. Aligning this value, instead
+   * of the bottoms of differently sized token containers, keeps every Quran word on one visual
+   * baseline even when a fallback font or a taller word translation changes a token's height.
+   */
+  private fun tokenBaseline(token: View): Int {
+    val tokenLayout = token as? LinearLayout ?: return token.measuredHeight
+    val arabicText = tokenLayout.getChildAt(0) as? TextView ?: return token.measuredHeight
+    val textBaseline = arabicText.baseline
+    if (textBaseline < 0) return token.measuredHeight
+    return (tokenLayout.paddingTop + textBaseline).coerceIn(0, token.measuredHeight)
+  }
+
+  private fun createTokenView(word: NativeWord): View {
+    val token =
+        LinearLayout(context).apply {
+          orientation = LinearLayout.VERTICAL
+          gravity = Gravity.CENTER
+          tag = word
+          importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
+          setPadding(
+              if (showTranslations) dp(10) else wordSidePaddingPx,
+              dp(if (showTranslations) 8 else 1),
+              if (showTranslations) dp(10) else wordSidePaddingPx,
+              dp(if (showTranslations) 10 else 1),
+          )
+          setOnLongClickListener { onVerseLongPress?.invoke() ?: false }
+          configureTokenPress(this, word)
+        }
+
+    token.addView(
+        TextView(context).apply {
+          text = word.uthmani
+          textSize = arabicFontSize
+          gravity = Gravity.CENTER
+          textDirection = TEXT_DIRECTION_RTL
+          includeFontPadding = true
+          typeface = NativeArabicFontResolver.resolve(context, arabicFontFace, word.uthmani)
+          setTextColor(if (isActiveWord(word)) theme.tintColor else theme.textColor)
+          setLineSpacing(lineSpacingExtra(arabicFontSize, arabicLineHeight(arabicFontSize)), 1.0f)
+        },
+        LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT),
+    )
+
+    if (showTranslations) {
+      val translationText = word.translationText?.trim().orEmpty()
+      if (translationText.isNotBlank()) {
+        val translationFontSize = maxOf(10f, Math.round(arabicFontSize * 0.5f).toFloat())
+        token.addView(
+            TextView(context).apply {
+              text = translationText
+              textSize = translationFontSize
+              gravity = Gravity.CENTER
+              maxLines = 3
+              ellipsize = TextUtils.TruncateAt.END
+              includeFontPadding = false
+              setTextColor(theme.mutedColor)
+              setLineSpacing(
+                  lineSpacingExtra(translationFontSize, translationLineHeight(translationFontSize)),
+                  1.0f,
+              )
+            },
+            LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
+              topMargin = dp(2)
+            },
+        )
+      }
+    }
+
+    applyTokenHighlight(token, isActiveWord(word))
+    return token
+  }
+
+  private fun configureTokenPress(token: View, word: NativeWord) {
+    token.isClickable = wordPressEnabled
+    token.isFocusable = true
+    token.importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_YES
+    token.contentDescription =
+        if (wordPressEnabled) {
+          listOfNotNull(
+                  word.uthmani,
+                  word.translationText?.trim()?.takeIf { it.isNotBlank() },
+                  "Open Word Study",
+              )
+              .joinToString(". ")
+        } else {
+          word.uthmani
+        }
+    if (!wordPressEnabled) {
+      token.setOnClickListener(null)
+      token.isClickable = false
+      return
+    }
+
+    token.setOnClickListener {
+      val boundVerse = verse ?: return@setOnClickListener
+      onWordPress?.invoke(boundVerse, word)
+    }
+  }
+
+  /** The ornament that closes the verse: not a word, so it is not pressable or highlighted. */
+  private fun createEndOfAyahMarkerView(verseNumber: Int): View {
+    val token =
+        LinearLayout(context).apply {
+          orientation = LinearLayout.VERTICAL
+          gravity = Gravity.CENTER
+          importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
+          setPadding(
+              if (showTranslations) dp(10) else wordSidePaddingPx,
+              dp(if (showTranslations) 8 else 1),
+              if (showTranslations) dp(10) else wordSidePaddingPx,
+              dp(if (showTranslations) 10 else 1),
+          )
+          setOnLongClickListener { onVerseLongPress?.invoke() ?: false }
+        }
+    token.addView(
+        TextView(context).apply {
+          text = NativeArabicFontResolver.endOfAyahMarkerText(verseNumber)
+          textSize = arabicFontSize
+          gravity = Gravity.CENTER
+          textDirection = TEXT_DIRECTION_RTL
+          includeFontPadding = true
+          typeface = NativeArabicFontResolver.resolveEndOfAyahMarker(context)
+          setTextColor(theme.textColor)
+          setLineSpacing(lineSpacingExtra(arabicFontSize, arabicLineHeight(arabicFontSize)), 1.0f)
+        },
+        LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT),
+    )
+    return token
+  }
+
+  private fun isActiveWord(word: NativeWord): Boolean {
+    val current = activeWord ?: return false
+    val boundVerse = verse ?: return false
+    if (current.verseKey != boundVerse.verseKey) return false
+
+    val wordPosition = word.position
+    if (current.wordPosition != null && wordPosition != null) {
+      return current.wordPosition == wordPosition
+    }
+
+    return current.wordId != null && current.wordId == word.id
+  }
+
+  private fun applyTokenHighlight(token: View, isActive: Boolean) {
+    token.background = if (isActive) roundedDrawable(theme.activeBackgroundColor) else null
+    val tokenLayout = token as? LinearLayout ?: return
+    val arabicText = tokenLayout.getChildAt(0) as? TextView ?: return
+    arabicText.setTextColor(if (isActive) theme.tintColor else theme.textColor)
+  }
+
+  private fun roundedDrawable(color: Int): GradientDrawable {
+    return GradientDrawable().apply {
+      shape = GradientDrawable.RECTANGLE
+      cornerRadius = dp(8).toFloat()
+      setColor(color)
+    }
+  }
+
+
+  private fun dp(value: Int): Int {
+    return (value * resources.displayMetrics.density).toInt()
+  }
+
+  private fun sp(value: Float): Float {
+    return TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, value, resources.displayMetrics)
+  }
+
+  private fun lineSpacingExtra(fontSizeSp: Float, lineHeightSp: Float): Float {
+    return (sp(lineHeightSp) - sp(fontSizeSp)).coerceAtLeast(0f)
+  }
+
+  private fun arabicLineHeight(fontSizeSp: Float): Float {
+    return maxOf(fontSizeSp + 14f, fontSizeSp * 2.2f)
+  }
+
+  private fun translationLineHeight(fontSizeSp: Float): Float {
+    return maxOf(fontSizeSp + 4f, fontSizeSp * 1.6f)
+  }
+}

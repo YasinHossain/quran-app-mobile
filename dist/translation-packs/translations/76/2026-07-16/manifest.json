@@ -1,0 +1,15 @@
+{
+  "translationId": 76,
+  "name": "Muhammad Saleh",
+  "authorName": "Muhammad Saleh",
+  "languageName": "uighur, uyghur",
+  "version": "2026-07-16",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "037f5ea71695a2446e65c812d58636f4",
+  "payloadSizeBytes": 3922449,
+  "totalVerses": 6236,
+  "generatedAt": "2026-07-16T11:36:58.379Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=76&per_page=300"
+}

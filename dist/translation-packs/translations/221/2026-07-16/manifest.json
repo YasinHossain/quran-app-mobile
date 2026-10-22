@@ -1,0 +1,15 @@
+{
+  "translationId": 221,
+  "name": "Hasan Abdul-Karim",
+  "authorName": "Hasan Abdul-Karim",
+  "languageName": "vietnamese",
+  "version": "2026-07-16",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "51bf7977b32bb9ab2b155c38d3ce5532",
+  "payloadSizeBytes": 3197808,
+  "totalVerses": 6236,
+  "generatedAt": "2026-07-16T11:35:17.693Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=221&per_page=300"
+}

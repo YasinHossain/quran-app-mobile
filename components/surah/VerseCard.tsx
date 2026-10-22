@@ -1,0 +1,617 @@
+import React from 'react';
+import { MoreHorizontal } from 'lucide-react-native';
+import type { LayoutChangeEvent } from 'react-native';
+import {
+  Modal,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  ToastAndroid,
+  TouchableWithoutFeedback,
+  View,
+  useWindowDimensions,
+} from 'react-native';
+
+import Colors from '@/constants/Colors';
+import { useUiTranslation } from '@/providers/UiLanguageContext';
+import { useAppTheme } from '@/providers/ThemeContext';
+import {
+  END_OF_AYAH_MARKER_FONT_FAMILY,
+  getEndOfAyahMarker,
+  getFontNaturalLineHeight,
+} from '@/src/core/infrastructure/fonts/arabicFonts';
+import type { VerseWord } from '@/types';
+import {
+  buildWordStudyVersePreview,
+  normalizeWordStudyPressEvent,
+  type WordStudyPressEvent,
+} from '@/components/word-study/WordStudyPressEvent';
+
+import { WordByWordVerse } from './WordByWordVerse';
+import type { VerseAudioWordSync } from './useVerseAudioWordSync';
+import { TajweedNativeText } from './TajweedNativeText';
+
+const QPC_UNSUPPORTED_GLYPH = '\u06DF';
+// Natural line height per em of the platform UI font (Roboto), used for translation text.
+const SYSTEM_FONT_LINE_HEIGHT_EM = 1.17;
+// Spacing in dp, matching NativeVerseRowView. Kept explicit because NativeWind's native rem
+// (14px) renders spacing classes ~12% smaller than the Kotlin dp values.
+const ROW_PADDING_TOP = 16;
+const HEADER_HEIGHT = 32;
+const SECTION_GAP = 10;
+const TRANSLATION_ITEM_GAP = 18;
+const DIVIDER_MARGIN_TOP = 16;
+
+function getFirstFontFamily(fontFace: string | undefined): string | undefined {
+  if (!fontFace) return undefined;
+  const first = fontFace.split(',')[0]?.trim();
+  if (!first) return undefined;
+  return first.replace(/^["']|["']$/g, '').trim() || undefined;
+}
+
+function VerseCardComponent({
+  verseKey,
+  arabicText,
+  words,
+  translationTexts,
+  translationItems,
+  showTranslationAttribution,
+  arabicFontSize,
+  arabicFontFace,
+  translationFontSize,
+  showByWords,
+  tajweed,
+  tajweedGlyphRuns,
+  isAudioActive,
+  audioWordSync,
+  renderSignal: _renderSignal,
+  bodyMinHeight,
+  bodyPlaceholder,
+  onBodyLayout,
+  onWordStudyPress,
+  selectedStudyWordPosition,
+  onOpenActions,
+  actionsPosition = 'inline',
+  onPress,
+}: {
+  verseKey: string;
+  arabicText: string;
+  words?: VerseWord[];
+  translationTexts?: string[];
+  translationItems?: Array<{
+    text: string;
+    resourceId?: number;
+    resourceName?: string;
+  }>;
+  showTranslationAttribution?: boolean;
+  arabicFontSize: number;
+  arabicFontFace?: string;
+  translationFontSize: number;
+  showByWords?: boolean;
+  tajweed?: boolean;
+  tajweedGlyphRuns?: Array<{
+    fontFamily: string;
+    fontFileUri: string;
+    glyphs: string[];
+  }>;
+  isAudioActive?: boolean;
+  audioWordSync?: VerseAudioWordSync;
+  renderSignal?: number;
+  bodyMinHeight?: number;
+  bodyPlaceholder?: React.ReactNode;
+  onBodyLayout?: (event: LayoutChangeEvent) => void;
+  onWordStudyPress?: (event: WordStudyPressEvent) => void;
+  selectedStudyWordPosition?: number;
+  onOpenActions?: () => void;
+  actionsPosition?: 'inline' | 'right';
+  onPress?: () => void;
+}): React.JSX.Element {
+  const { resolvedTheme } = useAppTheme();
+  const palette = Colors[resolvedTheme];
+  const { t, localizeDigits } = useUiTranslation();
+  const screenDimensions = useWindowDimensions();
+  const screenWidth = screenDimensions.width;
+  const [wordTranslationTooltip, setWordTranslationTooltip] = React.useState<string | null>(null);
+  const [tooltipData, setTooltipData] = React.useState<{
+    text: string;
+    pageX: number;
+    pageY: number;
+    width: number;
+    height: number;
+  } | null>(null);
+  const [tooltipSize, setTooltipSize] = React.useState({ width: 0, height: 0 });
+  const tooltipHideTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const arabicFontFamily = getFirstFontFamily(arabicFontFace);
+  const sanitizedArabicText = arabicText.trim();
+  // Use the selected family as-is; many options are system fonts on Android,
+  // and custom fonts are handled by Expo font loading in `app/_layout.tsx`.
+  const normalizedArabicFontFamily = arabicFontFamily ?? 'UthmanicHafs1Ver18';
+  const shouldUseScheherazadeFallback =
+    normalizedArabicFontFamily.includes('UthmanicHafs1Ver18') &&
+    sanitizedArabicText.includes(QPC_UNSUPPORTED_GLYPH);
+  const effectiveArabicFontFamily = shouldUseScheherazadeFallback
+    ? 'Scheherazade New'
+    : normalizedArabicFontFamily;
+  // Line heights mirror the Kotlin reader row (NativeVerseRowView): the font's natural line plus
+  // that row's line-spacing extra, and tajweed's exact glyph-run line height.
+  const arabicLineHeight = Math.round(
+    getFontNaturalLineHeight(effectiveArabicFontFamily, arabicFontSize) +
+      Math.max(3, arabicFontSize * 0.18)
+  );
+  const tajweedLineHeight = Math.round(Math.max(arabicFontSize + 7, arabicFontSize * 1.42));
+  const translationLineHeight =
+    translationFontSize * SYSTEM_FONT_LINE_HEIGHT_EM + Math.max(8, translationFontSize * 0.7);
+  const wordStudyVersePreview = React.useMemo(
+    () => buildWordStudyVersePreview(words ?? []),
+    [words]
+  );
+
+  const cleanedTranslationItems = React.useMemo(() => {
+    const incomingItems = (translationItems ?? [])
+      .map((item) => ({
+        ...item,
+        text: String(item?.text ?? '').trim(),
+        resourceName: String(item?.resourceName ?? '').trim() || undefined,
+      }))
+      .filter((item) => item.text.length > 0);
+
+    if (incomingItems.length) return incomingItems;
+
+    return (translationTexts ?? [])
+      .map((text) => ({ text: String(text ?? '').trim() }))
+      .filter((item) => item.text.length > 0);
+  }, [translationItems, translationTexts]);
+
+  const shouldShowTranslationAttribution =
+    Boolean(showTranslationAttribution) &&
+    cleanedTranslationItems.some((t) => Boolean((t as { resourceName?: string }).resourceName));
+  const renderSignal = typeof _renderSignal === 'number' ? _renderSignal : 0;
+
+  React.useEffect(() => {
+    return () => {
+      if (tooltipHideTimeoutRef.current) {
+        clearTimeout(tooltipHideTimeoutRef.current);
+        tooltipHideTimeoutRef.current = null;
+      }
+    };
+  }, []);
+
+  const dismissTooltip = React.useCallback(() => {
+    if (tooltipHideTimeoutRef.current) {
+      clearTimeout(tooltipHideTimeoutRef.current);
+      tooltipHideTimeoutRef.current = null;
+    }
+    setTooltipData(null);
+    setWordTranslationTooltip(null);
+    setTooltipSize({ width: 0, height: 0 });
+  }, []);
+
+  const showWordTranslation = React.useCallback(
+    (
+      text: string,
+      measurement?: { pageX: number; pageY: number; width: number; height: number }
+    ) => {
+      const trimmed = text.trim();
+      if (!trimmed) return;
+
+      if (tooltipHideTimeoutRef.current) {
+        clearTimeout(tooltipHideTimeoutRef.current);
+        tooltipHideTimeoutRef.current = null;
+      }
+
+      setTooltipSize({ width: 0, height: 0 });
+
+      if (measurement) {
+        setTooltipData({
+          text: trimmed,
+          pageX: measurement.pageX,
+          pageY: measurement.pageY,
+          width: measurement.width,
+          height: measurement.height,
+        });
+
+        tooltipHideTimeoutRef.current = setTimeout(() => {
+          tooltipHideTimeoutRef.current = null;
+          setTooltipData(null);
+        }, 3000);
+      } else {
+        if (Platform.OS === 'android') {
+          ToastAndroid.showWithGravity(trimmed, ToastAndroid.SHORT, ToastAndroid.BOTTOM);
+        } else {
+          setWordTranslationTooltip(trimmed);
+          tooltipHideTimeoutRef.current = setTimeout(() => {
+            tooltipHideTimeoutRef.current = null;
+            setWordTranslationTooltip(null);
+          }, 3000);
+        }
+      }
+    },
+    []
+  );
+
+  const isSeekEnabled = Boolean(audioWordSync?.isSeekEnabled);
+  const isAudioPlaying = Boolean(audioWordSync?.isPlaying);
+  const shouldSeekOnWordPress = isSeekEnabled;
+
+  React.useEffect(() => {
+    if (isAudioPlaying) {
+      dismissTooltip();
+    }
+  }, [dismissTooltip, isAudioPlaying]);
+
+  const shouldUseTajweedMode = Boolean(tajweed && !showByWords);
+  const shouldRenderTajweedText =
+    shouldUseTajweedMode && Boolean(tajweedGlyphRuns?.length);
+  const isWaitingForTajweedText = shouldUseTajweedMode && !shouldRenderTajweedText;
+  const shouldRenderWordTokens = Boolean(
+    Array.isArray(words) &&
+      words.length &&
+      !shouldUseTajweedMode &&
+      (showByWords || isSeekEnabled || Boolean(onWordStudyPress))
+  );
+
+  const handleSeekWordPress = React.useCallback(
+    ({
+      wordPosition,
+    }: {
+      word: VerseWord;
+      wordPosition: number;
+      measurement?: {
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+        pageX: number;
+        pageY: number;
+      };
+    }) => {
+      audioWordSync?.seekToWord({ verseKey, wordPosition });
+    },
+    [audioWordSync, verseKey]
+  );
+
+  const handleTranslationWordPress = React.useCallback(
+    ({
+      word,
+      measurement,
+    }: {
+      word: VerseWord;
+      wordPosition: number;
+      measurement?: {
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+        pageX: number;
+        pageY: number;
+      };
+    }) => {
+      if (!word.translationText) return;
+      showWordTranslation(word.translationText, measurement);
+    },
+    [showWordTranslation]
+  );
+
+  const handleWordStudyPress = React.useCallback(
+    ({ word, wordPosition }: { word: VerseWord; wordPosition: number }) => {
+      const event = normalizeWordStudyPressEvent({
+        verseKey,
+        wordPosition,
+        wordId: word.id,
+        surfaceText: word.uthmani,
+        verseWords: wordStudyVersePreview,
+        source: 'translation',
+      });
+      if (event) onWordStudyPress?.(event);
+    },
+    [onWordStudyPress, verseKey, wordStudyVersePreview]
+  );
+
+  const defaultBodyContent = (
+    <View style={{ gap: SECTION_GAP }}>
+      {shouldRenderTajweedText ? (
+        <TajweedNativeText
+          fallbackFontFamily={effectiveArabicFontFamily}
+          fallbackText={sanitizedArabicText}
+          glyphRuns={tajweedGlyphRuns ?? []}
+          hideFallbackText
+          fontSize={arabicFontSize}
+          lineHeight={tajweedLineHeight}
+        />
+      ) : isWaitingForTajweedText ? (
+        <Text
+          key={`${verseKey}-tajweed-placeholder-${renderSignal}`}
+          selectable={false}
+          className="text-right"
+          style={{
+            color: 'transparent',
+            fontSize: arabicFontSize,
+            lineHeight: tajweedLineHeight,
+            fontFamily: effectiveArabicFontFamily,
+            minHeight: tajweedLineHeight,
+            writingDirection: 'rtl',
+            textAlign: 'right',
+          }}
+        >
+          {sanitizedArabicText || ' '}
+        </Text>
+      ) : shouldRenderWordTokens ? (
+        <WordByWordVerse
+          verseKey={verseKey}
+          words={words ?? []}
+          arabicFontSize={arabicFontSize}
+          arabicFontFamily={effectiveArabicFontFamily}
+          showTranslations={Boolean(showByWords)}
+          pressBehavior={
+            shouldSeekOnWordPress
+              ? 'seek'
+              : onWordStudyPress
+                ? 'study'
+                : showByWords
+                  ? 'none'
+                  : 'translation'
+          }
+          onWordPress={
+            shouldSeekOnWordPress
+              ? handleSeekWordPress
+              : onWordStudyPress
+                ? handleWordStudyPress
+                : showByWords
+                  ? undefined
+                  : handleTranslationWordPress
+          }
+          selectedWordPosition={isAudioPlaying ? undefined : selectedStudyWordPosition}
+          registerWordHighlight={audioWordSync?.registerWordHighlight}
+        />
+      ) : (
+        <Text
+          key={`${verseKey}-arabic-${renderSignal}`}
+          selectable
+          className="text-right"
+          style={{
+            color: palette.text,
+            fontSize: arabicFontSize,
+            lineHeight: arabicLineHeight,
+            fontFamily: effectiveArabicFontFamily,
+            writingDirection: 'rtl',
+            textAlign: 'right',
+          }}
+        >
+          {sanitizedArabicText}
+          {' '}
+          <Text style={{ fontFamily: END_OF_AYAH_MARKER_FONT_FAMILY }}>
+            {getEndOfAyahMarker(Number(verseKey.split(':')[1]))}
+          </Text>
+        </Text>
+      )}
+
+      {!showByWords && wordTranslationTooltip ? (
+        <Text className="text-xs" style={{ color: palette.muted }}>
+          {wordTranslationTooltip}
+        </Text>
+      ) : null}
+
+      {cleanedTranslationItems.length ? (
+        <View style={{ gap: TRANSLATION_ITEM_GAP }}>
+          {cleanedTranslationItems.map((translation, idx) => {
+            const resourceName =
+              'resourceName' in translation && typeof translation.resourceName === 'string'
+                ? translation.resourceName
+                : undefined;
+
+            return (
+              <View key={`${renderSignal}-${idx}-${translation.text.slice(0, 24)}`}>
+                {shouldShowTranslationAttribution && resourceName ? (
+                  <Text
+                    numberOfLines={2}
+                    style={{
+                      color: palette.muted,
+                      fontSize: 12,
+                      includeFontPadding: false,
+                      marginBottom: 8,
+                      textTransform: 'uppercase',
+                    }}
+                  >
+                    {resourceName}
+                  </Text>
+                ) : null}
+                <Text
+                  selectable
+                  style={{
+                    color: palette.text,
+                    fontSize: translationFontSize,
+                    lineHeight: translationLineHeight,
+                    writingDirection: 'auto',
+                  }}
+                >
+                  {translation.text}
+                </Text>
+              </View>
+            );
+          })}
+        </View>
+      ) : null}
+    </View>
+  );
+
+  // Keep this wrapper content-sized. Adding flex-1 here can collapse the verse body
+  // inside tafsir's nested pager/ScrollView, leaving only the header/action row visible.
+  const content = (
+    <View style={{ gap: SECTION_GAP }}>
+        <View
+          className={`flex-row items-center gap-2.5 ${
+            actionsPosition === 'right' ? 'justify-between' : 'justify-start'
+          }`}
+          style={{ minHeight: HEADER_HEIGHT }}
+        >
+          <Text
+            style={{ color: palette.tint, fontSize: 13, fontWeight: '700', includeFontPadding: false }}
+          >
+            {localizeDigits(verseKey)}
+          </Text>
+          {onOpenActions ? (
+            <Pressable
+              onPress={onOpenActions}
+              hitSlop={10}
+              accessibilityRole="button"
+              accessibilityLabel={t('open_verse_actions_menu', { fallback: 'Open verse actions' })}
+              style={({ pressed }) => ({ opacity: pressed ? 0.65 : 1 })}
+            >
+              <View
+                style={{
+                  width: HEADER_HEIGHT,
+                  height: HEADER_HEIGHT,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <MoreHorizontal color={palette.muted} size={18} strokeWidth={2.25} />
+              </View>
+            </Pressable>
+          ) : null}
+        </View>
+
+        <View
+          onLayout={onBodyLayout}
+          style={typeof bodyMinHeight === 'number' && bodyMinHeight > 0 ? { minHeight: bodyMinHeight } : undefined}
+        >
+          {bodyPlaceholder ?? defaultBodyContent}
+        </View>
+    </View>
+  );
+
+  // Hairline divider in its own view (like the native Android verse row) so the
+  // pressable and static variants render the same reader divider color.
+  const divider = (
+    <View
+      style={{
+        marginTop: DIVIDER_MARGIN_TOP,
+        height: StyleSheet.hairlineWidth,
+        backgroundColor: palette.readerDivider,
+      }}
+    />
+  );
+
+  const renderTooltipModal = () => {
+    if (!tooltipData) return null;
+
+    const { text, pageX, pageY, width, height } = tooltipData;
+    const centerX = pageX + width / 2;
+
+    const hasMeasured = tooltipSize.width > 0 && tooltipSize.height > 0;
+    const gap = 16;
+    const fitsAbove = pageY - tooltipSize.height - (gap + 4) > 50;
+    const finalTop = fitsAbove ? pageY - tooltipSize.height - gap : pageY + height + gap;
+    const isAbove = fitsAbove;
+
+    const tooltipWidth = tooltipSize.width || 180;
+    const leftCoordinate = Math.max(
+      12,
+      Math.min(screenWidth - tooltipWidth - 12, centerX - tooltipWidth / 2)
+    );
+
+    return (
+      <Modal
+        hardwareAccelerated
+        visible={true}
+        transparent={true}
+        animationType="none"
+        onRequestClose={dismissTooltip}
+      >
+        <TouchableWithoutFeedback onPress={dismissTooltip}>
+          <View style={StyleSheet.absoluteFill}>
+            <View
+              onLayout={(e) => {
+                const { width: w, height: h } = e.nativeEvent.layout;
+                setTooltipSize({ width: w, height: h });
+              }}
+              style={{
+                position: 'absolute',
+                left: leftCoordinate,
+                top: finalTop,
+                backgroundColor: palette.tint,
+                borderRadius: 6,
+                paddingVertical: 8,
+                paddingHorizontal: 12,
+                maxWidth: Math.min(256, screenWidth - 24),
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.15,
+                shadowRadius: 4,
+                elevation: 4,
+                opacity: hasMeasured ? 1 : 0,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Text style={{ color: '#ffffff', fontSize: 13, fontWeight: '500', textAlign: 'center' }}>
+                {text}
+              </Text>
+              <View
+                style={{
+                  width: 0,
+                  height: 0,
+                  borderLeftWidth: 6,
+                  borderRightWidth: 6,
+                  borderStyle: 'solid',
+                  backgroundColor: 'transparent',
+                  borderLeftColor: 'transparent',
+                  borderRightColor: 'transparent',
+                  position: 'absolute',
+                  left: centerX - leftCoordinate - 6,
+                  ...(isAbove
+                    ? {
+                        borderTopWidth: 6,
+                        borderTopColor: palette.tint,
+                        bottom: -6,
+                      }
+                    : {
+                        borderBottomWidth: 6,
+                        borderBottomColor: palette.tint,
+                        top: -6,
+                      }),
+                }}
+              />
+            </View>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
+    );
+  };
+
+  const mainView = onPress ? (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      style={({ pressed }) => ({
+        paddingTop: ROW_PADDING_TOP,
+        opacity: pressed ? 0.95 : 1,
+        backgroundColor: isAudioActive ? `${palette.tint}0D` : 'transparent',
+      })}
+    >
+      {content}
+      {divider}
+    </Pressable>
+  ) : (
+    <View
+      style={{
+        paddingTop: ROW_PADDING_TOP,
+        backgroundColor: isAudioActive ? `${palette.tint}0D` : 'transparent',
+      }}
+    >
+      {content}
+      {divider}
+    </View>
+  );
+
+  return (
+    <>
+      {mainView}
+      {renderTooltipModal()}
+    </>
+  );
+}
+
+export const VerseCard = React.memo(VerseCardComponent);
+VerseCard.displayName = 'VerseCard';

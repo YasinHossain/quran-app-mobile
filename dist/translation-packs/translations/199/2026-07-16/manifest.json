@@ -1,0 +1,15 @@
+{
+  "translationId": 199,
+  "name": "Noor International Center",
+  "authorName": "Noor International Center",
+  "languageName": "spanish",
+  "version": "2026-07-16",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "28d1f337b358587de5984c2dc6e19a07",
+  "payloadSizeBytes": 2892181,
+  "totalVerses": 6236,
+  "generatedAt": "2026-07-16T11:37:03.269Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=199&per_page=300"
+}

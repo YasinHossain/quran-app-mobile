@@ -1,0 +1,13 @@
+{
+  "languageCode": "id",
+  "name": "Bahasa Indonesia",
+  "version": "2026-07-04",
+  "bundled": false,
+  "format": "word-translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "175739f54653a2c5bebdc991210a78ea",
+  "payloadSizeBytes": 13657703,
+  "totalVerses": 6236,
+  "generatedAt": "2026-07-04T04:33:46.853Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?words=true&word_translation_language=id"
+}

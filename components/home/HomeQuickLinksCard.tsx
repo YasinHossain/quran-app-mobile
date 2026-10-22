@@ -1,0 +1,527 @@
+import { ArrowUpRight, Plus, X } from 'lucide-react-native';
+import { useRouter } from 'expo-router';
+import React from 'react';
+import {
+  Keyboard,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+
+import { Dialog } from '@/components/motion/Dialog';
+import { SurahVerseSelectorRow } from '@/components/search/SurahVerseSelectorRow';
+import Colors from '@/constants/Colors';
+import { QUICK_LINKS_STORAGE_KEY } from '@/lib/home/storageKeys';
+import { useChapters } from '@/hooks/useChapters';
+import { generateId } from '@/lib/id';
+import { getCachedItem, getItem, hasCachedItem, parseJson, setItem } from '@/lib/storage/appStorage';
+import { warmSurahReaderBeforeNavigation } from '@/lib/surah/surahReaderWarmup';
+import { useSettings } from '@/providers/SettingsContext';
+import { useAppTheme } from '@/providers/ThemeContext';
+import { useUiTranslation } from '@/providers/UiLanguageContext';
+
+import type { Chapter } from '@/types';
+
+const MAX_QUICK_LINKS = 5;
+let cachedQuickLinks: HomeQuickLink[] | null = null;
+
+type HomeQuickLink = {
+  id: string;
+  surahId: number;
+  verseNumber: number;
+  createdAt: number;
+  updatedAt: number;
+};
+
+const DEFAULT_QUICK_LINKS: HomeQuickLink[] = [
+  { id: 'default-18-1', surahId: 18, verseNumber: 1, createdAt: 3, updatedAt: 3 },
+  { id: 'default-67-1', surahId: 67, verseNumber: 1, createdAt: 2, updatedAt: 2 },
+  { id: 'default-36-1', surahId: 36, verseNumber: 1, createdAt: 1, updatedAt: 1 },
+];
+
+function isQuickLink(value: unknown): value is HomeQuickLink {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Partial<HomeQuickLink>;
+  return (
+    typeof candidate.id === 'string' &&
+    typeof candidate.surahId === 'number' &&
+    Number.isFinite(candidate.surahId) &&
+    candidate.surahId > 0 &&
+    typeof candidate.verseNumber === 'number' &&
+    Number.isFinite(candidate.verseNumber) &&
+    candidate.verseNumber > 0 &&
+    typeof candidate.createdAt === 'number' &&
+    Number.isFinite(candidate.createdAt) &&
+    typeof candidate.updatedAt === 'number' &&
+    Number.isFinite(candidate.updatedAt)
+  );
+}
+
+function normalizeQuickLinks(value: unknown): HomeQuickLink[] {
+  if (!Array.isArray(value)) return [];
+
+  const seen = new Set<string>();
+  const normalized: HomeQuickLink[] = [];
+
+  for (const item of value) {
+    if (!isQuickLink(item)) continue;
+    const key = `${item.surahId}:${item.verseNumber}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    normalized.push(item);
+    if (normalized.length >= MAX_QUICK_LINKS) break;
+  }
+
+  return normalized.sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+function getChapter(chapters: Chapter[], surahId: number): Chapter | undefined {
+  return chapters.find((chapter) => chapter.id === surahId);
+}
+
+function getVerseLabel(
+  link: HomeQuickLink,
+  chapter: Chapter | undefined,
+  formatNumber: (value: number) => string
+): string {
+  if (!chapter) return `${formatNumber(link.surahId)}:${formatNumber(link.verseNumber)}`;
+  return `${formatNumber(link.surahId)}:${formatNumber(Math.min(link.verseNumber, chapter.verses_count))}`;
+}
+
+export function HomeQuickLinksCard(): React.JSX.Element {
+  if (cachedQuickLinks === null && hasCachedItem(QUICK_LINKS_STORAGE_KEY)) {
+    const raw = getCachedItem(QUICK_LINKS_STORAGE_KEY);
+    cachedQuickLinks = raw === null ? DEFAULT_QUICK_LINKS : normalizeQuickLinks(parseJson<unknown>(raw));
+  }
+  const router = useRouter();
+  const { settings } = useSettings();
+  const { isDark, resolvedTheme } = useAppTheme();
+  const { t, formatNumber } = useUiTranslation();
+  const palette = Colors[resolvedTheme];
+  const { chapters, isLoading } = useChapters();
+
+  const [quickLinks, setQuickLinks] = React.useState<HomeQuickLink[]>(() => cachedQuickLinks ?? DEFAULT_QUICK_LINKS);
+  const [isHydrated, setIsHydrated] = React.useState(() => cachedQuickLinks !== null);
+  const [isAddOpen, setIsAddOpen] = React.useState(false);
+
+  React.useEffect(() => {
+    // The in-memory value is authoritative for the lifetime of this app
+    // session. Avoid an asynchronous storage read replacing the already
+    // rendered chips every time the home tab is mounted again.
+    if (cachedQuickLinks !== null) return;
+
+    let isMounted = true;
+
+    void getItem(QUICK_LINKS_STORAGE_KEY).then((raw) => {
+      if (!isMounted) return;
+      const parsed = parseJson<unknown>(raw);
+      const next = raw === null ? DEFAULT_QUICK_LINKS : normalizeQuickLinks(parsed);
+      cachedQuickLinks = next;
+      setQuickLinks(next);
+      setIsHydrated(true);
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  React.useEffect(() => {
+    if (!isHydrated) return;
+    if (cachedQuickLinks === quickLinks) return;
+    cachedQuickLinks = quickLinks;
+    void setItem(QUICK_LINKS_STORAGE_KEY, JSON.stringify(quickLinks));
+  }, [isHydrated, quickLinks]);
+
+  const addQuickLink = React.useCallback((surahId: number, verseNumber: number) => {
+    const now = Date.now();
+    setQuickLinks((current) => {
+      const existing = current.find(
+        (link) => link.surahId === surahId && link.verseNumber === verseNumber
+      );
+      const nextLink: HomeQuickLink = existing
+        ? { ...existing, updatedAt: now }
+        : { id: generateId(), surahId, verseNumber, createdAt: now, updatedAt: now };
+
+      return [
+        nextLink,
+        ...current.filter((link) => link.id !== nextLink.id),
+      ].slice(0, MAX_QUICK_LINKS);
+    });
+  }, []);
+
+  const removeQuickLink = React.useCallback((id: string) => {
+    setQuickLinks((current) => current.filter((link) => link.id !== id));
+  }, []);
+
+  const navigateToQuickLink = React.useCallback(
+    (link: HomeQuickLink) => {
+      const chapter = getChapter(chapters, link.surahId);
+      const verseNumber = chapter
+        ? Math.min(link.verseNumber, chapter.verses_count)
+        : link.verseNumber;
+
+      void (async () => {
+        await warmSurahReaderBeforeNavigation({
+          surahId: link.surahId,
+          verseNumber,
+          settings,
+        });
+        router.push({
+          pathname: '/surah/[surahId]',
+          params: {
+            surahId: String(link.surahId),
+            startVerse: String(verseNumber),
+          },
+        });
+      })();
+    },
+    [chapters, router, settings]
+  );
+
+  const activeShadow = React.useMemo(
+    () =>
+      Platform.OS === 'android'
+        ? { elevation: 0 }
+        : {
+            shadowColor: '#000',
+            shadowOpacity: 0.1,
+            shadowRadius: 4,
+            shadowOffset: { width: 0, height: 2 },
+          },
+    []
+  );
+  const chipShadow = React.useMemo(
+    () =>
+      Platform.OS === 'android'
+        ? { elevation: 0, shadowColor: '#000' }
+        : {
+            shadowColor: '#000',
+            shadowOpacity: 0,
+            shadowRadius: 0,
+            shadowOffset: { width: 0, height: 0 },
+          },
+    []
+  );
+  const textColor = palette.text;
+  const mutedColor = palette.muted;
+  const chipBackground = isDark ? palette.surfaceNavigation : palette.interactive;
+  const borderColor = 'transparent';
+  const borderWidth = 0;
+  const iconCircleBackground = isDark ? '#0F172A' : '#FFFFFF';
+  const canAdd = quickLinks.length < MAX_QUICK_LINKS;
+
+  return (
+    <View>
+      <View className="mb-3 flex-row items-center justify-between px-3">
+        <Text className="text-lg font-semibold" style={{ color: textColor }}>
+          {t('quick_links', { fallback: 'Quick Links' })}
+        </Text>
+        <Text
+          className="text-xs font-semibold"
+          style={{ color: mutedColor, opacity: isHydrated ? 1 : 0 }}
+        >
+          {formatNumber(quickLinks.length)}/{formatNumber(MAX_QUICK_LINKS)}
+        </Text>
+      </View>
+
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.chipListContent}
+      >
+        {isHydrated ? (
+          <>
+            {quickLinks.map((link) => {
+              const chapter = getChapter(chapters, link.surahId);
+              const surahName = t(`surah_names.${link.surahId}`, {
+                fallback: chapter?.name_simple ?? `${t('surah_tab')} ${link.surahId}`,
+              });
+              const verseLabel = getVerseLabel(link, chapter, formatNumber);
+
+              return (
+                <Pressable
+                  key={link.id}
+                  onPress={() => navigateToQuickLink(link)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${surahName} ${verseLabel}`}
+                  style={({ pressed }) => ({
+                    maxWidth: 242,
+                    opacity: pressed ? 0.92 : 1,
+                    transform: [{ scale: pressed ? 0.985 : 1 }],
+                  })}
+                >
+                  <View
+                    className="flex-row items-center rounded-full py-1.5 pl-1.5 pr-2.5"
+                    style={[
+                      {
+                        minHeight: 46,
+                        maxWidth: 242,
+                        backgroundColor: chipBackground,
+                        borderRadius: 999,
+                        borderWidth,
+                        borderColor,
+                      },
+                      chipShadow,
+                    ]}
+                  >
+                    <View
+                      className="items-center justify-center rounded-full"
+                      style={[{ width: 34, height: 34, backgroundColor: iconCircleBackground }, activeShadow]}
+                    >
+                      <ArrowUpRight size={17} strokeWidth={2.4} color={palette.tint} />
+                    </View>
+                    <Text
+                      numberOfLines={1}
+                      ellipsizeMode="tail"
+                      className="ml-2.5 text-[15px] font-bold"
+                      style={{ color: textColor, maxWidth: 150 }}
+                    >
+                      {surahName}{' '}
+                      <Text className="text-[13px] font-semibold" style={{ color: mutedColor }}>
+                        {verseLabel}
+                      </Text>
+                    </Text>
+                    <Pressable
+                      onPress={(event) => {
+                        event.stopPropagation();
+                        removeQuickLink(link.id);
+                      }}
+                      hitSlop={8}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${t('remove_bookmark', { fallback: 'Remove' })} ${surahName} ${verseLabel}`}
+                      className="ml-2 h-7 w-7 items-center justify-center rounded-full"
+                      style={({ pressed }) => ({
+                        backgroundColor: pressed
+                          ? isDark
+                            ? 'rgba(148,163,184,0.16)'
+                            : 'rgba(102,112,133,0.10)'
+                          : 'transparent',
+                      })}
+                    >
+                      <X size={14} strokeWidth={2.4} color={mutedColor} />
+                    </Pressable>
+                  </View>
+                </Pressable>
+              );
+            })}
+
+            {canAdd ? (
+              <Pressable
+                onPress={() => setIsAddOpen(true)}
+                accessibilityRole="button"
+                accessibilityLabel={t('add_quick_link', { fallback: 'Add quick link' })}
+                style={({ pressed }) => ({
+                  minWidth: quickLinks.length === 0 ? undefined : 46,
+                  alignSelf: 'flex-start',
+                  opacity: pressed ? 0.95 : 1,
+                  transform: [{ scale: pressed ? 0.985 : 1 }],
+                })}
+              >
+                <View
+                  className={`flex-row items-center justify-center rounded-full ${quickLinks.length === 0 ? 'py-1.5 pl-1.5 pr-5' : 'p-1.5'}`}
+                  style={[
+                    {
+                      minHeight: 46,
+                      minWidth: quickLinks.length === 0 ? undefined : 46,
+                      backgroundColor: chipBackground,
+                      borderRadius: 999,
+                      borderWidth,
+                      borderColor,
+                    },
+                    chipShadow,
+                  ]}
+                >
+                  <View
+                    className="items-center justify-center rounded-full"
+                    style={[{ width: 34, height: 34, backgroundColor: iconCircleBackground }, activeShadow]}
+                  >
+                    <Plus size={18} strokeWidth={2.5} color={palette.tint} />
+                  </View>
+                  {quickLinks.length === 0 ? (
+                    <Text
+                      numberOfLines={1}
+                      className="ml-2.5 text-[15px] font-bold"
+                      style={{ color: textColor }}
+                    >
+                      {t('add_quick_link', { fallback: 'Add quick link' })}
+                    </Text>
+                  ) : null}
+                </View>
+              </Pressable>
+            ) : null}
+          </>
+        ) : (
+          <View
+            className="flex-row items-center rounded-full py-1.5 pl-1.5 pr-5"
+            style={{
+              minHeight: 46,
+              width: 190,
+              alignSelf: 'flex-start',
+              backgroundColor: chipBackground,
+              borderRadius: 999,
+              borderWidth,
+              borderColor,
+              opacity: 0,
+            }}
+          />
+        )}
+      </ScrollView>
+
+      <AddQuickLinkModal
+        isOpen={isAddOpen}
+        chapters={chapters}
+        isLoading={isLoading}
+        onClose={() => setIsAddOpen(false)}
+        onAdd={(surahId, verseNumber) => {
+          addQuickLink(surahId, verseNumber);
+          setIsAddOpen(false);
+        }}
+      />
+    </View>
+  );
+}
+
+function AddQuickLinkModal({
+  isOpen,
+  chapters,
+  isLoading,
+  onClose,
+  onAdd,
+}: {
+  isOpen: boolean;
+  chapters: Chapter[];
+  isLoading: boolean;
+  onClose: () => void;
+  onAdd: (surahId: number, verseNumber: number) => void;
+}): React.JSX.Element {
+  const { resolvedTheme } = useAppTheme();
+  const { t } = useUiTranslation();
+  const palette = Colors[resolvedTheme];
+  const [selectedSurah, setSelectedSurah] = React.useState<number | undefined>(undefined);
+  const [selectedVerse, setSelectedVerse] = React.useState<number | undefined>(undefined);
+  const [isSelectorOpen, setIsSelectorOpen] = React.useState(false);
+  const [selectorDismissRequest, setSelectorDismissRequest] = React.useState(0);
+
+  const handleAfterClose = React.useCallback(() => {
+    setSelectedSurah(undefined);
+    setSelectedVerse(undefined);
+    setIsSelectorOpen(false);
+  }, []);
+
+  const dismissOpenSelector = React.useCallback(() => {
+    Keyboard.dismiss();
+    setSelectorDismissRequest((current) => current + 1);
+  }, []);
+
+  const handleSelectSurah = React.useCallback(
+    (surahId: number) => {
+      const chapter = getChapter(chapters, surahId);
+      setSelectedSurah(surahId);
+      setSelectedVerse((current) => {
+        if (!chapter || typeof current !== 'number') return undefined;
+        return current > chapter.verses_count ? undefined : current;
+      });
+    },
+    [chapters]
+  );
+
+  const canSubmit = typeof selectedSurah === 'number' && typeof selectedVerse === 'number';
+
+  return (
+    <Dialog isOpen={isOpen} onClose={onClose} onAfterClose={handleAfterClose} horizontalInset={8}>
+      {isSelectorOpen ? (
+        <Pressable
+          onPress={dismissOpenSelector}
+          accessibilityRole="button"
+          accessibilityLabel="Close selector list"
+          style={styles.selectorDismissLayer}
+        />
+      ) : null}
+      <View className="px-4 pt-5">
+        <View className="flex-row items-center justify-between">
+          <View className="min-w-0 flex-1">
+            <Text className="text-xl font-bold text-foreground dark:text-foreground-dark">
+              {t('add_quick_link', { fallback: 'Add quick link' })}
+            </Text>
+          </View>
+          <Pressable
+            onPress={onClose}
+            hitSlop={10}
+            accessibilityRole="button"
+          accessibilityLabel={t('close')}
+            className="h-9 w-9 items-center justify-center rounded-full bg-interactive dark:bg-interactive-dark"
+            style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}
+          >
+            <X size={17} strokeWidth={2.4} color={palette.muted} />
+          </Pressable>
+        </View>
+      </View>
+
+      <View className="px-4 py-5" style={styles.selectorRow}>
+        <SurahVerseSelectorRow
+          chapters={chapters}
+          isLoading={isLoading}
+          selectedSurah={selectedSurah}
+          selectedVerse={selectedVerse}
+          onSelectSurah={handleSelectSurah}
+          onSelectVerse={setSelectedVerse}
+          floatingDropdown
+          onOpenChange={setIsSelectorOpen}
+          dismissRequest={selectorDismissRequest}
+        />
+      </View>
+
+      <View className="flex-row justify-end gap-3 border-t border-border/60 px-4 py-3 dark:border-border-dark/40">
+        <Pressable
+          onPress={onClose}
+          accessibilityRole="button"
+          accessibilityLabel={t('cancel')}
+          className="rounded-lg bg-interactive px-5 py-2.5 dark:bg-interactive-dark"
+          style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
+        >
+          <Text className="text-sm font-semibold text-foreground dark:text-foreground-dark">
+            {t('cancel')}
+          </Text>
+        </Pressable>
+        <Pressable
+          onPress={() => {
+            if (!canSubmit) return;
+            onAdd(selectedSurah, selectedVerse);
+          }}
+          disabled={!canSubmit}
+          accessibilityRole="button"
+          accessibilityLabel={t('add_quick_link', { fallback: 'Add quick link' })}
+          className="rounded-lg bg-accent px-5 py-2.5"
+          style={({ pressed }) => ({ opacity: !canSubmit ? 0.5 : pressed ? 0.9 : 1 })}
+        >
+          <Text className="text-sm font-semibold text-on-accent">{t('add')}</Text>
+        </Pressable>
+      </View>
+    </Dialog>
+  );
+}
+
+const styles = StyleSheet.create({
+  selectorDismissLayer: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    zIndex: 1,
+  },
+  selectorRow: {
+    zIndex: 2,
+  },
+  chipListContent: {
+    paddingLeft: 12,
+    paddingRight: 16,
+    paddingTop: 4,
+    paddingBottom: 12,
+    gap: 4,
+  },
+});

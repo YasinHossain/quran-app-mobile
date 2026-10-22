@@ -1,0 +1,18 @@
+{
+  "format": "quran-word-grammar-sqlite-v1",
+  "compilerVersion": "1.0.0",
+  "schemaVersion": 1,
+  "databaseFile": "quran-word-grammar.db",
+  "databaseSizeBytes": 15876096,
+  "databaseChecksumSha256": "34fc38dca6b71708acbb4c3dcf685d639fd25febcda3624ea1404a8caa4cf3d6",
+  "logicalChecksumSha256": "69ca1d15d697703c218be8a2899ebefb323c0638bd8af8110b275e8e8839fe11",
+  "verseCount": 5785,
+  "passageCount": 29881,
+  "source": {
+    "sourceId": "qac-arabic-irab",
+    "title": "Quranic Arabic Corpus Arabic i'rab",
+    "version": "1.4",
+    "url": "https://github.com/zeeyado/quran-ebook/releases",
+    "checksumSha256": "804b7397d1a239cdeace01b3ea9a656342062f582350c52930b0481dbd3300fb"
+  }
+}

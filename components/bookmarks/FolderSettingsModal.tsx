@@ -1,0 +1,237 @@
+import { Check, X } from 'lucide-react-native';
+import React from 'react';
+import {
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+  type TextInputInstance,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+
+import { Dialog } from '@/components/motion/Dialog';
+import Colors from '@/constants/Colors';
+import { useBookmarks } from '@/providers/BookmarkContext';
+import { useAppTheme } from '@/providers/ThemeContext';
+import { useUiTranslation } from '@/providers/UiLanguageContext';
+
+import { DEFAULT_FOLDER_COLOR, FOLDER_COLORS } from '@/components/bookmarks/folderColor';
+
+import type { Folder } from '@/types';
+
+export function FolderSettingsModal({
+  isOpen,
+  onClose,
+  folder,
+  mode = 'edit',
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  folder: Folder | null;
+  mode?: 'create' | 'edit';
+}): React.JSX.Element {
+  const shouldRender = mode === 'edit' ? isOpen && Boolean(folder) : isOpen;
+  const { resolvedTheme, isDark } = useAppTheme();
+  const { t } = useUiTranslation();
+  const palette = Colors[resolvedTheme];
+  const { createFolder, renameFolder } = useBookmarks();
+
+  const [name, setName] = React.useState('');
+  const [selectedColor, setSelectedColor] = React.useState<string>(DEFAULT_FOLDER_COLOR);
+  const [isSubmitting, setIsSubmitting] = React.useState(false);
+
+  const inputRef = React.useRef<TextInputInstance | null>(null);
+
+  React.useLayoutEffect(() => {
+    if (!shouldRender) return;
+    setName(mode === 'edit' ? folder?.name ?? '' : '');
+    setSelectedColor((mode === 'edit' ? folder?.color : undefined) ?? DEFAULT_FOLDER_COLOR);
+    setIsSubmitting(false);
+  }, [folder?.color, folder?.name, mode, shouldRender]);
+
+  const modalTitle = mode === 'create' ? t('bookmarks_create_folder') : t('edit_folder');
+  const submitLabel = mode === 'create' ? t('bookmarks_create_folder') : t('save_changes');
+  const submittingLabel = t('loading');
+
+  const canSubmit = Boolean(name.trim()) && !isSubmitting;
+
+  const handleSubmit = React.useCallback(() => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    setIsSubmitting(true);
+
+    if (mode === 'create') {
+      createFolder(trimmed, selectedColor);
+      onClose();
+      return;
+    }
+
+    if (!folder) {
+      onClose();
+      return;
+    }
+
+    renameFolder(folder.id, trimmed, selectedColor);
+    onClose();
+  }, [createFolder, folder, mode, name, onClose, renameFolder, selectedColor]);
+
+  return (
+    <Dialog
+      isOpen={shouldRender}
+      onClose={onClose}
+      initialFocusRef={mode === 'create' ? inputRef : undefined}
+    >
+      <View style={styles.safeArea}>
+        <View className={isDark ? 'dark' : ''} style={styles.inner}>
+          <View className="px-5 py-5">
+            <View className="flex-row items-center justify-between">
+              <Text className="text-xl font-semibold text-foreground dark:text-foreground-dark">
+                {modalTitle}
+              </Text>
+              <Pressable
+                onPress={onClose}
+                hitSlop={10}
+                accessibilityRole="button"
+                accessibilityLabel={t('close')}
+                style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
+                className="p-2 rounded-full"
+              >
+                <X size={18} strokeWidth={2.25} color={palette.muted} />
+              </Pressable>
+            </View>
+          </View>
+
+          <ScrollView
+            style={styles.flex}
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={styles.scrollContent}
+            bounces={false}
+            automaticallyAdjustContentInsets={false}
+            automaticallyAdjustKeyboardInsets={false}
+            contentInsetAdjustmentBehavior="never"
+            overScrollMode="never"
+          >
+            <View className="px-5">
+              <View className="rounded-xl border border-border dark:border-border-dark bg-surface dark:bg-surface-dark px-3 py-2">
+                <TextInput
+                  ref={inputRef}
+                  value={name}
+                  onChangeText={setName}
+                  placeholder={t('bookmarks_folder_name_placeholder')}
+                  placeholderTextColor={palette.muted}
+                  maxLength={30}
+                  returnKeyType="done"
+                  onSubmitEditing={handleSubmit}
+                  numberOfLines={1}
+                  style={{ paddingVertical: 0 }}
+                  className="text-base text-foreground dark:text-foreground-dark"
+                />
+              </View>
+            </View>
+
+            <View className="px-5 mt-6">
+              <Text className="text-sm font-semibold text-foreground dark:text-foreground-dark mb-3">
+                {t('folder_color_label')}
+              </Text>
+              <View className="flex-row flex-wrap" style={styles.colorGrid}>
+                {FOLDER_COLORS.map((color) => {
+                  const isSelected = selectedColor === color.value;
+                  return (
+                    <Pressable
+                      key={color.value}
+                      onPress={() => setSelectedColor(color.value)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Select ${color.name} color`}
+                      style={({ pressed }) => ({
+                        opacity: pressed ? 0.9 : 1,
+                      })}
+                      className={[
+                        'rounded-xl border items-center justify-center',
+                        isSelected
+                          ? 'border-accent dark:border-accent-dark'
+                          : 'border-border dark:border-border-dark',
+                      ].join(' ')}
+                    >
+                      <View
+                        style={[
+                          styles.colorSwatch,
+                          { backgroundColor: color.swatch },
+                          isSelected ? styles.colorSwatchSelected : null,
+                        ]}
+                      />
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+          </ScrollView>
+
+          <View className="px-5 py-3 border-t border-border/60 dark:border-border-dark/40 bg-surface dark:bg-background-dark">
+            <View className="flex-row items-center justify-end gap-3">
+              <Pressable
+                onPress={onClose}
+                accessibilityRole="button"
+                accessibilityLabel={t('cancel')}
+                className="px-5 py-2.5 rounded-lg bg-interactive dark:bg-interactive-dark"
+                style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
+              >
+                <Text className="text-sm font-semibold text-foreground dark:text-foreground-dark">
+                  {t('cancel')}
+                </Text>
+              </Pressable>
+
+              <Pressable
+                onPress={handleSubmit}
+                disabled={!canSubmit}
+                accessibilityRole="button"
+                accessibilityLabel={submitLabel}
+                className={[
+                  'px-5 py-2.5 rounded-lg flex-row items-center gap-2 bg-accent',
+                  canSubmit ? '' : 'opacity-40',
+                ].join(' ')}
+                style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
+              >
+                <Check size={18} strokeWidth={2.25} color="#FFFFFF" />
+                <Text className="text-sm font-semibold text-on-accent">
+                  {isSubmitting ? submittingLabel : submitLabel}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </View>
+    </Dialog>
+  );
+}
+
+const styles = StyleSheet.create({
+  safeArea: {
+    flexShrink: 1,
+    flexGrow: 0,
+  },
+  inner: {
+    flexShrink: 1,
+    flexGrow: 0,
+  },
+  flex: {
+    flexShrink: 1,
+    flexGrow: 0,
+  },
+  scrollContent: {
+    paddingBottom: 16,
+  },
+  colorGrid: {
+    gap: 12,
+  },
+  colorSwatch: {
+    width: 28,
+    height: 28,
+    borderRadius: 10,
+    margin: 12,
+  },
+  colorSwatchSelected: {
+    transform: [{ scale: 1.05 }],
+  },
+});

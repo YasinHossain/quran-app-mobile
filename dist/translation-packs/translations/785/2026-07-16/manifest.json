@@ -1,0 +1,15 @@
+{
+  "translationId": 785,
+  "name": "Mawlawi Muhammad Anwar Badkhashani",
+  "authorName": "Mawlawi Muhammad Anwar Badkhashani",
+  "languageName": "dari",
+  "version": "2026-07-16",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "678887a5385a6743d9435be980efb169",
+  "payloadSizeBytes": 3243654,
+  "totalVerses": 6236,
+  "generatedAt": "2026-07-16T11:36:52.227Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=785&per_page=300"
+}

@@ -1,0 +1,25 @@
+{
+  "feature": "Android native Surah reader targeted navigation",
+  "status": "protected",
+  "invariant": "When startVerse is greater than 1, Go To navigation must reveal the requested verse directly. The Surah intro card and verse 1 must never be painted first and then corrected to the target.",
+  "implementation": {
+    "file": "android/app/src/main/java/com/anonymous/quranappmobile/nativesurahreader/NativeSurahReaderView.kt",
+    "rules": [
+      "Queue the requested adapter position synchronously before RecyclerView can perform its first layout.",
+      "Keep RecyclerView transparent until the requested row is laid out at the start, or until the stable end boundary is reached with the requested final row visible.",
+      "Dispatch initial ready and positioned events only after the verified target layout.",
+      "Do not add a second post-mount scroll command for targeted entry."
+    ]
+  },
+  "regressionChecks": [
+    "Go To 2:255 in normal text mode without showing the Surah intro or verse 1.",
+    "Go To 36:50 with Tajweed Colors enabled without showing the Surah intro or verse 1.",
+    "Go To 112:4 and confirm the short-Surah end boundary does not remain blank.",
+    "Normal navigation without startVerse still begins with the Surah intro."
+  ],
+  "requiredVerification": [
+    "npm run verify",
+    "Android Kotlin compilation",
+    "ADB or emulator frame-by-frame targeted-navigation check"
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "qcf-madani-v1": {
+    "version": "v1-r2",
+    "sizeBytes": 76115431
+  },
+  "qcf-madani-v2": {
+    "version": "v2-r2",
+    "sizeBytes": 125899094
+  },
+  "qcf-tajweed-v4": {
+    "version": "v4-ttf-r2",
+    "sizeBytes": 198647473
+  },
+  "qpc-uthmani-hafs": {
+    "version": "v1-r2",
+    "sizeBytes": 28392965
+  },
+  "unicode-indopak-15": {
+    "version": "v2",
+    "sizeBytes": 31987384
+  },
+  "unicode-indopak-16": {
+    "version": "v2",
+    "sizeBytes": 32795670
+  }
+}

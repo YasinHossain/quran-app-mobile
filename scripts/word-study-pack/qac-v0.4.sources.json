@@ -1,0 +1,20 @@
+{
+  "morphology": {
+    "sourceId": "qac-morphology-v0.4",
+    "title": "Quranic Arabic Corpus morphology",
+    "version": "0.4",
+    "license": "GNU General Public License, with the Quranic Arabic Corpus terms of use",
+    "url": "https://corpus.quran.com/download/",
+    "checksumSha256": "a1d12923815341face765083805d2148ed2d9f5cc3f7d6665219d887675d8c46",
+    "attribution": "Quranic Arabic Corpus (version 0.4), Copyright (C) 2011 Kais Dukes; https://corpus.quran.com"
+  },
+  "canonical": {
+    "sourceId": "quran-app-offline-word-pack-en-2026-07-04",
+    "title": "Canonical word surface dataset",
+    "version": "2026-07-04",
+    "license": "Quran Foundation content, used with attribution",
+    "url": "https://quran.com",
+    "checksumSha256": "38975bff99637665869e8231d1d5824b1bc4db4c6cd3b6358b8231d4e882b6f3",
+    "attribution": "Canonical Uthmani word surfaces from Quran Foundation (Quran.com) word data; contextual meanings are distributed separately by language"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "translationId": 226,
+  "name": "Muhammad Shafi’i Ansari",
+  "authorName": "Muhammad Shafi’i Ansari",
+  "languageName": "marathi",
+  "version": "2026-07-16",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "053a0957de88ebaffbbee3c489e62c65",
+  "payloadSizeBytes": 4399322,
+  "totalVerses": 6236,
+  "generatedAt": "2026-07-16T11:37:00.251Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=226&per_page=300"
+}

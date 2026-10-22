@@ -1,0 +1,15 @@
+{
+  "translationId": 140,
+  "name": "Montada Islamic Foundation",
+  "authorName": "Montada Islamic Foundation",
+  "languageName": "spanish",
+  "version": "2026-07-16",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "11045b437a4a2552369002f4e33a6d0f",
+  "payloadSizeBytes": 2894530,
+  "totalVerses": 6236,
+  "generatedAt": "2026-07-16T11:36:54.664Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=140&per_page=300"
+}

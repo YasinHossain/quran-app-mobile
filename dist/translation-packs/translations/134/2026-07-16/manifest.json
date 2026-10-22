@@ -1,0 +1,15 @@
+{
+  "translationId": 134,
+  "name": "King Fahad Quran Complex",
+  "authorName": "King Fahad Quran Complex",
+  "languageName": "indonesian",
+  "version": "2026-07-16",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "1fa4681cdda85024fedb363de0b69c07",
+  "payloadSizeBytes": 2964139,
+  "totalVerses": 6236,
+  "generatedAt": "2026-07-16T11:35:28.541Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=134&per_page=300"
+}

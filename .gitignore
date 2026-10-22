@@ -1,0 +1,86 @@
+# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
+
+# dependencies
+node_modules/
+
+# Expo
+.expo/
+dist/
+!dist/
+dist/*
+!dist/translation-packs/
+!dist/translation-packs/**
+!dist/word-translation-packs/
+!dist/word-translation-packs/**
+!dist/word-study-packs/
+!dist/word-study-packs/**
+!dist/word-grammar-packs/
+!dist/word-grammar-packs/**
+!dist/word-reference-packs/
+!dist/word-reference-packs/**
+# Verb-reference pack data stays local until it is published; only the catalog is tracked.
+!dist/verb-reference-packs/
+dist/verb-reference-packs/*
+!dist/verb-reference-packs/catalog.json
+web-build/
+release-builds/
+expo-env.d.ts
+
+# Native
+.kotlin/
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# Metro
+.metro-health-check*
+
+# debug
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+scratch/android-debug/
+
+# macOS
+.DS_Store
+*.pem
+
+# local env files
+.env*.local
+.artifacts/
+
+# typescript
+*.tsbuildinfo
+
+# generated native folders
+/ios
+/android
+!/android/
+/android/*
+!/android/app/
+/android/app/*
+!/android/app/build.gradle
+!/android/app/src/
+/android/app/src/*
+!/android/app/src/main/
+/android/app/src/main/*
+!/android/app/src/main/baseline-prof.txt
+!/android/app/src/main/java/
+/android/app/src/main/java/*
+!/android/app/src/main/java/com/
+/android/app/src/main/java/com/*
+!/android/app/src/main/java/com/anonymous/
+/android/app/src/main/java/com/anonymous/*
+!/android/app/src/main/java/com/anonymous/quranappmobile/
+/android/app/src/main/java/com/anonymous/quranappmobile/*
+!/android/app/src/main/java/com/anonymous/quranappmobile/MainApplication.kt
+!/android/app/src/main/java/com/anonymous/quranappmobile/nativehomeindex/
+!/android/app/src/main/java/com/anonymous/quranappmobile/nativehomeindex/**
+!/android/app/src/main/java/com/anonymous/quranappmobile/nativesurahreader/
+!/android/app/src/main/java/com/anonymous/quranappmobile/nativesurahreader/**
+!/android/app/src/test/
+!/android/app/src/test/**
+/android/app/src/test/java/com/anonymous/quranappmobile/versespotlight/

@@ -1,0 +1,15 @@
+{
+  "translationId": 84,
+  "name": "T. Usmani",
+  "authorName": "Mufti Taqi Usmani",
+  "languageName": "english",
+  "version": "2026-04-23",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "f7911cd4694e5affd5a2c5aaccb50ff8",
+  "payloadSizeBytes": 2727553,
+  "totalVerses": 6236,
+  "generatedAt": "2026-04-23T03:04:03.201Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=84&per_page=300"
+}

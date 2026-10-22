@@ -1,0 +1,1270 @@
+import type { MushafPackId, MushafPageData, MushafScaleStep } from '@/types';
+
+import { getMushafWebViewLayoutConfig } from '@/components/mushaf/mushafLayoutPresets';
+
+type MushafWebViewTheme = 'light' | 'dark';
+
+type MushafWebViewLayoutPayload = {
+  fontSizeCss: string;
+  isExactPreset: boolean;
+  lineWidthCss: string;
+  lineHeightMultiplier: number;
+  reflowLineHeightMultiplier: number;
+};
+
+type MushafWebViewRenderPayload = {
+  data: MushafPageData;
+  layout: MushafWebViewLayoutPayload;
+  highlightVerseKey?: string;
+};
+
+const REFLOW_HYSTERESIS_PX = 20;
+const shellDocumentCache = new Map<
+  string,
+  {
+    html: string;
+    layout: MushafWebViewLayoutPayload;
+  }
+>();
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function serializeJson(value: unknown): string {
+  return JSON.stringify(value)
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/&/g, '\\u0026')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029');
+}
+
+function buildShellDocumentHtml({
+  layout,
+  theme,
+}: {
+  layout: MushafWebViewLayoutPayload;
+  theme: MushafWebViewTheme;
+}): string {
+  const palette =
+    theme === 'dark'
+      ? {
+          background: '#102033',
+          highlight: 'rgba(34, 197, 94, 0.26)',
+          text: '#E7E5E4',
+          muted: '#94A3B8',
+        }
+      : {
+          background: '#F7F9F9',
+          highlight: 'rgba(34, 197, 94, 0.2)',
+          text: '#111827',
+          muted: '#6B7280',
+        };
+
+  return `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
+    />
+    <title>${escapeHtml('Mushaf Page')}</title>
+    <style>
+      :root {
+        color-scheme: ${theme};
+        --background: ${palette.background};
+        --highlight: ${palette.highlight};
+        --text: ${palette.text};
+        --muted: ${palette.muted};
+        --font-size: ${layout.fontSizeCss};
+        --line-height-multiplier: 1;
+        --line-height: calc(var(--font-size) * var(--line-height-multiplier));
+        --reflow-line-height-multiplier: 1;
+        --reflow-line-height: calc(var(--font-size) * var(--reflow-line-height-multiplier));
+        --exact-line-width: ${layout.lineWidthCss};
+        --line-gap: 4px;
+        --qcf-font-family: serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        -webkit-text-size-adjust: none;
+        text-size-adjust: none;
+        background: var(--background);
+        color: var(--text);
+        font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      }
+
+      body {
+        min-height: 100vh;
+      }
+
+      #app {
+        width: min(calc(100vw - 8px), 720px);
+        margin: 0 auto;
+        padding: 4px 0 8px;
+      }
+
+      .page {
+        width: 100%;
+        overflow: hidden;
+      }
+
+      .page-content {
+        width: 100%;
+      }
+
+      .standard-view {
+        width: 100%;
+      }
+
+      .line-shell {
+        direction: rtl;
+        margin: 0 auto;
+        font-size: var(--font-size);
+        max-width: 100%;
+        text-align: center;
+        /* Keep the web preset's font-to-width ratio; a wide line must not widen every row. */
+        width: min(var(--exact-line-width), 100%);
+      }
+
+      .line-shell + .line-shell {
+        margin-top: var(--line-gap);
+      }
+
+      .line-content {
+        align-items: center;
+        color: var(--text);
+        direction: rtl;
+        display: flex;
+        column-gap: 0;
+        justify-content: space-between;
+        line-height: var(--line-height);
+        min-height: var(--line-height);
+        white-space: nowrap;
+      }
+
+      .line-shell.centered .line-content {
+        justify-content: center;
+      }
+
+      .line-shell.blank .line-content {
+        color: transparent;
+        justify-content: center;
+        user-select: none;
+      }
+
+      .page.reflow .standard-view {
+        display: none;
+      }
+
+      .reflow-view {
+        display: none;
+        width: 100%;
+      }
+
+      .page.reflow .reflow-view {
+        display: block;
+      }
+
+      .reflow-copy {
+        direction: rtl;
+        font-size: var(--font-size);
+        line-height: var(--reflow-line-height);
+        margin: 0 auto;
+        text-align: center;
+        width: 100%;
+      }
+
+      .word,
+      .reflow-word {
+        align-items: center;
+        color: inherit;
+        display: inline-flex;
+        -webkit-touch-callout: default;
+        -webkit-user-select: text;
+        user-select: text;
+      }
+
+      .word {
+        flex: none;
+        padding-inline: 0.04em;
+      }
+
+      .word.qcf-word,
+      .reflow-word.qcf-word {
+        font-family: var(--qcf-font-family), serif;
+        font-weight: 400;
+      }
+
+      .word.qcf-word {
+        padding-inline: 0;
+      }
+
+      .word.arrival-highlight,
+      .reflow-word.arrival-highlight {
+        background:
+          linear-gradient(
+            to bottom,
+            transparent 14%,
+            var(--highlight) 14%,
+            var(--highlight) 88%,
+            transparent 88%
+          );
+        border-radius: 0.15em;
+      }
+
+      .indopak-verse-marker {
+        display: inline-block;
+        flex: none;
+        font-family: var(--qcf-font-family), serif;
+        font-size: 0.92em;
+        line-height: 1;
+        margin-inline: 0.04em;
+        unicode-bidi: isolate;
+        white-space: nowrap;
+      }
+
+      .reflow-spacer {
+        display: inline-block;
+        white-space: pre;
+        width: 0.14em;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script>
+      (function () {
+        var app = document.getElementById('app');
+        if (!app) {
+          return;
+        }
+
+        var pageRoot = document.createElement('article');
+        pageRoot.className = 'page';
+
+        var pageContent = document.createElement('div');
+        pageContent.className = 'page-content';
+        pageRoot.appendChild(pageContent);
+
+        var standardView = document.createElement('div');
+        standardView.className = 'standard-view';
+        pageContent.appendChild(standardView);
+
+        var reflowView = document.createElement('div');
+        reflowView.className = 'reflow-view';
+        pageContent.appendChild(reflowView);
+
+        app.appendChild(pageRoot);
+
+        var currentPayload = null;
+        var heightRafId = null;
+        var selectionRafId = null;
+        var lastContainerWidth = 0;
+        var stableReflowState = null;
+        var requiredLineWidth = 0;
+        var activeRenderToken = 0;
+        var qcfFontLoadFamily = '';
+        var qcfFontLoadPromise = null;
+        var qcfFontRetryCount = 0;
+        var qcfFontRetryIdentity = '';
+        var qcfFontRetryTimeoutId = null;
+        var isArrivalHighlightVisible = false;
+        var arrivalHighlightTimeoutId = null;
+
+        function emit(message) {
+          if (!window.ReactNativeWebView) {
+            return;
+          }
+
+          window.ReactNativeWebView.postMessage(JSON.stringify(message));
+        }
+
+        function parseCssLengthToPx(value) {
+          if (typeof value === 'number') {
+            return value;
+          }
+
+          var pxMatch = String(value).match(/^(\\d+(?:\\.\\d+)?)px$/);
+          if (pxMatch && pxMatch[1]) {
+            return parseFloat(pxMatch[1]);
+          }
+
+          var vhMatch = String(value).match(/^(\\d+(?:\\.\\d+)?)vh$/);
+          if (vhMatch && vhMatch[1]) {
+            return (parseFloat(vhMatch[1]) / 100) * window.innerHeight;
+          }
+
+          var numeric = parseFloat(String(value));
+          return Number.isFinite(numeric) ? numeric : 0;
+        }
+
+        function escapeHtml(value) {
+          return String(value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+        }
+
+        function escapeCssString(value) {
+          return String(value).replace(/\\\\/g, '\\\\\\\\').replace(/'/g, "\\\\'");
+        }
+
+        function ensureTajweedDarkPalette(qcfFontFamily) {
+          if (${theme === 'dark' ? 'false' : 'true'} || !qcfFontFamily) {
+            return null;
+          }
+
+          var styleId = 'tajweed-dark-palette-' + String(qcfFontFamily).replace(/[^a-zA-Z0-9_-]/g, '-');
+          if (!document.getElementById(styleId)) {
+            var style = document.createElement('style');
+            style.id = styleId;
+            style.textContent =
+              "@font-palette-values --tajweed-dark-palette-" +
+              styleId +
+              " { font-family: '" +
+              escapeCssString(qcfFontFamily) +
+              "'; override-colors: 0 ${palette.text}, 1 ${palette.text}; }";
+            document.head.appendChild(style);
+          }
+
+          return '--tajweed-dark-palette-' + styleId;
+        }
+
+        function normalizeCopyText(value) {
+          return String(value || '')
+            .replace(/\\s+/g, ' ')
+            .trim();
+        }
+
+        function applyCssVariables(layout) {
+          document.documentElement.style.setProperty('--font-size', layout.fontSizeCss);
+          document.documentElement.style.setProperty('--exact-line-width', layout.lineWidthCss);
+          document.documentElement.style.setProperty(
+            '--line-height-multiplier',
+            String(layout.lineHeightMultiplier)
+          );
+          document.documentElement.style.setProperty(
+            '--reflow-line-height-multiplier',
+            String(layout.reflowLineHeightMultiplier)
+          );
+        }
+
+        function resolveWordText(word) {
+          if (!currentPayload || !currentPayload.data) {
+            return '';
+          }
+
+          var qcfVersion =
+            currentPayload.rendererAssets &&
+            typeof currentPayload.rendererAssets.qcfVersion === 'string'
+              ? currentPayload.rendererAssets.qcfVersion
+              : null;
+
+          if (qcfVersion) {
+            return word.textQpcHafs || word.textUthmani || word.textIndopak || '';
+          }
+
+          if (currentPayload.data.pack.script === 'indopak') {
+            return word.textIndopakNastaleeq || word.textIndopak || word.textUthmani || '';
+          }
+
+          return word.textUthmani || word.textIndopak || word.textQpcHafs || '';
+        }
+
+        function getGlyphCode(word) {
+          if (
+            !currentPayload ||
+            !currentPayload.rendererAssets ||
+            !currentPayload.rendererAssets.qcfVersion
+          ) {
+            return '';
+          }
+
+          return currentPayload.rendererAssets.qcfVersion === 'v1'
+            ? word.codeV1 || ''
+            : word.codeV2 || '';
+        }
+
+        function resolveVerseKey(word) {
+          if (typeof word.verseKey === 'string' && word.verseKey.trim()) {
+            return word.verseKey.trim();
+          }
+
+          if (typeof word.location === 'string' && word.location.trim()) {
+            var parts = word.location.split(':');
+            if (parts.length >= 2 && parts[0] && parts[1]) {
+              return String(parts[0]) + ':' + String(parts[1]);
+            }
+          }
+
+          return undefined;
+        }
+
+        function getVerseNumberFromWord(word) {
+          var verseKey = resolveVerseKey(word);
+          if (!verseKey) {
+            return undefined;
+          }
+
+          var parts = verseKey.split(':');
+          var verseNumber = parseInt(parts[1] || '', 10);
+          return Number.isFinite(verseNumber) && verseNumber > 0 ? verseNumber : undefined;
+        }
+
+        function toArabicIndicNumber(value) {
+          var digits = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
+          return String(value).replace(/[0-9]/g, function (digit) {
+            return digits[parseInt(digit, 10)] || digit;
+          });
+        }
+
+        function toExtendedArabicIndicNumber(value) {
+          var digits = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
+          return String(value).replace(/[0-9]/g, function (digit) {
+            return digits[parseInt(digit, 10)] || digit;
+          });
+        }
+
+        function formatIndopakVerseMarker(verseNumber) {
+          return '﴿' + toExtendedArabicIndicNumber(verseNumber) + '﴾';
+        }
+
+        function toWordPayload(word) {
+          return {
+            charType: word.charType,
+            lineNumber: word.lineNumber,
+            location: word.location,
+            pageNumber: currentPayload && currentPayload.data ? currentPayload.data.pageNumber : undefined,
+            text: resolveWordText(word),
+            verseKey: resolveVerseKey(word),
+            wordPosition: word.position,
+          };
+        }
+
+        function getSelectionWordNodes(range) {
+          return Array.from(pageContent.querySelectorAll('[data-mushaf-word="true"]')).filter(
+            function (node) {
+              try {
+                return range.intersectsNode(node);
+              } catch (error) {
+                return false;
+              }
+            }
+          );
+        }
+
+        function collectSelectionPayload() {
+          var pageNumber =
+            currentPayload && currentPayload.data ? currentPayload.data.pageNumber : undefined;
+          var selection = window.getSelection();
+          if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
+            return {
+              isCollapsed: true,
+              pageNumber: pageNumber,
+              text: '',
+              verseKeys: [],
+              wordPositions: [],
+            };
+          }
+
+          var anchorNode = selection.anchorNode;
+          var focusNode = selection.focusNode;
+          if (
+            !anchorNode ||
+            !focusNode ||
+            !pageContent.contains(anchorNode) ||
+            !pageContent.contains(focusNode)
+          ) {
+            return {
+              isCollapsed: true,
+              pageNumber: pageNumber,
+              text: '',
+              verseKeys: [],
+              wordPositions: [],
+            };
+          }
+
+          var range = selection.getRangeAt(0);
+          var selectedWords = getSelectionWordNodes(range);
+          var verseKeys = [];
+          var seenVerseKeys = Object.create(null);
+          var wordPositions = [];
+
+          for (var index = 0; index < selectedWords.length; index += 1) {
+            var selectedWord = selectedWords[index];
+            var verseKey = selectedWord.dataset.verseKey || '';
+            if (verseKey && !seenVerseKeys[verseKey]) {
+              seenVerseKeys[verseKey] = true;
+              verseKeys.push(verseKey);
+            }
+
+            var wordPosition = parseInt(selectedWord.dataset.wordPosition || '', 10);
+            if (Number.isFinite(wordPosition) && wordPosition > 0) {
+              wordPositions.push(wordPosition);
+            }
+          }
+
+          var text = selectedWords.length
+            ? selectedWords
+                .map(function (node) {
+                  return node.dataset.copyText || '';
+                })
+                .filter(Boolean)
+                .join(' ')
+            : normalizeCopyText(selection.toString());
+
+          return {
+            isCollapsed: false,
+            pageNumber: pageNumber,
+            text: normalizeCopyText(text),
+            verseKeys: verseKeys,
+            wordPositions: wordPositions,
+          };
+        }
+
+        function hasActiveSelection() {
+          return !collectSelectionPayload().isCollapsed;
+        }
+
+        function scheduleSelectionReport() {
+          if (selectionRafId !== null) {
+            cancelAnimationFrame(selectionRafId);
+          }
+
+          selectionRafId = requestAnimationFrame(function () {
+            emit({
+              type: 'selection-change',
+              payload: collectSelectionPayload(),
+            });
+            selectionRafId = null;
+          });
+        }
+
+        function scheduleHeightReport() {
+          if (heightRafId !== null) {
+            cancelAnimationFrame(heightRafId);
+          }
+
+          heightRafId = requestAnimationFrame(function () {
+            var height = Math.ceil(pageRoot.getBoundingClientRect().height);
+            var renderedWordCount = pageContent.querySelectorAll('[data-mushaf-word="true"]').length;
+            var contentReady = Boolean(currentPayload && currentPayload.data && renderedWordCount > 0);
+
+            emit({
+              type: 'content-height',
+              payload: {
+                contentReady: contentReady,
+                height: height,
+                renderedWordCount: renderedWordCount,
+              },
+            });
+
+            var highlightAnchor = collectHighlightAnchorPayload(height);
+            if (highlightAnchor) {
+              emit({
+                type: 'highlight-anchor',
+                payload: highlightAnchor,
+              });
+            }
+            heightRafId = null;
+          });
+        }
+
+        function collectHighlightAnchorPayload(pageHeight) {
+          if (!currentPayload || !currentPayload.data || !currentPayload.highlightVerseKey) {
+            return null;
+          }
+
+          var activeContainer = pageRoot.classList.contains('reflow') ? reflowView : standardView;
+          if (!activeContainer) {
+            return null;
+          }
+
+          var nodes = Array.from(activeContainer.querySelectorAll('[data-mushaf-word="true"]'));
+          var matchingNodes = nodes.filter(function (node) {
+            return node instanceof HTMLElement && node.dataset.verseKey === currentPayload.highlightVerseKey;
+          });
+
+          if (matchingNodes.length === 0) {
+            return null;
+          }
+
+          var pageRect = pageRoot.getBoundingClientRect();
+          var anchorTop = Number.POSITIVE_INFINITY;
+          var anchorHeight = 0;
+
+          for (var index = 0; index < matchingNodes.length; index += 1) {
+            var nodeRect = matchingNodes[index].getBoundingClientRect();
+            anchorTop = Math.min(anchorTop, nodeRect.top);
+            anchorHeight = Math.max(anchorHeight, Math.ceil(nodeRect.height));
+          }
+
+          if (!Number.isFinite(anchorTop)) {
+            return null;
+          }
+
+          return {
+            height: Math.max(1, anchorHeight),
+            offsetY: Math.max(0, Math.round(anchorTop - pageRect.top)),
+            pageHeight: Math.max(pageHeight, Math.ceil(pageRect.height)),
+            pageNumber: currentPayload.data.pageNumber,
+            verseKey: currentPayload.highlightVerseKey,
+          };
+        }
+
+        function measureRequiredLineWidth() {
+          var lineContents = Array.from(standardView.querySelectorAll('.line-content'));
+          var measuredWidth = lineContents.reduce(function (widest, lineContent) {
+            if (lineContent.getClientRects().length === 0) {
+              return widest;
+            }
+            lineContent.style.removeProperty('font-size');
+            // Measure natural word widths, independent of justification and container clipping.
+            // scrollWidth on a centered RTL line can omit overflow past its starting edge.
+            var wordWidth = Array.from(lineContent.children).reduce(function (total, word) {
+              var style = window.getComputedStyle(word);
+              return total + word.getBoundingClientRect().width +
+                (parseFloat(style.marginLeft) || 0) + (parseFloat(style.marginRight) || 0);
+            }, 0);
+            // Fit an overflowing row at its own font size instead of adding width (and
+            // word spacing) to the entire page. Keep the natural width for reflow detection.
+            var availableWidth = lineContent.clientWidth;
+            if (availableWidth > 0 && wordWidth > availableWidth) {
+              var fontSize = parseFloat(window.getComputedStyle(lineContent).fontSize);
+              lineContent.style.fontSize = (fontSize * availableWidth / wordWidth) + 'px';
+            }
+            return Math.max(widest, wordWidth);
+          }, 0);
+
+          if (measuredWidth > 0) {
+            requiredLineWidth = measuredWidth;
+          }
+
+          return requiredLineWidth;
+        }
+
+        function shouldUseReflow(containerWidth) {
+          if (!currentPayload || containerWidth <= 0) {
+            return false;
+          }
+
+          var presetLineWidthPx = parseCssLengthToPx(currentPayload.layout.lineWidthCss);
+          var measuredLineWidthPx = measureRequiredLineWidth();
+          var lineWidthPx = Math.max(measuredLineWidthPx, presetLineWidthPx);
+          var threshold = containerWidth * 0.95;
+
+          if (stableReflowState !== null) {
+            threshold += stableReflowState ? ${REFLOW_HYSTERESIS_PX} : -${REFLOW_HYSTERESIS_PX};
+          }
+
+          return lineWidthPx > threshold;
+        }
+
+        function applyLayoutMode() {
+          if (!currentPayload) {
+            scheduleHeightReport();
+            return;
+          }
+
+          var containerWidth = pageContent.clientWidth;
+
+          if (Math.abs(containerWidth - lastContainerWidth) < 10 && stableReflowState !== null) {
+            scheduleHeightReport();
+            return;
+          }
+
+          lastContainerWidth = containerWidth;
+          var nextReflowState = shouldUseReflow(containerWidth);
+          stableReflowState = nextReflowState;
+          pageRoot.classList.toggle('reflow', nextReflowState);
+          if (!nextReflowState) {
+            measureRequiredLineWidth();
+          }
+          scheduleHeightReport();
+        }
+
+        function createIndopakVerseMarkerNode(word, className, verseKey) {
+          var verseNumber = getVerseNumberFromWord(word);
+          if (!verseNumber) {
+            return null;
+          }
+
+          var wordNode = document.createElement('span');
+          wordNode.className = className;
+          wordNode.dataset.mushafWord = 'true';
+          wordNode.dataset.interactive = 'true';
+          wordNode.dataset.payload = JSON.stringify(toWordPayload(word));
+          wordNode.dataset.copyText = toArabicIndicNumber(verseNumber);
+          wordNode.dataset.charType = String(word.charType || '');
+          if (verseKey) {
+            wordNode.dataset.verseKey = verseKey;
+          }
+          wordNode.dataset.wordPosition = String(word.position);
+          wordNode.setAttribute('aria-label', 'Verse ' + String(verseNumber));
+          wordNode.classList.add('indopak-verse-marker');
+          wordNode.setAttribute('dir', 'rtl');
+          wordNode.textContent = formatIndopakVerseMarker(verseNumber);
+          return wordNode;
+        }
+
+        function createWordNode(word, className) {
+          if (!currentPayload) {
+            return null;
+          }
+
+          var rendererAssets = currentPayload.rendererAssets || {};
+          var qcfVersion =
+            typeof rendererAssets.qcfVersion === 'string' ? rendererAssets.qcfVersion : null;
+          var qcfFontLoaded = Boolean(currentPayload.qcfFontLoaded);
+          var wordText = resolveWordText(word);
+          var glyphCode = getGlyphCode(word);
+          var shouldUseQcfGlyph = Boolean(qcfVersion && qcfFontLoaded && glyphCode);
+          var verseKey = resolveVerseKey(word);
+
+          if (
+            word.charType === 'end' &&
+            currentPayload.data &&
+            currentPayload.data.pack &&
+            currentPayload.data.pack.script === 'indopak'
+          ) {
+            return createIndopakVerseMarkerNode(word, className, verseKey);
+          }
+
+          if (!wordText && !shouldUseQcfGlyph) {
+            return null;
+          }
+
+          var wordNode = document.createElement('span');
+          wordNode.className = className;
+          wordNode.dataset.mushafWord = 'true';
+          wordNode.dataset.interactive = 'true';
+          wordNode.dataset.payload = JSON.stringify(toWordPayload(word));
+          wordNode.dataset.copyText = normalizeCopyText(wordText);
+          wordNode.dataset.charType = String(word.charType || '');
+          if (verseKey) {
+            wordNode.dataset.verseKey = verseKey;
+            if (
+              currentPayload &&
+              isArrivalHighlightVisible &&
+              typeof currentPayload.highlightVerseKey === 'string' &&
+              currentPayload.highlightVerseKey === verseKey
+            ) {
+              wordNode.classList.add('arrival-highlight');
+            }
+          }
+          wordNode.dataset.wordPosition = String(word.position);
+
+          if (shouldUseQcfGlyph) {
+            wordNode.classList.add('qcf-word');
+            wordNode.style.color = 'var(--text)';
+            wordNode.style.webkitTextFillColor = 'currentColor';
+            if (qcfVersion === 'v4') {
+              wordNode.classList.add('tajweed-word');
+              var tajweedPalette = ensureTajweedDarkPalette(rendererAssets.pageFontFamily);
+              if (tajweedPalette) {
+                wordNode.style.setProperty('font-palette', tajweedPalette);
+              }
+            }
+            wordNode.innerHTML = glyphCode;
+          } else {
+            if (!qcfVersion && qcfFontLoaded) {
+              wordNode.style.fontFamily = 'var(--qcf-font-family), serif';
+            }
+            wordNode.textContent = wordText;
+          }
+
+          return wordNode;
+        }
+
+        function clearArrivalHighlights() {
+          isArrivalHighlightVisible = false;
+          var highlights = pageContent.querySelectorAll('.arrival-highlight');
+          for (var index = 0; index < highlights.length; index += 1) {
+            highlights[index].classList.remove('arrival-highlight');
+          }
+          arrivalHighlightTimeoutId = null;
+        }
+
+        function scheduleArrivalHighlightClear() {
+          if (arrivalHighlightTimeoutId !== null) {
+            clearTimeout(arrivalHighlightTimeoutId);
+          }
+
+          arrivalHighlightTimeoutId = setTimeout(clearArrivalHighlights, 1800);
+        }
+
+        function renderStandardLines() {
+          if (!currentPayload || !currentPayload.data) {
+            return;
+          }
+
+          var linesByNumber = new Map(
+            (currentPayload.data.pageLines.lines || []).map(function (line) {
+              return [line.lineNumber, line];
+            })
+          );
+
+          for (var lineNumber = 1; lineNumber <= currentPayload.data.pack.lines; lineNumber += 1) {
+            var line = linesByNumber.get(lineNumber) || null;
+            var lineShell = document.createElement('div');
+            lineShell.className = 'line-shell';
+            // The two opening pages retain their intentionally centered composition.
+            if (currentPayload.data.pageNumber <= 2) {
+              lineShell.classList.add('centered');
+            }
+            lineShell.setAttribute('dir', 'rtl');
+
+            var lineContent = document.createElement('div');
+            lineContent.className = 'line-content';
+            lineContent.setAttribute('translate', 'no');
+            lineShell.appendChild(lineContent);
+
+            if (!line || !Array.isArray(line.words) || line.words.length === 0) {
+              lineShell.classList.add('blank');
+              lineContent.textContent = '\\u00A0';
+              standardView.appendChild(lineShell);
+              continue;
+            }
+
+            for (var index = 0; index < line.words.length; index += 1) {
+              var wordNode = createWordNode(line.words[index], 'word');
+              if (wordNode) {
+                lineContent.appendChild(wordNode);
+              }
+            }
+
+            standardView.appendChild(lineShell);
+          }
+        }
+
+        function renderReflowContent() {
+          if (!currentPayload || !currentPayload.data) {
+            return;
+          }
+
+          var reflowCopy = document.createElement('div');
+          reflowCopy.className = 'reflow-copy';
+          reflowCopy.setAttribute('dir', 'rtl');
+          reflowCopy.setAttribute('translate', 'no');
+
+          var words = [];
+          var pageLines = Array.isArray(currentPayload.data.pageLines.lines)
+            ? currentPayload.data.pageLines.lines
+            : [];
+
+          for (var lineIndex = 0; lineIndex < pageLines.length; lineIndex += 1) {
+            var line = pageLines[lineIndex];
+            if (!line || !Array.isArray(line.words)) {
+              continue;
+            }
+
+            for (var wordIndex = 0; wordIndex < line.words.length; wordIndex += 1) {
+              words.push(line.words[wordIndex]);
+            }
+          }
+
+          for (var index = 0; index < words.length; index += 1) {
+            var reflowWord = createWordNode(words[index], 'reflow-word');
+            if (!reflowWord) {
+              continue;
+            }
+
+            reflowCopy.appendChild(reflowWord);
+
+            if (index < words.length - 1) {
+              var spacer = document.createElement('span');
+              spacer.className = 'reflow-spacer';
+              spacer.textContent = ' ';
+              reflowCopy.appendChild(spacer);
+            }
+          }
+
+          reflowView.appendChild(reflowCopy);
+        }
+
+        async function loadQcfPageFontIfNeeded(rendererAssets) {
+          if (
+            !rendererAssets ||
+            !rendererAssets.pageFontFamily ||
+            (!rendererAssets.pageFontDataUri && !rendererAssets.pageFontFileUri) ||
+            typeof FontFace === 'undefined'
+          ) {
+            return false;
+          }
+
+          var qcfFontFamily = rendererAssets.pageFontFamily;
+          var qcfFontDataUri = rendererAssets.pageFontDataUri;
+          var qcfFontFileUri = rendererAssets.pageFontFileUri;
+          var existingFontLoaded = Array.from(document.fonts || []).some(function (font) {
+            return font.family === qcfFontFamily && font.status === 'loaded';
+          });
+
+          if (existingFontLoaded) {
+            document.documentElement.style.setProperty('--qcf-font-family', "'" + qcfFontFamily + "'");
+            return true;
+          }
+
+          if (qcfFontLoadPromise && qcfFontLoadFamily === qcfFontFamily) {
+            return qcfFontLoadPromise;
+          }
+
+          var loadPromise = (async function () {
+            async function registerFontFace(source) {
+              var fontFace = new FontFace(qcfFontFamily, source);
+              fontFace.display = 'block';
+              var loadedFace = await fontFace.load();
+              if (document.fonts) {
+                document.fonts.add(loadedFace);
+                await document.fonts.ready;
+              }
+              await new Promise(function (resolve) {
+                requestAnimationFrame(function () {
+                  requestAnimationFrame(resolve);
+                });
+              });
+              document.documentElement.style.setProperty(
+                '--qcf-font-family',
+                "'" + qcfFontFamily + "'"
+              );
+              return true;
+            }
+
+            var fontUrl = String(qcfFontDataUri || qcfFontFileUri);
+            var escapedFontUrl = fontUrl.replace(/'/g, "\\'");
+
+            for (var attempt = 0; attempt < 3; attempt += 1) {
+              try {
+                await registerFontFace("url('" + escapedFontUrl + "')");
+                return true;
+              } catch (error) {
+                await new Promise(function (resolve) {
+                  setTimeout(resolve, 100 * Math.pow(2, attempt));
+                });
+              }
+            }
+
+            try {
+              var response = await fetch(fontUrl, { cache: 'no-store' });
+              var fontBuffer = await response.arrayBuffer();
+              if (!fontBuffer || fontBuffer.byteLength === 0) {
+                return false;
+              }
+              await registerFontFace(fontBuffer);
+              return true;
+            } catch (error) {
+              return false;
+            }
+          })();
+
+          qcfFontLoadFamily = qcfFontFamily;
+          qcfFontLoadPromise = loadPromise;
+
+          try {
+            return await loadPromise;
+          } finally {
+            if (qcfFontLoadPromise === loadPromise) {
+              qcfFontLoadPromise = null;
+              qcfFontLoadFamily = '';
+            }
+          }
+        }
+
+        function getQcfFontRetryIdentity(nextPayload) {
+          if (!nextPayload || !nextPayload.data) {
+            return '';
+          }
+
+          var rendererAssets = nextPayload.data.rendererAssets || {};
+          return [
+            nextPayload.data.pack ? nextPayload.data.pack.packId || '' : '',
+            nextPayload.data.pack ? nextPayload.data.pack.version || '' : '',
+            nextPayload.data.pageNumber || '',
+            rendererAssets.pageFontFamily || '',
+          ].join(':');
+        }
+
+        function requiresQcfPageFont(rendererAssets) {
+          return Boolean(
+            rendererAssets &&
+              rendererAssets.qcfVersion &&
+              rendererAssets.pageFontFamily &&
+              (rendererAssets.pageFontDataUri || rendererAssets.pageFontFileUri)
+          );
+        }
+
+        function scheduleQcfFontRetry(nextPayload, identity) {
+          if (qcfFontRetryTimeoutId !== null || qcfFontRetryCount > 6) {
+            return;
+          }
+
+          var retryDelays = [150, 500, 1500, 5000, 15000];
+          var retryIndex = Math.min(
+            Math.max(0, qcfFontRetryCount - 1),
+            retryDelays.length - 1
+          );
+          qcfFontRetryTimeoutId = setTimeout(function () {
+            qcfFontRetryTimeoutId = null;
+            if (qcfFontRetryIdentity === identity) {
+              render(nextPayload);
+            }
+          }, retryDelays[retryIndex]);
+        }
+
+        function clearRenderedPage() {
+          standardView.innerHTML = '';
+          reflowView.innerHTML = '';
+          pageRoot.classList.remove('reflow');
+          stableReflowState = null;
+          lastContainerWidth = 0;
+          requiredLineWidth = 0;
+
+          try {
+            var selection = window.getSelection();
+            if (selection) {
+              selection.removeAllRanges();
+            }
+          } catch (error) {}
+        }
+
+        async function render(nextPayload) {
+          if (!nextPayload || !nextPayload.data || !nextPayload.layout) {
+            return;
+          }
+
+          var fontRetryIdentity = getQcfFontRetryIdentity(nextPayload);
+          if (qcfFontRetryIdentity !== fontRetryIdentity) {
+            qcfFontRetryIdentity = fontRetryIdentity;
+            qcfFontRetryCount = 0;
+            if (qcfFontRetryTimeoutId !== null) {
+              clearTimeout(qcfFontRetryTimeoutId);
+              qcfFontRetryTimeoutId = null;
+            }
+          }
+
+          var renderToken = activeRenderToken + 1;
+          activeRenderToken = renderToken;
+
+          currentPayload = {
+            data: nextPayload.data,
+            highlightVerseKey:
+              typeof nextPayload.highlightVerseKey === 'string'
+                ? nextPayload.highlightVerseKey.trim()
+                : '',
+            layout: nextPayload.layout,
+            rendererAssets: nextPayload.data.rendererAssets || {},
+            qcfFontLoaded: false,
+          };
+          isArrivalHighlightVisible = Boolean(currentPayload.highlightVerseKey);
+
+          document.title = escapeHtml('Mushaf Page ' + String(nextPayload.data.pageNumber));
+          pageRoot.setAttribute('aria-label', 'Page ' + String(nextPayload.data.pageNumber));
+          applyCssVariables(nextPayload.layout);
+          clearRenderedPage();
+
+          var fontLoaded = await loadQcfPageFontIfNeeded(currentPayload.rendererAssets);
+          if (renderToken !== activeRenderToken) {
+            return;
+          }
+
+          var requiresQcfFont = requiresQcfPageFont(currentPayload.rendererAssets);
+          if (requiresQcfFont && !fontLoaded) {
+            qcfFontRetryCount += 1;
+            if (qcfFontRetryCount <= 6) {
+              scheduleQcfFontRetry(nextPayload, fontRetryIdentity);
+            }
+            if (qcfFontRetryCount <= 3) {
+              return;
+            }
+          } else {
+            qcfFontRetryCount = 0;
+            if (currentPayload.rendererAssets) {
+              delete currentPayload.rendererAssets.pageFontDataUri;
+            }
+            if (qcfFontRetryTimeoutId !== null) {
+              clearTimeout(qcfFontRetryTimeoutId);
+              qcfFontRetryTimeoutId = null;
+            }
+          }
+
+          currentPayload.qcfFontLoaded = Boolean(fontLoaded);
+          renderStandardLines();
+          renderReflowContent();
+          applyLayoutMode();
+          scheduleSelectionReport();
+          setTimeout(applyLayoutMode, 0);
+
+          if (currentPayload && currentPayload.highlightVerseKey) {
+            scheduleArrivalHighlightClear();
+          }
+        }
+
+        function getWordTarget(node) {
+          return node instanceof Element ? node.closest('[data-mushaf-word="true"]') : null;
+        }
+
+        function parseWordPayload(node) {
+          if (!node || !node.dataset || !node.dataset.payload) {
+            return null;
+          }
+
+          try {
+            return JSON.parse(node.dataset.payload);
+          } catch (error) {
+            return null;
+          }
+        }
+
+        document.addEventListener('click', function (event) {
+          if (hasActiveSelection()) {
+            return;
+          }
+
+          var target = getWordTarget(event.target);
+          var wordPayload = parseWordPayload(target);
+          if (!wordPayload) {
+            return;
+          }
+
+          emit({
+            type: 'word-press',
+            payload: wordPayload,
+          });
+        });
+
+        document.addEventListener('selectionchange', function () {
+          scheduleSelectionReport();
+        });
+
+        document.addEventListener('copy', function (event) {
+          var selection = window.getSelection();
+          if (!selection || selection.rangeCount === 0) {
+            return;
+          }
+
+          var range = selection.getRangeAt(0);
+          var selectedWords = getSelectionWordNodes(range)
+            .map(function (node) {
+              return node.dataset.copyText || '';
+            })
+            .filter(Boolean);
+
+          var normalized = selectedWords.length
+            ? selectedWords.join(' ')
+            : normalizeCopyText(selection.toString());
+
+          if (!normalized || !event.clipboardData) {
+            return;
+          }
+
+          event.preventDefault();
+          event.clipboardData.setData('text/plain', normalized);
+        });
+
+        if (typeof ResizeObserver !== 'undefined') {
+          var resizeObserver = new ResizeObserver(function () {
+            applyLayoutMode();
+          });
+          resizeObserver.observe(pageContent);
+        } else {
+          window.addEventListener('resize', applyLayoutMode);
+        }
+
+        window.addEventListener('load', scheduleHeightReport);
+
+        window.__MUSHAF_RENDERER__ = {
+          render: function (nextPayload) {
+            return Promise.resolve()
+              .then(function () {
+                return render(nextPayload);
+              })
+              .catch(function (error) {
+                console.error('Failed to render mushaf page payload', error);
+              });
+          },
+        };
+
+        emit({
+          type: 'renderer-ready',
+          payload: {
+            ready: true,
+          },
+        });
+      })();
+    </script>
+  </body>
+</html>`;
+}
+
+export function buildMushafWebViewShellDocument({
+  packId,
+  mushafScaleStep,
+  theme,
+  viewportHeight,
+}: {
+  packId: MushafPackId;
+  mushafScaleStep: MushafScaleStep;
+  theme: MushafWebViewTheme;
+  viewportHeight: number;
+}): {
+  html: string;
+  layout: MushafWebViewLayoutPayload;
+} {
+  const layoutConfig = getMushafWebViewLayoutConfig(packId, mushafScaleStep, viewportHeight);
+  const layout = {
+    fontSizeCss: layoutConfig.fontSizeCss,
+    isExactPreset: layoutConfig.isExactPreset,
+    lineWidthCss: layoutConfig.lineWidthCss,
+    lineHeightMultiplier: layoutConfig.lineHeightMultiplier,
+    reflowLineHeightMultiplier: layoutConfig.reflowLineHeightMultiplier,
+  };
+  const cacheKey = `${packId}:${mushafScaleStep}:${theme}:${Math.round(viewportHeight)}`;
+  const cached = shellDocumentCache.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  const shellDocument = {
+    html: buildShellDocumentHtml({
+      layout,
+      theme,
+    }),
+    layout,
+  };
+  shellDocumentCache.set(cacheKey, shellDocument);
+  return shellDocument;
+}
+
+export function buildMushafWebViewRenderScript({
+  data,
+  layout,
+  highlightVerseKey,
+}: MushafWebViewRenderPayload): string {
+  return `
+    (function () {
+      var renderer = window.__MUSHAF_RENDERER__;
+      if (!renderer || typeof renderer.render !== 'function') {
+        return true;
+      }
+
+      renderer.render(${serializeJson({ data, layout, highlightVerseKey: highlightVerseKey ?? '' })});
+      return true;
+    })();
+  `;
+}

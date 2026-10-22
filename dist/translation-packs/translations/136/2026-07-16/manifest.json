@@ -1,0 +1,15 @@
+{
+  "translationId": 136,
+  "name": "Montada Islamic Foundation",
+  "authorName": "Montada Islamic Foundation",
+  "languageName": "french",
+  "version": "2026-07-16",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "b48a55cd01ca95bedf7d3c8f852dc69f",
+  "payloadSizeBytes": 2805863,
+  "totalVerses": 6236,
+  "generatedAt": "2026-07-16T11:36:53.840Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=136&per_page=300"
+}

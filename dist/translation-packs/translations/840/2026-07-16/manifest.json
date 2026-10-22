@@ -1,0 +1,15 @@
+{
+  "translationId": 840,
+  "name": "Abu Bakr Ibrahim Ali (Bakurube)",
+  "authorName": "Abu Bakr Ibrahim Ali",
+  "languageName": "divehi",
+  "version": "2026-07-16",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "a000188552be5ae7295986f0922cb9e4",
+  "payloadSizeBytes": 5957207,
+  "totalVerses": 6236,
+  "generatedAt": "2026-07-16T11:33:46.678Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=840&per_page=300"
+}

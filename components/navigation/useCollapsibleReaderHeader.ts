@@ -1,0 +1,237 @@
+import React from 'react';
+import { Animated, Easing, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+const DEFAULT_READER_HEADER_HEIGHT = 76;
+const SCROLL_DELTA_THRESHOLD = 0.5;
+const HIDE_SCROLL_DISTANCE = 36;
+const SHOW_SCROLL_DISTANCE = 24;
+const RESET_SCROLL_SUPPRESSION_MS = 450;
+const MIN_TOP_VISIBLE_LOCK_DISTANCE = 32;
+export const HEADER_ANIMATION_DURATION = 300;
+
+// Ignore offsets produced while the header is moving. Allowing a reversal before
+// the animation settles makes slow scrolling visibly oscillate.
+const TOGGLE_SCROLL_SUPPRESSION_MS = HEADER_ANIMATION_DURATION + 60;
+// Minimum time (ms) before allowing a hide↔show reversal.
+// Prevents FlashList view-recycling offset spikes from toggling the header.
+const DIRECTION_COMMIT_MS = HEADER_ANIMATION_DURATION + 150;
+// Raw offset jumps larger than this in a single scroll event are treated as
+// FlashList recycling artifacts and skipped for direction tracking.
+const RECYCLING_SPIKE_THRESHOLD = 250;
+
+// The header is an overlay: reader content must never move or resize with it.
+// Scroll surfaces reserve `headerHeight` as top padding instead. Moving or resizing
+// a Mushaf WebView here makes the page jump under the user's finger.
+export function useCollapsibleReaderHeader() {
+  const insets = useSafeAreaInsets();
+  const estimatedHeight = (insets.top || 0) + 64;
+  const [headerHeight, setHeaderHeight] = React.useState(estimatedHeight);
+  const [headerPointerEvents, setHeaderPointerEvents] = React.useState<'box-none' | 'none'>(
+    'box-none'
+  );
+  const hiddenProgress = React.useRef(new Animated.Value(0)).current;
+  const lastScrollOffsetRef = React.useRef(0);
+  const smoothedOffsetRef = React.useRef(0);
+  const directionalScrollDistanceRef = React.useRef(0);
+  const suppressScrollUntilRef = React.useRef(0);
+  const isHiddenRef = React.useRef(false);
+  const isTopLockedRef = React.useRef(true);
+  const hasMeasuredRef = React.useRef(false);
+  const lastDirectionChangeTimeRef = React.useRef(0);
+  const topVisibleLockDistance = React.useMemo(
+    () => Math.max(MIN_TOP_VISIBLE_LOCK_DISTANCE, Math.round(headerHeight * 0.65)),
+    [headerHeight]
+  );
+
+  const setHidden = React.useCallback(
+    (hidden: boolean) => {
+      if (isHiddenRef.current === hidden) return;
+      isHiddenRef.current = hidden;
+      lastDirectionChangeTimeRef.current = Date.now();
+
+      // Start the new animation without calling stopAnimation() first.
+      // Animated.timing internally stops any running animation on the same
+      // value and picks up from the current interpolated position, avoiding
+      // the visual "snap" that an explicit stopAnimation() causes.
+      Animated.timing(hiddenProgress, {
+        toValue: hidden ? 1 : 0,
+        duration: HEADER_ANIMATION_DURATION,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }).start();
+      setHeaderPointerEvents(hidden ? 'none' : 'box-none');
+      suppressScrollUntilRef.current = Date.now() + TOGGLE_SCROLL_SUPPRESSION_MS;
+    },
+    [hiddenProgress]
+  );
+
+  const handleHeaderLayout = React.useCallback((event: { nativeEvent: { layout: { height: number } } }) => {
+    const nextHeight = Math.round(event.nativeEvent.layout.height);
+    if (nextHeight <= 0) return;
+    
+    // Lock headerHeight after first successful measure, unless a major height shift occurs (e.g., orientation change >= 25px)
+    if (!hasMeasuredRef.current || Math.abs(headerHeight - nextHeight) >= 25) {
+      hasMeasuredRef.current = true;
+      setHeaderHeight(nextHeight);
+    }
+  }, [headerHeight]);
+
+  const handleScrollOffset = React.useCallback(
+    (offset: number) => {
+      const normalizedOffset = Math.max(0, Number.isFinite(offset) ? offset : 0);
+      const previousOffset = lastScrollOffsetRef.current;
+      lastScrollOffsetRef.current = normalizedOffset;
+
+      // Detect recycling-induced offset spikes: a sudden large jump indicates
+      // FlashList recycled views and shifted the content offset. Re-anchor
+      // smoothing without triggering any direction changes.
+      const rawDelta = normalizedOffset - previousOffset;
+      if (previousOffset > 0 && Math.abs(rawDelta) > RECYCLING_SPIKE_THRESHOLD) {
+        smoothedOffsetRef.current = normalizedOffset;
+        directionalScrollDistanceRef.current = 0;
+        return;
+      }
+
+      if (smoothedOffsetRef.current === 0) {
+        smoothedOffsetRef.current = normalizedOffset;
+      }
+      const previousSmoothed = smoothedOffsetRef.current;
+      const SMOOTHING_FACTOR = 0.25;
+      smoothedOffsetRef.current = previousSmoothed + (normalizedOffset - previousSmoothed) * SMOOTHING_FACTOR;
+      
+      const delta = smoothedOffsetRef.current - previousSmoothed;
+
+      const now = Date.now();
+      if (now < suppressScrollUntilRef.current) {
+        directionalScrollDistanceRef.current = 0;
+        return;
+      }
+
+      if (normalizedOffset <= topVisibleLockDistance) {
+        directionalScrollDistanceRef.current = 0;
+        if (!isTopLockedRef.current || isHiddenRef.current) {
+          setHidden(false);
+        }
+        isTopLockedRef.current = true;
+        return;
+      }
+
+      isTopLockedRef.current = false;
+
+      // Prevent rapid hide↔show reversals caused by FlashList recycling
+      // offset oscillations. The top-lock path above bypasses this so the
+      // header always appears when the user scrolls to the very top.
+      const timeSinceDirectionChange = now - lastDirectionChangeTimeRef.current;
+      const commitGuardActive =
+        lastDirectionChangeTimeRef.current > 0 && timeSinceDirectionChange < DIRECTION_COMMIT_MS;
+      if (commitGuardActive) {
+        directionalScrollDistanceRef.current = 0;
+        return;
+      }
+
+      if (delta > SCROLL_DELTA_THRESHOLD) {
+        directionalScrollDistanceRef.current =
+          directionalScrollDistanceRef.current > 0
+            ? directionalScrollDistanceRef.current + delta
+            : delta;
+        if (directionalScrollDistanceRef.current >= HIDE_SCROLL_DISTANCE) {
+          setHidden(true);
+        }
+      } else if (delta < -SCROLL_DELTA_THRESHOLD) {
+        directionalScrollDistanceRef.current =
+          directionalScrollDistanceRef.current < 0
+            ? directionalScrollDistanceRef.current + delta
+            : delta;
+        if (Math.abs(directionalScrollDistanceRef.current) >= SHOW_SCROLL_DISTANCE) {
+          setHidden(false);
+        }
+      }
+    },
+    [setHidden, topVisibleLockDistance]
+  );
+
+  const handleScroll = React.useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      handleScrollOffset(event.nativeEvent.contentOffset.y);
+    },
+    [handleScrollOffset]
+  );
+
+  const showHeader = React.useCallback(() => setHidden(false), [setHidden]);
+
+  const isHidden = React.useCallback(() => isHiddenRef.current, []);
+
+  const resetHeader = React.useCallback(() => {
+    if (Date.now() < suppressScrollUntilRef.current) {
+      return;
+    }
+    hiddenProgress.stopAnimation();
+    hiddenProgress.setValue(0);
+    isHiddenRef.current = false;
+    setHeaderPointerEvents('box-none');
+    isTopLockedRef.current = true;
+    lastScrollOffsetRef.current = 0;
+    smoothedOffsetRef.current = 0;
+    directionalScrollDistanceRef.current = 0;
+    lastDirectionChangeTimeRef.current = 0;
+    suppressScrollUntilRef.current = Date.now() + RESET_SCROLL_SUPPRESSION_MS;
+  }, [hiddenProgress]);
+
+  const opacity = React.useMemo(
+    () =>
+      hiddenProgress.interpolate({
+        inputRange: [0, 1],
+        outputRange: [1, 0],
+      }),
+    [hiddenProgress]
+  );
+
+  const translateY = React.useMemo(
+    () =>
+      hiddenProgress.interpolate({
+        inputRange: [0, 1],
+        outputRange: [0, -headerHeight],
+      }),
+    [hiddenProgress, headerHeight]
+  );
+
+  const headerAnimatedStyle = React.useMemo(
+    () => ({
+      opacity,
+      transform: [{ translateY }],
+    }),
+    [opacity, translateY]
+  );
+
+  const suppressScroll = React.useCallback((durationMs: number) => {
+    suppressScrollUntilRef.current = Date.now() + durationMs;
+    directionalScrollDistanceRef.current = 0;
+  }, []);
+
+  return React.useMemo(() => ({
+    handleHeaderLayout,
+    handleScroll,
+    handleScrollOffset,
+    headerAnimatedStyle,
+    headerHeight,
+    headerPointerEvents,
+    isHidden,
+    resetHeader,
+    showHeader,
+    hiddenProgress,
+    suppressScroll,
+  }), [
+    handleHeaderLayout,
+    handleScroll,
+    handleScrollOffset,
+    headerAnimatedStyle,
+    headerHeight,
+    headerPointerEvents,
+    isHidden,
+    resetHeader,
+    showHeader,
+    hiddenProgress,
+    suppressScroll,
+  ]);
+}

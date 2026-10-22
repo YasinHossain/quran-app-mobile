@@ -1,0 +1,254 @@
+import type { DownloadProgress, DownloadableContent } from '@/src/domain/entities';
+import type { ILogger } from '@/src/domain/interfaces/ILogger';
+import type { IDownloadIndexRepository } from '@/src/domain/repositories/IDownloadIndexRepository';
+import type { ITranslationDownloadRepository } from '@/src/domain/repositories/ITranslationDownloadRepository';
+import type {
+  ITranslationOfflineStore,
+  OfflineTranslationRowInput,
+  OfflineVerseRowInput,
+} from '@/src/domain/repositories/ITranslationOfflineStore';
+import type { ITranslationPackRepository } from '@/src/domain/repositories/ITranslationPackRepository';
+
+const TOTAL_SURAHS = 114;
+const DEFAULT_PER_PAGE = 50;
+const CANCELED_ERROR_CODE = 'translation_download_canceled';
+const canceledTranslationIds = new Set<number>();
+
+function normalizeId(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  const normalized = Math.trunc(value);
+  return normalized > 0 ? normalized : 0;
+}
+
+class TranslationDownloadCanceledError extends Error {
+  readonly code = CANCELED_ERROR_CODE;
+
+  constructor(readonly translationId: number) {
+    super('Translation download canceled');
+    this.name = 'TranslationDownloadCanceledError';
+  }
+}
+
+function throwIfCanceled(translationId: number): void {
+  if (!canceledTranslationIds.has(translationId)) return;
+  throw new TranslationDownloadCanceledError(translationId);
+}
+
+function stripHtml(input: string): string {
+  return input
+    .replace(/<[^>]*>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, '&')
+    .trim();
+}
+
+function toDownloadProgress(completedSurahs: number): DownloadProgress {
+  return {
+    kind: 'items',
+    completed: Math.min(Math.max(0, completedSurahs), TOTAL_SURAHS),
+    total: TOTAL_SURAHS,
+  };
+}
+
+export function requestTranslationDownloadCancel(translationId: number): void {
+  const normalizedTranslationId = normalizeId(translationId);
+  if (normalizedTranslationId <= 0) return;
+  canceledTranslationIds.add(normalizedTranslationId);
+}
+
+export function isTranslationDownloadCanceledError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  if ((error as { code?: unknown }).code === CANCELED_ERROR_CODE) return true;
+  return error.name === 'TranslationDownloadCanceledError';
+}
+
+export class DownloadTranslationUseCase {
+  constructor(
+    private readonly downloadIndexRepository: IDownloadIndexRepository,
+    private readonly translationOfflineStore: ITranslationOfflineStore,
+    private readonly translationDownloadRepository: ITranslationDownloadRepository,
+    private readonly logger?: ILogger,
+    private readonly translationPackRepository?: ITranslationPackRepository
+  ) {}
+
+  async execute(translationId: number, wordLang?: string): Promise<void> {
+    const normalizedTranslationId = normalizeId(translationId);
+    if (normalizedTranslationId <= 0) {
+      throw new Error('translationId must be a positive integer');
+    }
+
+    canceledTranslationIds.delete(normalizedTranslationId);
+
+    const content: DownloadableContent = {
+      kind: 'translation',
+      translationId: normalizedTranslationId,
+    };
+
+    const existing = await this.downloadIndexRepository.get(content);
+    if (existing?.status === 'installed') return;
+
+    let completedSurahs = 0;
+
+    await this.downloadIndexRepository.upsert(content, {
+      status: 'queued',
+      progress: toDownloadProgress(0),
+      error: null,
+    });
+
+    await this.downloadIndexRepository.upsert(content, {
+      status: 'downloading',
+      progress: toDownloadProgress(0),
+      error: null,
+    });
+
+    try {
+      let lastPersistedPackPercent = -1;
+      const installedFromPack = await this.translationPackRepository?.installPack({
+        translationId: normalizedTranslationId,
+        assertNotCanceled: () => {
+          throwIfCanceled(normalizedTranslationId);
+        },
+        onProgress: (progress) => {
+          const normalizedPercent = Math.max(0, Math.min(100, progress.percent));
+          const persistedPercent =
+            normalizedPercent >= 100 ? 100 : Math.floor(normalizedPercent / 4) * 4;
+
+          if (persistedPercent === lastPersistedPackPercent) return;
+          lastPersistedPackPercent = persistedPercent;
+
+          void this.downloadIndexRepository.upsert(content, {
+            status: 'downloading',
+            progress: {
+              kind: 'percent',
+              percent: persistedPercent,
+            },
+            error: null,
+          });
+        },
+      });
+
+      if (installedFromPack) {
+        throwIfCanceled(normalizedTranslationId);
+        await this.downloadIndexRepository.upsert(content, {
+          status: 'installed',
+          progress: null,
+          error: null,
+        });
+        return;
+      }
+
+      for (let surahId = 1; surahId <= TOTAL_SURAHS; surahId += 1) {
+        throwIfCanceled(normalizedTranslationId);
+        await this.downloadSurahTranslation({
+          surahId,
+          translationId: normalizedTranslationId,
+          wordLang,
+        });
+
+        throwIfCanceled(normalizedTranslationId);
+        completedSurahs = surahId;
+        await this.downloadIndexRepository.upsert(content, {
+          status: 'downloading',
+          progress: toDownloadProgress(completedSurahs),
+          error: null,
+        });
+      }
+
+      throwIfCanceled(normalizedTranslationId);
+      await this.downloadIndexRepository.upsert(content, {
+        status: 'installed',
+        progress: null,
+        error: null,
+      });
+    } catch (error) {
+      if (isTranslationDownloadCanceledError(error)) {
+        try {
+          await this.translationOfflineStore.deleteTranslation(normalizedTranslationId);
+        } catch (cleanupError) {
+          this.logger?.warn(
+            'Failed to clean up translation after cancellation',
+            { translationId: normalizedTranslationId },
+            cleanupError as Error
+          );
+        }
+
+        await this.downloadIndexRepository.remove(content);
+        return;
+      }
+
+      const errorMessage = error instanceof Error ? error.message : String(error);
+
+      await this.downloadIndexRepository.upsert(content, {
+        status: 'failed',
+        progress: toDownloadProgress(completedSurahs),
+        error: errorMessage,
+      });
+
+      try {
+        await this.translationOfflineStore.deleteTranslation(normalizedTranslationId);
+      } catch (cleanupError) {
+        this.logger?.warn(
+          'Failed to clean up translation after a download failure',
+          { translationId: normalizedTranslationId },
+          cleanupError as Error
+        );
+      }
+
+      throw error;
+    } finally {
+      canceledTranslationIds.delete(normalizedTranslationId);
+    }
+  }
+
+  private async downloadSurahTranslation(params: {
+    surahId: number;
+    translationId: number;
+    wordLang?: string;
+  }): Promise<void> {
+    const surahId = normalizeId(params.surahId);
+    const translationId = normalizeId(params.translationId);
+    const { wordLang } = params;
+
+    if (surahId <= 0 || translationId <= 0) return;
+
+    let page = 1;
+    let totalPages = 1;
+
+    while (page <= totalPages) {
+      throwIfCanceled(translationId);
+      const response = await this.translationDownloadRepository.getChapterVersesPage({
+        chapterNumber: surahId,
+        translationId,
+        page,
+        perPage: DEFAULT_PER_PAGE,
+        wordLang,
+      });
+
+      throwIfCanceled(translationId);
+
+      const verseRows: OfflineVerseRowInput[] = response.verses.map((verse) => ({
+        verseKey: verse.verseKey,
+        surahId,
+        ayahNumber: verse.ayahNumber,
+        arabicUthmani: verse.arabicUthmani,
+        wordsJson: verse.wordsJson,
+      }));
+
+      const translationRows: OfflineTranslationRowInput[] = response.verses.map((verse) => ({
+        translationId,
+        verseKey: verse.verseKey,
+        text: stripHtml(verse.translationText ?? ''),
+      }));
+
+      await this.translationOfflineStore.upsertVersesAndTranslations({
+        verses: verseRows,
+        translations: translationRows,
+      });
+
+      totalPages = Math.max(1, response.pagination?.totalPages ?? totalPages);
+      page += 1;
+    }
+  }
+}

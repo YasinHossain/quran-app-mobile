@@ -1,0 +1,16 @@
+{
+  "format": "quran-word-grammar-catalog-v1",
+  "packs": [
+    {
+      "packId": "qac-irab",
+      "version": "1.4",
+      "sourceId": "qac-arabic-irab",
+      "title": "Quranic Arabic Corpus Arabic i'rab",
+      "manifestUrl": "qac-irab-v1.4/manifest.json",
+      "databaseUrl": "qac-irab-v1.4/quran-word-grammar.db",
+      "databaseSizeBytes": 15876096,
+      "databaseChecksumSha256": "34fc38dca6b71708acbb4c3dcf685d639fd25febcda3624ea1404a8caa4cf3d6",
+      "schemaVersion": 1
+    }
+  ]
+}

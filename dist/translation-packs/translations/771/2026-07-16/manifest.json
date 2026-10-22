@@ -1,0 +1,15 @@
+{
+  "translationId": 771,
+  "name": "Kannada Translation",
+  "authorName": "Kannada Translation",
+  "languageName": "kannada",
+  "version": "2026-07-16",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "b8fdbff02235fd8d218befd5f32d39ba",
+  "payloadSizeBytes": 4275882,
+  "totalVerses": 6236,
+  "generatedAt": "2026-07-16T11:35:25.512Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=771&per_page=300"
+}

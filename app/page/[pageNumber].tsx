@@ -1,0 +1,1187 @@
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import React from 'react';
+import { ArrowLeft, Settings } from 'lucide-react-native';
+import { FlashList, type FlashListRef } from '@shopify/flash-list';
+import {
+  FlatList,
+  Platform,
+  Pressable,
+  Share,
+  StyleSheet,
+  Text,
+  View,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
+} from 'react-native';
+
+import {
+  MushafSingleDocumentReader,
+  type MushafSingleDocumentVersePress,
+} from '@/components/mushaf/MushafSingleDocumentReader';
+import type { MushafSelectionPayload } from '@/components/mushaf/mushafWordPayload';
+import { ComprehensiveSearchDropdown } from '@/components/search/ComprehensiveSearchDropdown';
+import { AppSearchHeader, ReaderOverlayHeader } from '@/components/navigation/AppHeader';
+import { useCollapsibleReaderHeader } from '@/components/navigation/useCollapsibleReaderHeader';
+import { useHeaderSearch } from '@/components/navigation/useHeaderSearch';
+import { HeaderActionButton } from '@/components/search/HeaderSearchBar';
+import { NativePassageReader } from '@/components/reader/NativePassageReader';
+import { ReaderBottomMessage } from '@/components/reader/ReaderBottomMessage';
+import { SettingsSidebar } from '@/components/reader/settings/SettingsSidebar';
+import type { PanelType } from '@/components/reader/settings/SettingsSidebarContent';
+import { BookmarkModal } from '@/components/bookmarks/BookmarkModal';
+import { VerseActionsSheet } from '@/components/surah/VerseActionsSheet';
+import { VerseCard } from '@/components/surah/VerseCard';
+import { BismillahDisplay } from '@/components/surah/BismillahDisplay';
+import { getSurahIntro } from '@/components/surah/surahHeaderPresentation';
+import { VerseScrubber, type VerseScrubberHandle } from '@/components/surah/VerseScrubber';
+import { useVerseAudioWordSync } from '@/components/surah/useVerseAudioWordSync';
+import { ReaderWordStudySheet } from '@/components/word-study/ReaderWordStudySheet';
+import { normalizeWordStudyPressEvent } from '@/components/word-study/WordStudyPressEvent';
+import type { VerseTranslationItem } from '@/components/word-study/readerStudySheetModel';
+import { useReaderStudySheet } from '@/components/word-study/useReaderStudySheet';
+import type { StudySheetVerseActions } from '@/components/word-study/VerseTranslationPanel';
+import { useWordQuickSheetController } from '@/components/word-study/useWordQuickSheetController';
+import { AddToPlannerModal, type VerseSummaryDetails } from '@/components/verse-planner-modal';
+import Colors from '@/constants/Colors';
+import { SUGGESTED_MUSHAF_ID, findMushafOption } from '@/data/mushaf/options';
+import { useChapters } from '@/hooks/useChapters';
+import { useMushafPageData } from '@/hooks/useMushafPageData';
+import { usePageVerses } from '@/hooks/usePageVerses';
+import { copyTextToClipboard } from '@/lib/clipboard';
+import { getMushafPageLayout } from '@/lib/mushaf/mushafPageLayout';
+import { getPagePassage } from '@/lib/reader/readerPassage';
+import { formatVerseText } from '@/lib/verse/formatVerseText';
+import { preloadOfflineTafsirWindow } from '@/lib/tafsir/tafsirCache';
+import { useTranslationResources } from '@/hooks/useTranslationResources';
+import { primeVerseDetailsCache } from '@/lib/verse/verseDetailsCache';
+import { useBookmarks } from '@/providers/BookmarkContext';
+import { useAudioPlayer } from '@/providers/AudioPlayerContext';
+import { useLayoutMetrics } from '@/providers/LayoutMetricsContext';
+import { useSettings } from '@/providers/SettingsContext';
+import { useAppTheme } from '@/providers/ThemeContext';
+import { useUiTranslation } from '@/providers/UiLanguageContext';
+import { container } from '@/src/core/infrastructure/di/container';
+
+import type { Bookmark, MushafPackId } from '@/types';
+
+function parseVerseKeyNumbers(
+  verseKey: string | null
+): { surahId: number; verseNumber: number } | null {
+  if (!verseKey) return null;
+  const [surahRaw, verseRaw] = verseKey.split(':');
+  const surahId = Number.parseInt(surahRaw ?? '', 10);
+  const verseNumber = Number.parseInt(verseRaw ?? '', 10);
+  if (!Number.isFinite(surahId) || !Number.isFinite(verseNumber)) return null;
+  const normalizedSurah = Math.trunc(surahId);
+  const normalizedVerse = Math.trunc(verseNumber);
+  if (normalizedSurah <= 0 || normalizedVerse <= 0) return null;
+  return { surahId: normalizedSurah, verseNumber: normalizedVerse };
+}
+
+async function resolveActiveMushafVersion(
+  packId: MushafPackId,
+  fallbackVersion: string
+): Promise<string> {
+  try {
+    const activeInstall = await container
+      .getMushafPackInstallRegistry()
+      .getActive(packId);
+    return activeInstall?.version ?? fallbackVersion;
+  } catch {
+    return fallbackVersion;
+  }
+}
+
+function VerseCardPlaceholder({ verseKey }: { verseKey: string }): React.JSX.Element {
+  return (
+    <View className="border-b border-border/40 py-4 dark:border-border-dark/30">
+      <View className="gap-4">
+        <Text className="text-sm font-semibold text-accent dark:text-accent-dark">{verseKey}</Text>
+        <View className="h-12 rounded-2xl bg-surface dark:bg-surface-dark" />
+        <View className="gap-3">
+          <View className="h-4 rounded-full bg-surface dark:bg-surface-dark" />
+          <View className="h-4 w-5/6 rounded-full bg-surface dark:bg-surface-dark" />
+          <View className="h-4 w-2/3 rounded-full bg-surface dark:bg-surface-dark" />
+        </View>
+      </View>
+    </View>
+  );
+}
+
+const cardShadow =
+  Platform.OS === 'android'
+    ? { shadowColor: 'transparent', elevation: 0 }
+    : {
+        shadowColor: '#000',
+        shadowOpacity: 0.06,
+        shadowRadius: 6,
+        shadowOffset: { width: 0, height: 2 },
+      };
+
+function PageHeaderCard({ pageNumber, surahRange }: { pageNumber: number; surahRange: string }): React.JSX.Element {
+  const { resolvedTheme } = useAppTheme();
+  const isDark = resolvedTheme === 'dark';
+  const bgColor = isDark ? '#182333' : '#FFFFFF';
+
+  return (
+    <View
+      className="mb-4 flex-row items-center justify-between px-4 py-3"
+      style={[
+        cardShadow,
+        {
+          borderRadius: 12,
+          borderWidth: 0,
+          backgroundColor: bgColor,
+        },
+      ]}
+    >
+      <Text className="text-base font-bold text-content-primary dark:text-content-primary-dark">
+        Page {pageNumber}
+      </Text>
+      {surahRange ? (
+        <View className="rounded-full bg-accent/10 px-3 py-1">
+          <Text className="text-xs font-semibold text-accent dark:text-accent-dark">
+            {surahRange}
+          </Text>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  contentStage: {
+    flex: 1,
+    overflow: 'hidden',
+  },
+  contentLayer: {
+    ...StyleSheet.absoluteFill,
+  },
+});
+
+const INITIAL_PLACEHOLDER_VERSE_KEYS = ['1:1', '1:2', '1:3', '1:4'];
+function clampPageNumber(value: number | null, totalPages: number): number {
+  if (value === null || !Number.isInteger(value)) return 1;
+  return Math.min(Math.max(value, 1), totalPages);
+}
+
+export default function PageScreen(): React.JSX.Element {
+  const params = useLocalSearchParams<{
+    pageNumber?: string | string[];
+    startVerse?: string | string[];
+  }>();
+  const router = useRouter();
+  const pageNumberParam = Array.isArray(params.pageNumber) ? params.pageNumber[0] : params.pageNumber;
+  const startVerseParam = Array.isArray(params.startVerse) ? params.startVerse[0] : params.startVerse;
+
+  const requestedPageNumber = pageNumberParam ? Number(pageNumberParam) : 1;
+  const startVerse = startVerseParam ? Number(startVerseParam) : NaN;
+
+  const [isSettingsOpen, setIsSettingsOpen] = React.useState(false);
+  const [settingsInitialPanel, setSettingsInitialPanel] = React.useState<PanelType | undefined>();
+  const [showMushafRequiredMessage, setShowMushafRequiredMessage] = React.useState(false);
+  const [isVerseActionsOpen, setIsVerseActionsOpen] = React.useState(false);
+  const [isBookmarkModalOpen, setIsBookmarkModalOpen] = React.useState(false);
+  const [isAddToPlannerOpen, setIsAddToPlannerOpen] = React.useState(false);
+  const [plannerVerseSummary, setPlannerVerseSummary] = React.useState<VerseSummaryDetails | null>(
+    null
+  );
+  const [activeVerse, setActiveVerse] = React.useState<{
+    verseKey: string;
+    verseApiId?: number;
+    arabicText: string;
+    translationTexts: string[];
+    translationItems?: Array<{ text: string; resourceId?: number; resourceName?: string }>;
+  } | null>(null);
+
+  const { resolvedTheme } = useAppTheme();
+  const palette = Colors[resolvedTheme];
+  const readerHeader = useCollapsibleReaderHeader();
+  const { settings, effectiveShowByWords, isHydrated, setReadingMode } = useSettings();
+  // Page numbers belong to the selected mushaf, so both reading modes show the same page.
+  const pageLayout = getMushafPageLayout(settings.mushafId);
+  const pageNumber = clampPageNumber(requestedPageNumber, pageLayout.totalPages);
+  const requestedMushafView = settings.readingMode === 'mushaf';
+  const isMushafView = requestedMushafView && Boolean(settings.mushafId);
+  // Android reads the page straight from the offline database in the Kotlin reader, like a Surah.
+  const usesNativePassageReader = Platform.OS === 'android' && !isMushafView;
+  const passage = React.useMemo(
+    () => getPagePassage(pageNumber, pageLayout),
+    [pageLayout, pageNumber]
+  );
+  const { t } = useUiTranslation();
+  const headerSearch = useHeaderSearch({ preserveMushafView: isMushafView, replace: true });
+  const { chapters } = useChapters();
+  const audio = useAudioPlayer();
+  const { audioPlayerBarHeight } = useLayoutMetrics();
+
+  React.useEffect(() => {
+    if (isSettingsOpen) {
+      headerSearch.close({ clearQuery: false });
+    }
+  }, [headerSearch.close, isSettingsOpen]);
+
+  React.useEffect(() => {
+    if (!isHydrated || !requestedMushafView || settings.mushafId) return;
+    setReadingMode('translations');
+    setSettingsInitialPanel('mushaf');
+    setIsSettingsOpen(true);
+    setShowMushafRequiredMessage(true);
+    const timeout = setTimeout(() => setShowMushafRequiredMessage(false), 3600);
+    return () => clearTimeout(timeout);
+  }, [isHydrated, requestedMushafView, setReadingMode, settings.mushafId]);
+
+  const listContentContainerStyle = React.useMemo(
+    () => ({
+      paddingHorizontal: 16,
+      paddingTop: readerHeader.headerHeight + 16,
+      paddingBottom: 24 + audioPlayerBarHeight,
+    }),
+    [audioPlayerBarHeight, readerHeader.headerHeight]
+  );
+
+  const { isPinned, setLastRead } = useBookmarks();
+  const selectedMushafId = settings.mushafId ?? SUGGESTED_MUSHAF_ID;
+  const selectedMushafOption = findMushafOption(selectedMushafId);
+  const selectedMushafVersion = selectedMushafOption?.version ?? 'unknown';
+  const initialMushafPageProbe = useMushafPageData({
+    packId: selectedMushafId,
+    pageNumber,
+    expectedVersion: selectedMushafVersion,
+    enabled: Boolean(isMushafView && isHydrated && selectedMushafOption?.renderer === 'webview'),
+  });
+  const retainedMushafPageDataRef = React.useRef(initialMushafPageProbe.data);
+  if (
+    initialMushafPageProbe.data?.pack.packId === selectedMushafId &&
+    initialMushafPageProbe.data.pack.version.trim() === selectedMushafVersion.trim() &&
+    initialMushafPageProbe.data.pageNumber === pageNumber
+  ) {
+    retainedMushafPageDataRef.current = initialMushafPageProbe.data;
+  }
+  const availableInitialMushafPageData =
+    initialMushafPageProbe.data ??
+    (retainedMushafPageDataRef.current?.pack.packId === selectedMushafId &&
+    retainedMushafPageDataRef.current.pack.version.trim() === selectedMushafVersion.trim() &&
+    retainedMushafPageDataRef.current.pageNumber === pageNumber
+      ? retainedMushafPageDataRef.current
+      : null);
+  const resolvedMushafRenderer =
+    availableInitialMushafPageData?.pack.renderer ?? selectedMushafOption?.renderer ?? 'text';
+  const activeMushafVersion =
+    availableInitialMushafPageData?.pack.version ?? selectedMushafVersion;
+  const mushafTotalPages =
+    availableInitialMushafPageData?.pack.totalPages ?? pageLayout.totalPages;
+  const mushafPageNumbers = React.useMemo(() => [pageNumber], [pageNumber]);
+  const mushafBackgroundPageNumbers = React.useMemo(
+    () => [pageNumber - 1, pageNumber, pageNumber + 1],
+    [pageNumber]
+  );
+  const mushafSelectionMetadataRef = React.useRef<MushafSelectionPayload | null>(null);
+
+  const chapterNamesById = React.useMemo(
+    () => new Map(chapters.map((item) => [item.id, item.name_simple] as const)),
+    [chapters]
+  );
+  const mushafSurahHeaders = React.useMemo(
+    () => chapters.map((chapter) => getSurahIntro(chapter, t)),
+    [chapters, t]
+  );
+  const mushafPageNavigation = React.useMemo(
+    () => ({
+      previousSurahName:
+        pageNumber > 1 ? t('page_number_label', { number: pageNumber - 1 }) : undefined,
+      nextSurahName:
+        pageNumber < mushafTotalPages
+          ? t('page_number_label', { number: pageNumber + 1 })
+          : undefined,
+    }),
+    [mushafTotalPages, pageNumber, t]
+  );
+  const handleMushafPageNavigation = React.useCallback(
+    (direction: 'next' | 'previous') => {
+      const targetPage = direction === 'next' ? pageNumber + 1 : pageNumber - 1;
+      if (targetPage < 1 || targetPage > mushafTotalPages) return;
+      setIsVerseActionsOpen(false);
+      setIsSettingsOpen(false);
+      router.replace({ pathname: '/page/[pageNumber]', params: { pageNumber: String(targetPage) } });
+    },
+    [mushafTotalPages, pageNumber, router]
+  );
+
+  const surahRange = React.useMemo(() => {
+    if (chapters.length === 0) return '';
+    const range = pageLayout.getPageVerseRange(pageNumber);
+    const startParsed = parseVerseKeyNumbers(range?.[0] ?? null);
+    const endParsed = parseVerseKeyNumbers(range?.[1] ?? null);
+    if (!startParsed || !endParsed) return '';
+
+    const startName = chapterNamesById.get(startParsed.surahId) || '';
+    const endName = chapterNamesById.get(endParsed.surahId) || '';
+
+    if (startParsed.surahId === endParsed.surahId) {
+      return startName;
+    }
+
+    return `${startName} - ${endName}`;
+  }, [pageLayout, pageNumber, chapters, chapterNamesById]);
+
+  const activeChapterNumber = React.useMemo(() => {
+    if (audio.activeVerseKey) {
+      const parsed = parseVerseKeyNumbers(audio.activeVerseKey);
+      return parsed?.surahId ?? 1;
+    }
+    const firstVerseKey = pageLayout.getPageVerseRange(pageNumber)?.[0];
+    if (firstVerseKey) {
+      const parsed = parseVerseKeyNumbers(firstVerseKey);
+      return parsed?.surahId ?? 1;
+    }
+    return 1;
+  }, [audio.activeVerseKey, pageLayout, pageNumber]);
+
+  const verseAudioWordSync = useVerseAudioWordSync(activeChapterNumber);
+  const wordQuickSheet = useWordQuickSheetController({
+    isDisabled: audio.isVisible,
+    onDisabledOpen: verseAudioWordSync.seekToWord,
+  });
+
+  const translationIds = React.useMemo(() => {
+    const ids = Array.isArray(settings.translationIds)
+      ? settings.translationIds
+      : [settings.translationId ?? 20];
+    return ids.filter((id) => Number.isFinite(id) && id > 0);
+  }, [settings.translationId, settings.translationIds]);
+
+  const handleStudySheetTranslations = React.useCallback(
+    (verseKey: string, items: VerseTranslationItem[]) => {
+      setActiveVerse((current) =>
+        current?.verseKey === verseKey
+          ? { ...current, translationTexts: items.map((item) => item.text), translationItems: items }
+          : current
+      );
+    },
+    []
+  );
+  const mushafStudySheet = useReaderStudySheet({
+    wordController: wordQuickSheet,
+    translationIds,
+    contentLanguage: settings.contentLanguage,
+    onTranslationsResolved: handleStudySheetTranslations,
+  });
+  const { openWord: openMushafWordSheet, openVerse: openMushafVerseSheet } = mushafStudySheet;
+
+  const showTranslationAttribution = translationIds.length > 1;
+
+  React.useEffect(() => {
+    readerHeader.resetHeader();
+  }, [pageNumber, readerHeader.resetHeader]);
+
+  const { translationsById } = useTranslationResources({
+    enabled: showTranslationAttribution,
+    language: settings.contentLanguage,
+  });
+
+  const {
+    verseKeys,
+    hasLoadedContent,
+    getVerseByKey,
+    isLoading,
+    errorMessage,
+    offlineNotInstalled,
+    refresh,
+    retry,
+  } = usePageVerses({
+    pageNumber,
+    pageLayout,
+    translationIds,
+    wordLang: settings.wordLang,
+    enabled: !isMushafView && !usesNativePassageReader,
+  });
+
+  const [visibleVerseNumber, setVisibleVerseNumber] = React.useState(1);
+  const visibleVerseNumberRef = React.useRef(visibleVerseNumber);
+  const isVerseScrubbingRef = React.useRef(false);
+  const lastScrubScrollVerseRef = React.useRef<number | null>(null);
+  const queuedScrubScrollVerseRef = React.useRef<number | null>(null);
+  const scrubScrollInFlightRef = React.useRef(false);
+  const scrubScrollRequestIdRef = React.useRef(0);
+
+  const flashListRef = React.useRef<FlashListRef<string> | null>(null);
+  const flatListRef = React.useRef<FlatList<string> | null>(null);
+  const verseScrubberRef = React.useRef<VerseScrubberHandle | null>(null);
+
+  const viewabilityConfig = React.useRef({
+    itemVisiblePercentThreshold: 30,
+    minimumViewTime: 50,
+  }).current;
+
+  const visibleVerseKeyRef = React.useRef<string | null>(null);
+  const onViewableItemsChanged = React.useRef(
+    (info: { viewableItems: Array<{ item: string; index?: number | null }> }) => {
+      const first = info.viewableItems[0];
+      if (first && first.index != null) {
+        visibleVerseKeyRef.current = first.item;
+        const verseIdx = first.index + 1;
+        if (!isVerseScrubbingRef.current && !scrubScrollInFlightRef.current) {
+          setVisibleVerseNumber(verseIdx);
+          visibleVerseNumberRef.current = verseIdx;
+        }
+
+        const parsed = parseVerseKeyNumbers(first.item);
+        if (parsed) {
+          const verseObj = getVerseByKey(first.item);
+          setLastRead(
+            String(parsed.surahId),
+            parsed.verseNumber,
+            first.item,
+            verseObj?.id
+          );
+        }
+      }
+    }
+  ).current;
+
+  const openVerseActions = React.useCallback(
+    (params: {
+      verseKey: string;
+      verseApiId?: number;
+      arabicText: string;
+      translationTexts: string[];
+      translationItems?: Array<{ text: string; resourceId?: number; resourceName?: string }>;
+    }) => {
+      setActiveVerse(params);
+      setIsVerseActionsOpen(true);
+    },
+    []
+  );
+
+  const handlePassageVisibleVerseChange = React.useCallback((verseKey: string) => {
+    visibleVerseKeyRef.current = verseKey;
+  }, []);
+
+  const closeVerseActions = React.useCallback(() => {
+    setIsVerseActionsOpen(false);
+  }, []);
+
+  const openTranslationSettings = React.useCallback(() => {
+    setSettingsInitialPanel(undefined);
+    setIsSettingsOpen(true);
+  }, []);
+
+  const closeSettingsSidebar = React.useCallback(() => {
+    setIsSettingsOpen(false);
+  }, []);
+
+  const handleMushafInstalled = React.useCallback(() => {
+    setSettingsInitialPanel(undefined);
+    setIsSettingsOpen(false);
+    setReadingMode('mushaf');
+  }, [setReadingMode]);
+
+  React.useEffect(() => {
+    if (!isMushafView || selectedMushafOption?.renderer !== 'webview') return;
+
+    let cancelled = false;
+    void (async () => {
+      const activePackVersion = await resolveActiveMushafVersion(
+        selectedMushafId,
+        activeMushafVersion
+      );
+      if (cancelled) return;
+      const repository = container.getMushafPageRepository();
+      repository.setActivePageCacheIdentity({
+        packId: selectedMushafId,
+        version: activePackVersion,
+      });
+      void repository
+        .prefetchPages({
+          packId: selectedMushafId,
+          pageNumbers: [pageNumber - 1, pageNumber, pageNumber + 1],
+          expectedVersion: activePackVersion,
+        })
+        .catch(() => {
+          // The mounted reader surfaces local-pack errors.
+        });
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    activeMushafVersion,
+    isMushafView,
+    pageNumber,
+    selectedMushafId,
+    selectedMushafOption?.renderer,
+  ]);
+
+  const handleMushafSelectionChange = React.useCallback((payload: MushafSelectionPayload) => {
+    mushafSelectionMetadataRef.current = payload.isCollapsed ? null : payload;
+  }, []);
+
+  const handleMushafVersePress = React.useCallback(
+    (verse: MushafSingleDocumentVersePress) => {
+      if (mushafSelectionMetadataRef.current && !mushafSelectionMetadataRef.current.isCollapsed) {
+        return;
+      }
+
+      // Verse actions read this; the study sheet adds the translations once they load.
+      setActiveVerse({
+        verseKey: verse.verseKey,
+        verseApiId: verse.verseApiId,
+        arabicText: verse.arabicText,
+        translationTexts: [],
+      });
+      const studyVerse = {
+        verseKey: verse.verseKey,
+        verseApiId: verse.verseApiId,
+        arabicText: verse.arabicText,
+      };
+      if (verse.target === 'verse') {
+        openMushafVerseSheet(studyVerse);
+        return;
+      }
+
+      const event = normalizeWordStudyPressEvent({
+        verseKey: verse.verseKey,
+        wordPosition: verse.wordPosition,
+        surfaceText: verse.surfaceText,
+        verseWords: verse.verseWords,
+        source: 'mushaf',
+      });
+      if (event) openMushafWordSheet(event, studyVerse);
+    },
+    [openMushafVerseSheet, openMushafWordSheet]
+  );
+
+  const handleMushafScrollActivity = React.useCallback(
+    (scrollY?: number) => {
+      if (typeof scrollY === 'number') {
+        readerHeader.handleScrollOffset(scrollY);
+      }
+    },
+    [readerHeader.handleScrollOffset]
+  );
+
+  const listExtraData = React.useMemo(
+    () => ({
+      arabicFontSize: settings.arabicFontSize,
+      translationFontSize: settings.translationFontSize,
+      arabicFontFace: settings.arabicFontFace,
+      showByWords: effectiveShowByWords,
+      audioActiveVerseKey: audio.activeVerseKey,
+      audioIsVisible: audio.isVisible,
+      verseAudioWordSync,
+      wordStudyEvent: wordQuickSheet.event,
+    }),
+    [
+      settings.arabicFontFace,
+      settings.arabicFontSize,
+      effectiveShowByWords,
+      settings.translationFontSize,
+      audio.activeVerseKey,
+      audio.isVisible,
+      verseAudioWordSync,
+      wordQuickSheet.event,
+    ]
+  );
+
+  const handlePlayPause = React.useCallback(() => {
+    const verseKey = activeVerse?.verseKey;
+    if (!verseKey) return;
+
+    if (audio.activeVerseKey === verseKey) {
+      audio.togglePlay();
+      return;
+    }
+
+    audio.playVerse(verseKey);
+  }, [activeVerse?.verseKey, audio.activeVerseKey, audio.playVerse, audio.togglePlay]);
+
+  const handleBookmark = React.useCallback(() => {
+    if (!activeVerse) return;
+    setIsBookmarkModalOpen(true);
+  }, [activeVerse]);
+
+  const handleOpenTafsir = React.useCallback(() => {
+    const verseKey = activeVerse?.verseKey;
+    if (!verseKey) return;
+    const [surah, ayah] = verseKey.split(':');
+    if (!surah || !ayah) return;
+    const surahNumber = Number(surah);
+    primeVerseDetailsCache({
+      verseKey,
+      arabicText: activeVerse?.arabicText,
+      translationIds,
+      translationTexts: activeVerse?.translationTexts,
+    });
+    if (Number.isFinite(surahNumber) && surahNumber > 0) {
+      const tafsirIds = Array.isArray(settings.tafsirIds) ? settings.tafsirIds : [];
+      const chapterVerseCount =
+        chapters.find((chapter) => chapter.id === surahNumber)?.verses_count;
+      void preloadOfflineTafsirWindow({
+        surahId: surahNumber,
+        ayahId: Number(ayah),
+        tafsirIds,
+        verseCount: chapterVerseCount,
+      });
+    }
+    router.push({ pathname: '/tafsir/[surahId]/[ayahId]', params: { surahId: surah, ayahId: ayah } });
+  }, [
+    activeVerse?.arabicText,
+    activeVerse?.translationTexts,
+    activeVerse?.verseKey,
+    chapters,
+    router,
+    settings.tafsirIds,
+    translationIds,
+  ]);
+
+  const handleAddToPlan = React.useCallback(() => {
+    const verseKey = activeVerse?.verseKey;
+    if (!verseKey) return;
+    const parsed = parseVerseKeyNumbers(verseKey);
+    setPlannerVerseSummary({
+      verseKey,
+      ...(parsed ? { surahId: parsed.surahId } : {}),
+      arabicText: activeVerse?.arabicText,
+      translationText: activeVerse?.translationTexts?.[0],
+    });
+    setIsAddToPlannerOpen(true);
+  }, [activeVerse?.arabicText, activeVerse?.translationTexts, activeVerse?.verseKey]);
+
+  const handleCopy = React.useCallback(async () => {
+    if (!activeVerse) return;
+    const parsed = parseVerseKeyNumbers(activeVerse.verseKey);
+    const surahName = parsed ? (chapterNamesById.get(parsed.surahId) ?? '') : '';
+    const textToCopy = formatVerseText({
+      surahName,
+      verseKey: activeVerse.verseKey,
+      arabicText: activeVerse.arabicText,
+      translationTexts: activeVerse.translationTexts,
+      translationItems: activeVerse.translationItems,
+      translationsById,
+    });
+    await copyTextToClipboard(
+      textToCopy,
+      t('verse_copied', { fallback: 'Verse copied to clipboard' })
+    );
+  }, [activeVerse, chapterNamesById, t, translationsById]);
+
+  const handleShare = React.useCallback(async () => {
+    if (!activeVerse) return;
+    const parsed = parseVerseKeyNumbers(activeVerse.verseKey);
+    const surahName = parsed ? (chapterNamesById.get(parsed.surahId) ?? '') : '';
+    const title = surahName ? `${surahName} ${activeVerse.verseKey}` : activeVerse.verseKey;
+    const lines = [
+      title,
+      '',
+      activeVerse.arabicText,
+      '',
+      ...(activeVerse.translationTexts?.length ? [activeVerse.translationTexts[0]!] : []),
+    ];
+    try {
+      await Share.share({ message: lines.join('\n') });
+    } catch {
+      // Ignore
+    }
+  }, [activeVerse, chapterNamesById]);
+
+  const handleScrubToVerse = React.useCallback(
+    (targetVerseNumber: number, options?: { isFinal?: boolean }) => {
+      const isFinal = Boolean(options?.isFinal);
+      const targetIndex = Math.min(Math.max(targetVerseNumber - 1, 0), verseKeys.length - 1);
+
+      visibleVerseNumberRef.current = targetVerseNumber;
+      if (isFinal) {
+        setVisibleVerseNumber((currentVerseNumber) =>
+          currentVerseNumber === targetVerseNumber ? currentVerseNumber : targetVerseNumber
+        );
+      }
+
+      const list = Platform.OS === 'web' ? flatListRef.current : flashListRef.current;
+      if (!list) return;
+
+      if (!isFinal && scrubScrollInFlightRef.current) {
+        queuedScrubScrollVerseRef.current = targetVerseNumber;
+        return;
+      }
+
+      queuedScrubScrollVerseRef.current = null;
+      lastScrubScrollVerseRef.current = targetVerseNumber;
+
+      try {
+        const scrollResult = list.scrollToIndex({
+          index: targetIndex,
+          animated: false,
+          viewPosition: 0,
+        });
+        if (scrollResult && typeof (scrollResult as Promise<void>).catch === 'function') {
+          scrubScrollInFlightRef.current = true;
+          const requestId = ++scrubScrollRequestIdRef.current;
+          void (scrollResult as Promise<void>)
+            .catch(() => {})
+            .finally(() => {
+              if (requestId !== scrubScrollRequestIdRef.current) return;
+              scrubScrollInFlightRef.current = false;
+              const queuedVerseNumber = queuedScrubScrollVerseRef.current;
+              queuedScrubScrollVerseRef.current = null;
+              if (queuedVerseNumber !== null) {
+                handleScrubToVerse(queuedVerseNumber);
+              }
+            });
+        }
+      } catch {
+        // Ignore
+      }
+    },
+    [verseKeys]
+  );
+
+  const handleScrubStateChange = React.useCallback((isScrubbing: boolean) => {
+    isVerseScrubbingRef.current = isScrubbing;
+    if (!isScrubbing) {
+      lastScrubScrollVerseRef.current = null;
+      queuedScrubScrollVerseRef.current = null;
+      scrubScrollInFlightRef.current = false;
+      scrubScrollRequestIdRef.current += 1;
+    }
+  }, []);
+
+  const handleSurahListScroll = React.useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    readerHeader.handleScroll(event);
+    verseScrubberRef.current?.show();
+  }, [readerHeader.handleScroll]);
+
+  const activeVersePinned = React.useMemo(() => {
+    if (!activeVerse) return false;
+    const apiId = typeof activeVerse.verseApiId === 'number' ? String(activeVerse.verseApiId) : null;
+    return Boolean((apiId && isPinned(apiId)) || isPinned(activeVerse.verseKey));
+  }, [activeVerse, isPinned]);
+
+  const studySheetVerseActions = React.useMemo<StudySheetVerseActions>(
+    () => ({
+      isPlaying: Boolean(activeVerse && audio.activeVerseKey === activeVerse.verseKey && audio.isPlaying),
+      isBookmarked: activeVersePinned,
+      onPlayPause: handlePlayPause,
+      onBookmark: handleBookmark,
+      onOpenTafsir: handleOpenTafsir,
+      onShare: handleShare,
+      onCopy: handleCopy,
+      onAddToPlan: handleAddToPlan,
+    }),
+    [
+      activeVerse,
+      activeVersePinned,
+      audio.activeVerseKey,
+      audio.isPlaying,
+      handleAddToPlan,
+      handleBookmark,
+      handleCopy,
+      handleOpenTafsir,
+      handlePlayPause,
+      handleShare,
+    ]
+  );
+
+  const mushafStudySelection = React.useMemo(() => {
+    const studyVerse = mushafStudySheet.verse;
+    if (!mushafStudySheet.isOpen || !studyVerse) return null;
+    return {
+      verseKey: studyVerse.verseKey,
+      wordPosition:
+        mushafStudySheet.tab === 'word' ? (mushafStudySheet.selectedWordPosition ?? 0) : 0,
+    };
+  }, [
+    mushafStudySheet.isOpen,
+    mushafStudySheet.selectedWordPosition,
+    mushafStudySheet.tab,
+    mushafStudySheet.verse,
+  ]);
+
+  const activeVerseBookmarkMetadata = React.useMemo(() => {
+    if (!activeVerse) return undefined;
+    const verseApiId =
+      typeof activeVerse.verseApiId === 'number' &&
+      Number.isFinite(activeVerse.verseApiId) &&
+      activeVerse.verseApiId > 0
+        ? activeVerse.verseApiId
+        : undefined;
+
+    const parsed = parseVerseKeyNumbers(activeVerse.verseKey);
+    const surahName = parsed ? (chapterNamesById.get(parsed.surahId) ?? '') : '';
+
+    const metadata: Partial<Bookmark> = {
+      verseKey: activeVerse.verseKey,
+      ...(typeof verseApiId === 'number' ? { verseApiId } : {}),
+      ...(activeVerse.arabicText ? { verseText: activeVerse.arabicText } : {}),
+      ...(surahName ? { surahName } : {}),
+      ...(activeVerse.translationTexts?.[0] ? { translation: activeVerse.translationTexts[0] } : {}),
+    };
+    return metadata;
+  }, [activeVerse, chapterNamesById]);
+
+  const renderVerseItem = React.useCallback(
+    ({ item }: { item: string }) => {
+      const verse = getVerseByKey(item);
+      if (!verse) {
+        return <VerseCardPlaceholder verseKey={item} />;
+      }
+
+      const parsed = parseVerseKeyNumbers(item);
+      const showTranslation = verse.translationItems.length > 0;
+      const showBismillah = parsed?.verseNumber === 1 && parsed.surahId !== 9 && parsed.surahId !== 1;
+      const surahName = parsed ? chapterNamesById.get(parsed.surahId) : undefined;
+
+      const translationTexts = verse.translationTexts ?? [];
+      const translationItems = showTranslationAttribution
+        ? (verse.translationItems ?? []).map((t) => {
+            if (t.resourceName) return t;
+            const fallbackName =
+              typeof t.resourceId === 'number'
+                ? translationsById.get(t.resourceId)?.name ?? `Translation ${t.resourceId}`
+                : undefined;
+            return { ...t, resourceName: fallbackName };
+          })
+        : verse.translationItems ?? [];
+
+      return (
+        <View>
+          {parsed?.verseNumber === 1 ? (
+            <View className="mb-4 mt-6 items-center">
+              <View className="rounded-full bg-surface-navigation px-4 py-1.5 dark:bg-surface-navigation-dark">
+                <Text className="text-xs font-bold text-accent dark:text-accent-dark">
+                  {surahName ?? `Surah ${parsed.surahId}`}
+                </Text>
+              </View>
+              {showBismillah ? (
+                <BismillahDisplay />
+              ) : null}
+            </View>
+          ) : null}
+          <VerseCard
+            verseKey={verse.verse_key}
+            arabicText={verse.text_uthmani ?? ''}
+            words={verse.words}
+            translationTexts={translationTexts}
+            translationItems={translationItems}
+            showTranslationAttribution={showTranslationAttribution}
+            isAudioActive={Boolean(audio.isVisible && audio.activeVerseKey === verse.verse_key)}
+            audioWordSync={verseAudioWordSync}
+            arabicFontSize={settings.arabicFontSize}
+            arabicFontFace={settings.arabicFontFace}
+            translationFontSize={settings.translationFontSize}
+            showByWords={effectiveShowByWords}
+            onWordStudyPress={Platform.OS === 'android' ? wordQuickSheet.open : undefined}
+            selectedStudyWordPosition={
+              wordQuickSheet.isOpen && wordQuickSheet.event?.verseKey === verse.verse_key
+                ? wordQuickSheet.event.wordPosition
+                : undefined
+            }
+            onOpenActions={() =>
+              openVerseActions({
+                verseKey: verse.verse_key,
+                verseApiId: verse.id,
+                arabicText: verse.text_uthmani ?? '',
+                translationTexts,
+                translationItems,
+              })
+            }
+          />
+        </View>
+      );
+    },
+    [
+      getVerseByKey,
+      chapterNamesById,
+      settings,
+      showTranslationAttribution,
+      translationsById,
+      audio,
+      verseAudioWordSync,
+      wordQuickSheet.event,
+      wordQuickSheet.isOpen,
+      wordQuickSheet.open,
+      openVerseActions,
+    ]
+  );
+
+  return (
+    <View className="flex-1 bg-background dark:bg-background-dark" style={{ backgroundColor: palette.background }}>
+      <Stack.Screen
+        options={{
+          headerShown: false,
+        }}
+      />
+
+      <ReaderOverlayHeader
+        onLayout={readerHeader.handleHeaderLayout}
+        pointerEvents={readerHeader.headerPointerEvents}
+        style={readerHeader.headerAnimatedStyle}
+      >
+        <AppSearchHeader
+          editable={readerHeader.headerPointerEvents !== 'none' && !isSettingsOpen}
+          left={
+            <HeaderActionButton accessibilityLabel="Go back" onPress={() => router.back()}>
+              <ArrowLeft color={palette.text} size={22} strokeWidth={2.25} />
+            </HeaderActionButton>
+          }
+          inputRef={headerSearch.inputRef}
+          value={headerSearch.query}
+          onChangeText={headerSearch.updateQuery}
+          placeholder="Search…"
+          onFocus={() => {
+            if (isSettingsOpen) return;
+            readerHeader.showHeader();
+            headerSearch.setIsOpen(true);
+          }}
+          onSubmitEditing={() => headerSearch.navigateToSearch()}
+          right={
+            <HeaderActionButton accessibilityLabel="Open settings" onPress={openTranslationSettings}>
+              <Settings color={palette.text} size={22} strokeWidth={2.25} />
+            </HeaderActionButton>
+          }
+        />
+      </ReaderOverlayHeader>
+
+      <View style={styles.contentStage}>
+        {isMushafView ? (
+          <View style={styles.contentLayer} pointerEvents="auto">
+            {!isHydrated ? null : resolvedMushafRenderer !== 'webview' ? (
+              <View className="flex-1 items-center justify-center px-6">
+                <Text className="text-center text-sm leading-6 text-muted dark:text-muted-dark">
+                  Select an installed exact mushaf pack to use this Page Mushaf view.
+                </Text>
+              </View>
+            ) : initialMushafPageProbe.errorMessage ? (
+              <View className="flex-1 items-center justify-center px-6">
+                <Text className="text-center text-sm leading-6 text-muted dark:text-muted-dark">
+                  {initialMushafPageProbe.errorMessage}
+                </Text>
+              </View>
+            ) : (
+              <MushafSingleDocumentReader
+                activeAudioWord={verseAudioWordSync.activeWord}
+                backgroundPageNumbers={mushafBackgroundPageNumbers}
+                chapterNamesById={chapterNamesById}
+                compactPageLines
+                expectedVersion={activeMushafVersion}
+                focusBottomInsetPx={audioPlayerBarHeight}
+                focusTopInsetPx={readerHeader.headerHeight + 12}
+                initialPageData={availableInitialMushafPageData}
+                initialPageNumber={pageNumber}
+                mushafScaleStep={settings.mushafScaleStep}
+                onSelectionChange={handleMushafSelectionChange}
+                onScrollActivity={handleMushafScrollActivity}
+                onSurahNavigation={handleMushafPageNavigation}
+                onVersePress={handleMushafVersePress}
+                onWordSeek={verseAudioWordSync.seekToWord}
+                studySelection={mushafStudySelection}
+                pageNumbers={mushafPageNumbers}
+                packId={selectedMushafId}
+                surahHeaders={mushafSurahHeaders}
+                surahNavigation={mushafPageNavigation}
+                totalPages={mushafTotalPages}
+                wordSeekEnabled={audio.isVisible}
+              />
+            )}
+          </View>
+        ) : (
+        <View style={styles.contentLayer} pointerEvents="auto">
+          {usesNativePassageReader && passage ? (
+            <NativePassageReader
+              key={pageNumber}
+              passage={passage}
+              topInset={readerHeader.headerHeight}
+              bottomInset={audioPlayerBarHeight}
+              activeWord={
+                wordQuickSheet.isOpen && wordQuickSheet.event
+                  ? {
+                      verseKey: wordQuickSheet.event.verseKey,
+                      wordPosition: wordQuickSheet.event.wordPosition,
+                      wordId: wordQuickSheet.event.wordId,
+                    }
+                  : verseAudioWordSync.activeWord
+              }
+              onOpenVerseActions={openVerseActions}
+              onOpenWordStudy={wordQuickSheet.open}
+              onScrollOffset={readerHeader.handleScrollOffset}
+              onVisibleVerseChange={handlePassageVisibleVerseChange}
+            />
+          ) : !hasLoadedContent && offlineNotInstalled ? (
+            <View className="flex-1 px-4" style={{ paddingTop: readerHeader.headerHeight + 16 }}>
+              <View className="mt-2 gap-3">
+                <Text className="text-sm text-muted dark:text-muted-dark">
+                  You’re offline and this translation isn’t downloaded yet.
+                </Text>
+                <Pressable
+                  onPress={openTranslationSettings}
+                  accessibilityRole="button"
+                  accessibilityLabel="Open translation settings"
+                  className="self-start rounded-lg bg-accent px-4 py-2"
+                  style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
+                >
+                  <Text className="text-sm font-semibold text-on-accent">
+                    Open translation settings
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+          ) : !hasLoadedContent && errorMessage ? (
+            <View className="flex-1 px-4" style={{ paddingTop: readerHeader.headerHeight + 16 }}>
+              <View className="mt-2 gap-3">
+                <Text className="text-sm text-error dark:text-error-dark">{errorMessage}</Text>
+                <Pressable
+                  onPress={retry}
+                  accessibilityRole="button"
+                  accessibilityLabel="Retry loading verses"
+                  className="self-start rounded-lg bg-number-badge px-4 py-2 dark:bg-number-badge-dark"
+                  style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}
+                >
+                  <Text className="text-sm font-semibold text-accent dark:text-accent-dark">
+                    Retry
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+          ) : !hasLoadedContent && verseKeys.length > 0 ? (
+            <FlatList
+              data={INITIAL_PLACEHOLDER_VERSE_KEYS}
+              keyExtractor={(item) => `placeholder:${pageNumber}:${item}`}
+              renderItem={({ item }) => (
+                <VerseCardPlaceholder verseKey={item} />
+              )}
+              contentContainerStyle={listContentContainerStyle}
+              ListHeaderComponent={<PageHeaderCard pageNumber={pageNumber} surahRange={surahRange} />}
+              scrollEnabled={false}
+            />
+          ) : verseKeys.length <= 0 ? (
+            <View className="flex-1 px-4" style={{ paddingTop: readerHeader.headerHeight + 16 }}>
+              <Text className="mt-2 text-sm text-muted dark:text-muted-dark">
+                No verses found for this Page.
+              </Text>
+            </View>
+          ) : Platform.OS === 'web' ? (
+            <FlatList
+              ref={(node) => {
+                flatListRef.current = node;
+              }}
+              data={verseKeys}
+              keyExtractor={(item) => item}
+              extraData={listExtraData}
+              renderItem={renderVerseItem}
+              contentContainerStyle={listContentContainerStyle}
+              refreshing={isLoading}
+              onRefresh={refresh}
+              onScroll={handleSurahListScroll}
+              scrollEventThrottle={16}
+              viewabilityConfig={viewabilityConfig}
+              onViewableItemsChanged={onViewableItemsChanged}
+              showsVerticalScrollIndicator={false}
+              ListHeaderComponent={<PageHeaderCard pageNumber={pageNumber} surahRange={surahRange} />}
+            />
+          ) : (
+            <FlashList
+              ref={(node) => {
+                flashListRef.current = node;
+              }}
+              data={verseKeys}
+              keyExtractor={(item) => item}
+              extraData={listExtraData}
+              renderItem={renderVerseItem}
+              drawDistance={Platform.OS === 'android' ? 1200 : 800}
+              contentContainerStyle={listContentContainerStyle}
+              refreshing={isLoading}
+              onRefresh={refresh}
+              onScroll={handleSurahListScroll}
+              scrollEventThrottle={16}
+              viewabilityConfig={viewabilityConfig}
+              onViewableItemsChanged={onViewableItemsChanged}
+              showsVerticalScrollIndicator={false}
+              ListHeaderComponent={<PageHeaderCard pageNumber={pageNumber} surahRange={surahRange} />}
+            />
+          )}
+          {!usesNativePassageReader && hasLoadedContent && verseKeys.length > 1 ? (
+            <VerseScrubber
+              ref={verseScrubberRef}
+              bottomInset={audioPlayerBarHeight}
+              currentVerseNumber={visibleVerseNumber}
+              onScrubStateChange={handleScrubStateChange}
+              onScrubToVerse={handleScrubToVerse}
+              topInset={0}
+              verseCount={verseKeys.length}
+            />
+          ) : null}
+        </View>
+        )}
+      </View>
+
+      <SettingsSidebar
+        isOpen={isSettingsOpen}
+        onClose={closeSettingsSidebar}
+        initialPanel={settingsInitialPanel}
+        onMushafInstalled={handleMushafInstalled}
+      />
+      <ReaderBottomMessage
+        visible={showMushafRequiredMessage}
+        message="Download a Mushaf to use page reading."
+      />
+
+      <VerseActionsSheet
+        isOpen={isVerseActionsOpen}
+        onClose={closeVerseActions}
+        title={activeVerse ? (chapterNamesById.get(parseVerseKeyNumbers(activeVerse.verseKey)?.surahId ?? 1) ?? '') : ''}
+        verseKey={activeVerse?.verseKey ?? ''}
+        isBookmarked={activeVersePinned}
+        isPlaying={audio.activeVerseKey === activeVerse?.verseKey && audio.isPlaying}
+        onPlayPause={handlePlayPause}
+        onBookmark={handleBookmark}
+        onOpenTafsir={handleOpenTafsir}
+        onAddToPlan={handleAddToPlan}
+        onCopy={handleCopy}
+        onShare={handleShare}
+      />
+
+      <ReaderWordStudySheet
+        controller={wordQuickSheet}
+        resolveSurahName={(surahId) => chapterNamesById.get(surahId) ?? `Surah ${surahId}`}
+        playWord={verseAudioWordSync.playWord}
+        playVerseFromWord={verseAudioWordSync.playVerseFromWord}
+        studySheet={isMushafView ? mushafStudySheet : undefined}
+        verseActions={studySheetVerseActions}
+        onChooseTranslation={openTranslationSettings}
+      />
+
+      {activeVerseBookmarkMetadata ? (
+        <BookmarkModal
+          isOpen={isBookmarkModalOpen}
+          onClose={() => setIsBookmarkModalOpen(false)}
+          verseId={activeVerse?.verseApiId ? String(activeVerse.verseApiId) : activeVerse?.verseKey ?? ''}
+          metadata={activeVerseBookmarkMetadata}
+        />
+      ) : null}
+
+      {plannerVerseSummary ? (
+        <AddToPlannerModal
+          isOpen={isAddToPlannerOpen}
+          onClose={() => setIsAddToPlannerOpen(false)}
+          verseSummary={plannerVerseSummary}
+        />
+      ) : null}
+
+      <ComprehensiveSearchDropdown
+        isOpen={headerSearch.isOpen && !isSettingsOpen}
+        query={headerSearch.query}
+        onQueryChange={headerSearch.updateQuery}
+        onClose={() => headerSearch.close({ clearQuery: false })}
+        onNavigateToMushaf={headerSearch.navigateToMushaf}
+        onNavigateToSurahVerse={headerSearch.navigateToSurahVerse}
+        onNavigateToTafsir={headerSearch.navigateToTafsir}
+        onNavigateToTranslation={headerSearch.navigateToTranslation}
+        onNavigateToJuz={headerSearch.navigateToJuz}
+        onNavigateToPage={headerSearch.navigateToPage}
+        onNavigateToSearch={headerSearch.navigateToSearch}
+        topInset={readerHeader.headerHeight}
+      />
+    </View>
+  );
+}

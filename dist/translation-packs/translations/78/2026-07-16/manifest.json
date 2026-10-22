@@ -1,0 +1,15 @@
+{
+  "translationId": 78,
+  "name": "Ministry of Awqaf, Egypt",
+  "authorName": "Ministry of Awqaf, Egypt",
+  "languageName": "russian",
+  "version": "2026-07-16",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "601dd8a0fb437a68f46f84f3c3f4b067",
+  "payloadSizeBytes": 4946398,
+  "totalVerses": 6236,
+  "generatedAt": "2026-07-16T11:36:53.213Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=78&per_page=300"
+}

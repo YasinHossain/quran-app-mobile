@@ -1,0 +1,15 @@
+{
+  "translationId": 774,
+  "name": "The Rwanda Muslims Association team",
+  "authorName": "The Rwanda Muslims Association team",
+  "languageName": "kinyarwanda",
+  "version": "2026-07-16",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "10116696b5c53b4699dd68706ed0e5bd",
+  "payloadSizeBytes": 2780314,
+  "totalVerses": 6236,
+  "generatedAt": "2026-07-16T11:37:23.151Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=774&per_page=300"
+}

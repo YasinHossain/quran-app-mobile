@@ -1,0 +1,15 @@
+{
+  "translationId": 83,
+  "name": "Sheikh Isa Garcia",
+  "authorName": "Sheikh Isa Garcia",
+  "languageName": "spanish",
+  "version": "2026-07-16",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "255e77f6f5c6d3b2f2df387f21827203",
+  "payloadSizeBytes": 2730462,
+  "totalVerses": 6236,
+  "generatedAt": "2026-07-16T11:37:14.927Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=83&per_page=300"
+}

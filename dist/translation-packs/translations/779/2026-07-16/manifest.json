@@ -1,0 +1,15 @@
+{
+  "translationId": 779,
+  "name": "Rashid Maash",
+  "authorName": "Rashid Maash",
+  "languageName": "french",
+  "version": "2026-07-16",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "c156c03402a076902b4ae3e52838d0e2",
+  "payloadSizeBytes": 2835029,
+  "totalVerses": 6236,
+  "generatedAt": "2026-07-16T11:37:08.405Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=779&per_page=300"
+}

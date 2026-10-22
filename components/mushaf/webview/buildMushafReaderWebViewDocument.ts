@@ -1,0 +1,3051 @@
+import type { MushafPackId, MushafPageData, MushafScaleStep } from '@/types';
+
+import { getMushafWebViewLayoutConfig } from '@/components/mushaf/mushafLayoutPresets';
+import { getBismillahCalligraphyPathData } from '@/components/surah/BismillahCalligraphy';
+import { getJuzByPage } from '@/lib/utils/surah-navigation';
+
+import chapters from '../../../src/data/chapters.en.json';
+
+type MushafReaderWebViewTheme = 'light' | 'dark';
+
+type MushafReaderWebViewLayoutPayload = {
+  fontSizeCss: string;
+  isExactPreset: boolean;
+  lineWidthCss: string;
+  lineHeightMultiplier: number;
+  reflowLineHeightMultiplier: number;
+};
+
+const REFLOW_HYSTERESIS_PX = 20;
+const SURAH_VERSE_COUNTS = chapters.map((chapter) => chapter.verses_count);
+const shellDocumentCache = new Map<string, { html: string; layout: MushafReaderWebViewLayoutPayload }>();
+
+export type MushafReaderSurahIntro = {
+  arabicName?: string | undefined;
+  chapterId: number;
+  infoLabel: string;
+  isMakkah: boolean;
+  showBismillah: boolean;
+  surahName: string;
+};
+
+export type MushafReaderSurahNavigation = {
+  /** Labels of the neighbouring reading unit: a Surah, Juz or Page name. */
+  nextSurahName?: string | undefined;
+  previousSurahName?: string | undefined;
+};
+
+/** Stable identity for in-page Surah headers, used in document and session cache keys. */
+export function getMushafSurahHeadersSignature(
+  surahHeaders: readonly MushafReaderSurahIntro[] | undefined
+): string {
+  if (!surahHeaders?.length) return 'no-headers';
+  return surahHeaders
+    .map((header) =>
+      [
+        header.chapterId,
+        header.surahName,
+        header.arabicName ?? '',
+        header.infoLabel,
+        header.showBismillah ? 1 : 0,
+      ].join('|')
+    )
+    .join(',');
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function serializeJson(value: unknown): string {
+  return JSON.stringify(value)
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/&/g, '\\u0026')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029');
+}
+
+function normalizeShellPageNumbers(pageNumbers: number[] | undefined, totalPages: number): number[] {
+  const normalizedTotalPages = Math.max(1, Math.trunc(totalPages));
+  const normalized = Array.from(
+    new Set(
+      (Array.isArray(pageNumbers) && pageNumbers.length > 0
+        ? pageNumbers
+        : Array.from({ length: normalizedTotalPages }, (_value, index) => index + 1)
+      )
+        .filter((pageNumber) => Number.isFinite(pageNumber))
+        .map((pageNumber) => Math.trunc(pageNumber))
+        .filter((pageNumber) => pageNumber >= 1 && pageNumber <= normalizedTotalPages)
+    )
+  ).sort((left, right) => left - right);
+
+  return normalized.length ? normalized : [1];
+}
+
+function buildPageShells(
+  pageNumbers: number[],
+  estimatedPageHeight: number,
+  compactPageLines: boolean,
+  initialPageNumber: number
+): string {
+  const pageMinHeight = Math.max(280, Math.round(estimatedPageHeight));
+  const pageShells: string[] = [];
+
+  for (const pageNumber of pageNumbers) {
+    const juzNumber = getJuzByPage(pageNumber);
+    pageShells.push(`
+      <article class="reader-page loading${
+        Math.abs(pageNumber - initialPageNumber) <= 1 ? ' keep-rendered' : ''
+      }" data-page-number="${pageNumber}" data-juz-number="${juzNumber}">
+        <div class="page-content"${compactPageLines ? '' : ` style="min-height: ${pageMinHeight}px;"`}>
+          <div class="standard-view"></div>
+          <div class="reflow-view"></div>
+        </div>
+        <footer class="page-footer" aria-hidden="true">
+          <span></span><b class="page-footer-label">Page ${pageNumber} • Juz ${juzNumber}</b><span></span>
+        </footer>
+      </article>
+    `);
+  }
+
+  return pageShells.join('\n');
+}
+
+function buildBackgroundMinaretSvg(x: number, height: number): string {
+  const shaftWidth = 3.5;
+  const balconyWidth = 6.5;
+  const baseY = 78;
+  const topY = baseY - height;
+
+  return `
+    <g opacity=".85">
+      <rect x="${x - shaftWidth / 2}" y="${topY}" width="${shaftWidth}" height="${height}" rx=".5" fill="var(--intro-minaret)"/>
+      <rect x="${x - balconyWidth / 2}" y="${topY + height * 0.45}" width="${balconyWidth}" height="2" rx=".3" fill="var(--intro-minaret)"/>
+      <rect x="${x - balconyWidth / 2}" y="${topY + height * 0.15}" width="${balconyWidth}" height="2" rx=".3" fill="var(--intro-minaret)"/>
+      <path d="M${x - 2.2} ${topY}Q${x - 2.7} ${topY - 3.5} ${x} ${topY - 4.5}Q${x + 2.7} ${topY - 3.5} ${x + 2.2} ${topY}Z" fill="var(--intro-minaret)"/>
+      <path d="M${x} ${topY - 4.5}V${topY - 7.5}" fill="none" stroke="var(--intro-minaret)" stroke-width=".8"/>
+    </g>
+  `;
+}
+
+function buildRevelationIllustrationHtml(isMakkah: boolean): string {
+  const background = `
+    <path d="M40 78C40 30 65 15 88 15s48 15 48 63Z" fill="var(--intro-art-bg)"/>
+  `;
+  const ground = `
+    <ellipse cx="${isMakkah ? 92 : 85}" cy="70" rx="${isMakkah ? 22 : 26}" ry="${isMakkah ? 4.5 : 4}" fill="var(--intro-shadow)" opacity="var(--intro-shadow-opacity)"/>
+    <path d="M39 72h97" fill="none" stroke="var(--intro-art-line)" stroke-linecap="round" stroke-width="1.8"/>
+  `;
+  const mosqueWall = `
+    <path d="M45 78V${isMakkah ? 62 : 64}h3q5-4 10 0h3v${isMakkah ? 16 : 14}m0 0V${isMakkah ? 62 : 64}h3q5-4 10 0h3v${isMakkah ? 16 : 14}m0 0V${isMakkah ? 62 : 64}h3q5-4 10 0h3v${isMakkah ? 16 : 14}m0 0V${isMakkah ? 62 : 64}h3q5-4 10 0h3v${isMakkah ? 16 : 14}m0 0V${isMakkah ? 62 : 64}h3q5-4 10 0h3v${isMakkah ? 16 : 14}" fill="var(--intro-mosque)" opacity=".5"/>
+  `;
+
+  if (isMakkah) {
+    return `
+      <svg viewBox="39 12 98 66" aria-hidden="true">
+        ${background}
+        ${buildBackgroundMinaretSvg(54, 50)}
+        ${buildBackgroundMinaretSvg(68, 56)}
+        ${buildBackgroundMinaretSvg(122, 44)}
+        ${mosqueWall}
+        ${ground}
+        <path d="M76 40l16 4v26l-16-4Z" fill="var(--intro-kaaba-left)"/>
+        <path d="m92 44 16-4v26l-16 4Z" fill="var(--intro-kaaba-right)"/>
+        <path d="m76 45.2 16 4v2.5l-16-4Z" fill="var(--intro-gold)"/>
+        <path d="m92 49.2 16-4v2.5l-16 4Z" fill="var(--intro-gold-light)"/>
+        <path d="m96 68.8 5-1.25v-13l-5 1.25Z" fill="var(--intro-gold-light)"/>
+      </svg>
+    `;
+  }
+
+  return `
+    <svg viewBox="39 12 98 66" aria-hidden="true">
+      ${background}
+      ${buildBackgroundMinaretSvg(52, 54)}
+      ${buildBackgroundMinaretSvg(118, 50)}
+      ${mosqueWall}
+      ${ground}
+      <rect x="68" y="64" width="34" height="7" rx=".8" fill="var(--intro-dome-base)"/>
+      <rect x="72" y="58" width="26" height="6" rx=".5" fill="var(--intro-dome-dark)"/>
+      <path d="M70 58c-2-8 4-20 15-22 11 2 17 14 15 22Z" fill="var(--intro-dome)"/>
+      <path d="M85 36V25" fill="none" stroke="var(--intro-gold)" stroke-width="1.2"/>
+      <path d="M85 25c1.3 0 2.2.8 2.2 1.8s-1 1.8-2.2 1.8c.7 0 1.4-.6 1.4-1.8s-.7-1.5-1.4-1.8Z" fill="var(--intro-gold)"/>
+    </svg>
+  `;
+}
+
+function buildBismillahOrnamentEndHtml(): string {
+  return `
+    <path d="M6 20h19c11 0 13-10 18-10s7 10 18 10h19M6 56h19c11 0 13 10 18 10s7-10 18-10h19"/>
+    <path d="M6 23h18c10 0 12-8 19-8s9 8 19 8h18M6 53h18c10 0 12 8 19 8s9-8 19-8h18"/>
+    <circle cx="43" cy="38" r="20"/><circle cx="43" cy="38" r="17"/><circle cx="43" cy="38" r="13.5"/>
+    <rect x="34" y="29" width="18" height="18" rx="1.5"/><rect x="34" y="29" width="18" height="18" rx="1.5" transform="rotate(45 43 38)"/>
+    <circle cx="43" cy="38" r="3.5"/>
+    <path d="m41 10 2-2 2 2-2 2Zm0 56 2 2 2-2-2-2Z"/>
+    <circle cx="14" cy="38" r="5"/><circle cx="14" cy="38" r="2"/><path d="M6 38h3m10 0h4m-9-5v2m0 6v2"/>
+    <circle cx="72" cy="38" r="5"/><circle cx="72" cy="38" r="2"/><path d="M63 38h4m10 0h3.5M72 33v2m0 6v2"/>
+    <path d="m76.5 38 3.5-3.5 3.5 3.5-3.5 3.5Z"/>
+  `;
+}
+
+function buildBismillahHtml(): string {
+  const ornamentEnd = buildBismillahOrnamentEndHtml();
+  const calligraphyPath = escapeHtml(getBismillahCalligraphyPathData());
+
+  return `
+    <div class="surah-intro-bismillah" role="img" aria-label="Bismillah ir-Rahman ir-Rahim">
+      <svg class="bismillah-ornament" viewBox="0 0 560 76" fill="none" stroke="currentColor" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="2" y="2" width="556" height="72" rx="3"/><rect x="6" y="6" width="548" height="64" rx="2"/>
+        <g>${ornamentEnd}</g><g transform="translate(560 0) scale(-1 1)">${ornamentEnd}</g>
+        <path d="M80 38c8-24 25-24 25-24h350s17 0 25 24c-8 24-25 24-25 24H105s-17 0-25-24Z"/>
+        <path d="M84 38c7-21 24-21 24-21h344s16 0 24 21c-7 21-24 21-24 21H108s-16 0-24-21Z"/>
+        <path d="m108 17 4 4-4 4-4-4Zm344 0 4 4-4 4-4-4ZM108 59l4-4-4-4-4 4Zm344 0 4-4-4-4-4 4Z"/>
+        <path d="M91 38c4-5 8-5 12 0-4 5-8 5-12 0Z"/><circle cx="97" cy="38" r="1.35"/><path d="M103 38h5"/>
+        <g transform="translate(560 0) scale(-1 1)"><path d="M91 38c4-5 8-5 12 0-4 5-8 5-12 0Z"/><circle cx="97" cy="38" r="1.35"/><path d="M103 38h5"/></g>
+      </svg>
+      <svg class="bismillah-calligraphy" viewBox="0 0 11523 1583" aria-hidden="true">
+        <g transform="translate(0 979) scale(1 -1)"><path fill="currentColor" d="${calligraphyPath}"/></g>
+      </svg>
+    </div>
+  `;
+}
+
+function buildSurahIntroHtml(surahIntro?: MushafReaderSurahIntro): string {
+  if (!surahIntro) {
+    return '';
+  }
+
+  const placeLabel = surahIntro.isMakkah ? 'Makki' : 'Madani';
+  const illustration = buildRevelationIllustrationHtml(surahIntro.isMakkah);
+
+  return `
+      <section class="surah-intro" aria-label="${escapeHtml(surahIntro.surahName)}">
+        <div class="surah-intro-heading">
+          <div class="surah-intro-copy">
+            <h1>${escapeHtml(surahIntro.surahName)}</h1>
+            <p>${escapeHtml(surahIntro.infoLabel)}</p>
+          </div>
+          <div class="surah-intro-illustration" role="img" aria-label="${placeLabel} surah">
+            ${illustration}
+          </div>
+        </div>
+        ${surahIntro.showBismillah ? buildBismillahHtml() : ''}
+      </section>
+  `;
+}
+
+function buildSurahNavigationHtml(surahNavigation?: MushafReaderSurahNavigation): string {
+  const hasPrevious = Boolean(surahNavigation?.previousSurahName);
+  const hasNext = Boolean(surahNavigation?.nextSurahName);
+  if (!hasPrevious && !hasNext) {
+    return '';
+  }
+
+  return `
+      <nav class="surah-navigation" aria-label="Reading navigation">
+        <button
+          class="surah-navigation-button"
+          data-surah-navigation="previous"
+          type="button"
+          ${hasPrevious ? '' : 'disabled'}
+        >
+          <span class="surah-navigation-kicker">Previous</span>
+          <span>${hasPrevious ? escapeHtml(surahNavigation?.previousSurahName ?? '') : 'Start'}</span>
+        </button>
+        <button
+          class="surah-navigation-button"
+          data-surah-navigation="next"
+          type="button"
+          ${hasNext ? '' : 'disabled'}
+        >
+          <span class="surah-navigation-kicker">Next</span>
+          <span>${hasNext ? escapeHtml(surahNavigation?.nextSurahName ?? '') : 'End'}</span>
+        </button>
+      </nav>
+  `;
+}
+
+function buildShellDocumentHtml({
+  compactPageLines,
+  estimatedPageHeight,
+  focusTopInsetPx,
+  highlightVerseKey,
+  initialPageNumber,
+  initialPages,
+  layout,
+  pageNumbers,
+  surahHeaders,
+  surahIntro,
+  surahNavigation,
+  theme,
+  totalPages,
+}: {
+  compactPageLines: boolean;
+  estimatedPageHeight: number;
+  focusTopInsetPx: number;
+  highlightVerseKey?: string | null;
+  initialPageNumber: number;
+  initialPages: MushafPageData[];
+  layout: MushafReaderWebViewLayoutPayload;
+  pageNumbers?: number[] | undefined;
+  surahHeaders?: readonly MushafReaderSurahIntro[] | undefined;
+  surahIntro?: MushafReaderSurahIntro | undefined;
+  surahNavigation?: MushafReaderSurahNavigation | undefined;
+  theme: MushafReaderWebViewTheme;
+  totalPages: number;
+}): string {
+  // Keyed by chapter id; the page script draws a header above the line where that Surah begins.
+  const inlineSurahHeaders = Object.fromEntries(
+    (surahHeaders ?? []).map((header) => [
+      header.chapterId,
+      {
+        arabic: header.arabicName ?? '',
+        bismillah: header.showBismillah,
+        info: header.infoLabel,
+        name: header.surahName,
+      },
+    ])
+  );
+  const inlineBismillahHtml = (surahHeaders ?? []).some((header) => header.showBismillah)
+    ? buildBismillahHtml()
+    : '';
+  const topContentPaddingPx = Math.max(
+    12,
+    Math.round(focusTopInsetPx) + (surahIntro ? 0 : 12)
+  );
+  const palette =
+    theme === 'dark'
+      ? {
+          background: '#0B1220',
+          border: 'rgba(255,255,255,0.12)',
+          highlight: 'rgba(34, 197, 94, 0.26)',
+          text: '#E7E5E4',
+          muted: '#94A3B8',
+          introArtBg: surahIntro?.isMakkah ? '#27211B' : '#15221B',
+          introArtLine: surahIntro?.isMakkah ? '#5C5042' : '#385244',
+          introArtMuted: surahIntro?.isMakkah ? '#504233' : '#2E473B',
+          introDome: '#439D7A',
+          introDomeDark: '#348263',
+          introDomeBase: '#2E473B',
+          introGold: '#B8922A',
+          introGoldLight: '#D3AB3B',
+          introKaabaLeft: '#0C0A09',
+          introKaabaRight: '#161412',
+          introMinaret: surahIntro?.isMakkah ? '#504233' : '#2E473B',
+          introMosque: surahIntro?.isMakkah ? '#43372B' : '#24372D',
+          introShadow: '#000000',
+          introShadowOpacity: surahIntro?.isMakkah ? 0.4 : 0.45,
+        }
+      : {
+          background: '#F7F9F9',
+          border: 'rgba(15,23,42,0.12)',
+          highlight: 'rgba(34, 197, 94, 0.2)',
+          text: '#111827',
+          muted: '#6B7280',
+          introArtBg: surahIntro?.isMakkah ? '#FDF7EA' : '#EEF6F2',
+          introArtLine: surahIntro?.isMakkah ? '#DECFA2' : '#B8D1C4',
+          introArtMuted: surahIntro?.isMakkah ? '#DECFA2' : '#C6DCD0',
+          introDome: '#28785C',
+          introDomeDark: '#1E5E45',
+          introDomeBase: '#ECE5DB',
+          introGold: '#C5A028',
+          introGoldLight: '#E5C158',
+          introKaabaLeft: '#1C1917',
+          introKaabaRight: '#2A2723',
+          introMinaret: surahIntro?.isMakkah ? '#DECFA2' : '#C6DCD0',
+          introMosque: surahIntro?.isMakkah ? '#EADCB9' : '#D5E8DE',
+          introShadow: surahIntro?.isMakkah ? '#8B7355' : '#4E685B',
+          introShadowOpacity: surahIntro?.isMakkah ? 0.15 : 0.2,
+        };
+
+  const normalizedTotalPages = Math.max(1, Math.trunc(totalPages));
+  const normalizedPageNumbers = normalizeShellPageNumbers(pageNumbers, normalizedTotalPages);
+  const firstShellPageNumber = normalizedPageNumbers[0] ?? 1;
+  const rawInitialPageNumber = Math.min(
+    Math.max(1, Math.trunc(initialPageNumber)),
+    normalizedTotalPages
+  );
+  const normalizedInitialPageNumber = normalizedPageNumbers.includes(rawInitialPageNumber)
+    ? rawInitialPageNumber
+    : firstShellPageNumber;
+
+  return `<!DOCTYPE html>
+<html lang="en" class="awaiting-initial-position">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
+    />
+    <title>${escapeHtml('Mushaf')}</title>
+    <style>
+      :root {
+        color-scheme: ${theme};
+        --background: ${palette.background};
+        --border: ${palette.border};
+        --highlight: ${palette.highlight};
+        --text: ${palette.text};
+        --muted: ${palette.muted};
+        --intro-art-bg: ${palette.introArtBg};
+        --intro-art-line: ${palette.introArtLine};
+        --intro-art-muted: ${palette.introArtMuted};
+        --intro-dome: ${palette.introDome};
+        --intro-dome-dark: ${palette.introDomeDark};
+        --intro-dome-base: ${palette.introDomeBase};
+        --intro-gold: ${palette.introGold};
+        --intro-gold-light: ${palette.introGoldLight};
+        --intro-kaaba-left: ${palette.introKaabaLeft};
+        --intro-kaaba-right: ${palette.introKaabaRight};
+        --intro-minaret: ${palette.introMinaret};
+        --intro-mosque: ${palette.introMosque};
+        --intro-shadow: ${palette.introShadow};
+        --intro-shadow-opacity: ${palette.introShadowOpacity};
+        --font-size: ${layout.fontSizeCss};
+        --line-height-multiplier: ${layout.lineHeightMultiplier};
+        --line-height: calc(var(--font-size) * var(--line-height-multiplier));
+        --reflow-line-height-multiplier: ${layout.reflowLineHeightMultiplier};
+        --reflow-line-height: calc(var(--font-size) * var(--reflow-line-height-multiplier));
+        --exact-line-width: ${layout.lineWidthCss};
+        --line-gap: 4px;
+        --loading-page-min-height: ${Math.max(280, Math.round(estimatedPageHeight))}px;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        -webkit-text-size-adjust: none;
+        text-size-adjust: none;
+        background: var(--background);
+        color: var(--text);
+        font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        scroll-behavior: auto;
+      }
+
+      body {
+        min-height: 100vh;
+        overflow-x: hidden;
+      }
+
+      #app {
+        width: min(calc(100vw - 8px), 720px);
+        margin: 0 auto;
+        padding: ${topContentPaddingPx}px 0 24px;
+      }
+
+      .surah-intro {
+        border-bottom: 1px solid var(--border);
+        border-color: ${
+          theme === 'dark' ? 'rgba(51, 65, 85, 0.3)' : 'rgba(229, 231, 235, 0.4)'
+        };
+        left: 50%;
+        margin: 0 0 16px;
+        padding: 0 0 20px;
+        position: relative;
+        transform: translateX(-50%);
+        /* Stays within the page's text block, which is narrower than the screen in landscape. */
+        width: min(var(--exact-line-width), calc(100vw - 32px));
+      }
+
+      .surah-intro-heading {
+        align-items: center;
+        display: flex;
+        gap: 12px;
+        justify-content: space-between;
+        min-height: 84px;
+        padding: 0;
+      }
+
+      .surah-intro-copy {
+        flex: 1;
+        min-width: 0;
+        padding-top: 8px;
+      }
+
+      .surah-intro-copy h1 {
+        color: ${theme === 'dark' ? '#E7E5E4' : '#374151'};
+        font-size: 21px;
+        font-weight: 700;
+        line-height: 28px;
+        margin: 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .surah-intro-copy p {
+        color: ${theme === 'dark' ? '#94A3B8' : '#6B7280'};
+        font-size: 14px;
+        line-height: 20px;
+        margin: 4px 0 0;
+      }
+
+      .surah-intro-illustration {
+        flex: none;
+        height: 62px;
+        width: 92px;
+      }
+
+      .surah-intro-illustration svg {
+        display: block;
+        height: 100%;
+        width: 100%;
+      }
+
+      .surah-intro-bismillah {
+        color: ${theme === 'dark' ? '#D5DED9' : '#3F735B'};
+        height: auto;
+        margin: 20px auto 0;
+        max-width: 560px;
+        position: relative;
+        width: calc(100% - 16px);
+        aspect-ratio: 560 / 76;
+      }
+
+      .bismillah-ornament {
+        display: block;
+        height: 100%;
+        inset: 0;
+        position: absolute;
+        width: 100%;
+      }
+
+      .bismillah-calligraphy {
+        height: 54%;
+        left: 20%;
+        position: absolute;
+        top: 23%;
+        width: 60%;
+      }
+
+      .inline-surah-header {
+        margin: 18px auto 14px;
+        /* Matches the page's line width so the header never extends past the page. */
+        width: min(var(--exact-line-width), 100%);
+      }
+
+      .standard-view > .inline-surah-header:first-child,
+      .reflow-view > .inline-surah-header:first-child {
+        margin-top: 4px;
+      }
+
+      .inline-surah-banner {
+        align-items: center;
+        background: ${theme === 'dark' ? 'rgba(213, 222, 217, 0.05)' : 'rgba(63, 115, 91, 0.06)'};
+        border: 1px solid ${theme === 'dark' ? 'rgba(213, 222, 217, 0.22)' : 'rgba(63, 115, 91, 0.28)'};
+        border-radius: 14px;
+        display: flex;
+        gap: 12px;
+        justify-content: space-between;
+        padding: 10px 16px;
+      }
+
+      .inline-surah-copy {
+        display: flex;
+        flex: 1;
+        flex-direction: column;
+        gap: 2px;
+        min-width: 0;
+      }
+
+      .inline-surah-arabic {
+        color: ${theme === 'dark' ? '#E7E5E4' : '#374151'};
+        flex: none;
+        font-size: 22px;
+        font-weight: 600;
+        line-height: 30px;
+        white-space: nowrap;
+      }
+
+      .inline-surah-banner h2 {
+        color: ${theme === 'dark' ? '#E7E5E4' : '#374151'};
+        font-size: 17px;
+        font-weight: 700;
+        line-height: 24px;
+        margin: 0;
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .inline-surah-banner p {
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 16px;
+        margin: 0;
+      }
+
+      .inline-surah-header .surah-intro-bismillah {
+        margin-top: 12px;
+        width: 100%;
+      }
+
+      /* Landscape leaves little height, so Surah headers step back to keep the text in view. */
+      @media (orientation: landscape) {
+        .inline-surah-header {
+          margin: 12px auto 10px;
+        }
+
+        .inline-surah-banner {
+          border-radius: 12px;
+          padding: 6px 12px;
+        }
+
+        .inline-surah-banner h2 {
+          font-size: 15px;
+          line-height: 20px;
+        }
+
+        .inline-surah-banner p {
+          font-size: 11px;
+          line-height: 14px;
+        }
+
+        .inline-surah-arabic {
+          font-size: 18px;
+          line-height: 24px;
+        }
+
+        .inline-surah-header .surah-intro-bismillah,
+        .surah-intro .surah-intro-bismillah {
+          margin-top: 8px;
+          width: 70%;
+        }
+      }
+
+      .reader-page {
+        width: 100%;
+        overflow: hidden;
+        /* Off-screen pages skip layout. Each page font added to the document otherwise
+           re-laid out and re-shaped every rendered page, so pre-rendering a long Surah stalled. */
+        content-visibility: auto;
+        contain-intrinsic-block-size: auto var(--loading-page-min-height);
+      }
+
+      /* A jump target and its neighbors render in the same frame as the jump; with
+         content-visibility: auto they would otherwise paint blank for a few frames. */
+      .reader-page.keep-rendered {
+        content-visibility: visible;
+      }
+
+      .reader-page + .reader-page {
+        margin-top: 10px;
+      }
+
+      .page-content {
+        opacity: 1;
+        transition: opacity 120ms ease;
+        width: 100%;
+      }
+
+      .reader-page.loading .page-content {
+        min-height: var(--loading-page-min-height);
+        opacity: 0;
+      }
+
+      .reader-page.loading {
+        position: relative;
+      }
+
+      .reader-page.loading::after {
+        color: var(--muted);
+        content: 'Loading page…';
+        font-size: 12px;
+        left: 0;
+        position: absolute;
+        right: 0;
+        text-align: center;
+        top: 36px;
+      }
+
+      .standard-view {
+        width: 100%;
+      }
+
+      .line-shell {
+        direction: rtl;
+        margin: 0 auto;
+        font-size: var(--font-size);
+        max-width: 100%;
+        text-align: center;
+        /* Keep the web preset's font-to-width ratio; a wide line must not widen every row. */
+        width: min(var(--exact-line-width), 100%);
+      }
+
+      .line-shell + .line-shell {
+        margin-top: var(--line-gap);
+      }
+
+      .line-content {
+        align-items: center;
+        color: var(--text);
+        direction: rtl;
+        display: flex;
+        column-gap: 0;
+        justify-content: space-between;
+        line-height: var(--line-height);
+        min-height: var(--line-height);
+        white-space: nowrap;
+      }
+
+      .line-shell.centered .line-content {
+        justify-content: center;
+      }
+
+      .line-shell.surah-end.centered .line-content {
+        column-gap: 0.35em;
+      }
+
+      .line-shell.blank .line-content {
+        color: transparent;
+        justify-content: center;
+        user-select: none;
+      }
+
+      .reader-page.reflow .standard-view {
+        display: none;
+      }
+
+      .reflow-view {
+        display: none;
+        width: 100%;
+      }
+
+      .reader-page.reflow .reflow-view {
+        display: block;
+      }
+
+      .reflow-copy {
+        direction: rtl;
+        font-size: var(--font-size);
+        line-height: var(--reflow-line-height);
+        margin: 0 auto;
+        text-align: center;
+        width: 100%;
+      }
+
+      .word,
+      .reflow-word {
+        align-items: center;
+        color: inherit;
+        display: inline-flex;
+        -webkit-touch-callout: default;
+        -webkit-user-select: text;
+        user-select: text;
+      }
+
+      .word {
+        flex: none;
+        padding-inline: 0.04em;
+      }
+
+      .word.qcf-word,
+      .reflow-word.qcf-word {
+        font-weight: 400;
+      }
+
+      .word.qcf-word {
+        padding-inline: 0;
+      }
+
+      .word.arrival-highlight,
+      .reflow-word.arrival-highlight {
+        background:
+          linear-gradient(
+            to bottom,
+            transparent 14%,
+            var(--highlight) 14%,
+            var(--highlight) 88%,
+            transparent 88%
+          );
+        border-radius: 0.15em;
+      }
+
+      .word.active-audio-word,
+      .reflow-word.active-audio-word {
+        background:
+          linear-gradient(
+            to bottom,
+            transparent 8%,
+            var(--highlight) 8%,
+            var(--highlight) 92%,
+            transparent 92%
+          );
+        border-radius: 0.18em;
+      }
+
+      .word.study-selected,
+      .reflow-word.study-selected {
+        background:
+          linear-gradient(
+            to bottom,
+            transparent 8%,
+            var(--highlight) 8%,
+            var(--highlight) 92%,
+            transparent 92%
+          );
+        border-radius: 0.18em;
+      }
+
+      /* Ayah numbers open the verse sheet; widen their small glyph's tap area without moving it. */
+      [data-mushaf-word="true"][data-char-type="end"] {
+        position: relative;
+      }
+
+      [data-mushaf-word="true"][data-char-type="end"]::after {
+        content: '';
+        position: absolute;
+        inset: -0.35em -0.1em;
+      }
+
+      .indopak-verse-marker {
+        display: inline-block;
+        flex: none;
+        font-family: var(--qcf-font-family, serif);
+        font-size: 0.92em;
+        line-height: 1;
+        margin-inline: 0.04em;
+        unicode-bidi: isolate;
+        white-space: nowrap;
+      }
+
+      .reflow-spacer {
+        display: inline-block;
+        white-space: pre;
+        width: 0.14em;
+      }
+
+      .page-footer {
+        align-items: center;
+        color: var(--muted);
+        display: flex;
+        font-size: 12px;
+        font-weight: 500;
+        gap: 12px;
+        justify-content: center;
+        padding: 12px 12px 0;
+      }
+
+      .page-footer span {
+        background: var(--border);
+        height: 1px;
+        max-width: 80px;
+        width: 22%;
+      }
+
+      .page-footer b {
+        font: inherit;
+      }
+
+      .surah-navigation {
+        display: grid;
+        gap: 10px;
+        grid-template-columns: 1fr 1fr;
+        margin: 22px auto 0;
+        padding: 4px 12px 12px;
+        width: 100%;
+      }
+
+      .surah-navigation-button {
+        appearance: none;
+        -webkit-appearance: none;
+        background: transparent;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        color: var(--text);
+        display: flex;
+        flex-direction: column;
+        font: inherit;
+        gap: 2px;
+        min-height: 50px;
+        min-width: 0;
+        padding: 8px 14px;
+        text-align: center;
+      }
+
+      .surah-navigation-button:active:not(:disabled) {
+        opacity: 0.7;
+        transform: scale(0.98);
+      }
+
+      .surah-navigation-button:disabled {
+        color: var(--muted);
+        opacity: 0.45;
+      }
+
+      .surah-navigation-button span {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .surah-navigation-kicker {
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+      }
+
+      /* The document reveals itself once the opening page is positioned, without waiting for a
+         React Native round trip while the reader screen is still mounting. */
+      html.awaiting-initial-position #app {
+        visibility: hidden;
+      }
+    </style>
+  </head>
+  <body>
+    <main id="app" aria-label="Mushaf pages">
+      ${buildSurahIntroHtml(surahIntro)}
+      ${buildPageShells(normalizedPageNumbers, estimatedPageHeight, compactPageLines, normalizedInitialPageNumber)}
+      ${buildSurahNavigationHtml(surahNavigation)}
+    </main>
+    <script>
+      (function () {
+        var app = document.getElementById('app');
+        if (!app) {
+          return;
+        }
+
+        var INITIAL_PAGE_NUMBER = ${normalizedInitialPageNumber};
+        var HIGHLIGHT_VERSE_KEY = ${serializeJson(highlightVerseKey ?? '')};
+        var FOCUS_TOP_INSET_PX = ${Math.max(0, Math.round(focusTopInsetPx))};
+        var TOP_CONTENT_PADDING_EXTRA_PX = ${surahIntro ? 0 : 12};
+        var FIRST_SHELL_PAGE_NUMBER = ${firstShellPageNumber};
+        var KEEP_SURAH_INTRO_VISIBLE = ${
+          surahIntro &&
+          normalizedInitialPageNumber === firstShellPageNumber &&
+          highlightVerseKey === `${surahIntro.chapterId}:1`
+            ? 'true'
+            : 'false'
+        };
+        var COMPACT_PAGE_LINES = ${compactPageLines ? 'true' : 'false'};
+        // Surah-ending lines the printed Madani Mushaf centres instead of justifying (Quran.com's list).
+        var CENTERED_PAGE_LINES = {
+          255: [2], 528: [9], 534: [6], 545: [6], 586: [1], 593: [2], 594: [5], 600: [10],
+          602: [5, 15], 603: [10, 15], 604: [4, 9, 14, 15],
+        };
+        var SURAH_VERSE_COUNTS = ${serializeJson(SURAH_VERSE_COUNTS)};
+        // The IndoPak prints have no fixed list, so a short line that ends a Surah is centred with
+        // the spacing of a justified line instead of being stretched across the page.
+        var SURAH_END_WORD_GAP_EM = 0.35;
+        var SURAH_END_CENTER_MAX_FILL = 0.85;
+        var INLINE_SURAH_HEADERS = ${serializeJson(inlineSurahHeaders)};
+        var INLINE_BISMILLAH_HTML = ${serializeJson(inlineBismillahHtml)};
+        var PAGE_NUMBERS = ${serializeJson(normalizedPageNumbers)};
+        var PAGE_NUMBER_LOOKUP = PAGE_NUMBERS.reduce(function (lookup, pageNumber) {
+          lookup[pageNumber] = true;
+          return lookup;
+        }, Object.create(null));
+        var REFLOW_HYSTERESIS_PX = ${REFLOW_HYSTERESIS_PX};
+        var pageStates = new Map();
+        var loadedPageNumbers = new Set();
+        var activeRenderTokens = Object.create(null);
+        var qcfFontLoadPromises = new Map();
+        // Font loads run nearest-page-first so a scrub or jump target never waits behind pages
+        // queued on the way there.
+        var MAX_CONCURRENT_QCF_FONT_LOADS = 2;
+        var pendingQcfFontLoads = [];
+        var activeQcfFontLoadCount = 0;
+        var qcfFontPriorityPageNumber = null;
+        var scrollRequestTimeoutId = null;
+        var activePageRafId = null;
+        var scrollActivityRafId = null;
+        var lastEmittedActivePageNumber = null;
+        var lastEmittedActiveVerseKey = '';
+        var selectionRafId = null;
+        var didScrollToInitialPage = false;
+        var didScrollToHighlight = false;
+        var didEmitInitialPositioned = false;
+        var initialPositionRafId = null;
+        var isArrivalHighlightVisible = Boolean(HIGHLIGHT_VERSE_KEY);
+        var arrivalHighlightTimeoutId = null;
+        var activeAudioVerseKey = '';
+        var activeAudioWordPosition = 0;
+        var activeAudioBottomInsetPx = 0;
+        var activeAudioScrollRafId = null;
+        var studySelectedVerseKey = '';
+        var studySelectedWordPosition = 0;
+
+        function emit(message) {
+          if (!window.ReactNativeWebView) {
+            return;
+          }
+
+          window.ReactNativeWebView.postMessage(JSON.stringify(message));
+        }
+
+        function parseCssLengthToPx(value) {
+          if (typeof value === 'number') {
+            return value;
+          }
+
+          var pxMatch = String(value).match(/^(\\d+(?:\\.\\d+)?)px$/);
+          if (pxMatch && pxMatch[1]) {
+            return parseFloat(pxMatch[1]);
+          }
+
+          var vhMatch = String(value).match(/^(\\d+(?:\\.\\d+)?)vh$/);
+          if (vhMatch && vhMatch[1]) {
+            return (parseFloat(vhMatch[1]) / 100) * window.innerHeight;
+          }
+
+          var numeric = parseFloat(String(value));
+          return Number.isFinite(numeric) ? numeric : 0;
+        }
+
+        function normalizeCopyText(value) {
+          return String(value || '')
+            .replace(/\\s+/g, ' ')
+            .trim();
+        }
+
+        function escapeCssString(value) {
+          return String(value).replace(/\\\\/g, '\\\\\\\\').replace(/'/g, "\\\\'");
+        }
+
+        function ensureTajweedDarkPalette(qcfFontFamily) {
+          if (${theme === 'dark' ? 'false' : 'true'} || !qcfFontFamily) {
+            return null;
+          }
+
+          var styleId = 'tajweed-dark-palette-' + String(qcfFontFamily).replace(/[^a-zA-Z0-9_-]/g, '-');
+          if (!document.getElementById(styleId)) {
+            var style = document.createElement('style');
+            style.id = styleId;
+            style.textContent =
+              "@font-palette-values --tajweed-dark-palette-" +
+              styleId +
+              " { font-family: '" +
+              escapeCssString(qcfFontFamily) +
+              "'; override-colors: 0 ${palette.text}, 1 ${palette.text}; }";
+            document.head.appendChild(style);
+          }
+
+          return '--tajweed-dark-palette-' + styleId;
+        }
+
+        function resolveVerseKey(word) {
+          if (typeof word.verseKey === 'string' && word.verseKey.trim()) {
+            return word.verseKey.trim();
+          }
+
+          if (typeof word.location === 'string' && word.location.trim()) {
+            var parts = word.location.split(':');
+            if (parts.length >= 2 && parts[0] && parts[1]) {
+              return String(parts[0]) + ':' + String(parts[1]);
+            }
+          }
+
+          return undefined;
+        }
+
+        function getVerseNumberFromWord(word) {
+          var verseKey = resolveVerseKey(word);
+          if (!verseKey) {
+            return undefined;
+          }
+
+          var parts = verseKey.split(':');
+          var verseNumber = parseInt(parts[1] || '', 10);
+          return Number.isFinite(verseNumber) && verseNumber > 0 ? verseNumber : undefined;
+        }
+
+        // The chapter id when this word opens a Surah that has an in-page header.
+        function getSurahHeaderChapterId(word) {
+          if (!word || Number(word.position) !== 1) {
+            return null;
+          }
+
+          var verseKey = resolveVerseKey(word);
+          if (!verseKey) {
+            return null;
+          }
+
+          var parts = verseKey.split(':');
+          if (parts[1] !== '1') {
+            return null;
+          }
+
+          var chapterId = parseInt(parts[0] || '', 10);
+          return Number.isFinite(chapterId) && INLINE_SURAH_HEADERS[chapterId] ? chapterId : null;
+        }
+
+        function getLineSurahHeaderChapterId(line) {
+          if (!line || !Array.isArray(line.words)) {
+            return null;
+          }
+
+          for (var index = 0; index < line.words.length; index += 1) {
+            var chapterId = getSurahHeaderChapterId(line.words[index]);
+            if (chapterId !== null) {
+              return chapterId;
+            }
+          }
+
+          return null;
+        }
+
+        function createSurahHeaderNode(chapterId) {
+          var header = INLINE_SURAH_HEADERS[chapterId];
+          if (!header) {
+            return null;
+          }
+
+          var section = document.createElement('section');
+          section.className = 'inline-surah-header';
+          section.dataset.surahHeader = String(chapterId);
+          section.setAttribute('aria-label', header.name);
+
+          var banner = document.createElement('div');
+          banner.className = 'inline-surah-banner';
+          var copy = document.createElement('div');
+          copy.className = 'inline-surah-copy';
+          var title = document.createElement('h2');
+          title.textContent = header.name;
+          copy.appendChild(title);
+          if (header.info) {
+            var info = document.createElement('p');
+            info.textContent = header.info;
+            copy.appendChild(info);
+          }
+          banner.appendChild(copy);
+          if (header.arabic) {
+            var arabicName = document.createElement('span');
+            arabicName.className = 'inline-surah-arabic';
+            arabicName.setAttribute('dir', 'rtl');
+            arabicName.setAttribute('lang', 'ar');
+            arabicName.textContent = header.arabic;
+            banner.appendChild(arabicName);
+          }
+          section.appendChild(banner);
+
+          if (header.bismillah && INLINE_BISMILLAH_HTML) {
+            section.insertAdjacentHTML('beforeend', INLINE_BISMILLAH_HTML);
+          }
+
+          return section;
+        }
+
+        function toArabicIndicNumber(value) {
+          var digits = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
+          return String(value).replace(/[0-9]/g, function (digit) {
+            return digits[parseInt(digit, 10)] || digit;
+          });
+        }
+
+        function toExtendedArabicIndicNumber(value) {
+          var digits = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
+          return String(value).replace(/[0-9]/g, function (digit) {
+            return digits[parseInt(digit, 10)] || digit;
+          });
+        }
+
+        function formatIndopakVerseMarker(verseNumber) {
+          return '﴿' + toExtendedArabicIndicNumber(verseNumber) + '﴾';
+        }
+
+        function resolveWordText(pageData, word) {
+          var rendererAssets = pageData.rendererAssets || {};
+          var qcfVersion =
+            typeof rendererAssets.qcfVersion === 'string' ? rendererAssets.qcfVersion : null;
+
+          if (qcfVersion) {
+            return word.textQpcHafs || word.textUthmani || word.textIndopak || '';
+          }
+
+          if (pageData.pack && pageData.pack.script === 'indopak') {
+            return word.textIndopakNastaleeq || word.textIndopak || word.textUthmani || '';
+          }
+
+          // The KFGQPC Hafs font is built for the QPC encoding (e.g. sukun is U+06E1). Quran.com's
+          // Uthmani text uses other code points that it draws as dotted-circle placeholders.
+          if (pageData.pack && pageData.pack.packId === 'qpc-uthmani-hafs') {
+            return word.textQpcHafs || word.textUthmani || '';
+          }
+
+          return word.textUthmani || word.textIndopak || word.textQpcHafs || '';
+        }
+
+        function getGlyphCode(pageData, word) {
+          var rendererAssets = pageData.rendererAssets || {};
+          if (!rendererAssets.qcfVersion) {
+            return '';
+          }
+
+          return rendererAssets.qcfVersion === 'v1'
+            ? word.codeV1 || ''
+            : word.codeV2 || '';
+        }
+
+        function getPageState(pageNumber) {
+          var normalizedPageNumber = Number(pageNumber);
+          if (!Number.isFinite(normalizedPageNumber)) {
+            return null;
+          }
+
+          var existing = pageStates.get(normalizedPageNumber);
+          if (existing) {
+            return existing;
+          }
+
+          var root = app.querySelector('[data-page-number="' + String(normalizedPageNumber) + '"]');
+          if (!(root instanceof HTMLElement)) {
+            return null;
+          }
+
+          var state = {
+            data: null,
+            lastContainerWidth: 0,
+            pageNumber: normalizedPageNumber,
+            qcfFontFamily: null,
+            qcfFontRetryCount: 0,
+            qcfFontRetryTimeoutId: null,
+            renderedReflow: false,
+            renderedStandard: false,
+            requiredLineWidth: 0,
+            renderKey: null,
+            reflowState: null,
+            root: root,
+            content: root.querySelector('.page-content'),
+            standardView: root.querySelector('.standard-view'),
+            reflowView: root.querySelector('.reflow-view'),
+          };
+          pageStates.set(normalizedPageNumber, state);
+          return state;
+        }
+
+        function initPageStates() {
+          var roots = Array.from(app.querySelectorAll('[data-page-number]'));
+          for (var index = 0; index < roots.length; index += 1) {
+            var pageNumber = parseInt(roots[index].getAttribute('data-page-number') || '', 10);
+            if (Number.isFinite(pageNumber)) {
+              getPageState(pageNumber);
+            }
+          }
+        }
+
+        function setFocusTopInset(nextInsetPx) {
+          var normalizedInsetPx = Math.max(0, Math.round(Number(nextInsetPx) || 0));
+          FOCUS_TOP_INSET_PX = normalizedInsetPx;
+
+          var nextPaddingPx = Math.max(12, normalizedInsetPx + TOP_CONTENT_PADDING_EXTRA_PX);
+          var currentPaddingPx = parseFloat(window.getComputedStyle(app).paddingTop) || 0;
+          var deltaPx = nextPaddingPx - currentPaddingPx;
+          if (Math.abs(deltaPx) < 0.5) {
+            return;
+          }
+
+          // The native header overlays this document. When its measured height
+          // changes, update the reserved space in place (rebuilding the document
+          // would reload every glyph) and keep already-positioned text still.
+          var scrollTop = window.scrollY || document.documentElement.scrollTop || 0;
+          app.style.paddingTop = nextPaddingPx + 'px';
+          if (scrollTop > 0) {
+            window.scrollTo(0, Math.max(0, scrollTop + deltaPx));
+          }
+        }
+
+        function keepPagesRenderedAround(pageNumber) {
+          app.querySelectorAll('.reader-page.keep-rendered').forEach(function (root) {
+            if (Math.abs(Number(root.dataset.pageNumber) - pageNumber) > 1) {
+              root.classList.remove('keep-rendered');
+            }
+          });
+          for (var offset = -1; offset <= 1; offset += 1) {
+            var nearbyState = getPageState(pageNumber + offset);
+            if (nearbyState && nearbyState.root) {
+              nearbyState.root.classList.add('keep-rendered');
+            }
+          }
+        }
+
+        function scrollToPage(pageNumber) {
+          var state = getPageState(pageNumber);
+          if (!state || !state.root) {
+            return false;
+          }
+
+          setQcfFontPriorityPage(state.pageNumber);
+          keepPagesRenderedAround(state.pageNumber);
+          window.scrollTo(0, Math.max(0, state.root.offsetTop));
+          scheduleActivePageReport();
+          return true;
+        }
+
+        function resolveActivePageNumber() {
+          var viewportAnchor = Math.min(Math.max(window.innerHeight * 0.22, 72), 160);
+          var bestPageNumber = null;
+          var bestDistance = Number.POSITIVE_INFINITY;
+
+          pageStates.forEach(function (state) {
+            if (!state.root) {
+              return;
+            }
+
+            var rect = state.root.getBoundingClientRect();
+            if (rect.bottom < 0 || rect.top > window.innerHeight) {
+              return;
+            }
+
+            var distance = Math.abs(rect.top - viewportAnchor);
+            if (distance < bestDistance) {
+              bestDistance = distance;
+              bestPageNumber = state.pageNumber;
+            }
+          });
+
+          if (bestPageNumber !== null) {
+            return bestPageNumber;
+          }
+
+          var scrollTop = window.scrollY || document.documentElement.scrollTop || 0;
+          pageStates.forEach(function (state) {
+            if (!state.root) {
+              return;
+            }
+
+            var distance = Math.abs(state.root.offsetTop - scrollTop);
+            if (distance < bestDistance) {
+              bestDistance = distance;
+              bestPageNumber = state.pageNumber;
+            }
+          });
+
+          return bestPageNumber;
+        }
+
+        function resolveActiveVerseKey(pageNumber) {
+          var state = getPageState(pageNumber);
+          if (!state || !state.root) {
+            return '';
+          }
+
+          var viewportAnchor = Math.min(
+            Math.max(FOCUS_TOP_INSET_PX + 8, 8),
+            Math.max(8, window.innerHeight - 8)
+          );
+          var words = Array.from(
+            state.root.querySelectorAll('[data-mushaf-word="true"][data-verse-key]')
+          );
+          var bestVerseKey = '';
+          var bestDistance = Number.POSITIVE_INFINITY;
+
+          for (var index = 0; index < words.length; index += 1) {
+            var word = words[index];
+            var rect = word.getBoundingClientRect();
+            if (rect.bottom < 0 || rect.top > window.innerHeight) {
+              continue;
+            }
+
+            var verseKey = word.getAttribute('data-verse-key') || '';
+            if (!verseKey) {
+              continue;
+            }
+            if (rect.top <= viewportAnchor && rect.bottom >= viewportAnchor) {
+              return verseKey;
+            }
+
+            var distance =
+              rect.top > viewportAnchor
+                ? rect.top - viewportAnchor
+                : viewportAnchor - rect.bottom;
+            if (distance < bestDistance) {
+              bestDistance = distance;
+              bestVerseKey = verseKey;
+            }
+          }
+
+          return bestVerseKey;
+        }
+
+        function emitActivePageIfChanged() {
+          activePageRafId = null;
+          var activePageNumber = resolveActivePageNumber();
+          if (!Number.isFinite(activePageNumber)) {
+            return;
+          }
+          var activeVerseKey = resolveActiveVerseKey(activePageNumber);
+          if (
+            activePageNumber === lastEmittedActivePageNumber &&
+            activeVerseKey === lastEmittedActiveVerseKey
+          ) {
+            return;
+          }
+
+          setQcfFontPriorityPage(activePageNumber);
+          lastEmittedActivePageNumber = activePageNumber;
+          lastEmittedActiveVerseKey = activeVerseKey;
+          emit({
+            type: 'reader-active-page-change',
+            payload: {
+              pageNumber: activePageNumber,
+              verseKey: activeVerseKey,
+            },
+          });
+        }
+
+        function scheduleActivePageReport() {
+          if (activePageRafId !== null) {
+            return;
+          }
+
+          activePageRafId = requestAnimationFrame(emitActivePageIfChanged);
+        }
+
+        function emitScrollActivity() {
+          scrollActivityRafId = null;
+          if (!didEmitInitialPositioned) {
+            return;
+          }
+          emit({
+            type: 'reader-scroll',
+            payload: {
+              scrollY: window.scrollY || document.documentElement.scrollTop || 0,
+            },
+          });
+        }
+
+        function scheduleScrollActivityReport() {
+          if (scrollActivityRafId !== null) {
+            return;
+          }
+
+          scrollActivityRafId = requestAnimationFrame(emitScrollActivity);
+        }
+
+        var INITIAL_REVEAL_FALLBACK_MS = 600;
+        var DOCUMENT_REVEAL_FALLBACK_MS = 2500;
+
+        function revealDocument() {
+          document.documentElement.classList.remove('awaiting-initial-position');
+        }
+
+        function scheduleInitialRevealFallback() {
+          setTimeout(revealDocument, INITIAL_REVEAL_FALLBACK_MS);
+        }
+
+        // Never leave the reader hidden if the opening page cannot render at all.
+        setTimeout(revealDocument, DOCUMENT_REVEAL_FALLBACK_MS);
+
+        function scheduleInitialPositioned(pageNumber) {
+          if (
+            didEmitInitialPositioned ||
+            initialPositionRafId !== null ||
+            pageNumber !== INITIAL_PAGE_NUMBER ||
+            (HIGHLIGHT_VERSE_KEY && !didScrollToHighlight)
+          ) {
+            return;
+          }
+
+          initialPositionRafId = requestAnimationFrame(function () {
+            initialPositionRafId = requestAnimationFrame(function () {
+              initialPositionRafId = null;
+              if (didEmitInitialPositioned) {
+                return;
+              }
+
+              didEmitInitialPositioned = true;
+              revealDocument();
+              emit({
+                type: 'reader-initial-positioned',
+                payload: {
+                  pageNumber: INITIAL_PAGE_NUMBER,
+                  scrollY: window.scrollY || document.documentElement.scrollTop || 0,
+                },
+              });
+            });
+          });
+        }
+
+        function settleInitialPageWithoutHighlight(state) {
+          if (
+            didEmitInitialPositioned ||
+            didScrollToHighlight ||
+            !HIGHLIGHT_VERSE_KEY ||
+            !state ||
+            state.pageNumber !== INITIAL_PAGE_NUMBER
+          ) {
+            return;
+          }
+
+          window.scrollTo(
+            0,
+            Math.max(0, state.root.offsetTop - FOCUS_TOP_INSET_PX)
+          );
+          didScrollToHighlight = true;
+        }
+
+        function getPageRenderKey(pageData) {
+          if (!pageData || !pageData.pack) {
+            return '';
+          }
+
+          return [
+            pageData.pack.packId || '',
+            pageData.pack.version || '',
+            pageData.pageNumber || '',
+            HIGHLIGHT_VERSE_KEY || '',
+          ].join(':');
+        }
+
+        function updatePageFooter(state) {
+          if (!state || !state.root || !state.data) {
+            return;
+          }
+
+          var label = state.root.querySelector('.page-footer-label');
+          if (!label) {
+            return;
+          }
+
+          var pageNumber = Number.isFinite(state.data.pageNumber)
+            ? state.data.pageNumber
+            : state.pageNumber;
+          // The shell's Juz follows Madani pages; the page's own verses know their Juz in any
+          // mushaf. The footer names the Juz the page ends in.
+          var verses = Array.isArray(state.data.verses) ? state.data.verses : [];
+          var lastVerse = verses[verses.length - 1];
+          var juzNumber =
+            lastVerse && Number.isFinite(lastVerse.juzNumber)
+              ? lastVerse.juzNumber
+              : state.root.dataset
+              ? state.root.dataset.juzNumber
+              : '';
+          if (juzNumber && state.root.dataset) {
+            state.root.dataset.juzNumber = String(juzNumber);
+          }
+          var parts = ['Page ' + String(pageNumber)];
+          if (juzNumber) {
+            parts.push('Juz ' + String(juzNumber));
+          }
+          label.textContent = parts.join(' • ');
+        }
+
+        // Pages render one at a time, nearest to the reading position first. Rendering every
+        // injected page immediately made a jump or scrub target wait behind pages passed on the way.
+        var pendingPageRenders = new Map();
+        var PAGE_RENDER_QUEUE_TIMEOUT_MS = 3000;
+        // Pages away from the reading position wait for scrolling to pause, so pre-rendering the
+        // rest of the Surah never competes with a scroll that is in progress.
+        var SCROLL_IDLE_BEFORE_BACKGROUND_RENDER_MS = 250;
+        var lastScrollAt = 0;
+        var deferredPageRenderTimeoutId = null;
+        var isPageRenderRunning = false;
+
+        function takeNearestPendingPageRender() {
+          var anchor = Number.isFinite(qcfFontPriorityPageNumber)
+            ? qcfFontPriorityPageNumber
+            : INITIAL_PAGE_NUMBER;
+          var nearestPageNumber = null;
+          pendingPageRenders.forEach(function (_job, pageNumber) {
+            if (
+              nearestPageNumber === null ||
+              Math.abs(pageNumber - anchor) < Math.abs(nearestPageNumber - anchor)
+            ) {
+              nearestPageNumber = pageNumber;
+            }
+          });
+          if (nearestPageNumber === null) {
+            return null;
+          }
+          var job = pendingPageRenders.get(nearestPageNumber);
+          pendingPageRenders.delete(nearestPageNumber);
+          return job;
+        }
+
+        function pumpPageRenders() {
+          if (isPageRenderRunning || deferredPageRenderTimeoutId !== null) {
+            return;
+          }
+          var job = takeNearestPendingPageRender();
+          if (!job) {
+            return;
+          }
+
+          var anchor = Number.isFinite(qcfFontPriorityPageNumber)
+            ? qcfFontPriorityPageNumber
+            : INITIAL_PAGE_NUMBER;
+          var msSinceScroll = Date.now() - lastScrollAt;
+          if (
+            Math.abs(Number(job.pageData.pageNumber) - anchor) > 1 &&
+            msSinceScroll < SCROLL_IDLE_BEFORE_BACKGROUND_RENDER_MS
+          ) {
+            pendingPageRenders.set(Number(job.pageData.pageNumber), job);
+            deferredPageRenderTimeoutId = setTimeout(function () {
+              deferredPageRenderTimeoutId = null;
+              pumpPageRenders();
+            }, SCROLL_IDLE_BEFORE_BACKGROUND_RENDER_MS - msSinceScroll);
+            return;
+          }
+
+          isPageRenderRunning = true;
+          Promise.race([
+            renderPage(job.pageData, job.layout),
+            // A page whose font never settles must not stall every page queued after it.
+            new Promise(function (resolve) {
+              setTimeout(resolve, PAGE_RENDER_QUEUE_TIMEOUT_MS);
+            }),
+          ])
+            .catch(function (error) {
+              console.error('Failed to render mushaf page', error);
+            })
+            .finally(function () {
+              isPageRenderRunning = false;
+              pumpPageRenders();
+            });
+        }
+
+        function setQcfFontPriorityPage(pageNumber) {
+          if (Number.isFinite(pageNumber)) {
+            qcfFontPriorityPageNumber = pageNumber;
+          }
+        }
+
+        function pumpQcfFontLoads() {
+          while (
+            activeQcfFontLoadCount < MAX_CONCURRENT_QCF_FONT_LOADS &&
+            pendingQcfFontLoads.length > 0
+          ) {
+            var anchor = Number.isFinite(qcfFontPriorityPageNumber)
+              ? qcfFontPriorityPageNumber
+              : INITIAL_PAGE_NUMBER;
+            var nextIndex = 0;
+            for (var index = 1; index < pendingQcfFontLoads.length; index += 1) {
+              if (
+                Math.abs(pendingQcfFontLoads[index].pageNumber - anchor) <
+                Math.abs(pendingQcfFontLoads[nextIndex].pageNumber - anchor)
+              ) {
+                nextIndex = index;
+              }
+            }
+
+            var job = pendingQcfFontLoads.splice(nextIndex, 1)[0];
+            activeQcfFontLoadCount += 1;
+            Promise.resolve()
+              .then(job.run)
+              .then(job.resolve, job.reject)
+              .finally(function () {
+                activeQcfFontLoadCount -= 1;
+                pumpQcfFontLoads();
+              });
+          }
+        }
+
+        function scheduleQcfFontLoad(pageNumber, run) {
+          return new Promise(function (resolve, reject) {
+            pendingQcfFontLoads.push({
+              pageNumber: Number(pageNumber) || 0,
+              reject: reject,
+              resolve: resolve,
+              run: run,
+            });
+            pumpQcfFontLoads();
+          });
+        }
+
+        async function loadQcfPageFontIfNeeded(rendererAssets, pageNumber) {
+          if (
+            !rendererAssets ||
+            !rendererAssets.pageFontFamily ||
+            (!rendererAssets.pageFontDataUri && !rendererAssets.pageFontFileUri) ||
+            typeof FontFace === 'undefined'
+          ) {
+            return null;
+          }
+
+          var qcfFontFamily = rendererAssets.pageFontFamily;
+          var qcfFontDataUri = rendererAssets.pageFontDataUri;
+          var qcfFontFileUri = rendererAssets.pageFontFileUri;
+          var existingFontLoaded = Array.from(document.fonts || []).some(function (font) {
+            return font.family === qcfFontFamily && font.status === 'loaded';
+          });
+
+          if (existingFontLoaded) {
+            return qcfFontFamily;
+          }
+
+          var existingLoadPromise = qcfFontLoadPromises.get(qcfFontFamily);
+          if (existingLoadPromise) {
+            return existingLoadPromise;
+          }
+
+          var loadPromise = scheduleQcfFontLoad(pageNumber, async function () {
+            var loadedWhileQueued = Array.from(document.fonts || []).some(function (font) {
+              return font.family === qcfFontFamily && font.status === 'loaded';
+            });
+            if (loadedWhileQueued) {
+              return qcfFontFamily;
+            }
+
+            async function registerFontFace(source) {
+              var fontFace = new FontFace(qcfFontFamily, source);
+              fontFace.display = 'block';
+              var loadedFace = await fontFace.load();
+              if (document.fonts) {
+                document.fonts.add(loadedFace);
+                await document.fonts.ready;
+              }
+              await new Promise(function (resolve) {
+                requestAnimationFrame(function () {
+                  requestAnimationFrame(resolve);
+                });
+              });
+              return qcfFontFamily;
+            }
+
+            function toCssUrl(url) {
+              return "url('" + String(url).replace(/'/g, "\\\\'") + "')";
+            }
+
+            // The pack's font file is read directly by the WebView. If that ever fails, React
+            // Native re-sends this page with the font embedded as a data URI.
+            if (!qcfFontDataUri) {
+              for (var fileAttempt = 0; fileAttempt < 2; fileAttempt += 1) {
+                try {
+                  return await registerFontFace(toCssUrl(qcfFontFileUri));
+                } catch (error) {
+                  await new Promise(function (resolve) {
+                    setTimeout(resolve, 60);
+                  });
+                }
+              }
+              emit({ type: 'qcf-font-file-failed', payload: { pageNumber: pageNumber } });
+              return null;
+            }
+
+            for (var attempt = 0; attempt < 3; attempt += 1) {
+              try {
+                return await registerFontFace(toCssUrl(qcfFontDataUri));
+              } catch (error) {
+                await new Promise(function (resolve) {
+                  setTimeout(resolve, 100 * Math.pow(2, attempt));
+                });
+              }
+            }
+
+            try {
+              var response = await fetch(qcfFontDataUri, { cache: 'no-store' });
+              var fontBuffer = await response.arrayBuffer();
+              if (!fontBuffer || fontBuffer.byteLength === 0) {
+                throw new Error('Font data request returned no data');
+              }
+              return await registerFontFace(fontBuffer);
+            } catch (error) {}
+
+            return null;
+          });
+
+          qcfFontLoadPromises.set(qcfFontFamily, loadPromise);
+
+          try {
+            return await loadPromise;
+          } finally {
+            if (qcfFontLoadPromises.get(qcfFontFamily) === loadPromise) {
+              qcfFontLoadPromises.delete(qcfFontFamily);
+            }
+          }
+        }
+
+        function requiresQcfPageFont(pageData) {
+          var rendererAssets = pageData && pageData.rendererAssets;
+          // QCF word codes are private-use glyphs and are never valid without
+          // their page font. Treat the declared QCF version as the requirement;
+          // missing asset metadata must remain a loading/error condition rather
+          // than silently opting into ordinary Arabic text.
+          return Boolean(rendererAssets && rendererAssets.qcfVersion);
+        }
+
+        function scheduleQcfFontRetry(state, pageData, layout) {
+          if (!state || state.qcfFontRetryTimeoutId !== null) {
+            return;
+          }
+
+          var retryDelays = [150, 500, 1500, 5000, 15000];
+          var retryIndex = Math.min(
+            Math.max(0, state.qcfFontRetryCount - 1),
+            retryDelays.length - 1
+          );
+          var expectedRenderKey = getPageRenderKey(pageData);
+
+          state.qcfFontRetryTimeoutId = setTimeout(function () {
+            state.qcfFontRetryTimeoutId = null;
+            if (!state.data || getPageRenderKey(state.data) !== expectedRenderKey) {
+              return;
+            }
+
+            loadedPageNumbers.delete(state.pageNumber);
+            state.renderKey = null;
+            renderPage(state.data, layout);
+          }, retryDelays[retryIndex]);
+        }
+
+        function measureRequiredLineWidth(state) {
+          if (!state || !state.standardView) {
+            return 0;
+          }
+
+          // Hidden while the page is in reflow mode; keep the last natural width.
+          if (state.standardView.getClientRects().length === 0) {
+            return state.requiredLineWidth || 0;
+          }
+
+          // Clear every fitted size, then read every line, then write the new sizes. Interleaving
+          // a write and a read per line forced a full page layout for each of the page's lines.
+          var lineContents = Array.from(state.standardView.querySelectorAll('.line-content'));
+          lineContents.forEach(function (lineContent) {
+            lineContent.style.removeProperty('font-size');
+          });
+
+          var lineMeasurements = lineContents.map(function (lineContent) {
+            if (lineContent.getClientRects().length === 0) {
+              return null;
+            }
+            // Measure natural word widths, independent of justification and container clipping.
+            // scrollWidth on a centered RTL line can omit overflow past its starting edge.
+            var wordWidth = Array.from(lineContent.children).reduce(function (total, word) {
+              var style = window.getComputedStyle(word);
+              return total + word.getBoundingClientRect().width +
+                (parseFloat(style.marginLeft) || 0) + (parseFloat(style.marginRight) || 0);
+            }, 0);
+            return {
+              availableWidth: lineContent.clientWidth,
+              fontSize: parseFloat(window.getComputedStyle(lineContent).fontSize),
+              lineContent: lineContent,
+              wordWidth: wordWidth,
+            };
+          });
+
+          var measuredWidth = lineMeasurements.reduce(function (widest, measurement) {
+            if (!measurement) {
+              return widest;
+            }
+            // Fit an overflowing row at its own font size instead of adding width (and
+            // word spacing) to the entire page. Keep the natural width for reflow detection.
+            if (measurement.availableWidth > 0 && measurement.wordWidth > measurement.availableWidth) {
+              measurement.lineContent.style.fontSize =
+                (measurement.fontSize * measurement.availableWidth / measurement.wordWidth) + 'px';
+            }
+            var lineShell = measurement.lineContent.parentNode;
+            if (lineShell && lineShell.classList.contains('surah-end') && measurement.availableWidth > 0) {
+              var gapCount = Math.max(0, measurement.lineContent.children.length - 1);
+              var centeredWidth =
+                measurement.wordWidth + gapCount * measurement.fontSize * SURAH_END_WORD_GAP_EM;
+              // A nearly full line stays justified, so it reads like its neighbours.
+              lineShell.classList.toggle(
+                'centered',
+                centeredWidth < measurement.availableWidth * SURAH_END_CENTER_MAX_FILL
+              );
+            }
+            return Math.max(widest, measurement.wordWidth);
+          }, 0);
+
+          if (measuredWidth > 0) {
+            state.requiredLineWidth = measuredWidth;
+          }
+
+          return state.requiredLineWidth || 0;
+        }
+
+        function shouldUseReflow(state, layout) {
+          if (!state || !state.content) {
+            return false;
+          }
+
+          var containerWidth = state.content.clientWidth;
+          var presetLineWidthPx = parseCssLengthToPx(layout.lineWidthCss);
+          var measuredLineWidthPx = measureRequiredLineWidth(state);
+          var lineWidthPx = Math.max(measuredLineWidthPx, presetLineWidthPx);
+          var threshold = containerWidth * 0.95;
+
+          if (state.reflowState !== null) {
+            threshold += state.reflowState ? REFLOW_HYSTERESIS_PX : -REFLOW_HYSTERESIS_PX;
+          }
+
+          return lineWidthPx > threshold;
+        }
+
+        function applyLayoutMode(state, layout) {
+          if (!state || !state.content) {
+            return;
+          }
+
+          var containerWidth = state.content.clientWidth;
+          if (Math.abs(containerWidth - state.lastContainerWidth) < 10 && state.reflowState !== null) {
+            return;
+          }
+
+          state.lastContainerWidth = containerWidth;
+          var wasReflow = state.root.classList.contains('reflow');
+          state.reflowState = shouldUseReflow(state, layout);
+          state.root.classList.toggle('reflow', state.reflowState);
+          // shouldUseReflow already fitted the visible standard lines unless this call revealed them.
+          if (!state.reflowState && wasReflow) {
+            measureRequiredLineWidth(state);
+          }
+        }
+
+        function createIndopakVerseMarkerNode(state, word, className, qcfFontFamily, verseKey) {
+          var verseNumber = getVerseNumberFromWord(word);
+          if (!verseNumber) {
+            return null;
+          }
+
+          var wordNode = document.createElement('span');
+          wordNode.className = className;
+          wordNode.dataset.mushafWord = 'true';
+          wordNode.dataset.interactive = 'true';
+          wordNode.dataset.copyText = toArabicIndicNumber(verseNumber);
+          wordNode.dataset.charType = String(word.charType || '');
+          wordNode.dataset.lineNumber = String(word.lineNumber || '');
+          wordNode.dataset.location = String(word.location || '');
+          wordNode.dataset.pageNumber = String(state.pageNumber);
+          if (verseKey) {
+            wordNode.dataset.verseKey = verseKey;
+            if (isStudySelected(verseKey, word.position)) {
+              wordNode.classList.add('study-selected');
+            }
+          }
+          wordNode.dataset.wordPosition = String(word.position);
+          wordNode.setAttribute('aria-label', 'Verse ' + String(verseNumber));
+          wordNode.classList.add('indopak-verse-marker');
+          wordNode.setAttribute('dir', 'rtl');
+          if (qcfFontFamily) {
+            wordNode.style.fontFamily = "'" + String(qcfFontFamily).replace(/'/g, "\\\\'") + "', serif";
+          }
+          wordNode.textContent = formatIndopakVerseMarker(verseNumber);
+          return wordNode;
+        }
+
+        function createWordNode(state, word, className, qcfFontFamily) {
+          if (!state.data) {
+            return null;
+          }
+
+          var rendererAssets = state.data.rendererAssets || {};
+          var qcfVersion =
+            typeof rendererAssets.qcfVersion === 'string' ? rendererAssets.qcfVersion : null;
+          var wordText = resolveWordText(state.data, word);
+          var glyphCode = getGlyphCode(state.data, word);
+          var shouldUseQcfGlyph = Boolean(qcfVersion && qcfFontFamily && glyphCode);
+          var verseKey = resolveVerseKey(word);
+
+          if (qcfVersion && !shouldUseQcfGlyph) {
+            // Never substitute Unicode Arabic inside an exact QCF page. The
+            // page-level render gate handles a missing font; incomplete glyph
+            // data must not produce a plausible but incorrect Mushaf page.
+            return null;
+          }
+
+          if (
+            word.charType === 'end' &&
+            state.data.pack &&
+            state.data.pack.script === 'indopak'
+          ) {
+            return createIndopakVerseMarkerNode(state, word, className, qcfFontFamily, verseKey);
+          }
+
+          if (!wordText && !shouldUseQcfGlyph) {
+            return null;
+          }
+
+          var wordNode = document.createElement('span');
+          wordNode.className = className;
+          wordNode.dataset.mushafWord = 'true';
+          wordNode.dataset.interactive = 'true';
+          wordNode.dataset.copyText = normalizeCopyText(wordText);
+          wordNode.dataset.charType = String(word.charType || '');
+          wordNode.dataset.lineNumber = String(word.lineNumber || '');
+          wordNode.dataset.location = String(word.location || '');
+          wordNode.dataset.pageNumber = String(state.pageNumber);
+          if (verseKey) {
+            wordNode.dataset.verseKey = verseKey;
+            if (
+              isArrivalHighlightVisible &&
+              HIGHLIGHT_VERSE_KEY &&
+              HIGHLIGHT_VERSE_KEY === verseKey
+            ) {
+              wordNode.classList.add('arrival-highlight');
+            }
+            if (
+              activeAudioVerseKey === verseKey &&
+              activeAudioWordPosition === Number(word.position)
+            ) {
+              wordNode.classList.add('active-audio-word');
+            }
+            if (isStudySelected(verseKey, word.position)) {
+              wordNode.classList.add('study-selected');
+            }
+          }
+          wordNode.dataset.wordPosition = String(word.position);
+
+          if (shouldUseQcfGlyph) {
+            wordNode.classList.add('qcf-word');
+            wordNode.style.fontFamily = "'" + String(qcfFontFamily).replace(/'/g, "\\\\'") + "', serif";
+            wordNode.style.color = 'var(--text)';
+            wordNode.style.webkitTextFillColor = 'currentColor';
+            if (qcfVersion === 'v4') {
+              wordNode.classList.add('tajweed-word');
+              var tajweedPalette = ensureTajweedDarkPalette(qcfFontFamily);
+              if (tajweedPalette) {
+                wordNode.style.setProperty('font-palette', tajweedPalette);
+              }
+            }
+            // Pack glyph codes are literal characters. Parsing each one as HTML cost a full parser
+            // run per word; only entity-encoded codes need it.
+            if (glyphCode.indexOf('&') === -1) {
+              wordNode.textContent = glyphCode;
+            } else {
+              wordNode.innerHTML = glyphCode;
+            }
+          } else {
+            if (!qcfVersion && qcfFontFamily) {
+              wordNode.style.fontFamily = "'" + String(qcfFontFamily).replace(/'/g, "\\\\'") + "', serif";
+            }
+            wordNode.textContent = wordText;
+          }
+
+          return wordNode;
+        }
+
+        function clearArrivalHighlights() {
+          isArrivalHighlightVisible = false;
+          var highlights = app.querySelectorAll('.arrival-highlight');
+          for (var index = 0; index < highlights.length; index += 1) {
+            highlights[index].classList.remove('arrival-highlight');
+          }
+          arrivalHighlightTimeoutId = null;
+        }
+
+        // Highlights the arrival verse again and restarts its fade. A reader prepared out of sight
+        // calls this when it is revealed, since its first highlight may already have faded.
+        function showArrivalHighlight() {
+          if (!HIGHLIGHT_VERSE_KEY) {
+            return;
+          }
+
+          isArrivalHighlightVisible = true;
+          var words = app.querySelectorAll(
+            '[data-mushaf-word="true"][data-verse-key="' + escapeCssString(HIGHLIGHT_VERSE_KEY) + '"]'
+          );
+          for (var index = 0; index < words.length; index += 1) {
+            words[index].classList.add('arrival-highlight');
+          }
+          scheduleArrivalHighlightClear();
+        }
+
+        function scrollActiveAudioWordIntoView() {
+          activeAudioScrollRafId = null;
+          if (!activeAudioVerseKey || activeAudioWordPosition <= 0) {
+            return;
+          }
+
+          var candidates = app.querySelectorAll('.active-audio-word');
+          var target = null;
+          for (var index = 0; index < candidates.length; index += 1) {
+            var candidateRect = candidates[index].getBoundingClientRect();
+            if (candidateRect.width > 0 && candidateRect.height > 0) {
+              target = candidates[index];
+              break;
+            }
+          }
+          if (!target) {
+            return;
+          }
+
+          var rect = target.getBoundingClientRect();
+          var viewportTop = Math.max(8, FOCUS_TOP_INSET_PX + 12);
+          var viewportBottom = Math.max(
+            viewportTop + 48,
+            window.innerHeight - activeAudioBottomInsetPx - 16
+          );
+          if (rect.top >= viewportTop && rect.bottom <= viewportBottom) {
+            return;
+          }
+
+          var currentScrollY = window.scrollY || document.documentElement.scrollTop || 0;
+          var targetScrollY =
+            rect.top < viewportTop
+              ? currentScrollY + rect.top - viewportTop
+              : currentScrollY + rect.bottom - viewportBottom;
+          var reduceMotion =
+            window.matchMedia &&
+            window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+          window.scrollTo({
+            top: Math.max(0, targetScrollY),
+            behavior: reduceMotion ? 'auto' : 'smooth',
+          });
+        }
+
+        function scheduleActiveAudioWordScroll() {
+          if (activeAudioScrollRafId !== null) {
+            cancelAnimationFrame(activeAudioScrollRafId);
+          }
+          activeAudioScrollRafId = requestAnimationFrame(scrollActiveAudioWordIntoView);
+        }
+
+        function setActiveAudioWord(payload) {
+          var highlights = app.querySelectorAll('.active-audio-word');
+          for (var index = 0; index < highlights.length; index += 1) {
+            highlights[index].classList.remove('active-audio-word');
+          }
+
+          var verseKey =
+            payload && typeof payload.verseKey === 'string' ? payload.verseKey.trim() : '';
+          var wordPosition =
+            payload && Number.isFinite(Number(payload.wordPosition))
+              ? Math.trunc(Number(payload.wordPosition))
+              : 0;
+          activeAudioVerseKey = verseKey;
+          activeAudioWordPosition = wordPosition > 0 ? wordPosition : 0;
+          activeAudioBottomInsetPx =
+            payload && Number.isFinite(Number(payload.bottomInsetPx))
+              ? Math.max(0, Math.round(Number(payload.bottomInsetPx)))
+              : 0;
+          app.style.paddingBottom =
+            Math.max(24, activeAudioBottomInsetPx + 16) + 'px';
+          if (!activeAudioVerseKey || activeAudioWordPosition <= 0) {
+            return;
+          }
+
+          var words = app.querySelectorAll('[data-mushaf-word="true"]');
+          for (var wordIndex = 0; wordIndex < words.length; wordIndex += 1) {
+            var word = words[wordIndex];
+            if (
+              word.dataset.verseKey === activeAudioVerseKey &&
+              Number(word.dataset.wordPosition) === activeAudioWordPosition
+            ) {
+              word.classList.add('active-audio-word');
+            }
+          }
+          scheduleActiveAudioWordScroll();
+        }
+
+        // A word position of 0 selects the whole ayah, including its number.
+        function isStudySelected(verseKey, wordPosition) {
+          if (!studySelectedVerseKey || studySelectedVerseKey !== verseKey) {
+            return false;
+          }
+          return (
+            studySelectedWordPosition <= 0 ||
+            studySelectedWordPosition === Number(wordPosition)
+          );
+        }
+
+        function setStudySelection(payload) {
+          var highlights = app.querySelectorAll('.study-selected');
+          for (var index = 0; index < highlights.length; index += 1) {
+            highlights[index].classList.remove('study-selected');
+          }
+
+          studySelectedVerseKey =
+            payload && typeof payload.verseKey === 'string' ? payload.verseKey.trim() : '';
+          studySelectedWordPosition =
+            payload && Number.isFinite(Number(payload.wordPosition))
+              ? Math.max(0, Math.trunc(Number(payload.wordPosition)))
+              : 0;
+          if (!studySelectedVerseKey) {
+            return;
+          }
+
+          var words = app.querySelectorAll('[data-mushaf-word="true"]');
+          for (var wordIndex = 0; wordIndex < words.length; wordIndex += 1) {
+            var word = words[wordIndex];
+            if (isStudySelected(word.dataset.verseKey, word.dataset.wordPosition)) {
+              word.classList.add('study-selected');
+            }
+          }
+        }
+
+        function scheduleArrivalHighlightClear() {
+          if (!HIGHLIGHT_VERSE_KEY) {
+            return;
+          }
+
+          if (arrivalHighlightTimeoutId !== null) {
+            clearTimeout(arrivalHighlightTimeoutId);
+          }
+
+          arrivalHighlightTimeoutId = setTimeout(clearArrivalHighlights, 1800);
+        }
+
+        function clearPage(state) {
+          if (!state || !state.standardView || !state.reflowView) {
+            return;
+          }
+
+          state.standardView.innerHTML = '';
+          state.reflowView.innerHTML = '';
+          state.qcfFontFamily = null;
+          state.renderedReflow = false;
+          state.renderedStandard = false;
+          state.root.classList.remove('reflow');
+          state.reflowState = null;
+          state.lastContainerWidth = 0;
+          state.requiredLineWidth = 0;
+        }
+
+        function isCenteredMadaniLine(pageData, line) {
+          if (!line || (pageData.pack && pageData.pack.script === 'indopak')) {
+            return false;
+          }
+          var centeredLines = CENTERED_PAGE_LINES[pageData.pageNumber];
+          return Boolean(centeredLines && centeredLines.indexOf(line.lineNumber) !== -1);
+        }
+
+        function isIndopakSurahEndLine(pageData, line) {
+          if (
+            !line ||
+            !Array.isArray(line.words) ||
+            line.words.length === 0 ||
+            pageData.pageNumber <= 2 ||
+            !pageData.pack ||
+            pageData.pack.script !== 'indopak'
+          ) {
+            return false;
+          }
+          var lastWord = line.words[line.words.length - 1];
+          var parts = String((lastWord && lastWord.verseKey) || '').split(':');
+          var surahId = Number(parts[0]);
+          var verseNumber = Number(parts[1]);
+          return (
+            lastWord.charType === 'end' &&
+            Number.isFinite(verseNumber) &&
+            SURAH_VERSE_COUNTS[surahId - 1] === verseNumber
+          );
+        }
+
+        function renderStandardLines(state, qcfFontFamily) {
+          if (!state.data || !state.standardView) {
+            return;
+          }
+          if (state.renderedStandard) {
+            return;
+          }
+
+          var pageLines = Array.isArray(state.data.pageLines.lines)
+            ? state.data.pageLines.lines
+            : [];
+          var lineEntries = [];
+
+          if (COMPACT_PAGE_LINES) {
+            lineEntries = pageLines.filter(function (line) {
+              return line && Array.isArray(line.words) && line.words.length > 0;
+            });
+          } else {
+            var linesByNumber = new Map(
+              pageLines.map(function (line) {
+                return [line.lineNumber, line];
+              })
+            );
+
+            for (var lineNumber = 1; lineNumber <= state.data.pack.lines; lineNumber += 1) {
+              lineEntries.push(linesByNumber.get(lineNumber) || null);
+            }
+          }
+
+          var fragment = document.createDocumentFragment();
+
+          for (var lineIndex = 0; lineIndex < lineEntries.length; lineIndex += 1) {
+            var line = lineEntries[lineIndex];
+            var lineShell = document.createElement('div');
+            lineShell.className = 'line-shell';
+            // The two opening pages retain their intentionally centered composition.
+            if (state.data.pageNumber <= 2 || isCenteredMadaniLine(state.data, line)) {
+              lineShell.classList.add('centered');
+            }
+            if (isIndopakSurahEndLine(state.data, line)) {
+              lineShell.classList.add('surah-end');
+            }
+            lineShell.setAttribute('dir', 'rtl');
+
+            var lineContent = document.createElement('div');
+            lineContent.className = 'line-content';
+            lineContent.setAttribute('translate', 'no');
+            lineShell.appendChild(lineContent);
+
+            if (!line || !Array.isArray(line.words) || line.words.length === 0) {
+              lineShell.classList.add('blank');
+              lineContent.textContent = '\\u00A0';
+              fragment.appendChild(lineShell);
+              continue;
+            }
+
+            var headerChapterId = getLineSurahHeaderChapterId(line);
+            var headerNode = headerChapterId !== null ? createSurahHeaderNode(headerChapterId) : null;
+            if (headerNode) {
+              fragment.appendChild(headerNode);
+            }
+
+            for (var index = 0; index < line.words.length; index += 1) {
+              var wordNode = createWordNode(state, line.words[index], 'word', qcfFontFamily);
+              if (wordNode) {
+                lineContent.appendChild(wordNode);
+              }
+            }
+
+            fragment.appendChild(lineShell);
+          }
+
+          state.standardView.appendChild(fragment);
+          state.renderedStandard = true;
+        }
+
+        function renderReflowContent(state, qcfFontFamily) {
+          if (!state.data || !state.reflowView) {
+            return;
+          }
+          if (state.renderedReflow) {
+            return;
+          }
+
+          function createReflowCopy() {
+            var copy = document.createElement('div');
+            copy.className = 'reflow-copy';
+            copy.setAttribute('dir', 'rtl');
+            copy.setAttribute('translate', 'no');
+            return copy;
+          }
+
+          var fragment = document.createDocumentFragment();
+          var reflowCopy = createReflowCopy();
+          var words = [];
+          var pageLines = Array.isArray(state.data.pageLines.lines)
+            ? state.data.pageLines.lines
+            : [];
+
+          for (var lineIndex = 0; lineIndex < pageLines.length; lineIndex += 1) {
+            var line = pageLines[lineIndex];
+            if (!line || !Array.isArray(line.words)) {
+              continue;
+            }
+
+            for (var wordIndex = 0; wordIndex < line.words.length; wordIndex += 1) {
+              words.push(line.words[wordIndex]);
+            }
+          }
+
+          for (var index = 0; index < words.length; index += 1) {
+            // A Surah that begins here starts its own paragraph below its header.
+            var headerChapterId = getSurahHeaderChapterId(words[index]);
+            var headerNode = headerChapterId !== null ? createSurahHeaderNode(headerChapterId) : null;
+            if (headerNode) {
+              if (reflowCopy.lastChild && reflowCopy.lastChild.className === 'reflow-spacer') {
+                reflowCopy.removeChild(reflowCopy.lastChild);
+              }
+              if (reflowCopy.childNodes.length > 0) {
+                fragment.appendChild(reflowCopy);
+                reflowCopy = createReflowCopy();
+              }
+              fragment.appendChild(headerNode);
+            }
+
+            var reflowWord = createWordNode(state, words[index], 'reflow-word', qcfFontFamily);
+            if (!reflowWord) {
+              continue;
+            }
+
+            reflowCopy.appendChild(reflowWord);
+
+            if (index < words.length - 1) {
+              var spacer = document.createElement('span');
+              spacer.className = 'reflow-spacer';
+              spacer.textContent = ' ';
+              reflowCopy.appendChild(spacer);
+            }
+          }
+
+          if (reflowCopy.childNodes.length > 0) {
+            fragment.appendChild(reflowCopy);
+          }
+          state.reflowView.appendChild(fragment);
+          state.renderedReflow = true;
+        }
+
+        function ensureActiveLayoutRendered(state) {
+          if (!state || !state.data) {
+            return;
+          }
+
+          if (state.reflowState) {
+            renderReflowContent(state, state.qcfFontFamily);
+          } else {
+            renderStandardLines(state, state.qcfFontFamily);
+          }
+        }
+
+        function emitPageRendered(state) {
+          emit({
+            type: 'reader-page-rendered',
+            payload: {
+              height: Math.ceil(state.root.getBoundingClientRect().height),
+              pageNumber: state.pageNumber,
+            },
+          });
+        }
+
+        function collectHighlightAnchorPayload(state) {
+          if (!state || !state.root || !HIGHLIGHT_VERSE_KEY) {
+            return null;
+          }
+
+          var activeContainer = state.root.classList.contains('reflow')
+            ? state.reflowView
+            : state.standardView;
+          if (!activeContainer) {
+            return null;
+          }
+
+          var nodes = Array.from(activeContainer.querySelectorAll('[data-mushaf-word="true"]'));
+          var matchingNodes = nodes.filter(function (node) {
+            return node instanceof HTMLElement && node.dataset.verseKey === HIGHLIGHT_VERSE_KEY;
+          });
+
+          if (matchingNodes.length === 0) {
+            return null;
+          }
+
+          var pageRect = state.root.getBoundingClientRect();
+          var anchorTop = Number.POSITIVE_INFINITY;
+          var anchorHeight = 0;
+
+          for (var index = 0; index < matchingNodes.length; index += 1) {
+            var nodeRect = matchingNodes[index].getBoundingClientRect();
+            anchorTop = Math.min(anchorTop, nodeRect.top);
+            anchorHeight = Math.max(anchorHeight, Math.ceil(nodeRect.height));
+          }
+
+          if (!Number.isFinite(anchorTop)) {
+            return null;
+          }
+
+          return {
+            height: Math.max(1, anchorHeight),
+            offsetY: Math.max(0, Math.round(anchorTop - pageRect.top)),
+            pageHeight: Math.max(1, Math.ceil(pageRect.height)),
+            pageNumber: state.pageNumber,
+            verseKey: HIGHLIGHT_VERSE_KEY,
+          };
+        }
+
+        function scrollToHighlightedVerseIfReady(state) {
+          if (didScrollToHighlight || !HIGHLIGHT_VERSE_KEY || state.pageNumber !== INITIAL_PAGE_NUMBER) {
+            return;
+          }
+
+          var anchor = collectHighlightAnchorPayload(state);
+          if (!anchor) {
+            return;
+          }
+
+          var pageTop = state.root.offsetTop;
+          window.scrollTo(
+            0,
+            KEEP_SURAH_INTRO_VISIBLE
+              ? 0
+              : Math.max(0, pageTop + anchor.offsetY - FOCUS_TOP_INSET_PX)
+          );
+          didScrollToHighlight = true;
+          emit({
+            type: 'highlight-anchor',
+            payload: anchor,
+          });
+        }
+
+        // A WebView created out of sight can parse and run this document before native layout gives
+        // it a size. Lines measured against a zero-width viewport reflow one word per row, so the
+        // opening page was positioned tens of thousands of pixels past its verse.
+        var viewportReadyPromise = null;
+        function waitForViewport() {
+          if (window.innerWidth > 0 && window.innerHeight > 0) {
+            return null;
+          }
+          if (!viewportReadyPromise) {
+            viewportReadyPromise = new Promise(function (resolve) {
+              function resolveWhenSized() {
+                if (window.innerWidth > 0 && window.innerHeight > 0) {
+                  window.removeEventListener('resize', resolveWhenSized);
+                  viewportReadyPromise = null;
+                  resolve();
+                }
+              }
+              window.addEventListener('resize', resolveWhenSized);
+            });
+          }
+          return viewportReadyPromise;
+        }
+
+        async function renderPage(pageData, layout) {
+          if (!pageData || !pageData.pageNumber) {
+            return;
+          }
+
+          var state = getPageState(pageData.pageNumber);
+          if (!state || !state.content) {
+            return;
+          }
+
+          var pageNumber = state.pageNumber;
+          var renderKey = getPageRenderKey(pageData);
+          if (state.renderKey === renderKey && loadedPageNumbers.has(pageNumber)) {
+            scrollToHighlightedVerseIfReady(state);
+            settleInitialPageWithoutHighlight(state);
+            scheduleInitialPositioned(pageNumber);
+            return;
+          }
+
+          var renderToken = (activeRenderTokens[pageNumber] || 0) + 1;
+          activeRenderTokens[pageNumber] = renderToken;
+          state.data = pageData;
+          state.renderKey = renderKey;
+
+          clearPage(state);
+          state.root.classList.add('loading');
+          var qcfFontFamily = await loadQcfPageFontIfNeeded(pageData.rendererAssets || {}, pageNumber);
+          if (activeRenderTokens[pageNumber] !== renderToken) {
+            return;
+          }
+          var viewportReady = waitForViewport();
+          if (viewportReady) {
+            await viewportReady;
+            if (activeRenderTokens[pageNumber] !== renderToken) {
+              return;
+            }
+          }
+
+          var requiresQcfFont = requiresQcfPageFont(pageData);
+          if (requiresQcfFont && !qcfFontFamily) {
+            state.qcfFontRetryCount += 1;
+            scheduleQcfFontRetry(state, pageData, layout);
+            // An exact QCF page is encoded as font glyphs, so ordinary Arabic
+            // text is not a faithful fallback for its fixed line layout. Keep
+            // the page in its loading state and retry rather than displaying a
+            // plausible-looking but incorrect page.
+            return;
+          } else {
+            state.qcfFontRetryCount = 0;
+            if (pageData.rendererAssets) {
+              delete pageData.rendererAssets.pageFontDataUri;
+            }
+            if (state.qcfFontRetryTimeoutId !== null) {
+              clearTimeout(state.qcfFontRetryTimeoutId);
+              state.qcfFontRetryTimeoutId = null;
+            }
+          }
+
+          state.qcfFontFamily = qcfFontFamily;
+          renderStandardLines(state, state.qcfFontFamily);
+          applyLayoutMode(state, layout);
+          ensureActiveLayoutRendered(state);
+          updatePageFooter(state);
+          state.root.classList.remove('loading');
+          loadedPageNumbers.add(pageNumber);
+          if (pageNumber === INITIAL_PAGE_NUMBER) {
+            scheduleInitialRevealFallback();
+          }
+          emitPageRendered(state);
+          scheduleActivePageReport();
+          scheduleActiveAudioWordScroll();
+          scrollToHighlightedVerseIfReady(state);
+          scheduleInitialPositioned(pageNumber);
+          if (pageNumber === INITIAL_PAGE_NUMBER && HIGHLIGHT_VERSE_KEY) {
+            scheduleArrivalHighlightClear();
+          }
+          setTimeout(function () {
+            // A newer render of this page may have cleared it and be waiting for its font.
+            if (activeRenderTokens[pageNumber] !== renderToken) {
+              return;
+            }
+            applyLayoutMode(state, layout);
+            ensureActiveLayoutRendered(state);
+            emitPageRendered(state);
+            scheduleActivePageReport();
+            scheduleActiveAudioWordScroll();
+            scrollToHighlightedVerseIfReady(state);
+            settleInitialPageWithoutHighlight(state);
+            scheduleInitialPositioned(pageNumber);
+          }, 0);
+        }
+
+        function getWordTarget(node) {
+          return node instanceof Element ? node.closest('[data-mushaf-word="true"]') : null;
+        }
+
+        function parseWordPayload(node) {
+          if (!node || !node.dataset) {
+            return null;
+          }
+
+          var pageNumber = parseInt(node.dataset.pageNumber || '', 10);
+          var lineNumber = parseInt(node.dataset.lineNumber || '', 10);
+          var wordPosition = parseInt(node.dataset.wordPosition || '', 10);
+
+          if (!Number.isFinite(wordPosition)) {
+            return null;
+          }
+
+          return {
+            charType: node.dataset.charType || undefined,
+            lineNumber: Number.isFinite(lineNumber) ? lineNumber : undefined,
+            location: node.dataset.location || undefined,
+            pageNumber: Number.isFinite(pageNumber) ? pageNumber : undefined,
+            text: node.dataset.copyText || '',
+            verseKey: node.dataset.verseKey || undefined,
+            wordPosition: wordPosition,
+          };
+        }
+
+        function getSelectionWordNodes(range) {
+          return Array.from(app.querySelectorAll('[data-mushaf-word="true"]')).filter(
+            function (node) {
+              try {
+                return range.intersectsNode(node);
+              } catch (error) {
+                return false;
+              }
+            }
+          );
+        }
+
+        function collectSelectionPayload() {
+          var selection = window.getSelection();
+          if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
+            return {
+              isCollapsed: true,
+              text: '',
+              verseKeys: [],
+              wordPositions: [],
+            };
+          }
+
+          var anchorNode = selection.anchorNode;
+          var focusNode = selection.focusNode;
+          if (!anchorNode || !focusNode || !app.contains(anchorNode) || !app.contains(focusNode)) {
+            return {
+              isCollapsed: true,
+              text: '',
+              verseKeys: [],
+              wordPositions: [],
+            };
+          }
+
+          var range = selection.getRangeAt(0);
+          var selectedWords = getSelectionWordNodes(range);
+          var verseKeys = [];
+          var seenVerseKeys = Object.create(null);
+          var wordPositions = [];
+          var pageNumber = undefined;
+
+          for (var index = 0; index < selectedWords.length; index += 1) {
+            var selectedWord = selectedWords[index];
+            if (pageNumber === undefined) {
+              var rawPageNumber = parseInt(selectedWord.dataset.pageNumber || '', 10);
+              if (Number.isFinite(rawPageNumber)) {
+                pageNumber = rawPageNumber;
+              }
+            }
+
+            var verseKey = selectedWord.dataset.verseKey || '';
+            if (verseKey && !seenVerseKeys[verseKey]) {
+              seenVerseKeys[verseKey] = true;
+              verseKeys.push(verseKey);
+            }
+
+            var wordPosition = parseInt(selectedWord.dataset.wordPosition || '', 10);
+            if (Number.isFinite(wordPosition) && wordPosition > 0) {
+              wordPositions.push(wordPosition);
+            }
+          }
+
+          var text = selectedWords.length
+            ? selectedWords
+                .map(function (node) {
+                  return node.dataset.copyText || '';
+                })
+                .filter(Boolean)
+                .join(' ')
+            : normalizeCopyText(selection.toString());
+
+          return {
+            isCollapsed: false,
+            pageNumber: pageNumber,
+            text: normalizeCopyText(text),
+            verseKeys: verseKeys,
+            wordPositions: wordPositions,
+          };
+        }
+
+        function hasActiveSelection() {
+          return !collectSelectionPayload().isCollapsed;
+        }
+
+        function scheduleSelectionReport() {
+          if (selectionRafId !== null) {
+            cancelAnimationFrame(selectionRafId);
+          }
+
+          selectionRafId = requestAnimationFrame(function () {
+            emit({
+              type: 'selection-change',
+              payload: collectSelectionPayload(),
+            });
+            selectionRafId = null;
+          });
+        }
+
+        function collectNearPageNumbers() {
+          var viewportTop = -window.innerHeight * 0.75;
+          var viewportBottom = window.innerHeight * 1.75;
+          var requested = [];
+
+          pageStates.forEach(function (state, pageNumber) {
+            if (loadedPageNumbers.has(pageNumber)) {
+              return;
+            }
+
+            var rect = state.root.getBoundingClientRect();
+            if (rect.bottom >= viewportTop && rect.top <= viewportBottom) {
+              requested.push(pageNumber);
+              if (pageNumber > 1) {
+                requested.push(pageNumber - 1);
+              }
+              requested.push(pageNumber + 1);
+            }
+          });
+
+          var unique = Array.from(new Set(requested))
+            .filter(function (pageNumber) {
+              return Boolean(PAGE_NUMBER_LOOKUP[pageNumber]);
+            })
+            .sort(function (left, right) {
+              return left - right;
+            });
+          return unique;
+        }
+
+        function scheduleNearPageRequest() {
+          if (scrollRequestTimeoutId !== null) {
+            return;
+          }
+
+          scrollRequestTimeoutId = setTimeout(function () {
+            scrollRequestTimeoutId = null;
+            var pageNumbers = collectNearPageNumbers();
+            if (pageNumbers.length === 0) {
+              return;
+            }
+            emit({
+              type: 'page-window-request',
+              payload: {
+                pageNumbers: pageNumbers,
+              },
+            });
+          }, 16);
+        }
+
+        document.addEventListener('click', function (event) {
+          if (hasActiveSelection()) {
+            return;
+          }
+
+          var target = getWordTarget(event.target);
+          var wordPayload = parseWordPayload(target);
+          if (!wordPayload) {
+            return;
+          }
+
+          emit({
+            type: 'word-press',
+            payload: wordPayload,
+          });
+        });
+
+        document.addEventListener('selectionchange', function () {
+          scheduleSelectionReport();
+        });
+
+        document.addEventListener('copy', function (event) {
+          var selection = window.getSelection();
+          if (!selection || selection.rangeCount === 0) {
+            return;
+          }
+
+          var range = selection.getRangeAt(0);
+          var selectedWords = getSelectionWordNodes(range)
+            .map(function (node) {
+              return node.dataset.copyText || '';
+            })
+            .filter(Boolean);
+
+          var normalized = selectedWords.length
+            ? selectedWords.join(' ')
+            : normalizeCopyText(selection.toString());
+
+          if (!normalized || !event.clipboardData) {
+            return;
+          }
+
+          event.preventDefault();
+          event.clipboardData.setData('text/plain', normalized);
+        });
+
+        document.addEventListener('click', function (event) {
+          var navigationTarget =
+            event.target instanceof Element
+              ? event.target.closest('[data-surah-navigation]')
+              : null;
+          if (!(navigationTarget instanceof HTMLButtonElement) || navigationTarget.disabled) {
+            return;
+          }
+
+          var direction = navigationTarget.dataset.surahNavigation;
+          if (direction !== 'next' && direction !== 'previous') {
+            return;
+          }
+
+          emit({
+            type: 'surah-navigation',
+            payload: {
+              direction: direction,
+            },
+          });
+        });
+
+        window.addEventListener('resize', function () {
+          pageStates.forEach(function (state) {
+            // A page still waiting for its font has no glyphs to measure or reflow; laying it out
+            // now would mark an empty layout as rendered, and the render would then keep it.
+            if (state.data && state.lastLayout && !state.root.classList.contains('loading')) {
+              applyLayoutMode(state, state.lastLayout);
+              ensureActiveLayoutRendered(state);
+              emitPageRendered(state);
+              scrollToHighlightedVerseIfReady(state);
+            }
+          });
+          scheduleNearPageRequest();
+        });
+
+        window.addEventListener('scroll', function () {
+          lastScrollAt = Date.now();
+          scheduleNearPageRequest();
+          scheduleActivePageReport();
+          scheduleScrollActivityReport();
+        }, { passive: true });
+
+        initPageStates();
+        if (INITIAL_PAGE_NUMBER === FIRST_SHELL_PAGE_NUMBER && HIGHLIGHT_VERSE_KEY === '') {
+          window.scrollTo(0, 0);
+        } else {
+          scrollToPage(INITIAL_PAGE_NUMBER);
+        }
+        didScrollToInitialPage = true;
+        scheduleActivePageReport();
+
+        window.__MUSHAF_READER__ = {
+          upsertPages: function (payload) {
+            if (!payload || !Array.isArray(payload.pages) || !payload.layout) {
+              return;
+            }
+
+            if (typeof payload.highlightVerseKey === 'string') {
+              HIGHLIGHT_VERSE_KEY = payload.highlightVerseKey.trim();
+              isArrivalHighlightVisible = Boolean(HIGHLIGHT_VERSE_KEY);
+            }
+            if (typeof payload.initialPageNumber === 'number') {
+              INITIAL_PAGE_NUMBER = payload.initialPageNumber;
+            }
+            if (typeof payload.focusTopInsetPx === 'number') {
+              setFocusTopInset(payload.focusTopInsetPx);
+            }
+
+            payload.pages.forEach(function (pageData) {
+              var state = getPageState(pageData && pageData.pageNumber);
+              if (state) {
+                state.lastLayout = payload.layout;
+              }
+              if (pageData && pageData.pageNumber) {
+                pendingPageRenders.set(Number(pageData.pageNumber), {
+                  layout: payload.layout,
+                  pageData: pageData,
+                });
+              }
+            });
+            pumpPageRenders();
+          },
+          scrollToPage: scrollToPage,
+          setActiveAudioWord: setActiveAudioWord,
+          setStudySelection: setStudySelection,
+          showArrivalHighlight: showArrivalHighlight,
+          setFocusTopInset: setFocusTopInset,
+          scrollToVerse: function (verseKey) {
+            HIGHLIGHT_VERSE_KEY = typeof verseKey === 'string' ? verseKey.trim() : '';
+            isArrivalHighlightVisible = Boolean(HIGHLIGHT_VERSE_KEY);
+            didScrollToHighlight = false;
+            pageStates.forEach(function (state) {
+              if (state.data) {
+                scrollToHighlightedVerseIfReady(state);
+              }
+            });
+          },
+        };
+
+        var EMBEDDED_INITIAL_PAGES = ${serializeJson(initialPages)};
+        if (EMBEDDED_INITIAL_PAGES.length > 0) {
+          window.__MUSHAF_READER__.upsertPages({
+            layout: ${serializeJson(layout)},
+            pages: EMBEDDED_INITIAL_PAGES,
+          });
+        }
+
+        emit({
+          type: 'renderer-ready',
+          payload: {
+            ready: true,
+          },
+        });
+        scheduleNearPageRequest();
+      })();
+    </script>
+  </body>
+</html>`;
+}
+
+export function buildMushafReaderWebViewShellDocument({
+  compactPageLines = false,
+  estimatedPageHeight,
+  focusTopInsetPx,
+  highlightVerseKey,
+  initialPageNumber,
+  initialPages = [],
+  mushafScaleStep,
+  pageNumbers,
+  packId,
+  surahHeaders,
+  surahIntro,
+  surahNavigation,
+  theme,
+  totalPages,
+  viewportHeight,
+}: {
+  compactPageLines?: boolean | undefined;
+  estimatedPageHeight: number;
+  focusTopInsetPx: number;
+  highlightVerseKey?: string | null;
+  initialPageNumber: number;
+  /** Already-loaded pages drawn as soon as the document parses, before any injection. */
+  initialPages?: MushafPageData[];
+  mushafScaleStep: MushafScaleStep;
+  pageNumbers?: number[] | undefined;
+  packId: MushafPackId;
+  /** Headers drawn inside the pages wherever these Surahs begin (Juz and Page readers). */
+  surahHeaders?: readonly MushafReaderSurahIntro[] | undefined;
+  surahIntro?: MushafReaderSurahIntro | undefined;
+  surahNavigation?: MushafReaderSurahNavigation | undefined;
+  theme: MushafReaderWebViewTheme;
+  totalPages: number;
+  viewportHeight: number;
+}): { html: string; layout: MushafReaderWebViewLayoutPayload } {
+  const layoutConfig = getMushafWebViewLayoutConfig(packId, mushafScaleStep, viewportHeight);
+  const layout = {
+    fontSizeCss: layoutConfig.fontSizeCss,
+    isExactPreset: layoutConfig.isExactPreset,
+    lineWidthCss: layoutConfig.lineWidthCss,
+    lineHeightMultiplier: layoutConfig.lineHeightMultiplier,
+    reflowLineHeightMultiplier: layoutConfig.reflowLineHeightMultiplier,
+  };
+  const cacheKey = [
+    packId,
+    mushafScaleStep,
+    theme,
+    Math.round(viewportHeight),
+    Math.round(estimatedPageHeight),
+    Math.round(focusTopInsetPx),
+    totalPages,
+    initialPageNumber,
+    compactPageLines ? 'compact' : 'full',
+    pageNumbers?.join(',') ?? 'all',
+    surahIntro
+      ? [
+          surahIntro.chapterId,
+          surahIntro.infoLabel,
+          surahIntro.isMakkah ? 'makkah' : 'madinah',
+          surahIntro.showBismillah ? 'bismillah' : 'no-bismillah',
+          surahIntro.surahName,
+        ].join('|')
+      : 'no-intro',
+    surahNavigation
+      ? [surahNavigation.previousSurahName ?? '', surahNavigation.nextSurahName ?? ''].join('|')
+      : 'no-navigation',
+    getMushafSurahHeadersSignature(surahHeaders),
+    highlightVerseKey ?? '',
+  ].join(':');
+  const cached = initialPages.length === 0 ? shellDocumentCache.get(cacheKey) : undefined;
+  if (cached) {
+    return cached;
+  }
+
+  const shellDocument = {
+    html: buildShellDocumentHtml({
+      compactPageLines,
+      estimatedPageHeight,
+      focusTopInsetPx,
+      highlightVerseKey,
+      initialPageNumber,
+      initialPages,
+      layout,
+      pageNumbers,
+      surahHeaders,
+      surahIntro,
+      surahNavigation,
+      theme,
+      totalPages,
+    }),
+    layout,
+  };
+  if (initialPages.length === 0) {
+    shellDocumentCache.set(cacheKey, shellDocument);
+  }
+  return shellDocument;
+}
+
+export function buildMushafReaderWebViewPagesScript({
+  focusTopInsetPx,
+  highlightVerseKey,
+  initialPageNumber,
+  layout,
+  pages,
+}: {
+  focusTopInsetPx: number;
+  highlightVerseKey?: string | null;
+  initialPageNumber: number;
+  layout: MushafReaderWebViewLayoutPayload;
+  pages: MushafPageData[];
+}): string {
+  return `
+    (function () {
+      var reader = window.__MUSHAF_READER__;
+      if (!reader || typeof reader.upsertPages !== 'function') {
+        return true;
+      }
+
+      reader.upsertPages(${serializeJson({
+        focusTopInsetPx,
+        highlightVerseKey: highlightVerseKey ?? '',
+        initialPageNumber,
+        layout,
+        pages,
+      })});
+      return true;
+    })();
+  `;
+}

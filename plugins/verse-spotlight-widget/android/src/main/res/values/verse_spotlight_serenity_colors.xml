@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Mirrors the mobile semantic tokens in tailwind.config.js. -->
+<resources>
+    <color name="verse_spotlight_serenity_surface">#FFFFFF</color>
+    <color name="verse_spotlight_serenity_text">#374151</color>
+    <color name="verse_spotlight_serenity_accent">#0D9488</color>
+    <color name="verse_spotlight_serenity_accent_pressed">#0F766E</color>
+    <color name="verse_spotlight_serenity_control">#F3F4F6</color>
+    <color name="verse_spotlight_serenity_control_pressed">#E5E7EB</color>
+    <color name="verse_spotlight_serenity_border">#E5E7EB</color>
+    <color name="verse_spotlight_serenity_on_accent">#FFFFFF</color>
+</resources>

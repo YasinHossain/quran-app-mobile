@@ -1,0 +1,401 @@
+package com.anonymous.quranappmobile.nativesurahreader
+
+import android.content.Context
+import android.graphics.Color
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
+import android.text.TextUtils
+import android.text.method.LinkMovementMethod
+import android.util.TypedValue
+import android.view.Gravity
+import android.view.View
+import android.widget.LinearLayout
+import android.widget.TextView
+
+internal class NativeVerseRowView(
+    context: Context,
+    private val onActionPress: (NativeVerse) -> Unit,
+    private val onWordPress: (NativeVerse, NativeWord) -> Unit,
+) : LinearLayout(context) {
+  private val referenceView =
+      TextView(context).apply {
+        textSize = 13f
+        typeface = Typeface.DEFAULT_BOLD
+        includeFontPadding = false
+      }
+
+  private val actionButton =
+      TextView(context).apply {
+        text = "⋯"
+        textSize = 18f
+        gravity = Gravity.CENTER
+        includeFontPadding = false
+        minWidth = dp(32)
+        minHeight = dp(32)
+      }
+
+  private val arabicView =
+      TextView(context).apply {
+        gravity = Gravity.RIGHT
+        textDirection = TEXT_DIRECTION_RTL
+        includeFontPadding = true
+      }
+
+  private val wordLayoutView = NativeWordLayoutView(context)
+
+  private val translationContainer =
+      LinearLayout(context).apply {
+        orientation = VERTICAL
+      }
+
+  private val dividerView = android.view.View(context)
+
+  private val textSelection = NativeVerseTextSelection(context)
+  private val tajweedMovementMethod = NativeTajweedMovementMethod()
+  private var boundArabicFontFace: String? = null
+  private var boundArabicFontSize = 25f
+  private var boundVerse: NativeVerse? = null
+  private var boundTheme: NativeReaderTheme = NativeReaderTheme.default()
+  private var boundActiveWord: NativeActiveWord? = null
+  private var boundWordPressEnabled: Boolean = false
+  private var boundSurahName: String? = null
+
+  private fun buildFullVerseText(verse: NativeVerse): String {
+    val header = if (!boundSurahName.isNullOrBlank()) {
+      "${boundSurahName} ${verse.verseKey}"
+    } else {
+      verse.verseKey
+    }
+    val sb = StringBuilder()
+    sb.append(header).append("\n\n").append(verse.arabicText.trim())
+    if (verse.translationItems.isNotEmpty()) {
+      sb.append("\n")
+      verse.translationItems.forEach { item ->
+        val cleanText = item.text.replace(Regex("<[^>]+>"), "").trim()
+        if (cleanText.isNotEmpty()) {
+          sb.append("\n")
+          if (!item.resourceName.isNullOrBlank()) {
+            sb.append(item.resourceName).append(":\n")
+          }
+          sb.append(cleanText)
+        }
+      }
+    }
+    return sb.toString()
+  }
+
+  init {
+    orientation = VERTICAL
+    setPadding(0, dp(16), 0, 0)
+
+    val header =
+        LinearLayout(context).apply {
+          orientation = HORIZONTAL
+          gravity = Gravity.CENTER_VERTICAL
+        }
+    header.addView(referenceView, LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
+    header.addView(actionButton, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT))
+    addView(header, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+
+    val margin = dp(10)
+    addView(
+        arabicView,
+        LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
+          topMargin = margin
+        },
+    )
+    addView(
+        wordLayoutView,
+        LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
+          topMargin = margin
+        },
+    )
+    addView(
+        translationContainer,
+        LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
+          topMargin = margin
+        },
+    )
+    addView(
+        dividerView,
+        LayoutParams(LayoutParams.MATCH_PARENT, 1).apply {
+          topMargin = dp(16)
+        },
+    )
+
+    val selectVerse = OnLongClickListener {
+      val verse = boundVerse ?: return@OnLongClickListener false
+      textSelection.show(
+          verse.verseKey, verse.arabicText, boundTheme, boundArabicFontSize,
+          boundArabicFontFace, arabic = true,
+          fullVerseText = buildFullVerseText(verse),
+      )
+    }
+    setOnLongClickListener(selectVerse)
+    arabicView.setOnLongClickListener(selectVerse)
+    wordLayoutView.onVerseLongPress = { selectVerse.onLongClick(wordLayoutView) }
+    referenceView.setOnLongClickListener(selectVerse)
+    translationContainer.setOnLongClickListener(selectVerse)
+
+    actionButton.setOnClickListener {
+      boundVerse?.let(onActionPress)
+    }
+  }
+
+  fun bind(
+      verse: NativeVerse,
+      activeVerseKey: String?,
+      activeWord: NativeActiveWord?,
+      arabicFontFace: String?,
+      arabicFontSize: Float,
+      translationFontSize: Float,
+      displayMode: String,
+      showByWords: Boolean,
+      audioWordSyncEnabled: Boolean,
+      wordPressEnabled: Boolean,
+      showTranslationAttribution: Boolean,
+      theme: NativeReaderTheme,
+      surahName: String? = null,
+  ) {
+    if (boundVerse !== verse || boundTheme != theme) textSelection.dismiss()
+    boundSurahName = surahName
+    boundArabicFontFace = arabicFontFace
+    boundArabicFontSize = arabicFontSize
+    boundVerse = verse
+    boundTheme = theme
+    boundActiveWord = activeWord?.takeIf { it.verseKey == verse.verseKey }
+    boundWordPressEnabled = wordPressEnabled
+    referenceView.text = verse.verseKey
+    referenceView.setTextColor(theme.tintColor)
+    val shouldShowWordLayout =
+        (displayMode == DISPLAY_MODE_WORD_BY_WORD || showByWords || audioWordSyncEnabled) &&
+            verse.words.isNotEmpty()
+    if (shouldShowWordLayout) {
+      arabicView.visibility = View.GONE
+      wordLayoutView.visibility = View.VISIBLE
+      wordLayoutView.bind(
+          verse.words,
+          verse,
+          arabicFontFace,
+          arabicFontSize,
+          showByWords,
+          wordPressEnabled,
+          activeWord,
+          theme,
+          onWordPress,
+      )
+    } else {
+      val tajweedText =
+          if (displayMode == DISPLAY_MODE_TAJWEED && !showByWords) {
+            NativeTajweedTextFactory.buildSpannable(
+                verse.tajweedGlyphRuns,
+                verse.words,
+                sp(tajweedLineHeight(arabicFontSize)).toInt(),
+                sp(arabicFontSize * NativeTajweedTextFactory.WORD_GAP_EM).toInt(),
+                wordPressEnabled,
+                boundActiveWord,
+                theme.activeBackgroundColor,
+                { word -> onWordPress(verse, word) },
+            )
+          } else {
+            null
+      }
+      val plainWordText =
+          if (tajweedText == null) {
+            NativeTajweedTextFactory.buildPlainSpannable(
+                verse.verseKey,
+                verse.arabicText,
+                verse.words,
+                wordPressEnabled,
+                boundActiveWord,
+                theme.activeBackgroundColor,
+                { word -> onWordPress(verse, word) },
+            )
+          } else {
+            null
+          }
+      val hasPressableWords = (tajweedText != null || plainWordText != null) && wordPressEnabled
+      wordLayoutView.visibility = View.GONE
+      wordLayoutView.bind(
+          emptyList(),
+          verse,
+          arabicFontFace,
+          arabicFontSize,
+          false,
+          false,
+          null,
+          theme,
+          onWordPress,
+      )
+      arabicView.visibility = View.VISIBLE
+      arabicView.text =
+          tajweedText
+              ?: NativeTajweedTextFactory.appendEndOfAyahMarker(
+                  plainWordText ?: verse.arabicText,
+                  verse.verseNumber,
+                  NativeArabicFontResolver.resolveEndOfAyahMarker(context),
+              )
+      arabicView.contentDescription = if (tajweedText == null) verse.arabicText else null
+      arabicView.movementMethod = if (hasPressableWords) tajweedMovementMethod else null
+      arabicView.isLongClickable = true
+      arabicView.linksClickable = hasPressableWords
+      arabicView.highlightColor = Color.TRANSPARENT
+      arabicView.typeface =
+          if (tajweedText == null) {
+            NativeArabicFontResolver.resolve(context, arabicFontFace, verse.arabicText)
+          } else {
+            Typeface.DEFAULT
+          }
+      arabicView.includeFontPadding = tajweedText == null
+      arabicView.textSize = arabicFontSize
+      arabicView.setTextColor(theme.textColor)
+      val lineHeight =
+          if (tajweedText == null) {
+            arabicLineHeight(arabicFontSize)
+          } else {
+            tajweedLineHeight(arabicFontSize)
+          }
+      arabicView.setLineSpacing(lineSpacingExtra(arabicFontSize, lineHeight), 1.0f)
+      arabicView.minHeight = sp(lineHeight).toInt()
+    }
+    actionButton.setTextColor(theme.mutedColor)
+    actionButton.background = circleDrawable(Color.TRANSPARENT)
+    translationContainer.removeAllViews()
+    verse.translationItems.forEachIndexed { index, item ->
+      val onTranslationLongClick = OnLongClickListener {
+        val verse = boundVerse ?: return@OnLongClickListener false
+        textSelection.show(
+            verse.verseKey, item.text, boundTheme, translationFontSize,
+            attribution = item.resourceName,
+            fullVerseText = buildFullVerseText(verse),
+        )
+      }
+      val itemLayout =
+          LinearLayout(context).apply {
+            orientation = VERTICAL
+            tag = item.resourceId
+            if (index > 0) {
+              setPadding(0, dp(18), 0, 0)
+            }
+            setOnLongClickListener(onTranslationLongClick)
+          }
+
+      if (showTranslationAttribution && !item.resourceName.isNullOrBlank()) {
+        itemLayout.addView(
+            TextView(context).apply {
+              setOnLongClickListener(onTranslationLongClick)
+              text = item.resourceName.uppercase()
+              textSize = 12f
+              typeface = Typeface.DEFAULT
+              ellipsize = TextUtils.TruncateAt.END
+              maxLines = 2
+              setTextColor(theme.mutedColor)
+              includeFontPadding = false
+            },
+            LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
+              bottomMargin = dp(8)
+            },
+        )
+      }
+
+      itemLayout.addView(
+          TextView(context).apply {
+            setOnLongClickListener(onTranslationLongClick)
+            text = item.text
+            textSize = translationFontSize
+            setTextColor(theme.textColor)
+            setLineSpacing(
+                lineSpacingExtra(translationFontSize, translationLineHeight(translationFontSize)),
+                1.0f,
+            )
+          },
+          LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT),
+      )
+      translationContainer.addView(itemLayout, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+    }
+    dividerView.setBackgroundColor(theme.borderColor)
+    bindActiveAudio(activeVerseKey, activeWord)
+  }
+
+  fun bindActiveAudio(activeVerseKey: String?, activeWord: NativeActiveWord?) {
+    val verse = boundVerse ?: return
+    boundActiveWord = activeWord?.takeIf { it.verseKey == verse.verseKey }
+    setBackgroundColor(if (activeVerseKey == verse.verseKey) boundTheme.activeBackgroundColor else Color.TRANSPARENT)
+    wordLayoutView.updateActiveWord(activeWord)
+    NativeTajweedTextFactory.updateInteraction(
+        arabicView.text,
+        enabled = boundWordPressEnabled,
+        activeWord = boundActiveWord,
+        activeColor = boundTheme.activeBackgroundColor,
+    )
+    arabicView.invalidate()
+    invalidate()
+  }
+
+  /** Fades in translations that arrived online after this verse was already on screen. */
+  fun fadeInTranslations(verseKeys: Set<String>, resourceIds: Set<Int>, durationMs: Long) {
+    val verseKey = boundVerse?.verseKey ?: return
+    if (verseKey !in verseKeys) return
+    for (index in 0 until translationContainer.childCount) {
+      val itemLayout = translationContainer.getChildAt(index)
+      val resourceId = itemLayout.tag as? Int ?: continue
+      if (resourceId !in resourceIds) continue
+      itemLayout.alpha = 0f
+      itemLayout.animate().alpha(1f).setDuration(durationMs).withLayer().start()
+    }
+  }
+
+  fun updateWordPressEnabled(enabled: Boolean) {
+    boundWordPressEnabled = enabled
+    wordLayoutView.updateWordPressEnabled(enabled)
+    NativeTajweedTextFactory.updateInteraction(
+        arabicView.text,
+        enabled,
+        boundActiveWord,
+        boundTheme.activeBackgroundColor,
+    )
+    val hasClickableTajweedWords =
+        enabled && arabicView.visibility == View.VISIBLE && arabicView.text is android.text.Spanned
+    arabicView.movementMethod = if (hasClickableTajweedWords) tajweedMovementMethod else null
+    arabicView.isLongClickable = true
+    arabicView.linksClickable = hasClickableTajweedWords
+    arabicView.invalidate()
+  }
+
+  override fun onDetachedFromWindow() {
+    tajweedMovementMethod.cancel(arabicView)
+    textSelection.dismiss()
+    super.onDetachedFromWindow()
+  }
+
+  private fun dp(value: Int): Int {
+    return (value * resources.displayMetrics.density).toInt()
+  }
+
+  private fun sp(value: Float): Float {
+    return TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, value, resources.displayMetrics)
+  }
+
+  private fun lineSpacingExtra(fontSizeSp: Float, lineHeightSp: Float): Float {
+    return (sp(lineHeightSp) - sp(fontSizeSp)).coerceAtLeast(0f)
+  }
+
+  private fun arabicLineHeight(fontSizeSp: Float): Float {
+    return maxOf(fontSizeSp + 3f, fontSizeSp * 1.18f)
+  }
+
+  private fun tajweedLineHeight(fontSizeSp: Float): Float {
+    return maxOf(fontSizeSp + 7f, fontSizeSp * 1.42f)
+  }
+
+  private fun translationLineHeight(fontSizeSp: Float): Float {
+    return maxOf(fontSizeSp + 8f, fontSizeSp * 1.7f)
+  }
+
+  private fun circleDrawable(color: Int): GradientDrawable {
+    return GradientDrawable().apply {
+      shape = GradientDrawable.OVAL
+      setColor(color)
+    }
+  }
+}

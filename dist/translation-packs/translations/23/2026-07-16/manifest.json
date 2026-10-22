@@ -1,0 +1,15 @@
+{
+  "translationId": 23,
+  "name": "Azerbaijani",
+  "authorName": "Azerbaijani",
+  "languageName": "azeri",
+  "version": "2026-07-16",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "f2b1a30b661966a512409af233ea1d37",
+  "payloadSizeBytes": 3152628,
+  "totalVerses": 6236,
+  "generatedAt": "2026-07-16T11:33:49.793Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=23&per_page=300"
+}

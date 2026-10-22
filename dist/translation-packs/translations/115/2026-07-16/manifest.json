@@ -1,0 +1,15 @@
+{
+  "translationId": 115,
+  "name": "Abubakar Mahmood Jummi",
+  "authorName": "Abubakar Mahmood Jummi",
+  "languageName": "hausa",
+  "version": "2026-07-16",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "0f193aa067a893577618c8f6fd8ef83e",
+  "payloadSizeBytes": 2745537,
+  "totalVerses": 6236,
+  "generatedAt": "2026-07-16T11:33:47.230Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=115&per_page=300"
+}

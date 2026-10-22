@@ -1,0 +1,15 @@
+{
+  "translationId": 209,
+  "name": "Othman al-Sharif",
+  "authorName": "Othman al-Sharif",
+  "languageName": "italian",
+  "version": "2026-07-16",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "25285e5f838483c05c2a3ee9ddb1a9b2",
+  "payloadSizeBytes": 2648637,
+  "totalVerses": 6236,
+  "generatedAt": "2026-07-16T11:37:04.591Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=209&per_page=300"
+}

@@ -1,0 +1,15 @@
+{
+  "translationId": 153,
+  "name": "Hamza Roberto Piccardo",
+  "authorName": "Hamza Roberto Piccardo",
+  "languageName": "italian",
+  "version": "2026-07-16",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "d6c1fb75ba64aca55165015e81734c5a",
+  "payloadSizeBytes": 3347315,
+  "totalVerses": 6236,
+  "generatedAt": "2026-07-16T11:35:17.090Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=153&per_page=300"
+}

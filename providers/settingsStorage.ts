@@ -1,0 +1,147 @@
+import { isMushafPackId } from '@/data/mushaf/options';
+import { getCachedItem, getItem, hasCachedItem, parseJson, setItem } from '@/lib/storage/appStorage';
+import { DEFAULT_ARABIC_FONT_VALUE } from '@/src/core/infrastructure/fonts/arabicFonts';
+
+import {
+  DEFAULT_MUSHAF_SCALE_STEP,
+  clampMushafScaleStep,
+  fontSizeToMushafScaleStep,
+  type MushafPackId,
+  type Settings,
+} from '@/types';
+
+export const ARABIC_FONTS = [
+  { name: 'KFGQ', value: '"UthmanicHafs1Ver18", serif', category: 'Uthmani' },
+  { name: 'KFGQ V2', value: '"KFGQ V2", serif', category: 'Uthmani' },
+  { name: 'Me Quran', value: '"Me Quran", serif', category: 'Uthmani' },
+  { name: 'Amiri Quran', value: '"Amiri Quran", serif', category: 'Uthmani' },
+
+  { name: 'Scheherazade New', value: '"Scheherazade New", serif', category: 'Uthmani' },
+  { name: 'Noto Naskh Arabic', value: '"Noto Naskh Arabic", serif', category: 'Uthmani' },
+
+  { name: 'IndoPak Nastaleeq (Waqf Lazim)', value: '"IndoPak", serif', category: 'IndoPak' },
+  { name: 'Noor-e-Huda', value: '"Noor-e-Huda", serif', category: 'IndoPak' },
+  { name: 'Noor-e-Hidayat', value: '"Noor-e-Hidayat", serif', category: 'IndoPak' },
+  { name: 'Noor-e-Hira', value: '"Noor-e-Hira", serif', category: 'IndoPak' },
+  { name: 'Lateef', value: '"Lateef", serif', category: 'IndoPak' },
+] as const;
+
+const DEFAULT_ARABIC_FONT =
+  ARABIC_FONTS.find((font) => font.value === DEFAULT_ARABIC_FONT_VALUE)?.value ??
+  DEFAULT_ARABIC_FONT_VALUE;
+
+export const defaultSettings: Settings = {
+  translationId: 20,
+  translationIds: [20],
+  tafsirIds: [],
+  arabicFontSize: 34,
+  translationFontSize: 18,
+  tafsirFontSize: 18,
+  arabicFontFace: DEFAULT_ARABIC_FONT,
+  wordLang: 'en',
+  wordTranslationId: 85,
+  showByWords: false,
+  tajweed: false,
+  mushafScaleStep: DEFAULT_MUSHAF_SCALE_STEP,
+  readingMode: 'translations',
+  contentLanguage: 'en',
+  uiLanguage: 'en',
+};
+
+type RawSettings = Partial<Settings> & { tafsirId?: number };
+
+export const SETTINGS_KEY = 'quranAppSettings';
+
+function normalizeSettings(raw: RawSettings, defaults: Settings): Settings {
+  const mutable = { ...raw };
+
+  if (mutable.tafsirId && !mutable.tafsirIds) {
+    mutable.tafsirIds = [mutable.tafsirId];
+    delete mutable.tafsirId;
+  }
+
+  const normalizeIdList = (value: unknown): number[] => {
+    const input = Array.isArray(value) ? value : [];
+    const seen = new Set<number>();
+    const normalized: number[] = [];
+
+    for (const rawId of input) {
+      if (typeof rawId !== 'number' || !Number.isFinite(rawId)) continue;
+      const id = Math.trunc(rawId);
+      if (id <= 0) continue;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      normalized.push(id);
+    }
+
+    return normalized;
+  };
+
+  const translationIds = Array.isArray(mutable.translationIds)
+    ? normalizeIdList(mutable.translationIds)
+    : [mutable.translationId ?? defaults.translationId].filter(
+        (id): id is number => typeof id === 'number'
+      );
+
+  const translationId = typeof mutable.translationId === 'number'
+    ? mutable.translationId
+    : translationIds[0] ?? defaults.translationId;
+
+  const tafsirIds = Array.isArray(mutable.tafsirIds) && mutable.tafsirIds.length > 0
+    ? normalizeIdList(mutable.tafsirIds)
+    : defaults.tafsirIds;
+
+  const mushafId: MushafPackId | undefined =
+    typeof mutable.mushafId === 'string' && isMushafPackId(mutable.mushafId)
+      ? mutable.mushafId
+      : defaults.mushafId;
+
+  const mushafScaleStep = typeof mutable.mushafScaleStep === 'number' && Number.isFinite(mutable.mushafScaleStep)
+    ? clampMushafScaleStep(mutable.mushafScaleStep)
+    : fontSizeToMushafScaleStep(
+        typeof mutable.arabicFontSize === 'number' ? mutable.arabicFontSize : defaults.arabicFontSize
+      );
+
+  const readingMode =
+    mutable.readingMode === 'translations' || mutable.readingMode === 'mushaf'
+      ? mutable.readingMode
+      : defaults.readingMode ?? 'translations';
+
+  const merged = { ...defaults, ...mutable } as Settings;
+  const contentLanguage =
+    typeof mutable.contentLanguage === 'string' && mutable.contentLanguage.trim()
+      ? mutable.contentLanguage.trim().toLowerCase()
+      : defaults.contentLanguage;
+  const uiLanguage =
+    typeof mutable.uiLanguage === 'string' && mutable.uiLanguage.trim()
+      ? mutable.uiLanguage.trim().toLowerCase()
+      : defaults.uiLanguage ?? contentLanguage ?? 'en';
+
+  return {
+    ...merged,
+    translationIds,
+    translationId,
+    tafsirIds,
+    mushafId,
+    mushafScaleStep,
+    readingMode,
+    contentLanguage,
+    uiLanguage,
+  };
+}
+
+export async function loadSettings(defaults: Settings = defaultSettings): Promise<Settings> {
+  const savedSettings = parseJson<RawSettings>(await getItem(SETTINGS_KEY));
+  if (!savedSettings) return defaults;
+  return normalizeSettings(savedSettings, defaults);
+}
+
+export function getCachedSettings(defaults: Settings = defaultSettings): Settings | null {
+  if (!hasCachedItem(SETTINGS_KEY)) return null;
+  const savedSettings = parseJson<RawSettings>(getCachedItem(SETTINGS_KEY));
+  return savedSettings ? normalizeSettings(savedSettings, defaults) : defaults;
+}
+
+export async function saveSettings(settings: Settings): Promise<void> {
+  await setItem(SETTINGS_KEY, JSON.stringify(settings));
+}

@@ -1,0 +1,15 @@
+{
+  "translationId": 106,
+  "name": "Magomed Magomedov",
+  "authorName": "Magomed Magomedov",
+  "languageName": "chechen",
+  "version": "2026-07-16",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "609863fcedaf5351c2516c754e9230e3",
+  "payloadSizeBytes": 3244653,
+  "totalVerses": 6236,
+  "generatedAt": "2026-07-16T11:39:10.063Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=106&per_page=300"
+}

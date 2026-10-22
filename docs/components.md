@@ -1,0 +1,203 @@
+# Component Inventory
+
+This document lists reusable UI components currently available in the codebase so they can be reused before new ones are created.
+
+## Base Components
+
+| Component | Description | File Path |
+| --- | --- | --- |
+| `EditScreenInfo` | Helper panel for developer instructions, including a path display and external docs link. | `components/EditScreenInfo.tsx` |
+| `ExternalLink` | Expo Router `Link` wrapper that opens external URLs in an in-app browser on native. | `components/ExternalLink.tsx` |
+| `MonoText` | Themed text component with a monospace font for code-like snippets. | `components/StyledText.tsx` |
+| `Text`, `View`, `useThemeColor` | Themed primitives that apply light/dark colors based on the current color scheme. | `components/Themed.tsx` |
+
+## Motion Utilities
+
+| Utility | Description | File Path |
+| --- | --- | --- |
+| `useModalTransition` | Shared native-driver modal/sheet transition state used by dialogs, bottom sheets, and side drawers for consistent open/close timing. | `components/motion/modalTransition.ts` |
+| `BottomSheet` | The shell every bottom sheet uses: app-window portal, kept mounted while closed, dimmed backdrop, exact-height native-driver spring slide, and bottom safe area. Sheets supply only content. | `components/motion/BottomSheet.tsx` |
+| `Dialog` | The shell every centered dialog uses: app-window portal, dimmed backdrop, fade-and-lift motion, one panel style (16-point radius, 520-point max width, 90% max height), safe-area and keyboard avoidance. Dialogs supply only content; `keepMounted` for dialogs another surface hands off to. | `components/motion/Dialog.tsx` |
+| `PortalOverlay` | Full-screen overlay in the root portal instead of a separate Android `Modal` window. With `keepMounted`, the hidden surface is frozen so owner re-renders do not reconcile it. | `components/motion/PortalOverlay.tsx` |
+
+## Home Screen Components
+
+| Component | Description | File Path |
+| --- | --- | --- |
+| `HomeVerseSpotlight` | Minimal offline Home verse hero backed by the shared Verse Spotlight engine. A balanced translation preview and ornamented bracketed reference sit directly on the Home background without a nested card, attribution label, or visible controls; long translations end at a compact word-boundary ellipsis and open in full when tapped. It hydrates and persists independent Home state, silently resolves an installed selected translation or bundled Saheeh fallback, rotates only while Home is focused and foregrounded, supports canonical horizontal swipes and screen-reader increment/decrement actions, and prevents stale async results. | `components/home/HomeVerseSpotlight.tsx` |
+| `VerseSpotlightWidgetProvider` (Android) | Native offline `4 x 2` launcher widget with independent per-instance state, exact-verse deep links, compact shuffle/previous/next controls, and a borderless continuous scrollable verse area. It shows only the downloaded selected translation (with silent bundled Sahih fallback), or Arabic only when no translation is selected. It runs in a dedicated process without starting React Native. | `plugins/verse-spotlight-widget/android/` |
+| `HomeShortcutGrid` | Four home shortcut tiles wired to `Recent`, `Bookmarks`, `Pinned`, and `Planner`. | `components/home/HomeShortcutGrid.tsx` |
+| `HomeRecentCard` | Compact recent section that shows up to five last-read quick-access chips and opens the selected verse. | `components/home/HomeRecentCard.tsx` |
+| `HomeQuickLinksCard` | Persisted home quick-link pills for up to five selected surah/verse targets, shipping with default links for Surah Al-Kahf (18:1), Surah Al-Mulk (67:1), and Surah Ya-Sin (36:1), with an add modal that reuses the shared Go To selectors. | `components/home/HomeQuickLinksCard.tsx` |
+| `HomeTabToggle` | Three-state wrapper around the shared sliding segmented control for switching between `Surah`, `Juz`, and `Page`; used as the single sticky tab item in the home list. | `components/home/HomeTabToggle.tsx` |
+| `SlidingSegmentedControl` | Reusable rounded segmented track with the Home-style spring-animated navigation-surface pill, subtle border/shadow, accessible tab semantics, and shrink-to-fit labels. | `components/ui/SlidingSegmentedControl.tsx` |
+| `JuzCard` | Pressable card that links to a Juz detail screen and shows Juz number/range. | `components/home/JuzCard.tsx` |
+| `JuzGrid` | Responsive virtualized grid list for rendering Juz cards without mounting the full tab at once. | `components/home/JuzGrid.tsx` |
+| `PageCard` | Pressable card that links to a mushaf page reader route. | `components/home/PageCard.tsx` |
+| `PageGrid` | Responsive virtualized grid list for all 604 mushaf pages on the home screen. | `components/home/PageGrid.tsx` |
+| `SurahCard` | Pressable card that links to a Surah detail screen with metadata. | `components/home/SurahCard.tsx` |
+| `SurahGrid` | Responsive virtualized grid list for rendering all Surah cards without staged loading. | `components/home/SurahGrid.tsx` |
+
+## Search Components
+
+| Component | Description | File Path |
+| --- | --- | --- |
+| `HeaderSearchButton` | Header-sized search input button (opens comprehensive search overlay). | `components/search/HeaderSearchButton.tsx` |
+| `ComprehensiveSearchModal` | Mobile search overlay/dropdown shell (input, Go To form state, offline navigation/verse preview, "Search all translations" CTA to full results). See `docs/offline-search.md`. | `components/search/ComprehensiveSearchModal.tsx` |
+| `HeaderSearchBar` | Shared safe-area header shell and icon-button treatment for Home and Surah search headers. | `components/search/HeaderSearchBar.tsx` |
+| `HeaderSearchInput` | Header search text input (web-style) used by Home, Surah, and settings search surfaces. | `components/search/HeaderSearchInput.tsx` |
+| `ComprehensiveSearchDropdown` | Under-header dropdown card for the Surah header search (Go To when empty; offline quick results when typing, with a "Search all translations" CTA that becomes primary when nothing matches offline). | `components/search/ComprehensiveSearchDropdown.tsx` |
+| `GoToSurahVerseCard` | Mobile “Go To” form (Surah + Verse selectors, Go action, and suggestion actions); supports card and embedded modes. The visible selector becomes the writable input in place, with fixed closed/editable dimensions and a floating list so opening it does not resize or scroll the card. | `components/search/GoToSurahVerseCard.tsx` |
+| `SurahVerseSelectorRow` | Shared Surah + Verse selector row (uses the same dropdown selectors as the Go To card). | `components/search/SurahVerseSelectorRow.tsx` |
+| `SearchableSelectorDropdown` | Shared in-place writable selector with a web-matching, portal-backed floating list that can extend beyond its card while staying in the same native window; it dismisses the keyboard when list scrolling or selection begins without moving or duplicating the input. | `components/search/SearchableSelectorDropdown.tsx` |
+| `OverlayPortalProvider` | Same-window overlay host used by floating mobile controls that must escape card and scroll-view clipping without opening a second native modal window. | `providers/OverlayPortalContext.tsx` |
+| `AnchoredDropdownModal` | Transparent modal that anchors dropdown content to a measured view (useful for web-like select overlays). | `components/search/AnchoredDropdownModal.tsx` |
+| `HighlightedText` | Lightweight `<em>` tag highlighter renderer for search result snippets. | `components/search/HighlightedText.tsx` |
+| `SearchVerseResultCard` | Search results list item (Arabic + highlighted match snippet). | `components/search/SearchVerseResultCard.tsx` |
+
+## Navigation Header Components
+
+| Component / Hook | Description | File Path |
+| --- | --- | --- |
+| `AppHeader` | Shared safe-area navigation header for non-reader screens such as Bookmarks and Planner. | `components/navigation/AppHeader.tsx` |
+| `AppSearchHeader` | Shared safe-area header search layout used by Home and reader screens. | `components/navigation/AppHeader.tsx` |
+| `ReaderOverlayHeader` | Absolute reader header shell used when vertical reading scroll should collapse the header. | `components/navigation/AppHeader.tsx` |
+| `useHeaderSearch` | Shared header search state/navigation hook for Home, Surah/Mushaf, and Tafsir, with explicit Translation and exact-verse Mushaf Go To destinations kept separate from current-mode-preserving result navigation. | `components/navigation/useHeaderSearch.ts` |
+| `useCollapsibleReaderHeader` | Native-driver hide/show behavior for reader headers based on vertical scroll direction. | `components/navigation/useCollapsibleReaderHeader.ts` |
+| `useScreenTransitionSettled` | True once the host screen's native stack push has finished (`transitionEnd`, 800 ms fallback). Gate optional offscreen work on it, such as warming hidden sheets or rendering neighbouring pager pages, so it doesn't mount mid-slide. | `components/navigation/useScreenTransitionSettled.ts` |
+
+## Reader Data Hooks
+
+| Hook | Description | File Path |
+| --- | --- | --- |
+| `useMushafPageData` | Local-only mushaf page data hook that resolves the active installed pack version and returns page lookup, verse/word payload, and grouped page lines for the page route. | `hooks/useMushafPageData.ts` |
+| `prepareMushafVerseTarget` | Shared exact-verse Mushaf navigation preparation used by Go To and Translation-to-Mushaf switching; resolves the local page, validates the active pack version, and either awaits full page readiness or shares its in-flight warmup with the entering route. | `lib/mushaf/prepareMushafVerseTarget.ts` |
+| `useMushafPackManager` | Local mushaf pack manager hook used by reader settings; loads install state from the mushaf registry, merges download-index progress/errors, and exposes install/delete actions for downloadable mushaf packs like QCF V1/V2, QPC Hafs, IndoPak, and Tajweed. | `hooks/useMushafPackManager.ts` |
+| `useDownloadedResourceSize` / `useDownloadedResourceSizes` | Resolve the installed-resource total plus per-item sizes shown in Downloads, counting SQLite-backed offline content plus downloaded audio and mushaf-pack files. | `hooks/useDownloadedResourceSize.ts` |
+
+## Localization Providers
+
+| Provider / Utility | Description | File Path |
+| --- | --- | --- |
+| `UiLanguageProvider` | Lightweight mobile UI translation provider backed by the website locale JSON copied into `locales/{en,bn,hi,ar,ur}`; reads persisted `settings.uiLanguage` and exposes `useUiTranslation()` for web-matching labels without changing Quran translation defaults. | `providers/UiLanguageContext.tsx` |
+| `UI_LANGUAGES` | Shared UI language list and native labels mirrored from the web app (`English`, `বাংলা`, `العربية`, `اردو`, `हिन्दी`). | `lib/i18n/uiLanguages.ts` |
+| `localizeNumbers` / `plannerText` | Digit localization and planner helper-text normalization used so Bangla/Hindi/Arabic/Urdu render localized numbers in cards, selectors, progress rings, and generated planner labels. | `lib/i18n/` |
+
+## Mushaf Reader Components
+
+| Component | Description | File Path |
+| --- | --- | --- |
+| `MushafNativePage` | Native Unicode mushaf renderer for offline text packs; renders page lines/words from local pack payloads with stepped `mushafScaleStep` sizing, selectable text, per-word press events, and no route-level chrome so the page route can present a text-only mushaf feed. | `components/mushaf/MushafNativePage.tsx` |
+| `MushafWebViewPage` | Local WebView mushaf renderer for exact/downloadable packs; ports the web stepped preset sizing, fit detection, centered RTL overflow reflow, resilient local QCF page-font loading with bounded recovery retries, and the selection/word-tap bridge while keeping the rendered surface free of extra cards, labels, and buttons. | `components/mushaf/MushafWebViewPage.tsx` |
+| `MushafSingleDocumentReader` | Single-surface QCF/WebView mushaf reader used by Surah, Juz, and Page Mushaf views; reports active page changes, scroll activity, selection, and canonical word taps (including surface text), highlights the current recitation word through an in-place WebView command, routes word taps to audio seeking while the player is visible, exposes imperative page jumps for scrubber navigation, supports hidden first-page preparation during Translation mode, embeds an opening page already in memory into the WebView document so it draws without a React Native round trip, lets the WebView read installed QCF page fonts from their files (re-sending a page with an embedded data-URI font only if that fails), and pre-renders the rest of the Surah in the background. The WebView renders nearest-page-first, skips layout for off-screen pages (`content-visibility: auto`), pauses background pages while the reader scrolls, and reveals itself once positioned. | `components/mushaf/MushafSingleDocumentReader.tsx` |
+
+## Reader Settings Components
+
+| Component | Description | File Path |
+| --- | --- | --- |
+| `SettingsSidebar` | Right-side drawer (modal + animation) used for the reader settings panel, with explicit safe-area inset padding to keep the first-open animation stable. | `components/reader/settings/SettingsSidebar.tsx` |
+| `SettingsSidebarContent` | Shared mobile settings content (header, tabs, sections, and subpanels/controls). | `components/reader/settings/SettingsSidebarContent.tsx` |
+| `SettingsPanelHeader` | Shared title, back, and close controls for settings subpanels and direct resource entry. | `components/reader/settings/SettingsPanelHeader.tsx` |
+| `TafsirSettingsContent` / `TafsirSelectionPanel` | Direct tafsir entry mounts only the tafsir picker, with no prewarming on the reader page. The full settings controller mounts only when navigating back; the same connected picker is reused inside settings. Selection reconciliation belongs to `SettingsProvider`, never the picker's local loading state. | `components/reader/settings/TafsirSettingsContent.tsx` |
+| Full-screen Settings route | Home-menu settings surface that reuses `SettingsSidebarContent` at full screen width instead of the reader side drawer. | `app/settings.tsx` |
+| `IndexScrubber` | Shared right-side 1-based index scrubber used by verse and exact mushaf page readers; maps drag position to an index and delegates scrolling to the owning screen/reader. | `components/reader/IndexScrubber.tsx` |
+| `SettingsTabToggle` | Segmented control for switching between settings tabs. | `components/reader/settings/SettingsTabToggle.tsx` |
+| `CollapsibleSection` | Collapsible section wrapper used by settings groups. | `components/reader/settings/CollapsibleSection.tsx` |
+| `ToggleRow` | Label + switch row for boolean settings. | `components/reader/settings/ToggleRow.tsx` |
+| `FontSizeSlider` | Slider row used for font size controls; keeps native thumb/label feedback local while dragging and commits the reader setting on release. | `components/reader/settings/FontSizeSlider.tsx` |
+| `SelectionBox` | Pressable selection row used for “pick one” settings. | `components/reader/settings/SelectionBox.tsx` |
+| `MushafPackOptionCard` | Mushaf-pack settings card that shows install status, progress/error state, source note, and pack actions like Use / Install / Delete. | `components/reader/settings/MushafPackOptionCard.tsx` |
+| `ResourceSelectionPanel` | Shared “manage resources” panel (search + My Selections + language tabs + offline download/delete/cancel). Selection is applied locally at once and committed to settings in a short-debounced transition, so taps never wait on the reader. The download index loads while the panel is warm offscreen; only polling waits for it to be visible. Configured with a resource's limits, download/delete use cases, reset rule, and whether undownloaded items may be read online. | `components/reader/settings/resource-panel/ResourceSelectionPanel.tsx` |
+| `ManageTranslationsPanel` | Translation config for `ResourceSelectionPanel`: up to 5, online selection allowed (download-or-continue-online prompt), prunes ids missing from the catalog, reset to Saheeh International. | `components/reader/settings/ManageTranslationsPanel.tsx` |
+| `ManageTafsirsPanel` | Tafsir config for `ResourceSelectionPanel`: up to 3, selection requires an installed pack (prompts download; waits for a verified index), reset to the English tafsir; reconciliation stays in `SettingsProvider`. | `components/reader/settings/ManageTafsirsPanel.tsx` |
+| `ResourceTabs` | Horizontal language tabs with scroll buttons (used by translation/tafsir panels). | `components/reader/settings/resource-panel/ResourceTabs.tsx` |
+| `ResourceItem` | Selectable resource row (used by translation/tafsir panels). | `components/reader/settings/resource-panel/ResourceItem.tsx` |
+| `ResourceDownloadAction` | Shared trailing action UI for resource downloads (download, progress ring/cancel, delete, deleting state). Uses Feather font glyphs (`@expo/vector-icons`, preloaded in `StartupResourcePrefetch`) rather than Lucide SVGs because it repeats in every row. | `components/reader/settings/resource-panel/ResourceDownloadAction.tsx` |
+| `ResourceConfirmModal` | Shared confirmation modal for resource download/delete flows with optional size detail line. | `components/reader/settings/resource-panel/ResourceConfirmModal.tsx` |
+| `ReorderableSelectionList` | “My Selections” list (remove + reorder + reset). | `components/reader/settings/resource-panel/ReorderableSelectionList.tsx` |
+
+## Surah Reader Components
+
+| Component | Description | File Path |
+| --- | --- | --- |
+| `SurahHeaderCard` | Surah intro/header block with a prominent English title, verse count plus Mecca/Medina subheading, offline revelation-place artwork, and responsive Bismillah calligraphy. It is rendered directly by both Translation and Mushaf modes. | `components/surah/SurahHeaderCard.tsx` |
+| `BismillahDisplay` | Slim responsive Bismillah vector calligraphy centered over a matching fine-line ornament; both use muted emerald in light mode and soft white in dark mode. Shared by Surah, Juz, and Page readers. | `components/surah/BismillahDisplay.tsx` |
+| `BismillahCalligraphy` | Memoized single-path Bismillah artwork extracted from the bundled Amiri Quran font; matches the web’s elongated fallback style without platform-dependent font shaping. | `components/surah/BismillahCalligraphy.tsx` |
+| `BismillahOrnament` | Lightweight, memoized SVG frame with original mirrored floral geometry; kept separate from the live calligraphy for crisp scaling and accessibility. | `components/surah/BismillahOrnament.tsx` |
+| `RevelationPlaceIllustration` | Theme-aware, offline native illustration that renders a Makkah/Kaaba or Madinah/dome motif without image loading or SVG work inside the virtualized reader list. | `components/surah/RevelationPlaceIllustration.tsx` |
+| `VerseCard` | Separated verse row (verse key + Arabic + translations + ellipsis trigger) with optional subtle highlight for the active audio verse. | `components/surah/VerseCard.tsx` |
+| `TajweedNativeText` | Native Surah verse-card Tajweed renderer; loads the installed QCF Tajweed V4 page font with Expo Font and renders local `codeV2` glyphs in React Native `Text`, with tagged Uthmani text as a fallback. | `components/surah/TajweedNativeText.tsx` |
+| `NativeSurahReader` | Android Kotlin-backed Surah translation reader surface for plain, word-by-word, Tajweed, and active word-sync rows. Holding Arabic text, a word token, or the verse reference opens an on-demand native selection dialog with Copy verse and partial-text selection; holding a translation offers the same for that translation. Selection uses source Unicode text, including in Tajweed mode, and stays outside row layout and audio updates. Exact QCF glyph-to-word spans make Tajweed words tappable without changing shaping, attached marks, line wrapping, or the non-tappable verse-end marker. React Native owns Word Study, data loading, settings, verse actions, and audio controls while Kotlin owns row rendering, hit testing, inertial scrolling, and the RecyclerView edge fast scroller. | `components/surah/native/NativeSurahReader.tsx` |
+| `NativePassageReader` | Android translation reader for a Juz or Page. Drives `NativeSurahReader` with a verse range (`verseRange`, `targetVerseKey`, `surahIntros`, `scopeBanner`), so Kotlin reads the passage from the offline database with the same rows, selection, actions and audio sync as a Surah. Opens with a quiet Juz/Page banner and shows a full Surah intro wherever ayah 1 of a Surah falls inside the passage (none when the passage starts mid-Surah). Owns load status, the delayed skeleton, retry and last-read writes. Ranges come from `lib/reader/readerPassage.ts`. | `components/reader/NativePassageReader.tsx` |
+| `ReaderLoadingState` | Reduced-motion-aware pulsing skeleton shown only when a native translation reader is slow to read storage. | `components/reader/ReaderLoadingState.tsx` |
+| `VerseScrubber` | Thin Surah-specific wrapper around `IndexScrubber` for verse-number scrubbing on non-Android translation readers; Android's Kotlin reader uses its native RecyclerView fast scroller with the same thumb and live `verse/total` label styling. | `components/surah/VerseScrubber.tsx` |
+| `WordByWordVerse` | Word-by-word verse renderer with optional per-word translation. Android reader integrations use a normal word tap for canonical Word Study, highlight the selected study word, and keep audio seek/play available through explicit actions. | `components/surah/WordByWordVerse.tsx` |
+| `HostedWordTranslationPackRepository` | Offline word-by-word pack installer backed by the GitHub-hosted `dist/word-translation-packs/catalog.json`; imports language-scoped word JSON into SQLite for download-only word languages. | `src/core/infrastructure/word-translations/HostedWordTranslationPackRepository.ts` |
+| `useVerseAudioWordSync` | Hook that wires QDC word timing segments to active-word highlighting and explicit play-word / play-verse-from-word actions. | `components/surah/useVerseAudioWordSync.ts` |
+| `VerseActionsSheet` | Bottom sheet for per-verse actions (play, tafsir, pin/bookmark, add to plan, share). | `components/surah/VerseActionsSheet.tsx` |
+| `AddToPlannerModal` | Modal for selecting an existing planner to track progress from a verse (web-style Add-to-plan flow). | `components/verse-planner-modal/AddToPlannerModal.tsx` |
+| `WordQuickSheet` | Reusable, explicitly height-constrained Word Study bottom sheet with horizontal color-plus-text segment labels, contextual gloss, centered lemma/root tiles, and a pinned Play word/Continue/Study footer outside the scroll whose Study action opens the full study route. With `tabs` (Mushaf readers) it becomes the study sheet: a Word / Translation segmented switch at a single fixed height (hidden when an ayah number opens a translation-only sheet), and a tab-specific pinned footer; the Translation tab shows the reader's selected translations with attribution and Play, Bookmark, Tafsir, Share, and a More menu (Copy, Add to plan). | `components/word-study/WordQuickSheet.tsx`, `components/word-study/VerseTranslationPanel.tsx` |
+| `useReaderStudySheet` | Mushaf study-sheet state: a word tap opens on the tab the reader last chose (stored silently), an ayah-number tap always opens Translation, translations load offline-first, and the page highlights the studied word or whole ayah while it is open. | `components/word-study/useReaderStudySheet.ts` |
+| `ReaderWordStudySheet` | Shared Surah/Juz/Page adapter that connects the canonical word event and controller to the one React Native quick sheet, explicit audio actions, attributed sharing, and full-study route. | `components/word-study/ReaderWordStudySheet.tsx` |
+| `useWordQuickSheetController` | Tap-to-sheet controller that presents the loading shell before querying the offline Word Study repository, ignores stale results, retries failures, and records tap-to-present/tap-to-resolution timings. | `components/word-study/useWordQuickSheetController.ts` |
+| `WordStudyPressEvent` | Canonical cross-reader word-press contract and normalizer keyed only by `surah:ayah:wordPosition`; numeric word IDs remain advisory. | `components/word-study/WordStudyPressEvent.ts` |
+| `WordSegmentsCard` / `SegmentedWord` / `WordSegmentsLegend` | Reusable segmented Arabic presentation shared by the quick sheet and full study screen. It combines POS color with underlines, readable labels, RTL text, per-segment accessibility announcements, and stacked, horizontal, or responsive two-column wrapped legends. The full-screen composition can place the word independently from its legend without changing the quick sheet. | `components/word-study/WordSegmentsCard.tsx` |
+| `AyahContextSelector` | Reusable unboxed full-ayah Word Study selector using one stable inline RTL text layout, deterministic selected-centered collapsed excerpts, font-scale-aware viewport height, reduced-motion-aware expansion, accessible selected state, and nonvisual previous/next actions. | `components/word-study/full-study/AyahContextSelector.tsx` |
+| `ayahContextSelectorModel` | Pure capacity, collapse, and selected-centered word-excerpt calculation used by short/long and early/middle/late selector tests. | `components/word-study/full-study/ayahContextSelectorModel.ts` |
+| `WordStudyScreen` | Full offline Word Study route with an immediate wrapping ayah selector, route-driven selection, and a Morphology-first tab structure using the same sliding segmented-control pattern as Home. Morphology pairs contextual meaning with segmented Arabic, presents lemma/root facts, and explains the encountered segments and features. | `app/study/word/[surah]/[ayah]/[position].tsx` |
+| `contextualMeaningModel` / `useContextualMeaning` | Exact-position contextual-meaning resolver and mobile hook that read only the selected offline word-language row, preserve RTL/LTR meaning direction, ignore verse-end markers, and clearly label deterministic bundled-English fallback. | `components/word-study/full-study/contextualMeaningModel.ts`, `components/word-study/full-study/useContextualMeaning.ts` |
+| `MorphologyGuideSheet` | Reusable, accessible, explicitly height-constrained bottom sheet that groups segment and feature definitions with Arabic technical terms and compact examples. | `components/word-study/full-study/MorphologyGuideSheet.tsx` |
+| `GrammarGuideSheet` | Grammar-tab information sheet that explains selected-word matching and identifies the installed Arabic i‘rab source and version. | `components/word-study/full-study/GrammarGuideSheet.tsx` |
+| `CreditsScreen` | Home-menu Credits & Sources destination crediting Quran.com/Quran Foundation content, every translation and tafsir by language, word-by-word data, Word Study morphology/grammar/lexicon sources, reciters, and Arabic fonts. Static attributions live in `src/data/credits.ts`. | `app/credits.tsx` |
+| `WordStudySourcesScreen` | Credits-reachable provenance destination built from installed core, grammar, and dictionary manifests, with versions, rights, checksums, external links, pack details, and methodology boundaries. | `app/word-study-sources.tsx` |
+| `DictionarySection` | Optional dictionary experience with catalog/download states, Home-style Lane/Hans source selection, cancellable lemma/root lookup, an automatically opened best lemma or root fallback, collapsed root exploration, and lazy borderless headword surfaces. Source attribution is kept in the Dictionary information sheet. | `components/word-study/full-study/DictionarySection.tsx` |
+| `DictionaryGuideSheet` | Explicitly height-constrained Dictionary information sheet explaining the selected word → lemma → root → related-headword hierarchy, the difference from Quran occurrences, source selection, and full selected-source attribution. | `components/word-study/full-study/DictionaryGuideSheet.tsx` |
+| `VerbReferenceSection` / `VerbReferencePackInstaller` | Morphology-tab six-card principal parts for the exact Quranic verb form, with an in-context download offer shown only when the hosted catalog lists a pack; verified install, Downloads registration, and deletion. | `components/word-study/full-study/VerbReferenceSection.tsx`, `src/core/infrastructure/verb-reference/VerbReferencePackInstaller.ts` |
+| `grammarStudyModel` | Pure Arabic normalization and selected-word-to-source-passage matching for the Grammar tab. Matching changes presentation order only and never rewrites source prose. | `components/word-study/full-study/grammarStudyModel.ts` |
+| `SQLiteGrammarStudyRepository` | Read-only verse-keyed repository for the optional downloaded Arabic i'rab SQLite pack, including structured missing and unavailable states. | `src/core/infrastructure/word-grammar/SQLiteGrammarStudyRepository.ts` |
+| `GrammarPackDownloadPanel` / `WordGrammarPackInstaller` | Lazy Grammar-tab catalog/download UI plus verified local installation, progress/cancel, persistent Downloads registration, and deletion support. | `components/word-study/full-study/GrammarPackDownloadPanel.tsx`, `src/core/infrastructure/word-grammar/WordGrammarPackInstaller.ts` |
+| `CoreStudyPackDownloadPanel` / `DictionaryPackDownloadPanel` | In-context installers shown in the quick sheet and the Morphology, Occurrences, and Dictionary tabs before their local packs are present. | `components/word-study/full-study/CoreStudyPackDownloadPanel.tsx`, `components/word-study/full-study/DictionaryPackDownloadPanel.tsx` |
+| `ManageWordStudyScreen` / `WordStudyPackInstaller` | Permanent Downloads entry for Essentials, grammar, and dictionaries; the core pack follows the same explicit install/progress/cancel/delete lifecycle and is never an app asset. | `app/manage-word-study.tsx`, `src/core/infrastructure/word-study/WordStudyPackInstaller.ts` |
+| Arabic Grammar pack | Phase 10 compiler, provenance, checksums, coverage, rebuild instructions, and runtime behavior. | `docs/word-grammar-pack.md` |
+| Word Study dictionary packs | Phase 11A compiler, Quran-root/lemma coverage, optional multi-pack lifecycle, checksums, and rebuild instructions. | `docs/word-reference-packs.md` |
+| `wordStudyScreenModel` | Pure presentation model for applicable-only morphology values with Arabic technical terms, contiguous same-role segment grouping, explicit root/lemma states, source grouping, and attributed share copy. | `components/word-study/full-study/wordStudyScreenModel.ts` |
+| `OccurrenceExplorer` | Offline surface/lemma/root occurrence browser with a unified four-metric summary, home-style scope toggle, expandable root-family forms, availability-aware filters, cancellable fixed-size pages, exact Arabic forms, contextual glosses, ayah context, and exact-word reader navigation. Explanatory matching and root-family guidance lives in its information sheet instead of the main results flow. | `components/word-study/full-study/OccurrenceExplorer.tsx` |
+| `OccurrenceGuideSheet` | Height-constrained occurrence information sheet explaining normalized surface matches, lemma/root counts, and root-family form browsing. | `components/word-study/full-study/OccurrenceGuideSheet.tsx` |
+| `occurrenceExplorerModel` | Pure occurrence presentation/query model for named counters, scope availability, bounded queries, pagination labels, gloss fallback, and canonical reader-target parameters. | `components/word-study/full-study/occurrenceExplorerModel.ts` |
+
+## Audio Components
+
+| Component | Description | File Path |
+| --- | --- | --- |
+| `AudioPlayerBar` | Global bottom overlay player UI (verse transport + timeline). | `components/audio/AudioPlayerBar.tsx` |
+| `PlaybackOptionsModal` | Centered playback options dialog (Reciter + Verse Repeat) including offline surah audio download/delete actions. | `components/audio/PlaybackOptionsModal.tsx` |
+
+## Tafsir Components
+
+| Component | Description | File Path |
+| --- | --- | --- |
+| `AyahNavigationBar` | Top navigation pill for tafsir (back + previous/next). | `components/tafsir/AyahNavigationBar.tsx` |
+| `TafsirTabs` | Sticky multi-tafsir switcher with horizontally scrollable labels, active-tab auto-scroll, and native-safe gesture handling for the tafsir page. | `components/tafsir/TafsirTabs.tsx` |
+| `TafsirTabPanels` | Sliding multi-tafsir content viewport that keeps the verse card outside tafsir-switch state and only animates the tafsir body. | `components/tafsir/TafsirTabs.tsx` |
+| `TafsirHtml` | HTML renderer for tafsir content (headings/paragraphs). | `components/tafsir/TafsirHtml.tsx` |
+
+## Bookmarks Components
+
+| Component | Description | File Path |
+| --- | --- | --- |
+| `BookmarkModal` | Modal with “Pin Verse” + “Add to Folder” tabs (offline-first, persisted). | `components/bookmarks/BookmarkModal.tsx` |
+| `BookmarkFolderCard` | Folder card UI used in the Bookmarks folder list (glyph, verse preview chips, updated date, options). | `components/bookmarks/BookmarkFolderCard.tsx` |
+| `FolderActionsSheet` | Bottom sheet for folder options (Edit Folder, Delete Folder). | `components/bookmarks/FolderActionsSheet.tsx` |
+| `FolderSettingsModal` | Create/edit folder modal (name + color) for bookmarks (offline-first, persisted). | `components/bookmarks/FolderSettingsModal.tsx` |
+| `DeleteFolderModal` | Simple confirmation modal for deleting bookmark folders. | `components/bookmarks/DeleteFolderModal.tsx` |
+| `folderColor` | Shared folder color tokens + resolver used across folder UI (settings + cards). | `components/bookmarks/folderColor.ts` |
+| `PlannerSection` | Planner section list UI (header + empty + cards) used in Bookmarks → Planner. | `components/bookmarks/planner/PlannerSection.tsx` |
+| `PlannerCard` | Planner card: anchored “Currently at” panel with continue/delete; tapping the header or chevron unfolds daily focus + stats beneath it with a UI-thread height reveal (planner list is a plain `ScrollView` so cards below move in the same layout pass). | `components/bookmarks/planner/PlannerCard.tsx` |
+| `PlannerHeader` | Planner section header with “Create Plan” action. | `components/bookmarks/planner/PlannerHeader.tsx` |
+| `PlannerEmptyState` | Empty-state UI shown when no plans exist. | `components/bookmarks/planner/PlannerEmptyState.tsx` |
+| `CreatePlannerModal` | Modal + form for creating planner plans (start/end surah + verse + estimated days). | `components/bookmarks/planner/CreatePlannerModal.tsx` |
+| `DeletePlannerModal` | Delete planner confirmation modal matching the project delete-confirmation pattern. | `components/bookmarks/planner/DeletePlannerModal.tsx` |
+| `LastReadSection` | “Recent / Last visited” section (header + grid + empty state) used in Bookmarks → Recent. | `components/bookmarks/last-read/LastReadSection.tsx` |
+| `LastReadCard` | Recent card showing a surah progress ring + verse position + remove action. | `components/bookmarks/last-read/LastReadCard.tsx` |
+| `CircularProgress` | Shared circular progress ring used by Recent cards and compact home recent pills. | `components/bookmarks/last-read/CircularProgress.tsx` |
+| `buildNormalizedLastReadEntries` | Shared helper that normalizes stored last-read entries for both the bookmarks recent section and the home recent card. | `components/bookmarks/last-read/lastReadEntries.ts` |

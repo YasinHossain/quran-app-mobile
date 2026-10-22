@@ -1,0 +1,15 @@
+{
+  "translationId": 224,
+  "name": "Abdul-Hamid Haidar & Kanhi Muhammad",
+  "authorName": "Abdul-Hamid Haidar & Kanhi Muhammad",
+  "languageName": "malayalam",
+  "version": "2026-07-16",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "acd2047c6eead8965cef683401d3c43d",
+  "payloadSizeBytes": 5024319,
+  "totalVerses": 6236,
+  "generatedAt": "2026-07-16T11:33:45.728Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=224&per_page=300"
+}

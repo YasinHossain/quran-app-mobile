@@ -1,0 +1,664 @@
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { ArrowLeft, Settings } from 'lucide-react-native';
+import React from 'react';
+
+import { AppHeader } from '@/components/navigation/AppHeader';
+import {
+  ActivityIndicator,
+  Keyboard,
+  Pressable,
+  Share,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
+import { FlashList } from '@shopify/flash-list';
+
+import { GoToSurahVerseCard } from '@/components/search/GoToSurahVerseCard';
+import { HeaderActionButton } from '@/components/search/HeaderSearchBar';
+import { SearchVerseResultCard } from '@/components/search/SearchVerseResultCard';
+import { SettingsSidebar } from '@/components/reader/settings/SettingsSidebar';
+import { VerseActionsSheet } from '@/components/surah/VerseActionsSheet';
+import { BookmarkModal } from '@/components/bookmarks/BookmarkModal';
+import { AddToPlannerModal, type VerseSummaryDetails } from '@/components/verse-planner-modal';
+import Colors from '@/constants/Colors';
+import { findMushafOption } from '@/data/mushaf/options';
+import { usePaginatedSearch } from '@/hooks/usePaginatedSearch';
+import { useChapters } from '@/hooks/useChapters';
+import { analyzeQuery } from '@/lib/api/search';
+import { ONLINE_SEARCH_REQUIRED_MESSAGE } from '@/lib/search/searchError';
+import { prepareMushafVerseTarget } from '@/lib/mushaf/prepareMushafVerseTarget';
+import { warmSurahReaderBeforeNavigation } from '@/lib/surah/surahReaderWarmup';
+import { primeVerseDetailsCache } from '@/lib/verse/verseDetailsCache';
+import { preloadOfflineTafsirWindow } from '@/lib/tafsir/tafsirCache';
+import { useSettings } from '@/providers/SettingsContext';
+import { copyTextToClipboard } from '@/lib/clipboard';
+import { formatVerseText } from '@/lib/verse/formatVerseText';
+import { useUiTranslation } from '@/providers/UiLanguageContext';
+import { useBookmarks } from '@/providers/BookmarkContext';
+import { useAudioPlayer } from '@/providers/AudioPlayerContext';
+import { useAppTheme } from '@/providers/ThemeContext';
+
+import type { SearchNavigationResult } from '@/lib/api/search';
+import type { Bookmark } from '@/types';
+
+function getTranslationIds(settings: ReturnType<typeof useSettings>['settings']): number[] {
+  const ids = settings.translationIds?.length
+    ? settings.translationIds
+    : [settings.translationId ?? 20];
+  return ids.filter((id) => Number.isFinite(id) && id > 0);
+}
+
+function parseAyahKey(key: string | number): { surahId: number; verse: number } | null {
+  const raw = typeof key === 'string' ? key : String(key);
+  const [s, a] = raw.split(':');
+  const surahId = Number.parseInt(s ?? '', 10);
+  const verse = Number.parseInt(a ?? '', 10);
+  if (!Number.isFinite(surahId) || !Number.isFinite(verse)) return null;
+  if (surahId <= 0 || verse <= 0) return null;
+  return { surahId, verse };
+}
+
+function NavigationChip({
+  result,
+  onPress,
+}: {
+  result: SearchNavigationResult;
+  onPress: () => void;
+}): React.JSX.Element {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={result.name}
+      className="rounded-xl bg-interactive dark:bg-interactive-dark px-3 py-2"
+      style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1 })}
+    >
+      <Text className="text-xs font-semibold text-foreground dark:text-foreground-dark">
+        {result.name}
+      </Text>
+    </Pressable>
+  );
+}
+
+export default function SearchScreen(): React.JSX.Element {
+  const { t } = useUiTranslation();
+  const router = useRouter();
+  const params = useLocalSearchParams<{ query?: string | string[] }>();
+  const paramQuery = Array.isArray(params.query) ? params.query[0] : params.query;
+
+  const { resolvedTheme } = useAppTheme();
+  const palette = Colors[resolvedTheme];
+  const { settings } = useSettings();
+  const { isPinned } = useBookmarks();
+  const audio = useAudioPlayer();
+  const { chapters } = useChapters();
+  const translationIds = React.useMemo(
+    () => getTranslationIds(settings),
+    [settings.translationId, settings.translationIds]
+  );
+
+  const [isSettingsOpen, setIsSettingsOpen] = React.useState(false);
+  const [isVerseActionsOpen, setIsVerseActionsOpen] = React.useState(false);
+  const [isBookmarkModalOpen, setIsBookmarkModalOpen] = React.useState(false);
+  const [isAddToPlannerOpen, setIsAddToPlannerOpen] = React.useState(false);
+  const [plannerVerseSummary, setPlannerVerseSummary] = React.useState<VerseSummaryDetails | null>(
+    null
+  );
+  const [activeVerse, setActiveVerse] = React.useState<{
+    verseKey: string;
+    verseApiId?: number;
+    arabicText: string;
+    translationTexts: string[];
+    surahNumber: number;
+  } | null>(null);
+
+  const openVerseActions = React.useCallback(
+    (params: {
+      verseKey: string;
+      verseApiId?: number;
+      arabicText: string;
+      translationTexts: string[];
+      surahNumber: number;
+    }) => {
+      setActiveVerse(params);
+      setIsVerseActionsOpen(true);
+    },
+    []
+  );
+
+  const closeVerseActions = React.useCallback(() => {
+    setIsVerseActionsOpen(false);
+  }, []);
+
+  const handlePlayPause = React.useCallback(() => {
+    const verseKey = activeVerse?.verseKey;
+    if (!verseKey) return;
+
+    if (audio.activeVerseKey === verseKey) {
+      audio.togglePlay();
+      return;
+    }
+
+    audio.playVerse(verseKey);
+  }, [activeVerse?.verseKey, audio.activeVerseKey, audio.playVerse, audio.togglePlay]);
+
+  const handleBookmark = React.useCallback(() => {
+    if (!activeVerse) return;
+    setIsBookmarkModalOpen(true);
+  }, [activeVerse]);
+
+  const handleOpenTafsir = React.useCallback(() => {
+    const verseKey = activeVerse?.verseKey;
+    if (!verseKey) return;
+    const [surah, ayah] = verseKey.split(':');
+    if (!surah || !ayah) return;
+    const surahNumber = Number(surah);
+    primeVerseDetailsCache({
+      verseKey,
+      arabicText: activeVerse?.arabicText,
+      translationIds,
+      translationTexts: activeVerse?.translationTexts,
+    });
+    if (Number.isFinite(surahNumber) && surahNumber > 0) {
+      const chapterVerseCount =
+        chapters.find((chapter) => chapter.id === surahNumber)?.verses_count;
+      void preloadOfflineTafsirWindow({
+        surahId: surahNumber,
+        ayahId: Number(ayah),
+        tafsirIds: settings.tafsirIds ?? [],
+        verseCount: chapterVerseCount,
+      });
+    }
+    router.push({ pathname: '/tafsir/[surahId]/[ayahId]', params: { surahId: surah, ayahId: ayah } });
+  }, [
+    activeVerse?.arabicText,
+    activeVerse?.translationTexts,
+    activeVerse?.verseKey,
+    chapters,
+    router,
+    settings.tafsirIds,
+    translationIds,
+  ]);
+
+  const handleAddToPlan = React.useCallback(() => {
+    const verseKey = activeVerse?.verseKey;
+    if (!verseKey) return;
+    setPlannerVerseSummary({
+      verseKey,
+      surahId: activeVerse.surahNumber,
+      arabicText: activeVerse.arabicText,
+      translationText: activeVerse.translationTexts?.[0],
+    });
+    setIsAddToPlannerOpen(true);
+  }, [activeVerse]);
+
+  const handleShare = React.useCallback(async () => {
+    if (!activeVerse) return;
+    const chapter = chapters.find((c) => c.id === activeVerse.surahNumber);
+    const lines = [
+      chapter?.name_simple ? `${chapter.name_simple} ${activeVerse.verseKey}` : activeVerse.verseKey,
+      '',
+      activeVerse.arabicText,
+      '',
+      ...(activeVerse.translationTexts?.length ? [activeVerse.translationTexts[0]!] : []),
+    ];
+    try {
+      await Share.share({ message: lines.join('\n') });
+    } catch {
+      // Ignore share failures.
+    }
+  }, [activeVerse, chapters]);
+
+  const handleCopy = React.useCallback(async () => {
+    if (!activeVerse) return;
+    const chapter = chapters.find((c) => c.id === activeVerse.surahNumber);
+    await copyTextToClipboard(
+      formatVerseText({
+        surahName: chapter?.name_simple,
+        verseKey: activeVerse.verseKey,
+        arabicText: activeVerse.arabicText,
+        translationTexts: activeVerse.translationTexts,
+      }),
+      t('verse_copied', { fallback: 'Verse copied to clipboard' })
+    );
+  }, [activeVerse, chapters, t]);
+
+  const activeVersePinned = React.useMemo(() => {
+    if (!activeVerse) return false;
+    const apiId = typeof activeVerse.verseApiId === 'number' ? String(activeVerse.verseApiId) : null;
+    return Boolean((apiId && isPinned(apiId)) || isPinned(activeVerse.verseKey));
+  }, [activeVerse, isPinned]);
+
+  const activeVerseBookmarkMetadata = React.useMemo(() => {
+    if (!activeVerse) return undefined;
+    const verseApiId =
+      typeof activeVerse.verseApiId === 'number' &&
+      Number.isFinite(activeVerse.verseApiId) &&
+      activeVerse.verseApiId > 0
+        ? activeVerse.verseApiId
+        : undefined;
+    const chapter = chapters.find((c) => c.id === activeVerse.surahNumber);
+    const metadata: Partial<Bookmark> = {
+      verseKey: activeVerse.verseKey,
+      ...(typeof verseApiId === 'number' ? { verseApiId } : {}),
+      ...(activeVerse.arabicText ? { verseText: activeVerse.arabicText } : {}),
+      ...(chapter?.name_simple ? { surahName: chapter.name_simple } : {}),
+      ...(activeVerse.translationTexts?.[0] ? { translation: activeVerse.translationTexts[0] } : {}),
+    };
+    return metadata;
+  }, [activeVerse, chapters]);
+
+  const [query, setQuery] = React.useState(paramQuery ?? '');
+  const [isSearchFocused, setIsSearchFocused] = React.useState(false);
+  const [isGoToSelectorOpen, setIsGoToSelectorOpen] = React.useState(false);
+  React.useEffect(() => {
+    if (typeof paramQuery === 'string') setQuery(paramQuery);
+  }, [paramQuery]);
+
+  const trimmed = query.trim();
+  const parsed = React.useMemo(() => analyzeQuery(trimmed), [trimmed]);
+  const isNavigationQuery = parsed.type === 'navigation' && parsed.navigationType;
+  const shouldSearch = trimmed.length >= 3 || isNavigationQuery;
+  const effectiveQuery = shouldSearch ? trimmed : '';
+
+  const {
+    navigationResults,
+    verses,
+    isLoading,
+    isLoadingMore,
+    errorMessage,
+    totalResults,
+    hasNextPage,
+    source,
+    loadMore,
+    refresh,
+  } = usePaginatedSearch({
+    query: effectiveQuery,
+    translationIds,
+    pageSize: 10,
+  });
+
+  const handleNavigateToSurahVerse = React.useCallback(
+    (surahId: number, verse?: number) => {
+      Keyboard.dismiss();
+      void (async () => {
+        await warmSurahReaderBeforeNavigation({ surahId, verseNumber: verse, settings });
+        router.push({
+          pathname: '/surah/[surahId]',
+          params: {
+            surahId: String(surahId),
+            view: 'translations',
+            ...(typeof verse === 'number' ? { startVerse: String(verse) } : {}),
+          },
+        });
+      })();
+    },
+    [router, settings]
+  );
+
+  const handleNavigateToMushaf = React.useCallback(
+    (surahId: number, verse?: number) => {
+      Keyboard.dismiss();
+      const normalizedVerse =
+        typeof verse === 'number' && Number.isFinite(verse) && verse > 0
+          ? Math.trunc(verse)
+          : undefined;
+      void (async () => {
+        const packId = settings.mushafId;
+        if (!packId) {
+          router.push({
+            pathname: '/surah/[surahId]',
+            params: {
+              surahId: String(surahId),
+              view: 'translations',
+              manageMushaf: '1',
+              ...(normalizedVerse ? { startVerse: String(normalizedVerse) } : {}),
+            },
+          });
+          return;
+        }
+        const target = normalizedVerse
+          ? await prepareMushafVerseTarget({
+              awaitPageLoad: false,
+              chapterId: surahId,
+              fallbackVersion: findMushafOption(packId)?.version ?? 'unknown',
+              packId,
+              verseKey: `${surahId}:${normalizedVerse}`,
+            }).catch(() => null)
+          : null;
+        router.push({
+          pathname: '/surah/[surahId]',
+          params: {
+            surahId: String(surahId),
+            view: 'mushaf',
+            ...(normalizedVerse ? { startVerse: String(normalizedVerse) } : {}),
+            ...(target ? { startPage: String(target.pageNumber) } : {}),
+          },
+        });
+      })();
+    },
+    [router, settings]
+  );
+
+  const handleNavigateToTafsir = React.useCallback(
+    (surahId: number, verse = 1) => {
+      Keyboard.dismiss();
+      const normalizedVerse = Number.isFinite(verse) && verse > 0 ? Math.floor(verse) : 1;
+      const chapterVerseCount = chapters.find((chapter) => chapter.id === surahId)?.verses_count;
+      void preloadOfflineTafsirWindow({
+        surahId,
+        ayahId: normalizedVerse,
+        tafsirIds: settings.tafsirIds ?? [],
+        verseCount: chapterVerseCount,
+      });
+      router.push({
+        pathname: '/tafsir/[surahId]/[ayahId]',
+        params: { surahId: String(surahId), ayahId: String(normalizedVerse) },
+      });
+    },
+    [chapters, router, settings.tafsirIds]
+  );
+
+  const handleNavResultPress = React.useCallback(
+    (result: SearchNavigationResult) => {
+      if (result.resultType === 'surah') {
+        handleNavigateToSurahVerse(Number(result.key));
+        return;
+      }
+      if (result.resultType === 'ayah') {
+        const parsedKey = parseAyahKey(result.key);
+        if (parsedKey) {
+          handleNavigateToSurahVerse(parsedKey.surahId, parsedKey.verse);
+          return;
+        }
+      }
+      if (result.resultType === 'juz') {
+        router.push({ pathname: '/juz/[juzNumber]', params: { juzNumber: String(result.key) } });
+        return;
+      }
+      if (result.resultType === 'page') {
+        router.push({ pathname: '/page/[pageNumber]', params: { pageNumber: String(result.key) } });
+        return;
+      }
+    },
+    [handleNavigateToSurahVerse, router]
+  );
+
+  const renderHeader = React.useMemo(() => {
+    // Show "Go To" when the user is actively engaging with the search box and
+    // hasn't typed a query yet. This prevents it from getting "stuck" hidden:
+    // re-focusing the input always re-renders the card.
+    const showGoTo = (isSearchFocused || isGoToSelectorOpen) && trimmed.length === 0;
+    const showShortQueryHint = trimmed.length > 0 && !shouldSearch;
+
+    return (
+      <View className="pt-3 pb-3 gap-4">
+        <View className="rounded-xl bg-interactive dark:bg-interactive-dark px-4 py-3 flex-row items-center gap-2 border border-border/30 dark:border-border-dark/20">
+          <TextInput
+            value={query}
+            onChangeText={setQuery}
+            placeholder={t('search', { fallback: 'Search' }) + '…'}
+            placeholderTextColor={palette.muted}
+            autoCapitalize="none"
+            autoCorrect={false}
+            returnKeyType="search"
+            onFocus={() => setIsSearchFocused(true)}
+            onBlur={() => setIsSearchFocused(false)}
+            onSubmitEditing={() => Keyboard.dismiss()}
+            className="flex-1 text-base text-foreground dark:text-foreground-dark"
+          />
+        </View>
+
+        {showShortQueryHint ? (
+          <Text className="text-sm text-muted dark:text-muted-dark">
+            Type at least 3 characters to search.
+          </Text>
+        ) : null}
+
+        {errorMessage && verses.length === 0 ? (
+          <Text
+            className={
+              errorMessage === ONLINE_SEARCH_REQUIRED_MESSAGE
+                ? 'text-sm text-muted dark:text-muted-dark'
+                : 'text-sm text-error dark:text-error-dark'
+            }
+          >
+            {errorMessage}
+          </Text>
+        ) : null}
+
+        {effectiveQuery && source === 'offline' && !isLoading ? (
+          <View className="gap-1 rounded-xl border border-border/40 bg-interactive px-4 py-3 dark:border-border-dark/30 dark:bg-interactive-dark">
+            <Text className="text-sm font-medium text-foreground dark:text-foreground-dark">
+              Showing offline results
+            </Text>
+            <Text className="text-xs text-muted dark:text-muted-dark">
+              Online search could not be reached, so these come from your downloaded translations.
+            </Text>
+            <Pressable
+              onPress={refresh}
+              accessibilityRole="button"
+              accessibilityLabel="Search all translations online again"
+              hitSlop={8}
+              className="self-start py-2"
+              style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
+            >
+              <Text className="text-sm font-medium text-accent dark:text-accent-dark">Try online again</Text>
+            </Pressable>
+          </View>
+        ) : null}
+
+        {showGoTo ? (
+          // Bleed slightly past the list gutter so the selectors get more width.
+          <View className="-mx-1.5">
+            <GoToSurahVerseCard
+              onNavigateToMushaf={handleNavigateToMushaf}
+              onNavigateToTafsir={handleNavigateToTafsir}
+              onNavigateToTranslation={handleNavigateToSurahVerse}
+              onSearchSuggestion={(suggestion) => setQuery(suggestion)}
+              onSelectorOpenChange={setIsGoToSelectorOpen}
+              title="Go To"
+              buttonLabel="Go"
+            />
+          </View>
+        ) : null}
+
+        {navigationResults.length > 0 ? (
+          <View className="gap-2">
+            <Text className="text-xs font-semibold text-muted dark:text-muted-dark">Go To</Text>
+            <View className="flex-row flex-wrap gap-2">
+              {navigationResults.slice(0, 8).map((result) => (
+                <NavigationChip
+                  key={`${result.resultType}-${String(result.key)}`}
+                  result={result}
+                  onPress={() => handleNavResultPress(result)}
+                />
+              ))}
+            </View>
+          </View>
+        ) : null}
+
+        {effectiveQuery ? (
+          <Text className="text-xs text-muted dark:text-muted-dark">
+            {totalResults ? `${totalResults} results` : 'Results'}
+          </Text>
+        ) : null}
+      </View>
+    );
+  }, [
+    effectiveQuery,
+    errorMessage,
+    handleNavResultPress,
+    handleNavigateToSurahVerse,
+    isGoToSelectorOpen,
+    isLoading,
+    isSearchFocused,
+    navigationResults,
+    palette.muted,
+    query,
+    refresh,
+    shouldSearch,
+    source,
+    totalResults,
+    trimmed.length,
+    verses.length,
+  ]);
+
+  return (
+    <View className="flex-1 bg-background dark:bg-background-dark" style={{ backgroundColor: palette.background }}>
+      <AppHeader
+        title="Search"
+        left={
+          <HeaderActionButton
+            accessibilityLabel="Go back"
+            onPress={() => {
+              if (router.canGoBack()) {
+                router.back();
+              } else {
+                router.replace('/');
+              }
+            }}
+          >
+            <ArrowLeft color={palette.text} size={22} strokeWidth={2.25} />
+          </HeaderActionButton>
+        }
+        right={
+          <Pressable
+            onPress={() => setIsSettingsOpen(true)}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel="Open settings"
+          >
+            {({ pressed }) => (
+              <Settings
+                color={palette.text}
+                size={22}
+                strokeWidth={2.25}
+                style={{ marginRight: 12, opacity: pressed ? 0.5 : 1 }}
+              />
+            )}
+          </Pressable>
+        }
+      />
+
+      <FlashList
+        data={verses}
+        keyExtractor={(item) => item.verseKey}
+        keyboardShouldPersistTaps="handled"
+        scrollEnabled={!isGoToSelectorOpen}
+        showsVerticalScrollIndicator={!isGoToSelectorOpen}
+        removeClippedSubviews={false}
+        renderItem={({ item }) => (
+          <SearchVerseResultCard
+            verse={item}
+            query={trimmed}
+            arabicFontSize={settings.arabicFontSize}
+            arabicFontFace={settings.arabicFontFace}
+            translationFontSize={settings.translationFontSize}
+            isAudioActive={Boolean(audio.isPlaying && audio.activeVerseKey === item.verseKey)}
+            onOpenActions={() =>
+              openVerseActions({
+                verseKey: item.verseKey,
+                verseApiId: item.verseId,
+                arabicText: item.textArabic ?? '',
+                translationTexts: [item.highlightedTranslation ? item.highlightedTranslation.replace(/<[^>]*>/g, '') : ''],
+                surahNumber: item.surahNumber,
+              })
+            }
+            onPress={() => handleNavigateToSurahVerse(item.surahNumber, item.verseNumber)}
+          />
+        )}
+        ListHeaderComponent={renderHeader}
+        refreshing={Boolean(effectiveQuery) && isLoading && verses.length === 0}
+        onRefresh={refresh}
+        onEndReachedThreshold={0.5}
+        onEndReached={() => {
+          if (hasNextPage) loadMore();
+        }}
+        ListEmptyComponent={
+          effectiveQuery ? (
+            isLoading ? (
+              <View className="py-6 flex-row items-center gap-2">
+                <ActivityIndicator size="small" color={palette.muted} />
+                <Text className="text-sm text-muted dark:text-muted-dark">Searching…</Text>
+              </View>
+            ) : (
+              <View className="py-6">
+                <Text className="text-sm text-muted dark:text-muted-dark">
+                  {source === 'offline' ? 'No matches in your downloaded translations.' : 'No results.'}
+                </Text>
+              </View>
+            )
+          ) : (
+            <View className="py-6" />
+          )
+        }
+        ListFooterComponent={
+          isLoadingMore ? (
+            <View className="py-6 flex-row items-center gap-2">
+              <ActivityIndicator size="small" color={palette.muted} />
+              <Text className="text-sm text-muted dark:text-muted-dark">Loading more…</Text>
+            </View>
+          ) : errorMessage && verses.length > 0 ? (
+            <View className="py-6 gap-1">
+              <Text className="text-sm text-muted dark:text-muted-dark">Couldn’t load more results.</Text>
+              <Pressable
+                onPress={loadMore}
+                accessibilityRole="button"
+                accessibilityLabel="Retry loading more results"
+                hitSlop={8}
+                className="self-start py-2"
+                style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
+              >
+                <Text className="text-sm font-medium text-accent dark:text-accent-dark">Retry</Text>
+              </Pressable>
+            </View>
+          ) : null
+        }
+        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}
+      />
+
+      <VerseActionsSheet
+        isOpen={isVerseActionsOpen}
+        onClose={closeVerseActions}
+        title={
+          chapters.find((c) => c.id === activeVerse?.surahNumber)?.name_simple ?? 'Surah'
+        }
+        verseKey={activeVerse?.verseKey ?? ''}
+        isPlaying={Boolean(audio.isPlaying && audio.activeVerseKey === activeVerse?.verseKey)}
+        isBookmarked={activeVersePinned}
+        onPlayPause={handlePlayPause}
+        onOpenTafsir={handleOpenTafsir}
+        onBookmark={handleBookmark}
+        onAddToPlan={handleAddToPlan}
+        onCopy={handleCopy}
+        onShare={handleShare}
+      />
+
+      <BookmarkModal
+        isOpen={isBookmarkModalOpen}
+        onClose={() => setIsBookmarkModalOpen(false)}
+        verseId={
+          typeof activeVerse?.verseApiId === 'number' &&
+          Number.isFinite(activeVerse.verseApiId) &&
+          activeVerse.verseApiId > 0
+            ? String(activeVerse.verseApiId)
+            : (activeVerse?.verseKey ?? '')
+        }
+        verseKey={activeVerse?.verseKey ?? ''}
+        metadata={activeVerseBookmarkMetadata}
+      />
+
+      {plannerVerseSummary ? (
+        <AddToPlannerModal
+          isOpen={isAddToPlannerOpen}
+          onClose={() => setIsAddToPlannerOpen(false)}
+          verseSummary={plannerVerseSummary}
+        />
+      ) : null}
+
+      <SettingsSidebar isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
+    </View>
+  );
+}

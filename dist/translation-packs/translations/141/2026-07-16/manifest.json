@@ -1,0 +1,15 @@
+{
+  "translationId": 141,
+  "name": "The Sabiq Company",
+  "authorName": "The Sabiq company",
+  "languageName": "indonesian",
+  "version": "2026-07-16",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "00e31153a2b053be0428180f992d6a1b",
+  "payloadSizeBytes": 2922027,
+  "totalVerses": 6236,
+  "generatedAt": "2026-07-16T11:37:23.740Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=141&per_page=300"
+}

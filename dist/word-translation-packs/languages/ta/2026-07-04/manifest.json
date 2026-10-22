@@ -1,0 +1,13 @@
+{
+  "languageCode": "ta",
+  "name": "Tamil",
+  "version": "2026-07-04",
+  "bundled": false,
+  "format": "word-translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "74680c2d3ea2d305be09215c7a8717f6",
+  "payloadSizeBytes": 15435344,
+  "totalVerses": 6236,
+  "generatedAt": "2026-07-04T04:37:16.683Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?words=true&word_translation_language=ta"
+}

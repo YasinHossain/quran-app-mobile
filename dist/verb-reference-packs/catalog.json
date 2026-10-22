@@ -1,0 +1,16 @@
+{
+  "format": "quran-verb-reference-catalog-v1",
+  "packs": [
+    {
+      "packId": "quran-verbs",
+      "version": "1.1",
+      "sourceId": "quran-verb-reference",
+      "title": "Verb Principal Parts",
+      "manifestUrl": "quran-verbs-v2/manifest.json",
+      "databaseUrl": "quran-verbs-v2/quran-verb-reference.db",
+      "databaseSizeBytes": 458752,
+      "databaseChecksumSha256": "f1e4fa38267c53c651e334f5f1a4488160a4f5d9e75c810ec240bd2fc6e50893",
+      "schemaVersion": 1
+    }
+  ]
+}

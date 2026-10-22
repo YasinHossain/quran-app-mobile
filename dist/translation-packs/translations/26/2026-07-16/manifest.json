@@ -1,0 +1,15 @@
+{
+  "translationId": 26,
+  "name": "Czech",
+  "authorName": "Czech",
+  "languageName": "czech",
+  "version": "2026-07-16",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "a865f75b9330cba31024c952ba7f0bed",
+  "payloadSizeBytes": 2658042,
+  "totalVerses": 6236,
+  "generatedAt": "2026-07-16T11:35:05.008Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=26&per_page=300"
+}

@@ -1,0 +1,15 @@
+{
+  "translationId": 81,
+  "name": "Burhan Muhammad-Amin",
+  "authorName": "Burhan Muhammad-Amin",
+  "languageName": "kurdish",
+  "version": "2026-07-16",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "34d001554bfd6b594be6e0b714daa1bd",
+  "payloadSizeBytes": 4355466,
+  "totalVerses": 6236,
+  "generatedAt": "2026-07-16T11:38:42.980Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=81&per_page=300"
+}

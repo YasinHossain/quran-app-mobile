@@ -1,0 +1,15 @@
+{
+  "translationId": 796,
+  "name": "Baba Mamady Jani",
+  "authorName": "Baba Mamady Jani",
+  "languageName": "bambara",
+  "version": "2026-07-16",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "354611d9343479f3f4aacfa946755a42",
+  "payloadSizeBytes": 3412357,
+  "totalVerses": 6236,
+  "generatedAt": "2026-07-16T11:33:50.087Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=796&per_page=300"
+}

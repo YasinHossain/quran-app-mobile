@@ -1,0 +1,428 @@
+declare const process: { cwd(): string };
+declare function require(id: string): any;
+
+const assert = require('node:assert/strict') as {
+  deepEqual(actual: unknown, expected: unknown): void;
+  doesNotMatch(actual: string, expected: RegExp): void;
+  equal(actual: unknown, expected: unknown): void;
+  match(actual: string, expected: RegExp): void;
+  ok(value: unknown): void;
+};
+const { readFileSync } = require('node:fs') as { readFileSync(path: string, encoding: string): string };
+const { join } = require('node:path') as { join(...parts: string[]): string };
+const test = require('node:test') as (name: string, callback: () => void | Promise<void>) => void;
+
+import {
+  buildWordStudyVersePreview,
+  getWordStudyLocationKey,
+  normalizeWordStudyPressEvent,
+} from '../../components/word-study/WordStudyPressEvent';
+import {
+  describeMissingReason,
+  describeMorphology,
+  getAnalysisSegments,
+  getCompactFieldPresentation,
+  getPosLabel,
+  getSourceLabel,
+  toWordQuickSheetLoadState,
+} from '../../components/word-study/wordQuickSheetModel';
+import {
+  buildVerseTranslationItems,
+  parseReaderStudySheetTab,
+  stripTranslationMarkup,
+} from '../../components/word-study/readerStudySheetModel';
+import {
+  WORD_STUDY_RICH_CONTRACT_FIXTURES,
+  parseWordStudyLocation,
+} from '../../src/core/domain/word-study';
+import { buildQuranWordAudioUrl } from '../../src/core/infrastructure/audio/wordAudio';
+
+test('resolves dedicated Quran Foundation word-pronunciation clips', () => {
+  assert.equal(
+    buildQuranWordAudioUrl({ verseKey: '1:1', wordPosition: 1 }),
+    'https://audio.qurancdn.com/wbw/001_001_001.mp3'
+  );
+  assert.equal(
+    buildQuranWordAudioUrl({ verseKey: '112:3', wordPosition: 4 }),
+    'https://audio.qurancdn.com/wbw/112_003_004.mp3'
+  );
+  assert.equal(buildQuranWordAudioUrl({ verseKey: '115:1', wordPosition: 1 }), null);
+  assert.equal(buildQuranWordAudioUrl({ verseKey: '2:1', wordPosition: 0 }), null);
+});
+
+test('normalizes the native word press into the canonical study event', () => {
+  const event = normalizeWordStudyPressEvent({
+    verseKey: ' 3:3 ',
+    wordPosition: 9.8,
+    wordId: 12345,
+    surfaceText: ' وَأَنزَلَ ',
+    source: 'translation',
+  });
+  assert.deepEqual(event, {
+    verseKey: '3:3',
+    wordPosition: 9,
+    wordId: 12345,
+    surfaceText: 'وَأَنزَلَ',
+    source: 'translation',
+  });
+  assert.equal(event && getWordStudyLocationKey(event), '3:3:9');
+  assert.equal(normalizeWordStudyPressEvent({ verseKey: '3:3:9', wordPosition: 12345 }), null);
+  assert.equal(normalizeWordStudyPressEvent({ verseKey: '115:1', wordPosition: 1 }), null);
+});
+
+test('all Android reader payloads resolve the same canonical analysis location', () => {
+  const payloads = [
+    { verseKey: '3:3', wordPosition: 9, source: 'translation' },
+    { verseKey: '3:3', wordPosition: 9, source: 'tajweed' },
+    { verseKey: '3:3', wordPosition: 9, source: 'mushaf' },
+  ];
+  const locationKeys = payloads.map((payload) => {
+    const event = normalizeWordStudyPressEvent(payload);
+    assert.ok(event);
+    return event ? getWordStudyLocationKey(event) : null;
+  });
+
+  assert.deepEqual(locationKeys, ['3:3:9', '3:3:9', '3:3:9']);
+});
+
+test('carries the already-loaded reader ayah into Word Study without end markers', () => {
+  const verseWords = buildWordStudyVersePreview([
+    { position: 1, uthmani: ' قُلْ ' },
+    { position: 2, uthmani: 'هُوَ' },
+    { position: 3, uthmani: '١', charTypeName: 'end' },
+  ]);
+  assert.deepEqual(verseWords, [
+    { wordPosition: 1, surfaceText: 'قُلْ' },
+    { wordPosition: 2, surfaceText: 'هُوَ' },
+  ]);
+
+  const event = normalizeWordStudyPressEvent({
+    verseKey: '112:1',
+    wordPosition: 2,
+    verseWords,
+    source: 'translation',
+  });
+  assert.deepEqual(event?.verseWords, verseWords);
+});
+
+test('builds segmented verb content and friendly morphology copy', () => {
+  const verb = WORD_STUDY_RICH_CONTRACT_FIXTURES[0];
+  if (!verb) throw new Error('Missing verb fixture');
+  const state = toWordQuickSheetLoadState(verb);
+  assert.equal(state.status, 'ready');
+  assert.deepEqual(getAnalysisSegments(verb).map((segment) => segment.arabic), ['وَ', 'أَنزَلَ']);
+  assert.equal(getPosLabel('V'), 'Verb');
+  assert.equal(getPosLabel('CONJ'), 'Conjunction');
+  assert.equal(
+    verb.morphology.status === 'available' ? describeMorphology(verb.morphology.value) : '',
+    'Perfect · Active · Third person · Masculine · Singular · Form IV'
+  );
+});
+
+test('expands the installed corpus particle codes into readable labels', () => {
+  assert.equal(getPosLabel('REM'), 'Resumption particle');
+  assert.equal(getPosLabel('CAUS'), 'Causal particle');
+  assert.equal(getPosLabel('IMPN'), 'Imperative verbal noun');
+});
+
+test('renders explicit rootless and missing-analysis explanations', () => {
+  const particle = WORD_STUDY_RICH_CONTRACT_FIXTURES[1];
+  if (!particle) throw new Error('Missing particle fixture');
+  assert.equal(
+    particle.root.status === 'available' ? '' : describeMissingReason(particle.root.reason),
+    'No root applies to this particle.'
+  );
+  assert.deepEqual(toWordQuickSheetLoadState({
+    location: parseWordStudyLocation('2:1:1'),
+    status: 'missing',
+    reason: 'source-row-missing',
+    sourceReferences: [],
+  }), {
+    status: 'missing',
+    result: {
+      location: parseWordStudyLocation('2:1:1'),
+      status: 'missing',
+      reason: 'source-row-missing',
+      sourceReferences: [],
+    },
+  });
+});
+
+test('renders unavailable compact facts as a dash with an accessible fallback', () => {
+  const verb = WORD_STUDY_RICH_CONTRACT_FIXTURES[0];
+  const particle = WORD_STUDY_RICH_CONTRACT_FIXTURES[1];
+  if (!verb || !particle) throw new Error('Missing compact fact fixtures');
+
+  assert.deepEqual(
+    getCompactFieldPresentation(
+      verb.lemma,
+      (value: { arabic: string }) => value.arabic
+    ),
+    { text: 'أَنزَلَ', accessibilityValue: 'أَنزَلَ' }
+  );
+  assert.deepEqual(
+    getCompactFieldPresentation(
+      particle.root,
+      (value: { arabic: string }) => value.arabic
+    ),
+    { text: '—', accessibilityValue: 'Not available' }
+  );
+});
+
+test('shows pack attribution from source identifiers', () => {
+  const verb = WORD_STUDY_RICH_CONTRACT_FIXTURES[0];
+  if (!verb) throw new Error('Missing verb fixture');
+  const analysis = {
+    ...verb,
+    sourceReferences: [
+      { sourceId: 'qac-morphology-v0.4', sourceVersion: '0.4', layer: 'morphology' as const },
+      {
+        sourceId: 'quran-app-offline-word-pack-en-2026-07-04',
+        sourceVersion: '2026-07-04',
+        layer: 'surface' as const,
+      },
+    ],
+  };
+  assert.equal(
+    getSourceLabel(analysis),
+    'Quranic Arabic Corpus v0.4 · Quran App canonical word surface'
+  );
+});
+
+test('quick sheet keeps numeric height constraints and the redesigned action hierarchy', () => {
+  const source = readFileSync(
+    join(process.cwd(), 'components/word-study/WordQuickSheet.tsx'),
+    'utf8'
+  );
+  const segmentsSource = readFileSync(
+    join(process.cwd(), 'components/word-study/WordSegmentsCard.tsx'),
+    'utf8'
+  );
+  const bottomSheetSource = readFileSync(
+    join(process.cwd(), 'components/motion/BottomSheet.tsx'),
+    'utf8'
+  );
+  assert.match(source, /<BottomSheet[\s\S]*?height=\{sheetHeight\}/);
+  assert.match(bottomSheetSource, /\{ height, minHeight: height, maxHeight: height \}/);
+  assert.match(source, /Math\.min\(tabs \? 560 : 510, windowHeight \* 0\.85, windowHeight - insets\.top - 12\)/);
+  assert.match(source, /accessibilityLabel="Play word audio"/);
+  assert.match(source, /layout="wrapped"/);
+  assert.match(source, /label="Continue"/);
+  assert.doesNotMatch(source, /label="Save"/);
+  assert.match(source, /label="Study"/);
+  assert.match(source, /Open full word study/);
+  assert.match(source, /accessibilityLabel="Loading word analysis"/);
+  assert.doesNotMatch(source, /label="Part of speech"/);
+  assert.doesNotMatch(source, /label="Current inflection"/);
+  assert.doesNotMatch(source, /Source: \{getSourceLabel/);
+  assert.match(segmentsSource, /legendLayout\?: 'stacked' \| 'horizontal'/);
+  assert.match(segmentsSource, /<ScrollView[\s\S]*?horizontal/);
+  assert.match(segmentsSource, /showsHorizontalScrollIndicator=\{false\}/);
+});
+
+test('an uninstalled Essentials pack is treated as an expected download state', () => {
+  const controller = readFileSync(
+    join(process.cwd(), 'components/word-study/useWordQuickSheetController.ts'),
+    'utf8'
+  );
+  const panel = readFileSync(
+    join(
+      process.cwd(),
+      'components/word-study/full-study/CoreStudyPackDownloadPanel.tsx'
+    ),
+    'utf8'
+  );
+  const progressRing = readFileSync(
+    join(process.cwd(), 'components/downloads/DownloadProgressRing.tsx'),
+    'utf8'
+  );
+  const downloadCard = readFileSync(
+    join(
+      process.cwd(),
+      'components/word-study/full-study/StudyPackDownloadCard.tsx'
+    ),
+    'utf8'
+  );
+  const grammarPanel = readFileSync(
+    join(
+      process.cwd(),
+      'components/word-study/full-study/GrammarPackDownloadPanel.tsx'
+    ),
+    'utf8'
+  );
+
+  assert.match(
+    controller,
+    /if \(needsDownload\) \{[\s\S]*?logger\.info\('Word Study quick-sheet requires Essentials download'/
+  );
+  assert.match(
+    controller,
+    /\} else \{[\s\S]*?logger\.error\([\s\S]*?'Word Study quick-sheet lookup failed'/
+  );
+  assert.match(panel, /Word Study Essentials/);
+  assert.doesNotMatch(panel, /Download once to open Word Study/);
+  assert.doesNotMatch(panel, /Version \{entry\.version\}/);
+  assert.match(panel, /roots, lemmas & word families/);
+  assert.match(panel, /StudyPackDownloadCard/);
+  assert.match(progressRing, /strokeDashoffset/);
+  assert.match(progressRing, /<X color=\{crossColor\}/);
+  assert.doesNotMatch(downloadCard, /% downloaded/);
+  assert.match(grammarPanel, /getInstalledAsync\(\)/);
+  assert.match(grammarPanel, /const displayStatus = itemIsActive/);
+});
+
+test('Android Surah, Juz, Page, Mushaf, and Tajweed readers share the React Native sheet', () => {
+  const surahScreen = readFileSync(join(process.cwd(), 'app/surah/[surahId].tsx'), 'utf8');
+  const juzScreen = readFileSync(join(process.cwd(), 'app/juz/[juzNumber].tsx'), 'utf8');
+  const pageScreen = readFileSync(join(process.cwd(), 'app/page/[pageNumber].tsx'), 'utf8');
+  const verseCard = readFileSync(join(process.cwd(), 'components/surah/VerseCard.tsx'), 'utf8');
+  const controller = readFileSync(
+    join(process.cwd(), 'components/word-study/useWordQuickSheetController.ts'),
+    'utf8'
+  );
+  const tajweedFactory = readFileSync(
+    join(
+      process.cwd(),
+      'android/app/src/main/java/com/anonymous/quranappmobile/nativesurahreader/NativeTajweedTextFactory.kt'
+    ),
+    'utf8'
+  );
+  const nativeReaderView = readFileSync(
+    join(
+      process.cwd(),
+      'android/app/src/main/java/com/anonymous/quranappmobile/nativesurahreader/NativeSurahReaderView.kt'
+    ),
+    'utf8'
+  );
+
+  for (const screen of [surahScreen, juzScreen, pageScreen]) {
+    assert.match(screen, /ReaderWordStudySheet/);
+    assert.match(screen, /source: 'mushaf'/);
+    assert.match(screen, /wordQuickSheet\.open/);
+    assert.match(screen, /isDisabled: audio\.isVisible/);
+    assert.match(screen, /onDisabledOpen: verseAudioWordSync\.seekToWord/);
+  }
+  assert.match(juzScreen, /onWordStudyPress=\{Platform\.OS === 'android'/);
+  assert.match(pageScreen, /onWordStudyPress=\{Platform\.OS === 'android'/);
+  assert.match(verseCard, /pressBehavior=\{[\s\S]*?'study'/);
+  assert.match(
+    verseCard,
+    /shouldSeekOnWordPress\s*=\s*isSeekEnabled/
+  );
+  assert.match(
+    verseCard,
+    /handleSeekWordPress[\s\S]*?\}\) => \{\s*audioWordSync\?\.seekToWord/
+  );
+  assert.match(
+    verseCard,
+    /selectedWordPosition=\{isAudioPlaying \? undefined : selectedStudyWordPosition\}/
+  );
+  assert.match(
+    controller,
+    /if \(isDisabled\) \{\s*onDisabledOpen\?\.\(event\);\s*return;/
+  );
+  assert.match(controller, /if \(isDisabled\) \{\s*close\(\);/);
+  assert.match(tajweedFactory, /NativeTajweedWordSpan/);
+  assert.match(tajweedFactory, /buildNativeTajweedWordRanges/);
+  assert.match(tajweedFactory, /if \(enabled\) onPress\(word\)/);
+  assert.match(nativeReaderView, /settings\.displayMode == DISPLAY_MODE_TAJWEED/);
+  assert.match(nativeReaderView, /putString\([\s\S]*?currentWordPressSource/);
+  assert.ok(!tajweedFactory.includes('WordQuickSheet'));
+  assert.ok(!tajweedFactory.includes('WordStudyRepository'));
+});
+
+test('Mushaf readers bridge active audio words and seek taps without remounting the WebView', () => {
+  const surahScreen = readFileSync(join(process.cwd(), 'app/surah/[surahId].tsx'), 'utf8');
+  const juzScreen = readFileSync(join(process.cwd(), 'app/juz/[juzNumber].tsx'), 'utf8');
+  const pageScreen = readFileSync(join(process.cwd(), 'app/page/[pageNumber].tsx'), 'utf8');
+  const reader = readFileSync(
+    join(process.cwd(), 'components/mushaf/MushafSingleDocumentReader.tsx'),
+    'utf8'
+  );
+  const document = readFileSync(
+    join(
+      process.cwd(),
+      'components/mushaf/webview/buildMushafReaderWebViewDocument.ts'
+    ),
+    'utf8'
+  );
+
+  for (const screen of [surahScreen, juzScreen, pageScreen]) {
+    assert.match(screen, /activeAudioWord=\{verseAudioWordSync\.activeWord\}/);
+    assert.match(screen, /focusBottomInsetPx=\{audioPlayerBarHeight\}/);
+    assert.match(screen, /onWordSeek=\{verseAudioWordSync\.seekToWord\}/);
+    assert.match(screen, /wordSeekEnabled=\{audio\.isVisible\}/);
+  }
+
+  assert.match(reader, /window\.__MUSHAF_READER__\.setActiveAudioWord/);
+  assert.match(reader, /\.findPageForVerse\(\{ packId, verseKey \}\)/);
+  assert.match(reader, /'active-audio-verse-window'/);
+  assert.match(
+    reader,
+    /wordSeekEnabled[\s\S]*?payload\.charType !== 'end'[\s\S]*?onWordSeek\(\{ verseKey, wordPosition \}\)/
+  );
+  assert.doesNotMatch(
+    reader,
+    /key=\{`mushaf-reader:[^`]*activeAudioWord/
+  );
+  assert.match(document, /\.word\.active-audio-word/);
+  assert.match(document, /function scrollActiveAudioWordIntoView\(\)/);
+  assert.match(document, /window\.innerHeight - activeAudioBottomInsetPx/);
+  assert.match(document, /scheduleActiveAudioWordScroll\(\)/);
+  assert.match(document, /function setActiveAudioWord\(payload\)/);
+  assert.match(document, /wordNode\.classList\.add\('active-audio-word'\)/);
+  assert.match(document, /setActiveAudioWord: setActiveAudioWord/);
+});
+
+test('the Mushaf study sheet reopens on Word unless Translation was chosen last', () => {
+  assert.equal(parseReaderStudySheetTab(null), 'word');
+  assert.equal(parseReaderStudySheetTab('translation'), 'translation');
+  assert.equal(parseReaderStudySheetTab('word'), 'word');
+  assert.equal(parseReaderStudySheetTab('tafsir'), 'word');
+});
+
+test('study sheet translations follow the reader order and always name the translator', () => {
+  const items = buildVerseTranslationItems(
+    [
+      { resource_id: 20, resource_name: 'Saheeh International', text: 'Allah - there is no deity except Him' },
+      { resource_id: 161, text: 'আল্লাহ ছাড়া অন্য কোন উপাস্য নেই' },
+      { resource_id: 85, text: 'Unselected translation' },
+    ],
+    [161, 20],
+    new Map([[161, { name: 'Taisirul Quran' }]])
+  );
+  assert.deepEqual(items, [
+    { resourceId: 161, resourceName: 'Taisirul Quran', text: 'আল্লাহ ছাড়া অন্য কোন উপাস্য নেই' },
+    { resourceId: 20, resourceName: 'Saheeh International', text: 'Allah - there is no deity except Him' },
+  ]);
+
+  // An offline row without a cached resource name still carries attribution.
+  assert.deepEqual(buildVerseTranslationItems([{ resource_id: 31, text: 'Text' }], [31], new Map()), [
+    { resourceId: 31, resourceName: 'Translation 31', text: 'Text' },
+  ]);
+  assert.deepEqual(buildVerseTranslationItems([{ resource_id: 31, text: '<p> </p>' }], [31], new Map()), []);
+  assert.deepEqual(buildVerseTranslationItems(undefined, [20], new Map()), []);
+});
+
+test('translation footnote markers are removed instead of becoming stray digits', () => {
+  assert.equal(
+    stripTranslationMarkup('Guide us to the straight path<sup foot_note="77">1</sup> &amp; more'),
+    'Guide us to the straight path & more'
+  );
+  assert.equal(stripTranslationMarkup('<i>Alif, Lam, Meem</i>'), 'Alif, Lam, Meem');
+});
+
+test('Mushaf readers route ayah-number taps to the verse sheet on every platform', () => {
+  const reader = readFileSync(
+    join(process.cwd(), 'components/mushaf/MushafSingleDocumentReader.tsx'),
+    'utf8'
+  );
+  assert.match(reader, /target: payload\.charType === 'end' \? 'verse' : 'word'/);
+  for (const target of ['app/page/[pageNumber].tsx', 'app/surah/[surahId].tsx', 'app/juz/[juzNumber].tsx']) {
+    const screen = readFileSync(join(process.cwd(), target), 'utf8');
+    const press = screen.slice(screen.indexOf('const handleMushafVersePress'));
+    const pressBody = press.slice(0, press.indexOf('\n  );\n'));
+    assert.match(pressBody, /verse\.target === 'verse'[\s\S]*?openMushafVerseSheet\(studyVerse\)/);
+    assert.doesNotMatch(pressBody, /Platform\.OS/);
+  }
+});

@@ -1,0 +1,878 @@
+import {
+  ChevronDown,
+  ChevronUp,
+  RefreshCw,
+} from 'lucide-react-native';
+import React from 'react';
+import RenderHTML from 'react-native-render-html';
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  useWindowDimensions,
+} from 'react-native';
+
+import { SlidingSegmentedControl } from '@/components/ui/SlidingSegmentedControl';
+import { useDownloadIndexItems } from '@/hooks/useDownloadIndexItems';
+import { getItem, setItem } from '@/lib/storage/appStorage';
+import type {
+  DictionaryEntryDetail,
+  DictionaryEntrySummary,
+  DictionaryLookupResult,
+  DictionarySource,
+  WordAnalysis,
+} from '@/src/core/domain/word-study';
+import { container } from '@/src/core/infrastructure/di/container';
+import {
+  getBundledWordReferencePacks,
+  type WordReferencePackCatalogEntry,
+} from '@/src/core/infrastructure/word-reference';
+import { LruCache } from '@/src/core/infrastructure/word-study/LruCache';
+
+import { DictionaryGuideSheet } from './DictionaryGuideSheet';
+import { StudyPackDownloadCard } from './StudyPackDownloadCard';
+
+type Palette = {
+  background: string;
+  surface: string;
+  surfaceNavigation: string;
+  text: string;
+  muted: string;
+  border: string;
+  tint: string;
+  interactive: string;
+  onAccent: string;
+  error: string;
+};
+
+type InstalledSourcesState =
+  | { status: 'loading' }
+  | { status: 'ready'; sources: readonly DictionarySource[] }
+  | { status: 'error'; message: string };
+type LookupState =
+  | { status: 'idle' }
+  | { status: 'loading' }
+  | { status: 'ready'; result: DictionaryLookupResult }
+  | { status: 'error'; message: string };
+type ActiveLookupState = {
+  readonly lookupKey: string;
+  readonly state: LookupState;
+};
+type DictionarySelectedWord = {
+  readonly location: {
+    readonly locationKey: string;
+    readonly wordPosition: number;
+  };
+  readonly surfaceUthmani: string;
+};
+
+const LAST_SOURCE_KEY = 'wordStudyDictionaryLastPack_v1';
+const BUNDLED_DICTIONARY_ENTRIES = getBundledWordReferencePacks();
+
+function formatBytes(bytes: number): string {
+  return `${(bytes / (1024 * 1024)).toFixed(bytes >= 10 * 1024 * 1024 ? 0 : 1)} MB`;
+}
+
+function getLookupKey(
+  analysis: WordAnalysis | undefined,
+  selectedWord: DictionarySelectedWord
+): string {
+  return analysis
+    ? JSON.stringify([
+        analysis.lemma.status === 'available' ? analysis.lemma.value.normalized : null,
+        analysis.root.status === 'available' ? analysis.root.value.normalized : null,
+      ])
+    : JSON.stringify(['surface', selectedWord.surfaceUthmani]);
+}
+
+export function DictionarySection({
+  analysis,
+  selectedWord = analysis,
+  prefetchAnalyses = [],
+  palette,
+  isActive = true,
+  isGuideOpen,
+  onCloseGuide,
+}: {
+  analysis?: WordAnalysis;
+  selectedWord?: DictionarySelectedWord;
+  prefetchAnalyses?: readonly WordAnalysis[];
+  palette: Palette;
+  isActive?: boolean;
+  isGuideOpen: boolean;
+  onCloseGuide: () => void;
+}): React.JSX.Element {
+  if (!selectedWord) {
+    throw new Error('DictionarySection requires a selected word');
+  }
+  const installer = container.getWordReferencePackInstaller();
+  const repository = container.getDictionaryReferenceRepository();
+  const { width } = useWindowDimensions();
+  const { items, refresh: refreshDownloads } = useDownloadIndexItems({
+    enabled: isActive,
+    pollIntervalMs: 700,
+    pollWhileEnabled: isActive,
+  });
+  const [installedSources, setInstalledSources] = React.useState<InstalledSourcesState>({
+    status: 'loading',
+  });
+  const [selectedPackId, setSelectedPackId] = React.useState<string | null>(null);
+
+  const loadSources = React.useCallback(async () => {
+    try {
+      const next = await repository.listInstalledSources();
+      const remembered = await getItem(LAST_SOURCE_KEY);
+      setSelectedPackId((current) => {
+        const preferred = current ?? remembered;
+        return next.some((source) => source.packId === preferred)
+          ? preferred
+          : next.find((source) => source.sourceId === 'lane-lexicon')?.packId
+            ?? next[0]?.packId
+            ?? null;
+      });
+      setInstalledSources({ status: 'ready', sources: next });
+    } catch (error) {
+      setInstalledSources({
+        status: 'error',
+        message: error instanceof Error ? error.message : 'Installed dictionaries could not be checked.',
+      });
+    }
+  }, [repository]);
+
+  React.useEffect(() => {
+    void loadSources();
+    return installer.subscribe(() => {
+      void loadSources();
+      refreshDownloads();
+    });
+  }, [installer, loadSources, refreshDownloads]);
+
+  const selectSource = React.useCallback((packId: string) => {
+    setSelectedPackId(packId);
+    void setItem(LAST_SOURCE_KEY, packId);
+  }, []);
+
+  const sources = installedSources.status === 'ready' ? installedSources.sources : [];
+  const installedPackIds = React.useMemo(
+    () => new Set(sources.map((source) => source.packId)),
+    [sources]
+  );
+  const downloadableEntries = BUNDLED_DICTIONARY_ENTRIES.filter(
+    (entry) => !installedPackIds.has(entry.packId)
+  );
+  const selectedSource = sources.find((source) => source.packId === selectedPackId);
+
+  return (
+    <View style={styles.section}>
+      {sources.length > 0 ? (
+        <View style={styles.toolbar}>
+          <Text style={[styles.sourceLabel, { color: palette.muted }]}>DICTIONARY SOURCE</Text>
+        </View>
+      ) : null}
+
+      {sources.length > 0 && selectedPackId ? (
+        <SlidingSegmentedControl
+          items={sources.map((source) => ({
+            key: source.packId,
+            label: source.sourceId === 'lane-lexicon'
+              ? 'Lane'
+              : source.sourceId === 'hans-wehr'
+                ? 'Hans Wehr'
+                : source.title,
+          }))}
+          selectedKey={selectedPackId}
+          width={Math.max(0, Math.min(688, width - 32))}
+          onSelect={selectSource}
+        />
+      ) : null}
+
+      {installedSources.status === 'error' ? (
+        <StateCard
+          title="Dictionaries could not be opened"
+          message={installedSources.message}
+          palette={palette}
+          actionLabel="Retry"
+          onAction={() => void loadSources()}
+        />
+      ) : installedSources.status === 'ready' && selectedPackId ? (
+        <View>
+          {sources.map((source) => (
+            <DictionarySourcePanel
+              key={source.packId}
+              active={source.packId === selectedPackId}
+              analysis={analysis}
+              selectedWord={selectedWord}
+              prefetchAnalyses={prefetchAnalyses}
+              contentWidth={Math.max(240, Math.min(680, width - 68))}
+              enabled={isActive && source.packId === selectedPackId}
+              packId={source.packId}
+              palette={palette}
+            />
+          ))}
+        </View>
+      ) : downloadableEntries.length === 0 ? (
+        <StateCard
+          title="Choose an optional dictionary"
+          message="Dictionary definitions are not included with the app. Download only the English sources you want to use."
+          palette={palette}
+        />
+      ) : null}
+
+      {installedSources.status !== 'error' && downloadableEntries.length > 0 ? (
+        <View style={styles.downloadList}>
+          {sources.length > 0 ? (
+            <Text style={[styles.subheading, { color: palette.text }]}>Available downloads</Text>
+          ) : null}
+          {downloadableEntries.map((entry) => {
+            const downloadItem = items.find(
+              (item) =>
+                item.content.kind === 'word-reference-pack' &&
+                item.content.packId === entry.packId &&
+                item.content.version === entry.version
+            );
+            return (
+              <DownloadCard
+                key={`${entry.packId}:${entry.version}`}
+                entry={entry}
+                status={downloadItem?.status}
+                percent={downloadItem?.progress?.kind === 'percent' ? downloadItem.progress.percent : undefined}
+                error={downloadItem?.error}
+                palette={palette}
+                onDownload={installedSources.status === 'ready' ? () => {
+                  void installer.installAsync(entry).catch(() => undefined);
+                } : undefined}
+                onCancel={() => installer.cancel(entry.packId, entry.version)}
+              />
+            );
+          })}
+        </View>
+      ) : null}
+      <DictionaryGuideSheet
+        isOpen={isGuideOpen}
+        onClose={onCloseGuide}
+        source={selectedSource}
+      />
+    </View>
+  );
+}
+
+const DictionarySourcePanel = React.memo(function DictionarySourcePanel({
+  active,
+  analysis,
+  selectedWord,
+  prefetchAnalyses,
+  contentWidth,
+  enabled,
+  packId,
+  palette,
+}: {
+  active: boolean;
+  analysis?: WordAnalysis;
+  selectedWord: DictionarySelectedWord;
+  prefetchAnalyses: readonly WordAnalysis[];
+  contentWidth: number;
+  enabled: boolean;
+  packId: string;
+  palette: Palette;
+}): React.JSX.Element {
+  const repository = container.getDictionaryReferenceRepository();
+  const lookupKey = getLookupKey(analysis, selectedWord);
+  const lookupCacheRef = React.useRef(new LruCache<string, DictionaryLookupResult>(32));
+  const [activeLookup, setActiveLookup] = React.useState<ActiveLookupState>({
+    lookupKey,
+    state: { status: 'loading' },
+  });
+  const [expandedEntryIds, setExpandedEntryIds] = React.useState<Record<string, string | null>>({});
+  const [detailsByLookupKey, setDetailsByLookupKey] = React.useState<
+    Record<string, Record<string, DictionaryEntryDetail | null>>
+  >({});
+  const [shownRoots, setShownRoots] = React.useState<ReadonlySet<string>>(() => new Set());
+  const [shownFamilies, setShownFamilies] = React.useState<ReadonlySet<string>>(() => new Set());
+  const expandedEntryIdsRef = React.useRef(expandedEntryIds);
+  const detailsByLookupKeyRef = React.useRef(detailsByLookupKey);
+  const lastReadyHeightRef = React.useRef(0);
+  expandedEntryIdsRef.current = expandedEntryIds;
+  detailsByLookupKeyRef.current = detailsByLookupKey;
+
+  const cachedResult = lookupCacheRef.current.get(lookupKey);
+  const lookup: LookupState = cachedResult
+    ? { status: 'ready', result: cachedResult }
+    : activeLookup.lookupKey === lookupKey
+      ? activeLookup.state
+      : { status: 'loading' };
+  const expandedEntryId = expandedEntryIds[lookupKey] ?? null;
+  const details = detailsByLookupKey[lookupKey] ?? {};
+  const showRoot = shownRoots.has(lookupKey);
+  const showFamily = shownFamilies.has(lookupKey);
+  const primaryEntry =
+    lookup.status === 'ready'
+      ? lookup.result.exactLemmaEntries[0] ?? lookup.result.rootEntries[0]
+      : undefined;
+  const isPrimaryEntryInitializing =
+    primaryEntry !== undefined &&
+    !Object.prototype.hasOwnProperty.call(expandedEntryIds, lookupKey);
+  const isContentLoading =
+    lookup.status === 'loading' ||
+    lookup.status === 'idle' ||
+    isPrimaryEntryInitializing;
+
+  React.useEffect(() => {
+    if (!enabled) return;
+    const controller = new AbortController();
+    const loadPrimaryEntry = (result: DictionaryLookupResult) => {
+      const primaryEntry = result.exactLemmaEntries[0] ?? result.rootEntries[0];
+      if (!primaryEntry) return;
+      if (Object.prototype.hasOwnProperty.call(expandedEntryIdsRef.current, lookupKey)) return;
+      const currentDetails = detailsByLookupKeyRef.current[lookupKey] ?? {};
+      if (currentDetails[primaryEntry.entryId] !== undefined) {
+        setExpandedEntryIds((current) => ({
+          ...current,
+          [lookupKey]: primaryEntry.entryId,
+        }));
+        return;
+      }
+      void repository
+        .getEntry(packId, primaryEntry.entryId, primaryEntry.matchKind, {
+          signal: controller.signal,
+        })
+        .then((detail) => {
+          if (!controller.signal.aborted) {
+            setDetailsByLookupKey((current) => ({
+              ...current,
+              [lookupKey]: {
+                ...current[lookupKey],
+                [primaryEntry.entryId]: detail,
+              },
+            }));
+            setExpandedEntryIds((current) => ({
+              ...current,
+              [lookupKey]: primaryEntry.entryId,
+            }));
+          }
+        })
+        .catch(() => {
+          if (!controller.signal.aborted) {
+            setDetailsByLookupKey((current) => ({
+              ...current,
+              [lookupKey]: {
+                ...current[lookupKey],
+                [primaryEntry.entryId]: null,
+              },
+            }));
+            setExpandedEntryIds((current) => ({
+              ...current,
+              [lookupKey]: primaryEntry.entryId,
+            }));
+          }
+        });
+    };
+
+    const cached = lookupCacheRef.current.get(lookupKey);
+    if (cached) {
+      loadPrimaryEntry(cached);
+      return () => controller.abort();
+    }
+
+    setActiveLookup({ lookupKey, state: { status: 'loading' } });
+    const lookupPromise = analysis
+      ? container
+          .getDictionaryReferences()
+          .execute(analysis, packId, { signal: controller.signal })
+      : repository.findReferencesBySurface(
+          packId,
+          selectedWord.surfaceUthmani,
+          { signal: controller.signal }
+        );
+    void lookupPromise
+      .then((result) => {
+        if (controller.signal.aborted) return;
+        lookupCacheRef.current.set(lookupKey, result);
+        setActiveLookup({ lookupKey, state: { status: 'ready', result } });
+        loadPrimaryEntry(result);
+      })
+      .catch((error) => {
+        if (!controller.signal.aborted) {
+          setActiveLookup({
+            lookupKey,
+            state: {
+              status: 'error',
+              message: error instanceof Error ? error.message : 'Dictionary lookup failed.',
+            },
+          });
+        }
+      });
+    return () => controller.abort();
+  }, [
+    analysis,
+    enabled,
+    lookupKey,
+    packId,
+    repository,
+    selectedWord.surfaceUthmani,
+  ]);
+
+  React.useEffect(() => {
+    if (!enabled || !analysis || lookup.status !== 'ready') return;
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      const nearby = prefetchAnalyses
+        .filter((candidate) => candidate.location.locationKey !== analysis.location.locationKey)
+        .sort(
+          (left, right) =>
+            Math.abs(left.location.wordPosition - analysis.location.wordPosition) -
+            Math.abs(right.location.wordPosition - analysis.location.wordPosition)
+        )
+        .slice(0, 4);
+
+      void (async () => {
+        for (const candidate of nearby) {
+          if (controller.signal.aborted) return;
+          const candidateKey = getLookupKey(candidate, candidate);
+          if (lookupCacheRef.current.get(candidateKey)) continue;
+          try {
+            const result = await container
+              .getDictionaryReferences()
+              .execute(candidate, packId, { signal: controller.signal });
+            if (!controller.signal.aborted) {
+              lookupCacheRef.current.set(candidateKey, result);
+            }
+          } catch {
+            if (controller.signal.aborted) return;
+          }
+        }
+      })();
+    }, 80);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [
+    analysis,
+    enabled,
+    lookup.status,
+    packId,
+    prefetchAnalyses,
+  ]);
+
+  const toggleEntry = React.useCallback((entry: DictionaryEntrySummary) => {
+    if (expandedEntryId === entry.entryId) {
+      setExpandedEntryIds((current) => ({ ...current, [lookupKey]: null }));
+      return;
+    }
+    setExpandedEntryIds((current) => ({ ...current, [lookupKey]: entry.entryId }));
+    if (details[entry.entryId] !== undefined) return;
+    void repository
+      .getEntry(packId, entry.entryId, entry.matchKind)
+      .then((detail) => setDetailsByLookupKey((current) => ({
+        ...current,
+        [lookupKey]: { ...current[lookupKey], [entry.entryId]: detail },
+      })))
+      .catch(() => setDetailsByLookupKey((current) => ({
+        ...current,
+        [lookupKey]: { ...current[lookupKey], [entry.entryId]: null },
+      })));
+  }, [details, expandedEntryId, lookupKey, packId, repository]);
+
+  const toggleDisclosure = React.useCallback(
+    (setter: React.Dispatch<React.SetStateAction<ReadonlySet<string>>>) => {
+      setter((current) => {
+        const next = new Set(current);
+        if (next.has(lookupKey)) next.delete(lookupKey);
+        else next.add(lookupKey);
+        return next;
+      });
+    },
+    [lookupKey]
+  );
+
+  return (
+    <View
+      accessibilityElementsHidden={!active}
+      importantForAccessibility={active ? 'auto' : 'no-hide-descendants'}
+      onLayout={(event) => {
+        if (!isContentLoading && lookup.status === 'ready') {
+          lastReadyHeightRef.current = event.nativeEvent.layout.height;
+        }
+      }}
+      pointerEvents={active ? 'auto' : 'none'}
+      style={[
+        !active ? styles.hiddenSource : undefined,
+        isContentLoading && lastReadyHeightRef.current > 0
+          ? { minHeight: lastReadyHeightRef.current }
+          : undefined,
+      ]}
+    >
+      {isContentLoading ? (
+        <LoadingCard label="Looking up this lemma and root…" palette={palette} />
+      ) : lookup.status === 'error' ? (
+        <StateCard title="Dictionary lookup failed" message={lookup.message} palette={palette} />
+      ) : (
+        <DictionaryResults
+          result={lookup.result}
+          expandedEntryId={expandedEntryId}
+          details={details}
+          showRoot={showRoot}
+          showFamily={showFamily}
+          contentWidth={contentWidth}
+          palette={palette}
+          lookupMode={analysis ? 'morphology' : 'surface'}
+          onToggleEntry={toggleEntry}
+          onToggleRoot={() => toggleDisclosure(setShownRoots)}
+          onToggleFamily={() => toggleDisclosure(setShownFamilies)}
+        />
+      )}
+    </View>
+  );
+});
+
+function DictionaryResults({
+  result,
+  expandedEntryId,
+  details,
+  showRoot,
+  showFamily,
+  contentWidth,
+  palette,
+  onToggleEntry,
+  onToggleRoot,
+  onToggleFamily,
+  lookupMode,
+}: {
+  result: DictionaryLookupResult;
+  expandedEntryId: string | null;
+  details: Record<string, DictionaryEntryDetail | null>;
+  showRoot: boolean;
+  showFamily: boolean;
+  contentWidth: number;
+  palette: Palette;
+  onToggleEntry: (entry: DictionaryEntrySummary) => void;
+  onToggleRoot: () => void;
+  onToggleFamily: () => void;
+  lookupMode: 'morphology' | 'surface';
+}): React.JSX.Element {
+  const hasMatches =
+    result.exactLemmaEntries.length > 0 ||
+    result.rootEntries.length > 0 ||
+    result.rootFamilyEntries.length > 0;
+  const hasExactLemma = result.exactLemmaEntries.length > 0;
+  const rootLabel = result.query.rootNormalized;
+  const sharedEntryProps = { expandedEntryId, details, contentWidth, palette, onToggleEntry };
+  return (
+    <View style={styles.results}>
+      {!hasMatches ? (
+        <StateCard
+          title="No matching entry"
+          message={
+            lookupMode === 'surface'
+              ? 'No safe written-form match was found. Word Study Essentials adds exact lemma and root matching.'
+              : 'This source does not contain an exact lemma or matching Quran root for the selected word.'
+          }
+          palette={palette}
+        />
+      ) : null}
+      {hasExactLemma ? (
+        <EntryGroup
+          title={lookupMode === 'surface' ? 'Possible match for this word' : 'Best match for this word'}
+          caption={
+            lookupMode === 'surface'
+              ? 'Matched from the written form · Essentials is required to confirm the lemma and root.'
+              : 'Exact lemma match · the entry may contain more than one sense.'
+          }
+          entries={result.exactLemmaEntries}
+          {...sharedEntryProps}
+        />
+      ) : result.rootEntries.length > 0 ? (
+        <View style={[styles.fallbackNotice, { backgroundColor: palette.interactive }]}>
+          <Text style={[styles.fallbackTitle, { color: palette.text }]}>No separate lemma entry in this source</Text>
+          <Text style={[styles.description, { color: palette.muted }]}>The broader root meaning is shown as a fallback.</Text>
+        </View>
+      ) : null}
+      {!hasExactLemma && result.rootEntries.length > 0 ? (
+        <EntryGroup
+          title="Root meaning"
+          caption="Broad root entry · not necessarily the exact sense used in this ayah."
+          entries={result.rootEntries}
+          {...sharedEntryProps}
+        />
+      ) : null}
+
+      {hasExactLemma && (result.rootEntries.length > 0 || result.rootFamilyEntries.length > 0) ? (
+        <View style={styles.group}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ expanded: showRoot }}
+            onPress={onToggleRoot}
+            style={[styles.rootToggle, { backgroundColor: palette.surfaceNavigation }]}
+          >
+            <View style={styles.familyCopy}>
+              <Text style={[styles.groupTitle, { color: palette.text }]}>Explore the root{rootLabel ? ` · ${rootLabel}` : ''}</Text>
+              <Text style={[styles.caption, { color: palette.muted }]}>Root meaning and related dictionary words</Text>
+            </View>
+            {showRoot ? <ChevronUp color={palette.tint} size={20} /> : <ChevronDown color={palette.tint} size={20} />}
+          </Pressable>
+          {showRoot ? (
+            <View style={styles.rootDetails}>
+              {result.rootEntries.length > 0 ? (
+                <EntryGroup
+                  title="Root dictionary entry"
+                  caption="The broad semantic family behind the selected lemma."
+                  entries={result.rootEntries}
+                  {...sharedEntryProps}
+                />
+              ) : null}
+              <RootFamilyDisclosure
+                entries={result.rootFamilyEntries}
+                expanded={showFamily}
+                onToggle={onToggleFamily}
+                {...sharedEntryProps}
+              />
+            </View>
+          ) : null}
+        </View>
+      ) : !hasExactLemma ? (
+        <>
+          <RootFamilyDisclosure
+            entries={result.rootFamilyEntries}
+            expanded={showFamily}
+            onToggle={onToggleFamily}
+            {...sharedEntryProps}
+          />
+        </>
+      ) : null}
+    </View>
+  );
+}
+
+function RootFamilyDisclosure({
+  entries,
+  expanded,
+  onToggle,
+  expandedEntryId,
+  details,
+  contentWidth,
+  palette,
+  onToggleEntry,
+}: {
+  entries: readonly DictionaryEntrySummary[];
+  expanded: boolean;
+  onToggle: () => void;
+  expandedEntryId: string | null;
+  details: Record<string, DictionaryEntryDetail | null>;
+  contentWidth: number;
+  palette: Palette;
+  onToggleEntry: (entry: DictionaryEntrySummary) => void;
+}): React.JSX.Element | null {
+  if (!entries.length) return null;
+  return (
+    <View style={styles.group}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ expanded }}
+        onPress={onToggle}
+        style={[styles.familyToggle, { backgroundColor: palette.surfaceNavigation }]}
+      >
+        <View style={styles.familyCopy}>
+          <Text style={[styles.groupTitle, { color: palette.text }]}>Related dictionary headwords</Text>
+          <Text style={[styles.caption, { color: palette.muted }]}> 
+            {entries.length} {entries.length === 1 ? 'entry' : 'entries'} organized under this root
+          </Text>
+        </View>
+        {expanded ? <ChevronUp color={palette.tint} size={20} /> : <ChevronDown color={palette.tint} size={20} />}
+      </Pressable>
+      {expanded ? (
+        <View style={styles.entries}>
+          {entries.map((entry) => (
+            <EntryCard
+              key={entry.entryId}
+              entry={entry}
+              expanded={expandedEntryId === entry.entryId}
+              detail={details[entry.entryId]}
+              {...{ contentWidth, palette, onToggleEntry }}
+            />
+          ))}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+function EntryGroup({
+  title,
+  caption,
+  entries,
+  ...entryProps
+}: {
+  title: string;
+  caption?: string;
+  entries: readonly DictionaryEntrySummary[];
+  expandedEntryId: string | null;
+  details: Record<string, DictionaryEntryDetail | null>;
+  contentWidth: number;
+  palette: Palette;
+  onToggleEntry: (entry: DictionaryEntrySummary) => void;
+}): React.JSX.Element {
+  return (
+    <View style={styles.group}>
+      <View style={styles.groupHeading}>
+        <Text style={[styles.groupTitle, { color: entryProps.palette.text }]}>{title}</Text>
+        {caption ? <Text style={[styles.caption, { color: entryProps.palette.muted }]}>{caption}</Text> : null}
+      </View>
+      <View style={styles.entries}>
+        {entries.map((entry) => (
+          <EntryCard
+            key={entry.entryId}
+            entry={entry}
+            expanded={entryProps.expandedEntryId === entry.entryId}
+            detail={entryProps.details[entry.entryId]}
+            {...entryProps}
+          />
+        ))}
+      </View>
+    </View>
+  );
+}
+
+function EntryCard({
+  entry,
+  expanded,
+  detail,
+  contentWidth,
+  palette,
+  onToggleEntry,
+}: {
+  entry: DictionaryEntrySummary;
+  expanded: boolean;
+  detail: DictionaryEntryDetail | null | undefined;
+  contentWidth: number;
+  palette: Palette;
+  onToggleEntry: (entry: DictionaryEntrySummary) => void;
+}): React.JSX.Element {
+  return (
+    <View style={[styles.entryCard, { backgroundColor: palette.surfaceNavigation }]}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ expanded }}
+        accessibilityLabel={`${entry.headwordArabic}, ${expanded ? 'collapse' : 'open'} dictionary definition`}
+        onPress={() => onToggleEntry(entry)}
+        style={styles.entryHeader}
+      >
+        <Text style={[styles.headword, { color: palette.text }]}>{entry.headwordArabic}</Text>
+        {expanded ? <ChevronUp color={palette.tint} size={19} /> : <ChevronDown color={palette.tint} size={19} />}
+      </Pressable>
+      {expanded ? (
+        detail === undefined ? (
+          <ActivityIndicator color={palette.tint} style={styles.entryLoader} />
+        ) : detail === null ? (
+          <Text style={[styles.definition, { color: palette.muted }]}>Definition could not be opened.</Text>
+        ) : detail.definitionFormat === 'sanitized-html' ? (
+          <View style={styles.definitionBody}>
+            <RenderHTML
+              contentWidth={contentWidth}
+              source={{ html: detail.definition || '<i>Definition unavailable.</i>' }}
+              baseStyle={{ color: palette.text, fontSize: 15, lineHeight: 25 }}
+              tagsStyles={{ i: { fontStyle: 'italic' }, b: { fontWeight: '700' } }}
+            />
+          </View>
+        ) : (
+          <Text style={[styles.definition, styles.definitionBody, { color: palette.text }]}>
+            {detail.definition || 'Definition unavailable.'}
+          </Text>
+        )
+      ) : null}
+    </View>
+  );
+}
+
+function DownloadCard({ entry, status, percent, error, palette, onDownload, onCancel }: {
+  entry: WordReferencePackCatalogEntry;
+  status?: 'queued' | 'downloading' | 'installed' | 'failed' | 'deleting';
+  percent?: number;
+  error?: string;
+  palette: Palette;
+  onDownload?: () => void;
+  onCancel: () => void;
+}): React.JSX.Element {
+  return (
+    <StudyPackDownloadCard
+      title={entry.title}
+      detail={`English · ${formatBytes(entry.databaseSizeBytes)}`}
+      status={status}
+      progress={
+        status === 'queued' || status === 'downloading'
+          ? { kind: 'percent', percent: percent ?? 0 }
+          : undefined
+      }
+      error={error}
+      palette={palette}
+      downloadAccessibilityLabel={`Download ${entry.title}`}
+      cancelAccessibilityLabel={`Cancel ${entry.title} download`}
+      onDownload={onDownload}
+      onCancel={onCancel}
+    />
+  );
+}
+
+function LoadingCard({ label, palette }: { label: string; palette: Palette }): React.JSX.Element {
+  return (
+    <View style={[styles.stateCard, { borderColor: palette.border, backgroundColor: palette.surfaceNavigation }]}> 
+      <ActivityIndicator color={palette.tint} />
+      <Text style={[styles.description, { color: palette.muted }]}>{label}</Text>
+    </View>
+  );
+}
+
+function StateCard({ title, message, palette, actionLabel, onAction }: {
+  title: string;
+  message: string;
+  palette: Palette;
+  actionLabel?: string;
+  onAction?: () => void;
+}): React.JSX.Element {
+  return (
+    <View style={[styles.stateCard, { borderColor: palette.border, backgroundColor: palette.surfaceNavigation }]}> 
+      <Text style={[styles.stateTitle, { color: palette.text }]}>{title}</Text>
+      <Text style={[styles.description, { color: palette.muted }]}>{message}</Text>
+      {actionLabel && onAction ? (
+        <Pressable accessibilityRole="button" onPress={onAction} style={styles.retryButton}>
+          <RefreshCw color={palette.tint} size={16} />
+          <Text style={[styles.retryText, { color: palette.tint }]}>{actionLabel}</Text>
+        </Pressable>
+      ) : null}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  section: { gap: 16 },
+  hiddenSource: { display: 'none' },
+  toolbar: { minHeight: 34, paddingLeft: 2, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  sourceLabel: { fontSize: 11, lineHeight: 16, fontWeight: '800', letterSpacing: 0.9 },
+  infoButton: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  subheading: { fontSize: 16, lineHeight: 23, fontWeight: '700' },
+  description: { fontSize: 13, lineHeight: 20 },
+  results: { gap: 16 },
+  group: { gap: 9 },
+  groupHeading: { gap: 2, paddingHorizontal: 2 },
+  groupTitle: { fontSize: 16, lineHeight: 22, fontWeight: '700' },
+  caption: { fontSize: 11, lineHeight: 17 },
+  entries: { gap: 8 },
+  entryCard: { borderRadius: 18, overflow: 'hidden' },
+  entryHeader: { minHeight: 56, paddingHorizontal: 15, paddingVertical: 9, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  headword: { flex: 1, fontFamily: 'UthmanicHafs1Ver18', fontSize: 24, lineHeight: 36, writingDirection: 'rtl', textAlign: 'right' },
+  definitionBody: { paddingHorizontal: 15, paddingVertical: 13 },
+  definition: { fontSize: 15, lineHeight: 25 },
+  entryLoader: { paddingVertical: 20 },
+  fallbackNotice: { borderRadius: 16, paddingHorizontal: 15, paddingVertical: 13, gap: 3 },
+  fallbackTitle: { fontSize: 14, lineHeight: 20, fontWeight: '700' },
+  rootToggle: { minHeight: 68, borderRadius: 18, paddingHorizontal: 15, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  rootDetails: { paddingTop: 4, gap: 16 },
+  familyToggle: { minHeight: 66, borderRadius: 16, paddingHorizontal: 15, paddingVertical: 11, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  familyCopy: { flex: 1, gap: 2 },
+  downloadList: { gap: 10 },
+  stateCard: { minHeight: 126, borderWidth: 1, borderRadius: 18, paddingHorizontal: 20, paddingVertical: 20, alignItems: 'center', justifyContent: 'center', gap: 8 },
+  stateTitle: { fontSize: 17, lineHeight: 23, fontWeight: '700', textAlign: 'center' },
+  retryButton: { minHeight: 40, flexDirection: 'row', alignItems: 'center', gap: 7 },
+  retryText: { fontSize: 13, fontWeight: '700' },
+});

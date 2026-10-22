@@ -1,0 +1,13 @@
+{
+  "languageCode": "hi",
+  "name": "Hindi",
+  "version": "2026-07-04",
+  "bundled": false,
+  "format": "word-translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "fb4e81d2c85f49332ce16ba9f4a33d2a",
+  "payloadSizeBytes": 14759531,
+  "totalVerses": 6236,
+  "generatedAt": "2026-07-04T04:32:37.339Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?words=true&word_translation_language=hi"
+}

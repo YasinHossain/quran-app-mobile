@@ -1,0 +1,15 @@
+{
+  "translationId": 118,
+  "name": "Zakaria Abulsalam",
+  "authorName": "Zakaria Abulsalam",
+  "languageName": "pashto",
+  "version": "2026-07-16",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "4bb1590ba171e37294f3ce5971bfde86",
+  "payloadSizeBytes": 3366269,
+  "totalVerses": 6236,
+  "generatedAt": "2026-07-16T11:37:28.039Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=118&per_page=300"
+}

@@ -1,0 +1,175 @@
+import { ChevronLeft, ChevronRight } from 'lucide-react-native';
+import React from 'react';
+import type { LayoutChangeEvent, NativeScrollEvent, NativeSyntheticEvent } from 'react-native';
+import { Keyboard, Pressable, ScrollView, Text, View, type ScrollViewInstance } from 'react-native';
+
+import Colors from '@/constants/Colors';
+import { useAppTheme } from '@/providers/ThemeContext';
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function NavButton({
+  disabled,
+  onPress,
+  children,
+}: {
+  disabled: boolean;
+  onPress: () => void;
+  children: React.ReactNode;
+}): React.JSX.Element {
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      className={['rounded-full p-1', disabled ? 'opacity-40' : ''].join(' ')}
+      style={({ pressed }) => ({ opacity: disabled ? 0.4 : pressed ? 0.8 : 1 })}
+      accessibilityRole="button"
+    >
+      {children}
+    </Pressable>
+  );
+}
+
+function Tab({
+  label,
+  active,
+  tintColor,
+  mutedColor,
+  onPress,
+}: {
+  label: string;
+  active: boolean;
+  tintColor: string;
+  mutedColor: string;
+  onPress: () => void;
+}): React.JSX.Element {
+  return (
+    <Pressable
+      onPress={onPress}
+      className="flex-shrink-0 items-center px-3 py-1"
+      style={({ pressed }) => ({
+        opacity: pressed ? 0.85 : 1,
+      })}
+      accessibilityRole="button"
+    >
+      <Text
+        className="text-sm font-semibold"
+        style={{ color: active ? tintColor : mutedColor }}
+      >
+        {label}
+      </Text>
+      <View
+        style={{
+          backgroundColor: active ? tintColor : 'transparent',
+          borderRadius: 999,
+          height: 2,
+          marginTop: 6,
+          width: '100%',
+        }}
+      />
+    </Pressable>
+  );
+}
+
+export function ResourceTabs({
+  languages,
+  activeFilter,
+  onTabPress,
+}: {
+  languages: string[];
+  activeFilter: string;
+  onTabPress: (lang: string) => void;
+}): React.JSX.Element {
+  const { resolvedTheme } = useAppTheme();
+  const palette = Colors[resolvedTheme];
+
+  const scrollRef = React.useRef<ScrollViewInstance>(null);
+  const scrollXRef = React.useRef(0);
+  const [containerWidth, setContainerWidth] = React.useState(0);
+  const [contentWidth, setContentWidth] = React.useState(0);
+  const [canScrollLeft, setCanScrollLeft] = React.useState(false);
+  const [canScrollRight, setCanScrollRight] = React.useState(false);
+
+  const updateScrollState = React.useCallback(
+    (x: number, cw = contentWidth, vw = containerWidth) => {
+      scrollXRef.current = x;
+      const maxX = Math.max(0, cw - vw);
+      setCanScrollLeft(x > 4);
+      setCanScrollRight(x < maxX - 4);
+    },
+    [containerWidth, contentWidth]
+  );
+
+  const onLayout = React.useCallback(
+    (event: LayoutChangeEvent) => {
+      setContainerWidth(event.nativeEvent.layout.width);
+      updateScrollState(scrollXRef.current);
+    },
+    [updateScrollState]
+  );
+
+  const onContentSizeChange = React.useCallback(
+    (w: number) => {
+      setContentWidth(w);
+      updateScrollState(scrollXRef.current, w);
+    },
+    [updateScrollState]
+  );
+
+  const onScroll = React.useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      updateScrollState(event.nativeEvent.contentOffset.x);
+    },
+    [updateScrollState]
+  );
+
+  const scrollBy = React.useCallback(
+    (delta: number) => {
+      const maxX = Math.max(0, contentWidth - containerWidth);
+      const nextX = clamp(scrollXRef.current + delta, 0, maxX);
+      scrollRef.current?.scrollTo({ x: nextX, y: 0, animated: true });
+      updateScrollState(nextX);
+    },
+    [containerWidth, contentWidth, updateScrollState]
+  );
+
+  return (
+    <View className="flex-row items-center overflow-hidden" onLayout={onLayout}>
+      <NavButton disabled={!canScrollLeft} onPress={() => scrollBy(-140)}>
+        <ChevronLeft color={palette.muted} size={20} strokeWidth={2.25} />
+      </NavButton>
+
+      <ScrollView
+        ref={scrollRef}
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        onScroll={onScroll}
+        scrollEventThrottle={16}
+        onContentSizeChange={onContentSizeChange}
+        contentContainerStyle={{ alignItems: 'center' }}
+        nestedScrollEnabled
+        keyboardShouldPersistTaps="handled"
+      >
+        {languages.map((lang) => (
+          <Tab
+            key={lang}
+            label={lang}
+            active={activeFilter === lang}
+            tintColor={palette.tint}
+            mutedColor={palette.muted}
+            onPress={() => {
+              Keyboard.dismiss();
+              onTabPress(lang);
+            }}
+          />
+        ))}
+      </ScrollView>
+
+      <NavButton disabled={!canScrollRight} onPress={() => scrollBy(140)}>
+        <ChevronRight color={palette.muted} size={20} strokeWidth={2.25} />
+      </NavButton>
+    </View>
+  );
+}

@@ -1,0 +1,143 @@
+/* eslint-disable no-console */
+const fs = require('fs/promises');
+const path = require('path');
+
+const projectRoot = path.resolve(__dirname, '..');
+
+async function exists(absolutePath) {
+  try {
+    await fs.access(absolutePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Patch a file in-place.
+ * - No-op if file is missing
+ * - Idempotent
+ */
+async function patchFile(relativePath, patchFn) {
+  const absolutePath = path.join(projectRoot, relativePath);
+  if (!(await exists(absolutePath))) {
+    return { relativePath, status: 'missing' };
+  }
+
+  const before = await fs.readFile(absolutePath, 'utf8');
+  const after = patchFn(before);
+
+  if (after === before) {
+    return { relativePath, status: 'unchanged' };
+  }
+
+  await fs.writeFile(absolutePath, after, 'utf8');
+  return { relativePath, status: 'patched' };
+}
+
+function patchDeprecatedReactNativeSafeAreaViewCjs(contents) {
+  // React Native 0.81+ logs a deprecation warning when `SafeAreaView` is accessed
+  // from `react-native` (getter in `react-native/index.js`). `react-native-css-interop`
+  // only needs SafeAreaView interop for styling, and already supports
+  // `react-native-safe-area-context` in the same module.
+  //
+  // Remove the `react_native_1.SafeAreaView` interop registration to prevent the
+  // deprecation warning during module initialization.
+  return contents.replace(
+    /\r?\n?\(0, api_1\.cssInterop\)\(react_native_1\.SafeAreaView, \{ className: "style" \}\);\r?\n?/,
+    '\n'
+  );
+}
+
+function patchDeprecatedReactNativeSafeAreaViewTs(contents) {
+  // Best-effort patch for the TS source file (some bundlers/devtools may read it).
+  let next = contents;
+  next = next.replace(/\r?\n\s*SafeAreaView,\s*\r?\n/, '\n');
+  // Only remove the single-line RN SafeAreaView registration (the safe-area-context
+  // one is multi-line and should remain).
+  next = next.replace(
+    /\r?\ncssInterop\(SafeAreaView,\s*\{\s*className:\s*"style"\s*\}\s*\);\r?\n?/,
+    '\n'
+  );
+  return next;
+}
+
+function patchReactNativeGradlePluginFoojay(contents) {
+  return contents.replace(
+    /id\("org\.gradle\.toolchains\.foojay-resolver-convention"\)\.version\("0\.5\.0"\)/,
+    'id("org.gradle.toolchains.foojay-resolver-convention").version("1.0.0")'
+  );
+}
+
+function patchBottomTabsReanimateOnRerender(contents) {
+  // The bottom-tab view starts tab transitions in an effect that depends on `descriptors`, which
+  // are recreated on every render. A re-render right after a tab press re-runs it after
+  // `previousRouteKeyRef` already points at the new tab, so the outgoing tab is treated as
+  // uninvolved and jumps to its hidden position with a zero-duration timing. That cut the
+  // outgoing slide off after a frame or two, so the tabs no longer moved together. Only animate
+  // when the focused tab actually changes; tab progress values start at their resting positions.
+  const marker = 'quran-app: animate tabs only on focus change';
+  if (contents.includes(marker)) return contents;
+  return contents.replace(
+    /(\n(\s*)const previousRouteKey = previousRouteKeyRef\.current;\n)/,
+    `$1$2// ${marker}\n$2if (previousRouteKey === focusedRouteKey) return;\n`
+  );
+}
+
+function patchWebViewDefaultPropsGeneric(contents) {
+  // react-native-webview 14 declares `class WebView<P = undefined> extends Component<WebViewProps & P>`.
+  // `WebViewProps & undefined` reduces to `never` under @types/react 19.3, so every `<WebView>` prop
+  // fails to type-check. An empty object default keeps the props unchanged.
+  return contents.replace(
+    'declare class WebView<P = undefined>',
+    'declare class WebView<P = {}>'
+  );
+}
+
+async function main() {
+  const results = [];
+
+  results.push(
+    await patchFile(
+      'node_modules/react-native-css-interop/dist/runtime/components.js',
+      patchDeprecatedReactNativeSafeAreaViewCjs
+    )
+  );
+  results.push(
+    await patchFile(
+      'node_modules/react-native-css-interop/src/runtime/components.ts',
+      patchDeprecatedReactNativeSafeAreaViewTs
+    )
+  );
+  results.push(
+    await patchFile(
+      'node_modules/@react-native/gradle-plugin/settings.gradle.kts',
+      patchReactNativeGradlePluginFoojay
+    )
+  );
+
+  results.push(
+    await patchFile(
+      'node_modules/expo-router/build/react-navigation/bottom-tabs/views/BottomTabView.js',
+      patchBottomTabsReanimateOnRerender
+    )
+  );
+
+  results.push(
+    await patchFile('node_modules/react-native-webview/index.d.ts', patchWebViewDefaultPropsGeneric)
+  );
+
+  const patched = results.filter((r) => r.status === 'patched');
+  if (patched.length === 0) return;
+
+  console.log(
+    `postinstall: patched files: ${patched
+      .map((r) => r.relativePath)
+      .join(', ')}`
+  );
+}
+
+main().catch((error) => {
+  console.error('postinstall failed:', error);
+  process.exitCode = 1;
+});

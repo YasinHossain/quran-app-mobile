@@ -1,0 +1,75 @@
+{
+  "expo": {
+    "name": "quran-app-mobile",
+    "slug": "quran-app-mobile",
+    "version": "1.0.0",
+    "orientation": "default",
+    "icon": "./assets/images/icon.png",
+    "scheme": "quranappmobile",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": true,
+      "infoPlist": {
+        "UIBackgroundModes": [
+          "audio"
+        ]
+      },
+      "bundleIdentifier": "com.anonymous.quranappmobile"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
+      ],
+      "package": "com.anonymous.quranappmobile"
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-sqlite",
+      "expo-audio",
+      "expo-web-browser",
+      "expo-font",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/splash-icon.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#04744C",
+          "dark": {
+            "image": "./assets/images/splash-icon.png",
+            "backgroundColor": "#04744C"
+          }
+        }
+      ],
+      "expo-status-bar",
+      "expo-asset",
+      "./plugins/withVerseSpotlightWidget",
+      "./plugins/withReaderPushTransition"
+    ],
+    "extra": {
+      "translationPackCatalogUrl": "https://cdn.appquran.com/translation-packs/catalog.json",
+      "wordTranslationPackCatalogUrl": "https://cdn.appquran.com/word-translation-packs/catalog.json",
+      "tafsirPackCatalogUrl": "https://cdn.appquran.com/tafsir-packs/catalog.json",
+      "mushafPackCatalogUrl": "https://cdn.appquran.com/mushaf-packs/catalog.json",
+      "wordStudyPackCatalogUrl": "https://cdn.appquran.com/word-study-packs/catalog.json",
+      "wordGrammarPackCatalogUrl": "https://cdn.appquran.com/word-grammar-packs/catalog.json",
+      "wordReferencePackCatalogUrl": "https://cdn.appquran.com/word-reference-packs/catalog.json",
+      "verbReferencePackCatalogUrl": "https://cdn.appquran.com/verb-reference-packs/catalog.json"
+    },
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

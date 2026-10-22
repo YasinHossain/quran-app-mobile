@@ -1,0 +1,30 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "Node16",
+    "moduleResolution": "Node16",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "rootDir": "../../src/core",
+    "outDir": "../../.artifacts/word-study-tests"
+  },
+  "include": [
+    "../../src/core/domain/repositories/IWordStudyRepository.ts",
+    "../../src/core/domain/repositories/IGrammarStudyRepository.ts",
+    "../../src/core/domain/repositories/IVerbReferenceRepository.ts",
+    "../../src/core/domain/word-study/**/*.ts",
+    "../../src/core/infrastructure/word-study/LruCache.ts",
+    "../../src/core/infrastructure/word-study/SQLiteWordStudyRepository.ts",
+    "../../src/core/infrastructure/word-study/WordStudyDatabase.ts",
+    "../../src/core/infrastructure/word-study/WordStudyPack.types.ts",
+    "../../src/core/infrastructure/word-study/WordStudyPackLifecycle.ts"
+    ,"../../src/core/infrastructure/word-grammar/GrammarStudyDatabase.ts"
+    ,"../../src/core/infrastructure/word-grammar/SQLiteGrammarStudyRepository.ts"
+    ,"../../src/core/infrastructure/word-reference/WordReferencePack.types.ts"
+    ,"../../src/core/infrastructure/word-reference/WordReferencePackRegistry.ts"
+    ,"../../src/core/infrastructure/verb-reference/VerbReferenceDatabase.ts"
+    ,"../../src/core/infrastructure/verb-reference/SQLiteVerbReferenceRepository.ts"
+    ,"../../src/core/infrastructure/verb-reference/VerbReferencePack.types.ts"
+  ]
+}

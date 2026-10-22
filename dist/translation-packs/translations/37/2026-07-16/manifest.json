@@ -1,0 +1,15 @@
+{
+  "translationId": 37,
+  "name": "Malayalam Translation(Abdul Hameed and Kunhi)",
+  "authorName": "Cheriyamundam Abdul Hameed and Kunhi Mohammed Parappoor",
+  "languageName": "malayalam",
+  "version": "2026-07-16",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "50b6d1e461e691e163a8be2b2a3c3102",
+  "payloadSizeBytes": 5023434,
+  "totalVerses": 6236,
+  "generatedAt": "2026-07-16T11:36:47.236Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=37&per_page=300"
+}

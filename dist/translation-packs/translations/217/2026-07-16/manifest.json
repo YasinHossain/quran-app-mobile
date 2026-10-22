@@ -1,0 +1,15 @@
+{
+  "translationId": 217,
+  "name": "Dr. Mikhailo Yaqubovic",
+  "authorName": "Dr. Mikhailo Yaqubovic",
+  "languageName": "ukrainian",
+  "version": "2026-07-16",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "dd246a640e0a2462eae2746d4540c6f9",
+  "payloadSizeBytes": 3108172,
+  "totalVerses": 6236,
+  "generatedAt": "2026-07-16T11:35:10.632Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=217&per_page=300"
+}

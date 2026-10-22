@@ -1,0 +1,15 @@
+{
+  "translationId": 798,
+  "name": "Abdul Hamid Silika",
+  "authorName": "Abdul Hamid Silika",
+  "languageName": "yau,yuw",
+  "version": "2026-07-16",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "c5b2e0bf957993aba59ceee43e61cad9",
+  "payloadSizeBytes": 2957509,
+  "totalVerses": 6236,
+  "generatedAt": "2026-07-16T11:33:45.412Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=798&per_page=300"
+}

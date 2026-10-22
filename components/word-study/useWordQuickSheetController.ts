@@ -1,0 +1,280 @@
+import React from 'react';
+import type { WordAnalysis } from '@/src/core/domain/word-study';
+import { toWordStudyLocation } from '@/src/core/domain/word-study';
+import { container } from '@/src/core/infrastructure/di/container';
+import { logger } from '@/src/core/infrastructure/monitoring/logger';
+import { WordStudyPackNotInstalledError } from '@/src/core/infrastructure/word-study';
+
+import {
+  getWordStudyLocationKey,
+  type WordStudyPressEvent,
+} from './WordStudyPressEvent';
+import {
+  toWordQuickSheetLoadState,
+  type WordQuickSheetLoadState,
+} from './wordQuickSheetModel';
+
+type WordQuickSheetSession = {
+  event: WordStudyPressEvent;
+  loadState: WordQuickSheetLoadState;
+  tapStartedAtMs: number;
+  requestId: number;
+  verseAnalyses?: readonly WordAnalysis[];
+};
+
+const QUICK_SHEET_CACHE_LIMIT = 96;
+let wordStudyWarmupPromise: Promise<void> | null = null;
+
+function nowMs(): number {
+  return globalThis.performance?.now?.() ?? Date.now();
+}
+
+function isCacheableLoadState(loadState: WordQuickSheetLoadState): boolean {
+  return loadState.status === 'ready' || loadState.status === 'missing';
+}
+
+function rememberCachedLoadState(
+  cache: Map<string, WordQuickSheetLoadState>,
+  locationKey: string,
+  loadState: WordQuickSheetLoadState
+): void {
+  if (!isCacheableLoadState(loadState)) return;
+  cache.delete(locationKey);
+  cache.set(locationKey, loadState);
+  if (cache.size <= QUICK_SHEET_CACHE_LIMIT) return;
+
+  const oldestKey = cache.keys().next().value;
+  if (oldestKey) cache.delete(oldestKey);
+}
+
+function getCachedLoadState(
+  cache: Map<string, WordQuickSheetLoadState>,
+  locationKey: string
+): WordQuickSheetLoadState | undefined {
+  const cached = cache.get(locationKey);
+  if (!cached) return undefined;
+  cache.delete(locationKey);
+  cache.set(locationKey, cached);
+  return cached;
+}
+
+function warmWordStudyDatabaseOnce(): Promise<void> {
+  if (!wordStudyWarmupPromise) {
+    wordStudyWarmupPromise = container
+      .getWordStudyPackInstaller()
+      .getInstalledAsync()
+      .then((installed) => {
+        if (!installed) return undefined;
+        return container.getWordStudyDatabaseProvider().getDatabaseAsync();
+      })
+      .then(() => undefined)
+      .catch((error: unknown) => {
+        wordStudyWarmupPromise = null;
+        logger.warn(
+          'Word Study quick-sheet warmup skipped',
+          undefined,
+          error instanceof Error ? error : new Error(String(error))
+        );
+      });
+  }
+  return wordStudyWarmupPromise;
+}
+
+export type WordQuickSheetController = {
+  isOpen: boolean;
+  event: WordStudyPressEvent | null;
+  loadState: WordQuickSheetLoadState;
+  verseAnalyses?: readonly WordAnalysis[];
+  open: (event: WordStudyPressEvent) => void;
+  /** Loads a word for a sheet that owns its own open state; ignores `isDisabled`. */
+  select: (event: WordStudyPressEvent) => void;
+  close: () => void;
+  retry: () => void;
+  reportPresented: () => void;
+};
+
+type WordQuickSheetControllerOptions = {
+  isDisabled?: boolean;
+  onDisabledOpen?: (event: WordStudyPressEvent) => void;
+};
+
+export function useWordQuickSheetController(
+  options: WordQuickSheetControllerOptions = {}
+): WordQuickSheetController {
+  const { isDisabled = false, onDisabledOpen } = options;
+  const nextRequestIdRef = React.useRef(0);
+  const cacheRef = React.useRef(new Map<string, WordQuickSheetLoadState>());
+  const verseAnalysesCacheRef = React.useRef(new Map<string, readonly WordAnalysis[]>());
+  const [isOpen, setIsOpen] = React.useState(false);
+  const [session, setSession] = React.useState<WordQuickSheetSession | null>(null);
+
+  React.useEffect(() => {
+    const frameId = requestAnimationFrame(() => {
+      void warmWordStudyDatabaseOnce();
+    });
+    return () => cancelAnimationFrame(frameId);
+  }, []);
+
+  const load = React.useCallback(
+    (
+      event: WordStudyPressEvent,
+      tapStartedAtMs: number,
+      deferUntilNextFrame = false
+    ) => {
+      const requestId = ++nextRequestIdRef.current;
+      const locationKey = getWordStudyLocationKey(event);
+      const cachedLoadState = getCachedLoadState(cacheRef.current, locationKey);
+      const cachedVerseAnalyses = verseAnalysesCacheRef.current.get(event.verseKey);
+      setSession({
+        event,
+        loadState: cachedLoadState ?? { status: 'loading' },
+        tapStartedAtMs,
+        requestId,
+        verseAnalyses: cachedVerseAnalyses,
+      });
+      if (cachedLoadState && cachedVerseAnalyses) {
+        logger.info('Word Study quick-sheet lookup reused cache', {
+          locationKey,
+          durationMs: Number((nowMs() - tapStartedAtMs).toFixed(2)),
+          offline: true,
+        });
+        return;
+      }
+
+      const query = (): void => {
+        if (nextRequestIdRef.current !== requestId) return;
+        void container
+          .getVerseWordAnalyses()
+          .execute(event.verseKey)
+          .then(async (verseWords) => {
+            const resolvedAtMs = nowMs();
+            const targetWord = verseWords.find(
+              (w) => w.location.wordPosition === event.wordPosition
+            );
+            const nextLoadState: WordQuickSheetLoadState = targetWord
+              ? { status: 'ready', analysis: targetWord }
+              : toWordQuickSheetLoadState(await container.getWordAnalysis().execute(locationKey));
+            rememberCachedLoadState(cacheRef.current, locationKey, nextLoadState);
+            verseAnalysesCacheRef.current.set(event.verseKey, verseWords);
+            for (const w of verseWords) {
+              const key = `${event.verseKey}:${w.location.wordPosition}`;
+              if (!cacheRef.current.has(key)) {
+                rememberCachedLoadState(cacheRef.current, key, {
+                  status: 'ready',
+                  analysis: w,
+                });
+              }
+            }
+            setSession((current) => {
+              if (!current || current.requestId !== requestId) return current;
+              logger.info('Word Study quick-sheet lookup resolved', {
+                locationKey,
+                durationMs: Number((resolvedAtMs - tapStartedAtMs).toFixed(2)),
+                offline: true,
+              });
+              return {
+                ...current,
+                loadState: nextLoadState,
+                verseAnalyses: verseWords,
+              };
+            });
+          })
+          .catch((error: unknown) => {
+            const needsDownload =
+              error instanceof WordStudyPackNotInstalledError ||
+              (error instanceof Error && error.name === 'WordStudyPackNotInstalledError');
+            setSession((current) => {
+              if (!current || current.requestId !== requestId) return current;
+              if (needsDownload) {
+                logger.info('Word Study quick-sheet requires Essentials download', {
+                  locationKey,
+                });
+              } else {
+                logger.error(
+                  'Word Study quick-sheet lookup failed',
+                  { locationKey },
+                  error instanceof Error ? error : new Error(String(error))
+                );
+              }
+              return {
+                ...current,
+                loadState: {
+                  status: 'error',
+                  message: needsDownload
+                    ? 'Download Word Study Essentials once to use morphology and occurrences fully offline. Meanings use your selected word-by-word language pack.'
+                    : 'Word analysis could not be loaded from the offline study pack.',
+                  needsDownload,
+                },
+              };
+            });
+          });
+      };
+
+      if (deferUntilNextFrame) {
+        requestAnimationFrame(query);
+      } else {
+        query();
+      }
+    },
+    []
+  );
+
+  const open = React.useCallback(
+    (event: WordStudyPressEvent) => {
+      if (isDisabled) {
+        onDisabledOpen?.(event);
+        return;
+      }
+
+      const tapStartedAtMs = nowMs();
+      setIsOpen(true);
+      // Give the loading shell the first frame; the offline SQLite lookup begins immediately
+      // afterward so opening the database cannot delay modal presentation.
+      load(event, tapStartedAtMs, true);
+    },
+    [isDisabled, load, onDisabledOpen]
+  );
+
+  const select = React.useCallback(
+    (event: WordStudyPressEvent) => {
+      load(event, nowMs(), true);
+    },
+    [load]
+  );
+
+  const close = React.useCallback(() => {
+    nextRequestIdRef.current += 1;
+    setIsOpen(false);
+  }, []);
+
+  React.useEffect(() => {
+    if (isDisabled) {
+      close();
+    }
+  }, [close, isDisabled]);
+
+  const retry = React.useCallback(() => {
+    if (!session) return;
+    load(session.event, nowMs());
+  }, [load, session]);
+
+  const reportPresented = React.useCallback(() => {
+    if (!session) return;
+    logger.info('Word Study quick sheet presented', {
+      locationKey: getWordStudyLocationKey(session.event),
+      durationMs: Number((nowMs() - session.tapStartedAtMs).toFixed(2)),
+    });
+  }, [session]);
+
+  return {
+    isOpen,
+    event: session?.event ?? null,
+    loadState: session?.loadState ?? { status: 'loading' },
+    verseAnalyses: session?.verseAnalyses,
+    open,
+    select,
+    close,
+    retry,
+    reportPresented,
+  };
+}

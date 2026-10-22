@@ -1,0 +1,15 @@
+{
+  "translationId": 108,
+  "name": "Ahl Al-Hadith Central Society of Nepal",
+  "authorName": "Ahl Al-Hadith Central Society of Nepal",
+  "languageName": "nepali",
+  "version": "2026-07-16",
+  "bundled": false,
+  "format": "translation-json-v1",
+  "payloadFile": "payload.json",
+  "payloadChecksum": "b4c0ce9227d0e27b3ad91acf1cc4ad53",
+  "payloadSizeBytes": 4312037,
+  "totalVerses": 6236,
+  "generatedAt": "2026-07-16T11:33:48.083Z",
+  "source": "https://api.quran.com/api/v4/verses/by_chapter/{surahId}?translations=108&per_page=300"
+}
